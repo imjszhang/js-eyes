@@ -1204,26 +1204,10 @@ function buildReplyViaDomScript(tweetId, replyText) {
             await delay(200);
             if (textarea.contentEditable === 'true') {
                 textarea.focus();
-                for (var ci = 0; ci < replyText.length; ci++) {
-                    var ch = replyText[ci];
-                    if (document.execCommand) {
-                        document.execCommand('insertText', false, ch);
-                    } else {
-                        var sel = window.getSelection();
-                        var range = document.createRange();
-                        textarea.focus();
-                        if (textarea.childNodes.length) {
-                            range.setStart(textarea.childNodes[0], (textarea.textContent || '').length);
-                        } else {
-                            range.setStart(textarea, 0);
-                        }
-                        range.collapse(true);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                        textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
-                        textarea.textContent = (textarea.textContent || '') + ch;
-                    }
-                    await delay(25);
+                if (document.execCommand) {
+                    document.execCommand('insertText', false, replyText);
+                } else {
+                    textarea.textContent = replyText;
                 }
                 textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replyText }));
             } else {
@@ -1231,8 +1215,11 @@ function buildReplyViaDomScript(tweetId, replyText) {
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
             await delay(1200);
-            textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replyText }));
             await delay(800);
+            var actualText = (textarea.textContent || textarea.innerText || '').trim();
+            if (actualText !== replyText.trim()) {
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + replyText.trim().length + ')' };
+            }
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
             let postBtn = null;
             for (var waitRound = 0; waitRound < 25; waitRound++) {
@@ -1330,15 +1317,11 @@ function buildReplyViaIntentScript(replyText) {
             textarea.focus();
             await delay(250);
             if (textarea.contentEditable === 'true') {
-                for (var ci = 0; ci < replyText.length; ci++) {
-                    var ch = replyText[ci];
-                    if (document.execCommand) {
-                        document.execCommand('insertText', false, ch);
-                    } else {
-                        textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
-                        textarea.textContent = (textarea.textContent || '') + ch;
-                    }
-                    await delay(30);
+                textarea.focus();
+                if (document.execCommand) {
+                    document.execCommand('insertText', false, replyText);
+                } else {
+                    textarea.textContent = replyText;
                 }
                 textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replyText }));
             } else {
@@ -1346,6 +1329,10 @@ function buildReplyViaIntentScript(replyText) {
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
             await delay(1200);
+            var actualText = (textarea.textContent || textarea.innerText || '').trim();
+            if (actualText !== replyText.trim()) {
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + replyText.trim().length + ')' };
+            }
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
             let postBtn = root.querySelector('[data-testid="tweetButtonInline"]');
             if (!postBtn) postBtn = root.querySelector('[data-testid="tweetButton"]');
@@ -1828,15 +1815,11 @@ function buildNewTweetViaDomScript(tweetText) {
             textarea.focus();
             await delay(200);
             if (textarea.contentEditable === 'true') {
-                for (var ci = 0; ci < tweetText.length; ci++) {
-                    var ch = tweetText[ci];
-                    if (document.execCommand) {
-                        document.execCommand('insertText', false, ch);
-                    } else {
-                        textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
-                        textarea.textContent = (textarea.textContent || '') + ch;
-                    }
-                    await delay(25);
+                textarea.focus();
+                if (document.execCommand) {
+                    document.execCommand('insertText', false, tweetText);
+                } else {
+                    textarea.textContent = tweetText;
                 }
                 textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: tweetText }));
             } else {
@@ -1844,8 +1827,11 @@ function buildNewTweetViaDomScript(tweetText) {
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
             await delay(1200);
-            textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: tweetText }));
             await delay(800);
+            var actualText = (textarea.textContent || textarea.innerText || '').trim();
+            if (actualText !== tweetText.trim()) {
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + tweetText.trim().length + ')' };
+            }
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
             let postBtn = null;
             for (var waitRound = 0; waitRound < 25; waitRound++) {
@@ -1967,15 +1953,11 @@ function buildQuoteTweetViaDomScript(quoteText) {
             textarea.focus();
             await delay(200);
             if (textarea.contentEditable === 'true') {
-                for (var ci = 0; ci < quoteText.length; ci++) {
-                    var ch = quoteText[ci];
-                    if (document.execCommand) {
-                        document.execCommand('insertText', false, ch);
-                    } else {
-                        textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
-                        textarea.textContent = (textarea.textContent || '') + ch;
-                    }
-                    await delay(25);
+                textarea.focus();
+                if (document.execCommand) {
+                    document.execCommand('insertText', false, quoteText);
+                } else {
+                    textarea.textContent = quoteText;
                 }
                 textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: quoteText }));
             } else {
@@ -1983,8 +1965,11 @@ function buildQuoteTweetViaDomScript(quoteText) {
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
             await delay(1200);
-            textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: quoteText }));
             await delay(800);
+            var actualText = (textarea.textContent || textarea.innerText || '').trim();
+            if (actualText !== quoteText.trim()) {
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + quoteText.trim().length + ')' };
+            }
 
             // 5. 找到 Post 按钮并点击
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
@@ -2250,7 +2235,10 @@ async function main() {
                     console.log('(未实际发送)');
                 } else if (hasQuote) {
                     // Quote Tweet: GraphQL 优先 → DOM fallback
-                    const quoteUrl = 'https://x.com/i/status/' + quoteTweetId;
+                    // attachment_url 需要标准格式 https://x.com/{user}/status/{id}，/i/status/ 可能被 API 忽略
+                    const quoteUrl = options.quote && options.quote.startsWith('http') && !options.quote.includes('/i/status/')
+                        ? options.quote
+                        : 'https://x.com/i/status/' + quoteTweetId;
                     console.log('[Quote Tweet] 引用: ' + quoteUrl);
 
                     let qtResult = await postNewTweetViaMutation(browser, tabId, options.post, safeExecuteScript, quoteUrl);
@@ -2408,9 +2396,14 @@ async function main() {
                         console.log('(未实际发送)');
                     } else {
                         const safeExecuteScript = createSafeExecuteScript(browser);
-                        const replyResult = useIntent
-                            ? await postReplyViaIntent(browser, tabId, options.reply, safeExecuteScript)
-                            : await postReplyViaDom(browser, tabId, replyTweetId, options.reply, safeExecuteScript);
+                        // GraphQL mutation 优先（API 调用，不经过 DOM 输入，无交错乱码风险）
+                        let replyResult = await postReplyViaMutation(browser, tabId, replyTweetId, options.reply, safeExecuteScript);
+                        if (!replyResult?.success) {
+                            console.log('[回复] GraphQL 失败 (' + (replyResult?.error || '未知') + ')，回退到 DOM...');
+                            replyResult = useIntent
+                                ? await postReplyViaIntent(browser, tabId, options.reply, safeExecuteScript)
+                                : await postReplyViaDom(browser, tabId, replyTweetId, options.reply, safeExecuteScript);
+                        }
                         if (replyResult.success) {
                             console.log('回复已发送' + (replyResult.tweetId ? '，ID: ' + replyResult.tweetId : ''));
                         } else {
