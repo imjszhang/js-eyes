@@ -1202,24 +1202,76 @@ function buildReplyViaDomScript(tweetId, replyText) {
             await delay(200);
             textarea.focus();
             await delay(200);
-            if (textarea.contentEditable === 'true') {
-                textarea.focus();
-                if (document.execCommand) {
-                    document.execCommand('insertText', false, replyText);
-                } else {
-                    textarea.textContent = replyText;
+
+            const setTextContent = async (element, text) => {
+                const methods = [
+                    async () => {
+                        element.focus();
+                        element.select && element.select();
+                        await delay(100);
+                        if (document.execCommand) {
+                            document.execCommand('insertText', false, text);
+                            return true;
+                        }
+                        return false;
+                    },
+                    async () => {
+                        element.innerHTML = text.replace(/\\n/g, '<br>');
+                        return true;
+                    },
+                    async () => {
+                        element.textContent = text;
+                        return true;
+                    },
+                    async () => {
+                        element.focus();
+                        for (const char of text) {
+                            const event = new KeyboardEvent('keydown', { key: char, bubbles: true });
+                            element.dispatchEvent(event);
+                            element.textContent += char;
+                            await delay(10);
+                        }
+                        return true;
+                    }
+                ];
+                for (const method of methods) {
+                    try {
+                        const result = await method();
+                        if (result) {
+                            element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+                            element.dispatchEvent(new Event('change', { bubbles: true }));
+                            element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                            await delay(200);
+                            return true;
+                        }
+                    } catch (e) {}
                 }
-                textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replyText }));
-            } else {
-                textarea.value = replyText;
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                return false;
+            };
+
+            const contentSet = await setTextContent(textarea, replyText);
+            if (!contentSet) {
+                return { success: false, error: '无法设置回复输入框内容（所有方法均失败）' };
             }
-            await delay(1200);
-            await delay(800);
-            var actualText = (textarea.textContent || textarea.innerText || '').trim();
-            if (actualText !== replyText.trim()) {
-                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + replyText.trim().length + ')' };
+
+            let contentVerified = false;
+            for (let checkRound = 0; checkRound < 20; checkRound++) {
+                await delay(250);
+                var actualText = (textarea.textContent || textarea.innerText || '').trim();
+                if (actualText === replyText.trim()) {
+                    contentVerified = true;
+                    break;
+                }
+                if (checkRound < 3) {
+                    await setTextContent(textarea, replyText);
+                }
             }
+
+            if (!contentVerified) {
+                var finalText = (textarea.textContent || textarea.innerText || '').trim();
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + finalText.length + ' vs ' + replyText.trim().length + ', content="' + finalText.substring(0, 50) + '")' };
+            }
+
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
             let postBtn = null;
             for (var waitRound = 0; waitRound < 25; waitRound++) {
@@ -1247,19 +1299,33 @@ function buildReplyViaDomScript(tweetId, replyText) {
             postBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
             await delay(300);
             postBtn.click();
-            await delay(2500);
+
+            let dialogClosed = false;
+            for (let dRound = 0; dRound < 20; dRound++) {
+                await delay(400);
+                var dlg = document.querySelector('[role="dialog"]');
+                if (!dlg || !isVisible(dlg)) {
+                    dialogClosed = true;
+                    break;
+                }
+            }
+            if (!dialogClosed) {
+                return { success: false, error: '发送后对话框未关闭（可能未成功发送）' };
+            }
+
+            await delay(1500);
             var newReplyId = null;
             try {
-                var articles = document.querySelectorAll('article[data-testid="tweet"]');
+                var allArticles = document.querySelectorAll('article[data-testid="tweet"]');
                 var focalIndex = -1;
-                for (var j = 0; j < articles.length; j++) {
-                    var linkInArt = articles[j].querySelector('a[href*="/status/' + targetTweetId + '"]');
+                for (var j = 0; j < allArticles.length; j++) {
+                    var linkInArt = allArticles[j].querySelector('a[href*="/status/' + targetTweetId + '"]');
                     if (linkInArt) {
                         focalIndex = j;
                         break;
                     }
                 }
-                var replyArticle = focalIndex >= 0 && focalIndex + 1 < articles.length ? articles[focalIndex + 1] : articles[0];
+                var replyArticle = focalIndex >= 0 && focalIndex + 1 < allArticles.length ? allArticles[focalIndex + 1] : allArticles[0];
                 var replyLink = replyArticle ? replyArticle.querySelector('a[href*="/status/"]') : null;
                 if (replyLink && replyLink.href) {
                     var m = replyLink.href.match(/status\\/(\\d+)/);
@@ -1316,23 +1382,76 @@ function buildReplyViaIntentScript(replyText) {
             await delay(250);
             textarea.focus();
             await delay(250);
-            if (textarea.contentEditable === 'true') {
-                textarea.focus();
-                if (document.execCommand) {
-                    document.execCommand('insertText', false, replyText);
-                } else {
-                    textarea.textContent = replyText;
+
+            const setTextContent = async (element, text) => {
+                const methods = [
+                    async () => {
+                        element.focus();
+                        element.select && element.select();
+                        await delay(100);
+                        if (document.execCommand) {
+                            document.execCommand('insertText', false, text);
+                            return true;
+                        }
+                        return false;
+                    },
+                    async () => {
+                        element.innerHTML = text.replace(/\\n/g, '<br>');
+                        return true;
+                    },
+                    async () => {
+                        element.textContent = text;
+                        return true;
+                    },
+                    async () => {
+                        element.focus();
+                        for (const char of text) {
+                            const event = new KeyboardEvent('keydown', { key: char, bubbles: true });
+                            element.dispatchEvent(event);
+                            element.textContent += char;
+                            await delay(10);
+                        }
+                        return true;
+                    }
+                ];
+                for (const method of methods) {
+                    try {
+                        const result = await method();
+                        if (result) {
+                            element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+                            element.dispatchEvent(new Event('change', { bubbles: true }));
+                            element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                            await delay(200);
+                            return true;
+                        }
+                    } catch (e) {}
                 }
-                textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replyText }));
-            } else {
-                textarea.value = replyText;
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                return false;
+            };
+
+            const contentSet = await setTextContent(textarea, replyText);
+            if (!contentSet) {
+                return { success: false, error: '无法设置回复输入框内容（所有方法均失败）' };
             }
-            await delay(1200);
-            var actualText = (textarea.textContent || textarea.innerText || '').trim();
-            if (actualText !== replyText.trim()) {
-                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + replyText.trim().length + ')' };
+
+            let contentVerified = false;
+            for (let checkRound = 0; checkRound < 20; checkRound++) {
+                await delay(250);
+                var actualText = (textarea.textContent || textarea.innerText || '').trim();
+                if (actualText === replyText.trim()) {
+                    contentVerified = true;
+                    break;
+                }
+                if (checkRound < 3) {
+                    await setTextContent(textarea, replyText);
+                }
             }
+
+            if (!contentVerified) {
+                var finalText = (textarea.textContent || textarea.innerText || '').trim();
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + finalText.length + ' vs ' + replyText.trim().length + ')' };
+            }
+
             var root = composerRoot && composerRoot !== document.body ? composerRoot : document;
             let postBtn = root.querySelector('[data-testid="tweetButtonInline"]');
             if (!postBtn) postBtn = root.querySelector('[data-testid="tweetButton"]');
@@ -1351,7 +1470,20 @@ function buildReplyViaIntentScript(replyText) {
             postBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
             await delay(200);
             postBtn.click();
-            await delay(2500);
+
+            let dialogClosed = false;
+            for (let dRound = 0; dRound < 20; dRound++) {
+                await delay(400);
+                var dlg = document.querySelector('[role="dialog"]');
+                if (!dlg || !isVisible(dlg)) {
+                    dialogClosed = true;
+                    break;
+                }
+            }
+            if (!dialogClosed) {
+                return { success: false, error: '发送后对话框未关闭（可能未成功发送）' };
+            }
+
             return { success: true };
         } catch (e) {
             return { success: false, error: e.message };
@@ -2491,10 +2623,11 @@ async function main() {
                         console.log('(未实际发送)');
                     } else {
                         const safeExecuteScript = createSafeExecuteScript(browser);
-                        // GraphQL mutation 优先（API 调用，不经过 DOM 输入，无交错乱码风险）
+                        let graphqlError = '';
                         let replyResult = await postReplyViaMutation(browser, tabId, replyTweetId, options.reply, safeExecuteScript);
                         if (!replyResult?.success) {
-                            console.log('[回复] GraphQL 失败 (' + (replyResult?.error || '未知') + ')，回退到 DOM...');
+                            graphqlError = replyResult?.error || '未知';
+                            console.log('[回复] GraphQL 失败 (' + graphqlError + ')，回退到 DOM...');
                             replyResult = useIntent
                                 ? await postReplyViaIntent(browser, tabId, options.reply, safeExecuteScript)
                                 : await postReplyViaDom(browser, tabId, replyTweetId, options.reply, safeExecuteScript);
@@ -2504,11 +2637,14 @@ async function main() {
                         } else {
                             console.error('回复失败:', replyResult.error || '未知错误');
                         }
-                        console.log('__RESULT_JSON__:' + JSON.stringify({
+                        const replyPayload = {
                             success: !!replyResult.success,
                             replyTweetId: replyResult.tweetId || '',
                             error: replyResult.error || '',
-                        }));
+                            graphqlError: graphqlError,
+                        };
+                        if (replyResult._debug) replyPayload._debug = replyResult._debug;
+                        console.log('__RESULT_JSON__:' + JSON.stringify(replyPayload));
                     }
                 } finally {
                     await releaseXTab(browser, tabId, !options.closeTab);
