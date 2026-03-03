@@ -1523,10 +1523,23 @@ function buildCreateReplyScript(tweetId, replyText, queryId, features) {
             if (err) {
                 return { success: false, error: err.message || JSON.stringify(err) };
             }
-            if (data?.data?.create_tweet !== undefined && data?.data?.create_tweet?.result?.rest_id) {
-                return { success: true, tweetId: data.data.create_tweet.result.rest_id };
+            var restId = null;
+            var ct = data?.data?.create_tweet;
+            if (ct) {
+                restId = ct.rest_id
+                    || ct.result?.rest_id
+                    || ct.result?.tweet?.rest_id
+                    || ct.result?.tweet_results?.result?.rest_id
+                    || ct.tweet_results?.result?.rest_id
+                    || ct.tweet_results?.result?.tweet?.rest_id;
             }
-            return { success: true };
+            if (restId) {
+                return { success: true, tweetId: String(restId) };
+            }
+            if (ct !== undefined) {
+                return { success: true, tweetId: '', _debug: JSON.stringify(data).substring(0, 500) };
+            }
+            return { success: false, error: 'GraphQL 响应无 create_tweet: ' + JSON.stringify(data).substring(0, 300) };
         } catch (e) {
             return { success: false, error: e.message };
         }
@@ -1623,10 +1636,23 @@ function buildCreateNewTweetScript(tweetText, queryId, features, attachmentUrl) 
             if (err) {
                 return { success: false, error: err.message || JSON.stringify(err) };
             }
-            if (data?.data?.create_tweet !== undefined && data?.data?.create_tweet?.result?.rest_id) {
-                return { success: true, tweetId: data.data.create_tweet.result.rest_id };
+            var restId = null;
+            var ct = data?.data?.create_tweet;
+            if (ct) {
+                restId = ct.rest_id
+                    || ct.result?.rest_id
+                    || ct.result?.tweet?.rest_id
+                    || ct.result?.tweet_results?.result?.rest_id
+                    || ct.tweet_results?.result?.rest_id
+                    || ct.tweet_results?.result?.tweet?.rest_id;
             }
-            return { success: true };
+            if (restId) {
+                return { success: true, tweetId: String(restId) };
+            }
+            if (ct !== undefined) {
+                return { success: true, tweetId: '', _debug: JSON.stringify(data).substring(0, 500) };
+            }
+            return { success: false, error: 'GraphQL 响应无 create_tweet: ' + JSON.stringify(data).substring(0, 300) };
         } catch (e) {
             return { success: false, error: e.message };
         }
@@ -1945,30 +1971,81 @@ function buildQuoteTweetViaDomScript(quoteText) {
                 return { success: false, error: '未找到 Quote 输入框（等待超时）' };
             }
 
-            // 4. 逐字符输入评论文本
+            // 4. 输入评论文本（多方式尝试 + 轮询验证 + 重试）
+            const setTextContent = async (element, text) => {
+                const methods = [
+                    async () => {
+                        element.focus();
+                        element.select && element.select();
+                        await delay(100);
+                        if (document.execCommand) {
+                            document.execCommand('insertText', false, text);
+                            return true;
+                        }
+                        return false;
+                    },
+                    async () => {
+                        element.innerHTML = text.replace(/\\n/g, '<br>');
+                        return true;
+                    },
+                    async () => {
+                        element.textContent = text;
+                        return true;
+                    },
+                    async () => {
+                        element.focus();
+                        for (const char of text) {
+                            const event = new KeyboardEvent('keydown', { key: char, bubbles: true });
+                            element.dispatchEvent(event);
+                            element.textContent += char;
+                            await delay(10);
+                        }
+                        return true;
+                    }
+                ];
+                for (const method of methods) {
+                    try {
+                        const result = await method();
+                        if (result) {
+                            element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+                            element.dispatchEvent(new Event('change', { bubbles: true }));
+                            element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                            await delay(200);
+                            return true;
+                        }
+                    } catch (e) {}
+                }
+                return false;
+            };
+
             textarea.scrollIntoView({ behavior: 'instant', block: 'center' });
             await delay(250);
             textarea.click();
             await delay(200);
             textarea.focus();
             await delay(200);
-            if (textarea.contentEditable === 'true') {
-                textarea.focus();
-                if (document.execCommand) {
-                    document.execCommand('insertText', false, quoteText);
-                } else {
-                    textarea.textContent = quoteText;
-                }
-                textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: quoteText }));
-            } else {
-                textarea.value = quoteText;
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const contentSet = await setTextContent(textarea, quoteText);
+            if (!contentSet) {
+                return { success: false, error: '无法设置 Quote 输入框内容（所有方法均失败）' };
             }
-            await delay(1200);
-            await delay(800);
-            var actualText = (textarea.textContent || textarea.innerText || '').trim();
-            if (actualText !== quoteText.trim()) {
-                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + actualText.length + ' vs ' + quoteText.trim().length + ')' };
+
+            let contentVerified = false;
+            for (let checkRound = 0; checkRound < 20; checkRound++) {
+                await delay(250);
+                var actualText = (textarea.textContent || textarea.innerText || '').trim();
+                if (actualText === quoteText.trim()) {
+                    contentVerified = true;
+                    break;
+                }
+                if (checkRound < 3) {
+                    await setTextContent(textarea, quoteText);
+                }
+            }
+
+            if (!contentVerified) {
+                var finalText = (textarea.textContent || textarea.innerText || '').trim();
+                return { success: false, error: '内容校验失败: 输入框内容与预期不一致 (len=' + finalText.length + ' vs ' + quoteText.trim().length + ', content="' + finalText.substring(0, 50) + '")' };
             }
 
             // 5. 找到 Post 按钮并点击
@@ -1999,7 +2076,20 @@ function buildQuoteTweetViaDomScript(quoteText) {
             postBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
             await delay(300);
             postBtn.click();
-            await delay(3000);
+
+            // 6. 验证 compose dialog 已关闭（表示发送成功）
+            let dialogClosed = false;
+            for (let dRound = 0; dRound < 20; dRound++) {
+                await delay(400);
+                var dlg = document.querySelector('[role="dialog"]');
+                if (!dlg || !isVisible(dlg)) {
+                    dialogClosed = true;
+                    break;
+                }
+            }
+            if (!dialogClosed) {
+                return { success: false, error: 'Quote 发送后 dialog 未关闭（发送可能失败）' };
+            }
             return { success: true };
         } catch (e) {
             return { success: false, error: e.message };
@@ -2241,10 +2331,12 @@ async function main() {
                         : 'https://x.com/i/status/' + quoteTweetId;
                     console.log('[Quote Tweet] 引用: ' + quoteUrl);
 
+                    let graphqlError = '';
                     let qtResult = await postNewTweetViaMutation(browser, tabId, options.post, safeExecuteScript, quoteUrl);
 
                     if (!qtResult?.success) {
-                        console.log('[Quote Tweet] GraphQL 失败 (' + (qtResult?.error || '未知') + ')，回退到 DOM...');
+                        graphqlError = qtResult?.error || '未知';
+                        console.log('[Quote Tweet] GraphQL 失败 (' + graphqlError + ')，回退到 DOM...');
                         qtResult = await postQuoteTweetViaDom(browser, tabId, quoteTweetId, options.post, safeExecuteScript);
                     }
 
@@ -2253,11 +2345,14 @@ async function main() {
                     } else {
                         console.error('Quote Tweet 失败:', qtResult.error || '未知错误');
                     }
-                    console.log('__RESULT_JSON__:' + JSON.stringify({
+                    const resultPayload = {
                         success: !!qtResult.success,
                         quoteTweetId: qtResult.tweetId || '',
                         error: qtResult.error || '',
-                    }));
+                        graphqlError: graphqlError,
+                    };
+                    if (qtResult._debug) resultPayload._debug = qtResult._debug;
+                    console.log('__RESULT_JSON__:' + JSON.stringify(resultPayload));
                 } else if (hasPost) {
                     if (options.image) {
                         const imagePath = path.isAbsolute(options.image) ? options.image : path.join(process.cwd(), options.image);
