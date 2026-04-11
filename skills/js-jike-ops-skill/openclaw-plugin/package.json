@@ -1,0 +1,11 @@
+{
+  "name": "js-jike-ops-skill",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for js-jike-ops-skill",
+  "type": "module",
+  "main": "index.mjs",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "js-youtube-ops-skill",
+  "version": "1.0.0",
+  "description": "YouTube 视频读取技能，提供视频元数据与字幕读取",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "video": "node index.js video",
+    "subtitles": "node index.js subtitles"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,28 @@
+---
+name: js-reddit-ops-skill
+description: Reddit 内容读取 skill，提供帖子详情、图片和评论树读取能力。
+version: 1.0.0
+metadata:
+  openclaw:
+    emoji: "\U0001F9F5"
+    homepage: https://github.com/imjszhang/js-eyes
+    requires:
+      bins:
+        - node
+---
+
+# js-reddit-ops-skill
+
+面向 Reddit 单条帖子详情读取的 skill。首版只做详情页结构化输出，不提供 subreddit feed、搜索和用户主页。
+
+## 提供的 AI 工具
+
+| 工具 | 说明 |
+|------|------|
+| `reddit_get_post` | 读取 Reddit 帖子详情，返回正文、subreddit、图片和评论树 |
+
+## CLI
+
+```bash
+node skills/js-reddit-ops-skill/index.js post "https://www.reddit.com/r/test/comments/xxxx/title/" --pretty
+```

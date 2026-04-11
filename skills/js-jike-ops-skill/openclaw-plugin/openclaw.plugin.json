@@ -1,0 +1,17 @@
+{
+  "id": "js-jike-ops-skill",
+  "name": "JS Jike Ops Skill",
+  "description": "即刻帖子详情读取工具",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "jsEyesServerUrl": {
+        "type": "string",
+        "default": "ws://localhost:18080",
+        "description": "JS-Eyes WebSocket 服务器地址"
+      }
+    }
+  }
+}

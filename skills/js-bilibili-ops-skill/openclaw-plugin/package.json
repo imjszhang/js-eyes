@@ -1,0 +1,11 @@
+{
+  "name": "js-bilibili-ops-skill",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for js-bilibili-ops-skill",
+  "type": "module",
+  "main": "index.mjs",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}
