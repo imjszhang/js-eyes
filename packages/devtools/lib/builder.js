@@ -61,6 +61,27 @@ function copyDirSync(src, dest) {
   }
 }
 
+function pruneUnavailableExtensionDownloads(assetStates) {
+  const docsIndex = path.join(DOCS_DIR, 'index.html');
+  if (!fs.existsSync(docsIndex)) return;
+
+  let html = fs.readFileSync(docsIndex, 'utf8');
+
+  for (const asset of assetStates) {
+    if (asset.exists) continue;
+    const linkPattern = new RegExp(`\\s*<a id="${asset.linkId}"[\\s\\S]*?<\\/a>\\s*`, 'm');
+    html = html.replace(linkPattern, '\n');
+    console.log(`  ⚠ ${asset.dest} missing from dist/, hiding ${asset.label} download button`);
+  }
+
+  if (assetStates.every((asset) => !asset.exists)) {
+    html = html.replace(/\s*<div id="extension-download-links"[\s\S]*?<\/div>\s*/m, '\n');
+    console.log('  ⚠ No extension artifacts found in dist/, hiding site download buttons');
+  }
+
+  fs.writeFileSync(docsIndex, html, 'utf8');
+}
+
 function loadEnvFile() {
   const envPaths = [
     path.join(PROJECT_ROOT, '.env'),
@@ -451,15 +472,30 @@ async function buildSite(t, options = {}) {
 
   const version = getVersion();
   const extensionAssets = [
-    { src: path.join(DIST_DIR, `js-eyes-chrome-v${version}.zip`), dest: 'js-eyes-chrome-latest.zip' },
-    { src: path.join(DIST_DIR, `js-eyes-firefox-v${version}.xpi`), dest: 'js-eyes-firefox-latest.xpi' },
+    {
+      src: path.join(DIST_DIR, `js-eyes-chrome-v${version}.zip`),
+      dest: 'js-eyes-chrome-latest.zip',
+      linkId: 'download-chrome-link',
+      label: 'Chrome',
+    },
+    {
+      src: path.join(DIST_DIR, `js-eyes-firefox-v${version}.xpi`),
+      dest: 'js-eyes-firefox-latest.xpi',
+      linkId: 'download-firefox-link',
+      label: 'Firefox',
+    },
   ];
   for (const asset of extensionAssets) {
-    if (fs.existsSync(asset.src)) {
-      fs.copyFileSync(asset.src, path.join(DOCS_DIR, asset.dest));
+    const docsAssetPath = path.join(DOCS_DIR, asset.dest);
+    asset.exists = fs.existsSync(asset.src);
+    if (asset.exists) {
+      fs.copyFileSync(asset.src, docsAssetPath);
       console.log(`  ✓ ${asset.dest} (from dist/)`);
+    } else if (fs.existsSync(docsAssetPath)) {
+      fs.unlinkSync(docsAssetPath);
     }
   }
+  pruneUnavailableExtensionDownloads(extensionAssets);
 
   await buildSkillZip();
   await buildSubSkillZips();
@@ -627,6 +663,14 @@ function collectVersionFiles() {
     { path: PKG_PATH, name: 'package.json' },
     { path: CHROME_MANIFEST, name: 'extensions/chrome/manifest.json', jsonType: 'manifest' },
     { path: FIREFOX_MANIFEST, name: 'extensions/firefox/manifest.json', jsonType: 'manifest' },
+    {
+      path: path.join(PROJECT_ROOT, 'packages', 'openclaw-plugin', 'openclaw.plugin.json'),
+      name: 'packages/openclaw-plugin/openclaw.plugin.json',
+    },
+    {
+      path: path.join(PROJECT_ROOT, 'extensions', 'firefox', 'popup', 'package.json'),
+      name: 'extensions/firefox/popup/package.json',
+    },
   ];
 
   for (const workspaceRoot of ['apps', 'packages']) {
@@ -642,6 +686,18 @@ function collectVersionFiles() {
   }
 
   return files;
+}
+
+function syncInternalDependencyVersions(content, newVersion) {
+  const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+  for (const field of dependencyFields) {
+    if (!content[field] || typeof content[field] !== 'object') continue;
+    for (const name of Object.keys(content[field])) {
+      if (name.startsWith('@js-eyes/')) {
+        content[field][name] = newVersion;
+      }
+    }
+  }
 }
 
 function bump(t, newVersion) {
@@ -676,6 +732,7 @@ function bump(t, newVersion) {
       const content = JSON.parse(fs.readFileSync(file.path, 'utf8'));
       const old = content.version;
       content.version = newVersion;
+      syncInternalDependencyVersions(content, newVersion);
       fs.writeFileSync(file.path, JSON.stringify(content, null, 2) + '\n', 'utf8');
       console.log(`  ✓ ${t('bump.updated').replace('{name}', file.name).replace('{old}', old).replace('{new}', newVersion)}`);
     } catch (e) {

@@ -509,11 +509,11 @@
     "description": "Help: docker note 1"
   },
   "helpDocker2": {
-    "message": "Docker configuration supports both 8080 port direct connection and WebSocket subdomain",
+    "message": "Docker configuration supports both direct :18080 access and HTTPS local-domain access",
     "description": "Help: docker note 2"
   },
   "helpDocker3": {
-    "message": "Production environment recommends using SSL (wss://) connection",
+    "message": "Production environment recommends using SSL (https://) connection",
     "description": "Help: docker note 3"
   },
   "helpDocker4": {

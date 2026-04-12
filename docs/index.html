@@ -208,7 +208,7 @@
         <section class="mb-24 relative text-center sm:text-left">
             <div class="inline-flex flex-wrap gap-3 items-center">
                 <div class="opacity-0-init animate-slide-up stagger-1 bg-black text-brand-yellow inline-block px-4 py-1 border-2 border-black font-mono font-bold text-sm mb-6 shadow-brutal-white transform -rotate-1" data-i18n="hero.badge">
-                    v1.4.3 // BROWSER AUTOMATION
+                    v1.5.0 // BROWSER AUTOMATION
                 </div>
                 <a href="https://openclaw.ai/" target="_blank" class="opacity-0-init animate-slide-up stagger-1 bg-[#E74C3C] text-white inline-flex items-center gap-2 px-4 py-1 border-2 border-black font-mono font-bold text-sm mb-6 shadow-brutal transform rotate-1 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] transition-all no-underline">
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7L5 2M15 7L19 2"/><path d="M7 10c-3-2-5 0-4 2s3 1 5 0"/><path d="M17 10c3-2 5 0 4 2s-3 1-5 0"/><ellipse cx="12" cy="11" rx="5" ry="5"/><path d="M10 16v2l2 3 2-3v-2"/></svg>
@@ -247,7 +247,7 @@
                         <div class="mt-3 pt-3 border-t border-gray-800 space-y-1 text-[11px]">
                             <p class="text-green-400" data-i18n="hero.deployResult1">&#10003; js-eyes installed</p>
                             <p class="text-green-400" data-i18n="hero.deployResult2">&#10003; Plugin registered</p>
-                            <p class="text-blue-400" data-i18n="hero.deployResult3">&#10003; Server auto-started on :18080</p>
+                            <p class="text-blue-400" data-i18n="hero.deployResult3">&#10003; Server auto-started on http://localhost:18080</p>
                             <p class="text-green-400" data-i18n="hero.deployResult4">&#10003; Extension connected — 3 tabs synced</p>
                             <p><span class="animate-blink">_</span></p>
                         </div>
@@ -255,20 +255,14 @@
                 </div>
             </div>
 
-            <div class="opacity-0-init animate-slide-up stagger-4 flex flex-col sm:flex-row gap-6 mt-10">
-                <a href="./js-eyes-chrome-latest.zip" download class="brutal-btn-primary px-8 py-4 text-lg gap-3">
+            <div id="extension-download-links" class="opacity-0-init animate-slide-up stagger-4 flex flex-col sm:flex-row gap-6 mt-10">
+                <a id="download-chrome-link" href="./js-eyes-chrome-latest.zip" download class="brutal-btn-primary px-8 py-4 text-lg gap-3">
                     <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/>
                     </svg>
                     <span data-i18n="hero.btnChrome">Chrome / Edge Extension</span>
                 </a>
-                <a href="./js-eyes-firefox-latest.xpi" download class="brutal-btn-secondary px-8 py-4 text-lg gap-3">
-                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/><path d="M8 12c0-2.2 1.8-4 4-4"/><path d="M12 8v8"/><circle cx="12" cy="12" r="2"/>
-                    </svg>
-                    <span data-i18n="hero.btnFirefox">Firefox Extension</span>
-                </a>
-            </div>
+</div>
         </section>
 
         <!-- Marquee -->
@@ -472,7 +466,7 @@
                     <p class="font-medium mb-4" data-i18n="frameworks.builtin.desc">Lightweight server with HTTP + WebSocket on a single port. No authentication required. Perfect for local development and testing.</p>
                     <div class="brutal-card bg-black text-brand-yellow font-mono text-xs p-3 hover:transform-none hover:shadow-[6px_6px_0px_0px_#000]">
                         <p>$ npm run server</p>
-                        <p class="text-green-400">Listening on :18080</p>
+                        <p class="text-green-400">Listening on http://localhost:18080</p>
                     </div>
                 </div>
 
@@ -628,7 +622,7 @@
     <footer class="bg-black text-white py-12 border-t-8 border-[#FCD228]">
         <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
             <div class="font-mono font-bold text-xl tracking-tighter">
-                JS_EYES <span class="text-[#FCD228]">v1.4.3</span>
+                JS_EYES <span class="text-[#FCD228]">v1.5.0</span>
             </div>
             <div class="text-center md:text-right">
                 <p class="text-sm text-gray-400 mb-2" data-i18n="footer.tagline">Browser automation for any AI agent framework</p>

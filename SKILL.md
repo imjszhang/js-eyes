@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Browser automation for AI agents — control tabs, extract content, execute scripts and manage cookies via WebSocket.
-version: 1.4.3
+version: 1.5.0
 metadata:
   openclaw:
     emoji: "\U0001F441"
@@ -130,7 +130,7 @@ irm https://js-eyes.com/install.ps1 | iex
 
 > **Alternative (GitHub release asset):** If the site download is unavailable, use the versioned skill bundle attached to GitHub Releases:
 > ```bash
-> curl -L -o js-eyes-skill.zip https://github.com/imjszhang/js-eyes/releases/download/v1.4.3/js-eyes-skill-v1.4.3.zip
+> curl -L -o js-eyes-skill.zip https://github.com/imjszhang/js-eyes/releases/download/v1.5.0/js-eyes-skill-v1.5.0.zip
 > ```
 
 By default, the skill is installed to `./skills/js-eyes`. To change the location:

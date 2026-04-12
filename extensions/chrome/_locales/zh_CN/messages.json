@@ -181,7 +181,7 @@
     "description": "Local preset button"
   },
   "presetFullServer": {
-    "message": "完整版:3000",
+    "message": "本地完整版:3000",
     "description": "Full server preset button"
   },
   "presetDockerLocal": {
@@ -509,11 +509,11 @@
     "description": "Help: docker note 1"
   },
   "helpDocker2": {
-    "message": "Docker 配置支持 8080 端口直连和 WebSocket 子域名两种方式",
+    "message": "Docker 配置同时支持 :18080 直连和 HTTPS 本地域名访问",
     "description": "Help: docker note 2"
   },
   "helpDocker3": {
-    "message": "生产环境建议使用 SSL (wss://) 连接",
+    "message": "生产环境建议使用 SSL (https://) 连接",
     "description": "Help: docker note 3"
   },
   "helpDocker4": {

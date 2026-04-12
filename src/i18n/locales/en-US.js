@@ -10,7 +10,7 @@ window.I18nLocales['en-US'] = {
         langToggle: '中',
     },
     hero: {
-        badge: 'v1.4.3 // BROWSER AUTOMATION',
+        badge: 'v1.5.0 // BROWSER AUTOMATION',
         openclawBadge: 'NATIVE OPENCLAW SUPPORT',
         titleLine1: "AI Agent's",
         titleLine2: 'Browser Eyes',
@@ -22,7 +22,7 @@ window.I18nLocales['en-US'] = {
         deployCopy: 'Copy',
         deployResult1: '\u2713 js-eyes installed',
         deployResult2: '\u2713 Plugin registered',
-        deployResult3: '\u2713 Server auto-started on :18080',
+        deployResult3: '\u2713 Server auto-started on http://localhost:18080',
         deployResult4: '\u2713 Extension connected — 3 tabs synced',
         btnChrome: 'Chrome / Edge Extension',
         btnFirefox: 'Firefox Extension',

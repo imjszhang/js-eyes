@@ -33,10 +33,15 @@ The extension will be installed immediately and display an icon in the toolbar.
 
 #### Method 2: Packaged Installation
 
-1. Compress the entire `extensions/firefox` directory into a ZIP file
-2. Change the file extension from `.zip` to `.xpi`
+1. Use a signed `.xpi` from GitHub Releases, or build one yourself with:
+   ```bash
+   npm run build:firefox
+   ```
+2. Install the generated `dist/js-eyes-firefox-v<version>.xpi`
 3. Open the `.xpi` file in Firefox
 4. Follow the prompts to complete installation
+
+> For local development without signing, keep using **Method 1** (`about:debugging`). Do not zip `extensions/firefox/` manually and rename it to `.xpi`, because that often produces an invalid package layout.
 
 ### 3. Verify Installation
 

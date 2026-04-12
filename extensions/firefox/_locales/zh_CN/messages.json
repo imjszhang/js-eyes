@@ -128,15 +128,19 @@
   },
 
   "presetLocal": {
-    "message": "本地:8080",
+    "message": "本地:18080",
     "description": "Local preset button"
   },
+  "presetFullServer": {
+    "message": "本地完整版:3000",
+    "description": "Full server preset button"
+  },
   "presetDockerLocal": {
-    "message": "Docker本地:8080",
+    "message": "Docker:18080",
     "description": "Docker local preset button"
   },
   "presetDockerLocalSSL": {
-    "message": "Docker本地:8080 (SSL)",
+    "message": "Docker:18080 (SSL)",
     "description": "Docker local SSL preset button"
   },
   "presetDockerWS": {
@@ -218,7 +222,7 @@
     "placeholders": {
       "url": {
         "content": "$1",
-        "example": "ws://localhost:8080"
+        "example": "http://localhost:18080"
       }
     }
   },
@@ -227,7 +231,7 @@
     "description": "Log: server address empty"
   },
   "logServerInvalidProtocol": {
-    "message": "服务器地址必须以 ws:// 或 wss:// 开头",
+    "message": "服务器地址必须以 http://、https://、ws:// 或 wss:// 开头",
     "description": "Log: invalid server protocol"
   },
   "logServerSaved": {
@@ -236,7 +240,7 @@
     "placeholders": {
       "url": {
         "content": "$1",
-        "example": "ws://localhost:8080"
+        "example": "http://localhost:18080"
       }
     }
   },
@@ -390,23 +394,23 @@
     "description": "Help: address formats title"
   },
   "helpAddress1": {
-    "message": "本地开发：ws://localhost:8080",
+    "message": "本地轻量版：http://localhost:18080",
     "description": "Help: address 1"
   },
   "helpAddress2": {
-    "message": "Docker 本地：ws://js.local:8080 或 wss://js.local:8080",
+    "message": "本地完整版：http://localhost:3000",
     "description": "Help: address 2"
   },
   "helpAddress3": {
-    "message": "Docker WebSocket 子域名：ws://ws.js.local 或 wss://ws.js.local",
+    "message": "Docker：http://js.local:18080 或 https://js.local:18080",
     "description": "Help: address 3"
   },
   "helpAddress4": {
-    "message": "局域网服务器：ws://192.168.1.100:8080",
+    "message": "局域网：http://192.168.1.100:18080",
     "description": "Help: address 4"
   },
   "helpAddress5": {
-    "message": "生产环境：wss://your-domain.com:8080",
+    "message": "生产环境：https://your-domain.com",
     "description": "Help: address 5"
   },
 
@@ -419,11 +423,11 @@
     "description": "Help: docker note 1"
   },
   "helpDocker2": {
-    "message": "Docker 配置支持 8080 端口直连和 WebSocket 子域名两种方式",
+    "message": "Docker 配置同时支持 :18080 直连和 HTTPS 本地域名访问",
     "description": "Help: docker note 2"
   },
   "helpDocker3": {
-    "message": "生产环境建议使用 SSL (wss://) 连接",
+    "message": "生产环境建议使用 SSL (https://) 连接",
     "description": "Help: docker note 3"
   },
   "helpDocker4": {

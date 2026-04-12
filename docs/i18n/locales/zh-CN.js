@@ -10,7 +10,7 @@ window.I18nLocales['zh-CN'] = {
         langToggle: 'EN',
     },
     hero: {
-        badge: 'v1.4.3 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
+        badge: 'v1.5.0 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
         openclawBadge: '\u539f\u751f\u652f\u6301 OPENCLAW',
         titleLine1: 'AI Agent \u7684',
         titleLine2: '\u6d4f\u89c8\u5668\u4e4b\u773c',
@@ -22,7 +22,7 @@ window.I18nLocales['zh-CN'] = {
         deployCopy: '\u590d\u5236',
         deployResult1: '\u2713 js-eyes \u5df2\u5b89\u88c5',
         deployResult2: '\u2713 \u63d2\u4ef6\u5df2\u6ce8\u518c',
-        deployResult3: '\u2713 \u670d\u52a1\u5668\u5df2\u81ea\u52a8\u542f\u52a8 :18080',
+        deployResult3: '\u2713 \u670d\u52a1\u5668\u5df2\u81ea\u52a8\u542f\u52a8 http://localhost:18080',
         deployResult4: '\u2713 \u6269\u5c55\u5df2\u8fde\u63a5 \u2014 3 \u4e2a\u6807\u7b7e\u9875\u5df2\u540c\u6b65',
         btnChrome: 'Chrome / Edge \u6269\u5c55',
         btnFirefox: 'Firefox \u6269\u5c55',

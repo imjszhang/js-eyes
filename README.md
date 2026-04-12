@@ -100,8 +100,8 @@ The source repository no longer keeps root-level compatibility trees like `serve
 
 Download the latest release from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest):
 
-- **Chrome/Edge Extension**: `js-eyes-chrome-v1.4.3.zip`
-- **Firefox Extension**: `js-eyes-firefox-v1.4.3.xpi`
+- **Chrome/Edge Extension**: `js-eyes-chrome-v1.5.0.zip`
+- **Firefox Extension**: `js-eyes-firefox-v1.5.0.xpi`
 
 Or download directly from [js-eyes.com](https://js-eyes.com).
 
@@ -126,7 +126,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com).
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.4.3.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.5.0.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (e.g. `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder
 4. Register the plugin in `~/.openclaw/openclaw.json` (see [OpenClaw Plugin](#openclaw-plugin))
@@ -237,12 +237,12 @@ For local source-repo development, point `plugins.load.paths` to `packages/openc
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `1.4.3` |
-| Browser extension assets | `1.4.3` |
-| `@js-eyes/server-core` | `1.4.3` |
-| `@js-eyes/client-sdk` | `1.4.3` |
-| `@js-eyes/openclaw-plugin` | `1.4.3` |
-| Skills using `@js-eyes/client-sdk` | `1.4.3` |
+| CLI | `1.5.0` |
+| Browser extension assets | `1.5.0` |
+| `@js-eyes/server-core` | `1.5.0` |
+| `@js-eyes/client-sdk` | `1.5.0` |
+| `@js-eyes/openclaw-plugin` | `1.5.0` |
+| Skills using `@js-eyes/client-sdk` | `1.5.0` |
 
 ## Extension Skills
 
@@ -303,7 +303,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 1.4.3
+npm run bump -- 1.5.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
