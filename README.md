@@ -169,9 +169,29 @@ openclaw js-eyes status
 
 Expected output shows server uptime, connected extensions, and tab count.
 
+### 4. Manage Skills from the CLI
+
+`js-eyes` now acts as the host for extension skills as well:
+
+```bash
+# List remote + installed skills
+js-eyes skills list
+
+# Install and enable a skill
+js-eyes skills install js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+
+# Run a skill command through the js-eyes host
+js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+```
+
+Skill install state is tracked by the CLI runtime directory, while OpenClaw can still consume the same installed skill via its `openclaw-plugin` path.
+
 ## OpenClaw Plugin
 
 JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, providing browser automation tools directly to AI agents.
+
+For native plugin loading, follow the OpenClaw runtime requirements for external plugins (ESM + Node 22+).
 
 ### What It Provides
 
@@ -248,6 +268,10 @@ For local source-repo development, point `plugins.load.paths` to `packages/openc
 
 JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. Each skill adds new AI tools and can be installed independently.
 
+Each skill can now play two roles at once:
+- extend the `js-eyes` CLI with skill-specific commands
+- expose the same capability set to OpenClaw through the skill's native `openclaw-plugin`
+
 | Skill | Description | Tools |
 |-------|-------------|-------|
 | [js-x-ops-skill](./skills/js-x-ops-skill/) | X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows | `x_search_tweets`, `x_get_profile`, `x_get_post`, `x_get_home_feed` |
@@ -281,6 +305,14 @@ $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 
 **Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID — it downloads, extracts, installs dependencies, and registers the plugin automatically.
 
+**Via the js-eyes CLI:**
+
+```bash
+js-eyes skills install js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+```
+
 **Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, and add the plugin path to `openclaw.json`.
 
 ## Building
@@ -289,12 +321,16 @@ $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 
 - Node.js >= 16
 - Run `npm install` in the project root
+- `npm run build:firefox` requires `AMO_API_KEY` and `AMO_API_SECRET` (for Mozilla signing). The repository now installs `web-ext` locally via `npm install`, so no separate global install is required.
 
 ### Build Commands
 
 ```bash
 # Build site (docs/) + skill bundles + skills.json registry
 npm run build:site
+
+# Build all release artifacts
+npm run build
 
 # Build Chrome extension only
 npm run build:chrome
@@ -307,6 +343,8 @@ npm run bump -- 1.5.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
+
+For the maintainer release checklist (`develop` -> `main`, npm CLI publish, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
 
 ## Troubleshooting
 

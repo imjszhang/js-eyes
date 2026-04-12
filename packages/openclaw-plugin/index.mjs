@@ -40,14 +40,19 @@ function patchWindowsHide() {
 patchWindowsHide();
 
 const require = createRequire(import.meta.url);
+const manifest = require("./openclaw.plugin.json");
 const { BrowserAutomation } = require("@js-eyes/client-sdk");
 const { createServer } = require("@js-eyes/server-core");
 const { SKILLS_REGISTRY_URL } = require("@js-eyes/protocol");
+const {
+  discoverLocalSkills,
+  fetchSkillsRegistry,
+  installSkillFromRegistry,
+  updateOpenClawSkillEntry,
+} = require("@js-eyes/protocol/skills");
 
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
-const nodeOs = require("node:os");
-const { execSync } = require("node:child_process");
 
 const PLUGIN_DIR = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -75,7 +80,19 @@ function resolveSkillRoot() {
 const SKILL_ROOT = resolveSkillRoot();
 const DEFAULT_REGISTRY = SKILLS_REGISTRY_URL;
 
-export default function register(api) {
+async function resolvePluginEntry(definition) {
+  try {
+    const sdk = await import("openclaw/plugin-sdk/plugin-entry");
+    if (typeof sdk.definePluginEntry === "function") {
+      return sdk.definePluginEntry(definition);
+    }
+  } catch {
+    // Fallback for local development without the OpenClaw SDK package installed.
+  }
+  return definition.register;
+}
+
+function register(api) {
   const pluginCfg = api.pluginConfig ?? {};
 
   const serverHost = pluginCfg.serverHost || "localhost";
@@ -349,9 +366,8 @@ export default function register(api) {
       async execute(_toolCallId, params) {
         const url = params.registryUrl || skillsRegistryUrl;
         try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const registry = await resp.json();
+          const registry = await fetchSkillsRegistry(url);
+          const installedSkills = new Set(discoverLocalSkills(skillsDir).map((skill) => skill.id));
 
           if (!registry.skills || registry.skills.length === 0) {
             return textResult("当前没有可用的扩展技能。");
@@ -364,15 +380,16 @@ export default function register(api) {
           ];
 
           for (const s of registry.skills) {
-            const installed = nodeFs.existsSync(
-              nodePath.join(skillsDir, s.id, "openclaw-plugin"),
-            );
+            const installed = installedSkills.has(s.id);
             const status = installed ? "✓ 已安装" : "○ 未安装";
             lines.push(`### ${s.emoji || ""} ${s.name} (${s.id}) — ${status}`);
             lines.push(`  ${s.description}`);
             lines.push(`  版本: ${s.version}`);
             if (s.tools && s.tools.length > 0) {
               lines.push(`  AI 工具: ${s.tools.join(", ")}`);
+            }
+            if (s.commands && s.commands.length > 0) {
+              lines.push(`  CLI 命令: ${s.commands.join(", ")}`);
             }
             if (s.requires?.skills?.length > 0) {
               lines.push(`  依赖: ${s.requires.skills.join(", ")}`);
@@ -415,116 +432,29 @@ export default function register(api) {
       async execute(_toolCallId, params) {
         const { skillId, force } = params;
         try {
-          const resp = await fetch(skillsRegistryUrl);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const registry = await resp.json();
-
-          const skill = registry.skills?.find((s) => s.id === skillId);
-          if (!skill) {
-            const ids = (registry.skills || []).map((s) => s.id).join(", ");
-            return textResult(`技能 "${skillId}" 未在注册表中找到。\n可用技能: ${ids || "无"}`);
-          }
-
-          const targetDir = nodePath.join(skillsDir, skillId);
-          if (nodeFs.existsSync(targetDir) && !force) {
-            return textResult(
-              `技能 "${skillId}" 已安装在 ${targetDir}。\n如需重新安装，请设置 force=true。`,
-            );
-          }
-
-          api.logger.info(`[js-eyes] Downloading skill: ${skillId}`);
-          const urls = skill.downloadUrlFallback
-            ? [skill.downloadUrl, skill.downloadUrlFallback]
-            : [skill.downloadUrl];
-
-          let zipBuffer = null;
-          for (const url of urls) {
-            const zipResp = await fetch(url);
-            if (zipResp.ok) {
-              zipBuffer = Buffer.from(await zipResp.arrayBuffer());
-              break;
-            }
-            api.logger.warn(`[js-eyes] Download failed (${url}): HTTP ${zipResp.status}`);
-          }
-          if (!zipBuffer) throw new Error("Download failed for all URLs");
-
-          const tmpDir = nodePath.join(nodeOs.tmpdir(), `js-eyes-skill-${Date.now()}`);
-          nodeFs.mkdirSync(tmpDir, { recursive: true });
-          const zipPath = nodePath.join(tmpDir, `${skillId}.zip`);
-          nodeFs.writeFileSync(zipPath, zipBuffer);
-
-          if (nodeFs.existsSync(targetDir)) {
-            nodeFs.rmSync(targetDir, { recursive: true, force: true });
-          }
-          nodeFs.mkdirSync(targetDir, { recursive: true });
-
-          api.logger.info(`[js-eyes] Extracting to ${targetDir}`);
-          if (process.platform === "win32") {
-            execSync(
-              `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${targetDir}' -Force"`,
-              { windowsHide: true },
-            );
-          } else {
-            execSync(`unzip -qo "${zipPath}" -d "${targetDir}"`);
-          }
-
-          const pkgJson = nodePath.join(targetDir, "package.json");
-          if (nodeFs.existsSync(pkgJson)) {
-            api.logger.info(`[js-eyes] Installing dependencies for ${skillId}`);
-            try {
-              execSync("npm install --production", {
-                cwd: targetDir,
-                stdio: "pipe",
-                windowsHide: true,
-              });
-            } catch {
-              execSync("npm install", {
-                cwd: targetDir,
-                stdio: "pipe",
-                windowsHide: true,
-              });
-            }
-          }
-
-          nodeFs.rmSync(tmpDir, { recursive: true, force: true });
-
-          const pluginPath = nodePath
-            .join(targetDir, "openclaw-plugin")
-            .replace(/\\/g, "/");
+          const installResult = await installSkillFromRegistry({
+            skillId,
+            registryUrl: skillsRegistryUrl,
+            skillsDir,
+            force,
+            logger: api.logger,
+          });
           let configUpdated = false;
-
-          const ocConfigPath = nodePath.join(nodeOs.homedir(), ".openclaw", "openclaw.json");
-          if (nodeFs.existsSync(ocConfigPath)) {
-            try {
-              const cfg = JSON.parse(nodeFs.readFileSync(ocConfigPath, "utf8"));
-              if (!cfg.plugins) cfg.plugins = {};
-              if (!cfg.plugins.load) cfg.plugins.load = {};
-              if (!Array.isArray(cfg.plugins.load.paths)) cfg.plugins.load.paths = [];
-              if (!cfg.plugins.entries) cfg.plugins.entries = {};
-
-              if (!cfg.plugins.load.paths.includes(pluginPath)) {
-                cfg.plugins.load.paths.push(pluginPath);
-              }
-              if (!cfg.plugins.entries[skillId]) {
-                cfg.plugins.entries[skillId] = { enabled: true };
-              }
-
-              nodeFs.writeFileSync(
-                ocConfigPath,
-                JSON.stringify(cfg, null, 2) + "\n",
-                "utf8",
-              );
-              configUpdated = true;
-            } catch (e) {
-              api.logger.warn(`[js-eyes] Could not update openclaw.json: ${e.message}`);
-            }
+          try {
+            configUpdated = updateOpenClawSkillEntry({
+              skillId,
+              pluginPath: installResult.pluginPath,
+              enabled: true,
+            }).updated;
+          } catch (error) {
+            api.logger.warn(`[js-eyes] Could not update openclaw.json: ${error.message}`);
           }
 
           const lines = [
-            `✓ 技能 "${skill.name}" (${skillId}) 安装成功！`,
-            `  安装路径: ${targetDir}`,
-            `  插件路径: ${pluginPath}`,
-            `  提供工具: ${(skill.tools || []).join(", ")}`,
+            `✓ 技能 "${installResult.skill.name}" (${skillId}) 安装成功！`,
+            `  安装路径: ${installResult.targetDir}`,
+            `  插件路径: ${installResult.pluginPath}`,
+            `  提供工具: ${(installResult.skill.tools || []).join(", ")}`,
             "",
           ];
 
@@ -532,7 +462,7 @@ export default function register(api) {
             lines.push("✓ 已自动更新 ~/.openclaw/openclaw.json");
           } else {
             lines.push("⚠ 需要手动添加到 ~/.openclaw/openclaw.json:");
-            lines.push(`  plugins.load.paths 添加: "${pluginPath}"`);
+            lines.push(`  plugins.load.paths 添加: "${installResult.pluginPath}"`);
             lines.push(`  plugins.entries 添加: "${skillId}": { "enabled": true }`);
           }
           lines.push("");
@@ -647,3 +577,12 @@ export default function register(api) {
     { commands: ["js-eyes"] },
   );
 }
+
+const definition = {
+  id: manifest.id,
+  name: manifest.name,
+  description: manifest.description,
+  register,
+};
+
+export default await resolvePluginEntry(definition);

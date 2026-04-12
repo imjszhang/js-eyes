@@ -17,6 +17,8 @@ const DEFAULT_CONFIG = {
   requestTimeout: DEFAULT_REQUEST_TIMEOUT_SECONDS,
   autoStartServer: true,
   skillsRegistryUrl: SKILLS_REGISTRY_URL,
+  skillsDir: '',
+  skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
 };
 

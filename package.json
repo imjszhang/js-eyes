@@ -34,5 +34,8 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "web-ext": "^10.1.0"
   }
 }

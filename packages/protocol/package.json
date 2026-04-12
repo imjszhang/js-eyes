@@ -4,7 +4,8 @@
   "description": "Shared protocol constants for JS Eyes runtime packages",
   "main": "index.js",
   "files": [
-    "index.js"
+    "index.js",
+    "skills.js"
   ],
   "license": "MIT",
   "publishConfig": {

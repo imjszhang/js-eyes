@@ -4,7 +4,13 @@
   "description": "OpenClaw plugin for js-x-ops-skill — X.com content operations via js-eyes",
   "type": "module",
   "main": "index.mjs",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "license": "MIT",
+  "peerDependencies": {
+    "openclaw": ">=0.0.0"
+  },
   "openclaw": {
     "extensions": ["./index.mjs"]
   }

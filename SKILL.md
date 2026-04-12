@@ -227,6 +227,24 @@ Expected output:
 
 You can also ask the AI agent to list your browser tabs — it should invoke `js_eyes_get_tabs` and return the tab list.
 
+## Using Skills from the CLI
+
+The published `js-eyes` CLI can also host extension skills directly, without requiring OpenClaw to be the installer of record:
+
+```bash
+# Discover remote + locally installed skills
+js-eyes skills list
+
+# Install and enable a skill
+js-eyes skills install js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+
+# Run a skill command through the js-eyes host
+js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+```
+
+This keeps one shared skill directory for both the CLI host and OpenClaw. OpenClaw still loads the skill through its own `openclaw-plugin` path.
+
 ## Plugin Configuration
 
 | Option | Type | Default | Description |
@@ -255,6 +273,10 @@ js-eyes ships with built-in extension skills that add higher-level capabilities 
 | **js-x-ops-skill** | `skills/js-x-ops-skill/` | X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows |
 
 Extension skills depend on js-eyes for browser automation and can be registered as separate OpenClaw plugins. See each skill's `SKILL.md` for setup instructions.
+
+The same installed skill can now be consumed in two ways:
+- by `js-eyes skill run ...` as a CLI-hosted extension
+- by OpenClaw through the skill's `openclaw-plugin` directory
 
 To register the js-x-ops-skill plugin, add its `openclaw-plugin` path to your `openclaw.json`:
 

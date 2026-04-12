@@ -13,6 +13,15 @@ const {
   PROTOCOL_VERSION,
   RELEASE_BASE_URL,
 } = require('@js-eyes/protocol');
+const {
+  discoverLocalSkills,
+  fetchSkillsRegistry,
+  installSkillFromRegistry,
+  readSkillById,
+  resolveSkillsDir,
+  runSkillCli,
+  updateOpenClawSkillEntry,
+} = require('@js-eyes/protocol/skills');
 const pkg = require('../package.json');
 
 function print(message = '') {
@@ -87,6 +96,25 @@ async function fetchJson(url) {
 
 function resolvePluginPath() {
   return path.dirname(require.resolve('@js-eyes/openclaw-plugin/package.json'));
+}
+
+function flagsToArgv(flags) {
+  const argv = [];
+  for (const [key, value] of Object.entries(flags)) {
+    argv.push(`--${key}`);
+    if (value !== true) {
+      argv.push(String(value));
+    }
+  }
+  return argv;
+}
+
+function getSkillsState(config) {
+  return config.skillsEnabled || {};
+}
+
+function isSkillEnabled(config, skillId) {
+  return getSkillsState(config)[skillId] === true;
 }
 
 function readPackageVersion(specifier) {
@@ -182,6 +210,7 @@ async function commandDoctor(flags) {
   print(`Runtime dir: ${paths.runtimeDir}`);
   print(`Log file: ${paths.serverLogFile}`);
   print(`Downloads dir: ${paths.downloadsDir}`);
+  print(`Skills dir: ${resolveSkillsDir(paths, config)}`);
   print(`OpenClaw plugin: ${resolvePluginPath()}`);
   print(`Configured server: ${endpoint}`);
   print(`Stored PID: ${pid || 'none'}`);
@@ -384,6 +413,169 @@ async function commandExtension(positionals, flags) {
   print(`Saved to: ${outputPath}`);
 }
 
+async function commandSkills(positionals, flags) {
+  const action = positionals[1];
+  const skillId = positionals[2];
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const skillsDir = resolveSkillsDir(paths, config);
+
+  switch (action) {
+    case 'list': {
+      const enabled = getSkillsState(config);
+      const installed = discoverLocalSkills(skillsDir);
+      const installedMap = new Map(installed.map((skill) => [skill.id, skill]));
+      const registryUrl = flags.registry || config.skillsRegistryUrl;
+
+      try {
+        const registry = await fetchSkillsRegistry(registryUrl);
+        const lines = [
+          `Registry: ${registryUrl}`,
+          `Skills dir: ${skillsDir}`,
+          '',
+        ];
+
+        for (const skill of registry.skills || []) {
+          const local = installedMap.get(skill.id);
+          lines.push(`- ${skill.id} ${local ? '[installed]' : '[available]'}`);
+          lines.push(`  ${skill.description || ''}`);
+          if (Array.isArray(skill.commands) && skill.commands.length > 0) {
+            lines.push(`  Commands: ${skill.commands.join(', ')}`);
+          }
+          if (Array.isArray(skill.tools) && skill.tools.length > 0) {
+            lines.push(`  Tools: ${skill.tools.join(', ')}`);
+          }
+          if (local) {
+            lines.push(`  Enabled: ${enabled[skill.id] === true ? 'yes' : 'no'}`);
+            lines.push(`  Installed at: ${local.skillDir}`);
+          }
+          lines.push('');
+        }
+
+        print(lines.join('\n').trimEnd());
+        return;
+      } catch (error) {
+        if (installed.length === 0) {
+          throw new Error(`无法读取技能注册表: ${error.message}`);
+        }
+
+        const lines = [
+          `Registry unavailable: ${error.message}`,
+          `Skills dir: ${skillsDir}`,
+          '',
+        ];
+        for (const skill of installed) {
+          lines.push(`- ${skill.id} [installed]`);
+          lines.push(`  ${skill.description || ''}`);
+          if (skill.commands.length > 0) {
+            lines.push(`  Commands: ${skill.commands.join(', ')}`);
+          }
+          if (skill.tools.length > 0) {
+            lines.push(`  Tools: ${skill.tools.join(', ')}`);
+          }
+          lines.push(`  Enabled: ${enabled[skill.id] === true ? 'yes' : 'no'}`);
+          lines.push(`  Installed at: ${skill.skillDir}`);
+          lines.push('');
+        }
+        print(lines.join('\n').trimEnd());
+        return;
+      }
+    }
+    case 'install': {
+      if (!skillId) {
+        throw new Error('用法: `js-eyes skills install <skillId> [--force]`');
+      }
+
+      const result = await installSkillFromRegistry({
+        skillId,
+        registryUrl: flags.registry || config.skillsRegistryUrl,
+        skillsDir,
+        force: Boolean(flags.force),
+        logger: console,
+      });
+      setConfigValue(`skillsEnabled.${skillId}`, true);
+
+      let ocUpdated = false;
+      try {
+        ocUpdated = updateOpenClawSkillEntry({
+          skillId,
+          pluginPath: result.pluginPath,
+          enabled: true,
+        }).updated;
+      } catch {
+        ocUpdated = false;
+      }
+
+      print(`Installed skill: ${result.skill.name || skillId}`);
+      print(`Skill id: ${skillId}`);
+      print(`Location: ${result.targetDir}`);
+      print(`Plugin path: ${result.pluginPath}`);
+      print(`OpenClaw config updated: ${ocUpdated ? 'yes' : 'no'}`);
+      return;
+    }
+    case 'enable':
+    case 'disable': {
+      if (!skillId) {
+        throw new Error(`用法: \`js-eyes skills ${action} <skillId>\``);
+      }
+      const skill = readSkillById(skillsDir, skillId);
+      if (!skill) {
+        throw new Error(`技能未安装: ${skillId}`);
+      }
+
+      const enabledValue = action === 'enable';
+      setConfigValue(`skillsEnabled.${skillId}`, enabledValue);
+
+      let ocUpdated = false;
+      try {
+        ocUpdated = updateOpenClawSkillEntry({
+          skillId,
+          pluginPath: skill.pluginPath.replace(/\\/g, '/'),
+          enabled: enabledValue,
+        }).updated;
+      } catch {
+        ocUpdated = false;
+      }
+
+      print(`${enabledValue ? 'Enabled' : 'Disabled'} skill: ${skillId}`);
+      print(`OpenClaw config updated: ${ocUpdated ? 'yes' : 'no'}`);
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId>` / `enable <skillId>` / `disable <skillId>`');
+  }
+}
+
+async function commandSkill(positionals, flags) {
+  const action = positionals[1];
+  const skillId = positionals[2];
+  if (action !== 'run' || !skillId) {
+    throw new Error('用法: `js-eyes skill run <skillId> <command> [args...] [--flags]`');
+  }
+
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const skillsDir = resolveSkillsDir(paths, config);
+  const skill = readSkillById(skillsDir, skillId);
+  if (!skill) {
+    throw new Error(`技能未安装: ${skillId}`);
+  }
+  if (!isSkillEnabled(config, skillId)) {
+    throw new Error(`技能已安装但未启用: ${skillId}。请先执行 \`js-eyes skills enable ${skillId}\``);
+  }
+
+  const argv = [...positionals.slice(3), ...flagsToArgv(flags)];
+  const result = runSkillCli({
+    skillDir: skill.skillDir,
+    argv,
+    stdio: 'inherit',
+  });
+
+  if (typeof result.status === 'number' && result.status !== 0) {
+    process.exit(result.status);
+  }
+}
+
 function printHelp() {
   print('JS Eyes CLI');
   print('');
@@ -394,6 +586,11 @@ function printHelp() {
   print('  js-eyes doctor');
   print('  js-eyes config get [key]');
   print('  js-eyes config set <key> <value>');
+  print('  js-eyes skills list [--registry https://js-eyes.com/skills.json]');
+  print('  js-eyes skills install <skillId> [--force]');
+  print('  js-eyes skills enable <skillId>');
+  print('  js-eyes skills disable <skillId>');
+  print('  js-eyes skill run <skillId> <command> [args...]');
   print('  js-eyes openclaw plugin-path');
   print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');
 }
@@ -415,6 +612,12 @@ async function main(argv = process.argv.slice(2)) {
     case 'config':
       await commandConfig(positionals, flags);
       return;
+    case 'skills':
+      await commandSkills(positionals, flags);
+      return;
+    case 'skill':
+      await commandSkill(positionals, flags);
+      return;
     case 'openclaw':
       await commandOpenClaw(positionals);
       return;
@@ -435,7 +638,10 @@ async function main(argv = process.argv.slice(2)) {
 module.exports = {
   commandDoctor,
   commandExtension,
+  commandSkill,
+  commandSkills,
   commandStatus,
+  flagsToArgv,
   getServerOptions,
   isProcessAlive,
   main,

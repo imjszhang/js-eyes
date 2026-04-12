@@ -316,6 +316,13 @@ function parseYamlValue(str) {
   return val;
 }
 
+function loadSkillContract(skillDir) {
+  const contractPath = path.join(skillDir, 'skill.contract.js');
+  if (!fs.existsSync(contractPath)) return null;
+  delete require.cache[require.resolve(contractPath)];
+  return require(contractPath);
+}
+
 function discoverSubSkills() {
   if (!fs.existsSync(SKILLS_DIR)) return [];
 
@@ -330,6 +337,7 @@ function discoverSubSkills() {
 
     const meta = parseSkillFrontmatter(skillMd);
     if (!meta || !meta.name) continue;
+    const contract = loadSkillContract(skillDir);
 
     const pluginJson = path.join(skillDir, 'openclaw-plugin', 'openclaw.plugin.json');
     let pluginMeta = null;
@@ -338,13 +346,18 @@ function discoverSubSkills() {
     }
 
     const pluginEntry = path.join(skillDir, 'openclaw-plugin', 'index.mjs');
-    const tools = [];
-    if (fs.existsSync(pluginEntry)) {
+    const tools = Array.isArray(contract?.openclaw?.tools)
+      ? contract.openclaw.tools.map((tool) => tool.name)
+      : [];
+    if (tools.length === 0 && fs.existsSync(pluginEntry)) {
       const src = fs.readFileSync(pluginEntry, 'utf8');
       const re = /name:\s*["']([a-z_]+)["']/g;
       let match;
       while ((match = re.exec(src)) !== null) tools.push(match[1]);
     }
+    const commands = Array.isArray(contract?.cli?.commands)
+      ? contract.cli.commands.map((command) => command.name)
+      : [];
 
     const oc = (meta.metadata && meta.metadata.openclaw) || {};
     skills.push({
@@ -358,6 +371,8 @@ function discoverSubSkills() {
       homepage: oc.homepage || '',
       requires: oc.requires || {},
       tools,
+      commands,
+      runtime: contract?.runtime || {},
     });
   }
   return skills;
@@ -420,6 +435,8 @@ async function buildSkillsRegistry() {
         downloadUrlFallback: fallback,
         homepage: skill.homepage,
         tools: skill.tools,
+        commands: skill.commands,
+        runtime: skill.runtime,
       };
     }),
   };

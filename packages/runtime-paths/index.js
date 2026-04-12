@@ -30,6 +30,7 @@ function getPaths(options = {}) {
     baseDir,
     configDir: path.join(baseDir, 'config'),
     configFile: path.join(baseDir, 'config', 'config.json'),
+    skillsDir: path.join(baseDir, 'skills'),
     runtimeDir: path.join(baseDir, 'runtime'),
     pidFile: path.join(baseDir, 'runtime', 'server.pid'),
     logsDir: path.join(baseDir, 'logs'),
@@ -48,6 +49,7 @@ function ensureRuntimePaths(options = {}) {
   const paths = getPaths(options);
   ensureDir(paths.baseDir);
   ensureDir(paths.configDir);
+  ensureDir(paths.skillsDir);
   ensureDir(paths.runtimeDir);
   ensureDir(paths.logsDir);
   ensureDir(paths.cacheDir);
