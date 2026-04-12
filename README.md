@@ -131,6 +131,44 @@ If you prefer manual setup instead of the [one-command install](#quick-install):
 3. Run `npm install` inside the extracted folder
 4. Register the plugin in `~/.openclaw/openclaw.json` (see [OpenClaw Plugin](#openclaw-plugin))
 
+### npm link Development Mode
+
+If you want to use the public `js-eyes` command shape while debugging the current source tree, you can link the published CLI workspace into your global npm bin directory:
+
+```bash
+cd /path/to/your/js-eyes-repo
+npm install
+
+cd apps/cli
+npm link
+```
+
+After that, `js-eyes` resolves to the local `apps/cli` workspace, so changes in `apps/cli` and the runtime workspace packages under `packages/*` are picked up immediately.
+
+On Windows, replace `which js-eyes` with `where js-eyes`.
+
+```bash
+which js-eyes
+js-eyes --help
+js-eyes doctor
+```
+
+If you also want the linked CLI to run skills directly from this repository instead of the default runtime directory, point `skillsDir` at the repo's `skills/` folder:
+
+```bash
+js-eyes config set skillsDir "/absolute/path/to/js-eyes/skills"
+js-eyes skills enable js-x-ops-skill
+js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+```
+
+To return to a normal global install later:
+
+```bash
+cd /path/to/your/js-eyes-repo/apps/cli
+npm unlink
+npm uninstall -g js-eyes
+```
+
 ## Usage
 
 ### 1. Start a Compatible Server
