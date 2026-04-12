@@ -177,24 +177,16 @@ New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
     $SkillZip  = Join-Path $TmpDir "skill.zip"
-    $ArchiveZip = Join-Path $TmpDir "archive.zip"
-    $UseSkillZip = $false
-
     $UrlsSkillZip = @("$SiteUrl/js-eyes-skill.zip")
-    $UrlsArchive = @()
     if ($Tag) {
-        $UrlsArchive += "https://github.com/$Repo/archive/refs/tags/$Tag.zip"
-    } else {
-        $UrlsArchive += "https://github.com/$Repo/archive/refs/heads/main.zip"
+        $Version = $Tag -replace '^v', ''
+        $UrlsSkillZip += "https://github.com/$Repo/releases/download/$Tag/js-eyes-skill-v$Version.zip"
     }
+    $UrlsSkillZip += "https://cdn.jsdelivr.net/gh/$Repo@main/docs/js-eyes-skill.zip"
 
     Write-Info "Downloading skill bundle..."
 
-    if (Try-Download -Dest $SkillZip -Urls $UrlsSkillZip) {
-        $UseSkillZip = $true
-    } elseif (Try-Download -Dest $ArchiveZip -Urls $UrlsArchive) {
-        $UseSkillZip = $false
-    } else {
+    if (-not (Try-Download -Dest $SkillZip -Urls $UrlsSkillZip)) {
         Write-Err "All download sources failed. Check your network and try again."
         exit 1
     }
@@ -203,24 +195,7 @@ try {
 
     Write-Info "Extracting skill bundle..."
 
-    if ($UseSkillZip) {
-        Expand-Archive -Path $SkillZip -DestinationPath $Target -Force
-    } else {
-        $ExtractDir = Join-Path $TmpDir "extract"
-        Expand-Archive -Path $ArchiveZip -DestinationPath $ExtractDir -Force
-        $Extracted = Get-ChildItem $ExtractDir -Directory | Select-Object -First 1
-        if (-not $Extracted) { Write-Err "Failed to extract archive."; exit 1 }
-
-        $BundleFiles = @('SKILL.md', 'SECURITY.md', 'package.json', 'LICENSE')
-        foreach ($f in $BundleFiles) {
-            $src = Join-Path $Extracted.FullName $f
-            if (Test-Path $src) { Copy-Item $src $Target }
-        }
-        foreach ($d in @('openclaw-plugin', 'server', 'clients')) {
-            $src = Join-Path $Extracted.FullName $d
-            if (Test-Path $src) { Copy-Item $src (Join-Path $Target $d) -Recurse }
-        }
-    }
+    Expand-Archive -Path $SkillZip -DestinationPath $Target -Force
 } finally {
     Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
 }

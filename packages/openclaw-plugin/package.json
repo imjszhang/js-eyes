@@ -1,0 +1,25 @@
+{
+  "name": "@js-eyes/openclaw-plugin",
+  "version": "1.4.3",
+  "description": "OpenClaw plugin package for JS Eyes",
+  "type": "module",
+  "main": "index.mjs",
+  "files": [
+    "index.mjs",
+    "openclaw.plugin.json"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@js-eyes/client-sdk": "1.4.3",
+    "@js-eyes/protocol": "1.4.3",
+    "@js-eyes/server-core": "1.4.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  }
+}

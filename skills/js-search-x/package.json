@@ -15,6 +15,7 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "@js-eyes/client-sdk": "1.4.3",
     "ws": "^8.18.0"
   }
 }

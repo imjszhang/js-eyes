@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { BrowserAutomation } = require("../lib/js-eyes-client.js");
+const { BrowserAutomation } = require("@js-eyes/client-sdk");
 const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require("../lib/api.js");
 
 export default function register(api) {

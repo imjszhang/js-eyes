@@ -1,0 +1,446 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const { createServer } = require('@js-eyes/server-core');
+const { loadConfig, getConfigValue, parseConfigValue, setConfigValue } = require('@js-eyes/config');
+const { ensureRuntimePaths, getPaths } = require('@js-eyes/runtime-paths');
+const {
+  COMPATIBILITY_MATRIX,
+  DEFAULT_SERVER_HOST,
+  DEFAULT_SERVER_PORT,
+  PROTOCOL_VERSION,
+  RELEASE_BASE_URL,
+} = require('@js-eyes/protocol');
+const pkg = require('../package.json');
+
+function print(message = '') {
+  process.stdout.write(String(message) + '\n');
+}
+
+function parseArgs(argv) {
+  const positionals = [];
+  const flags = {};
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (!arg.startsWith('--')) {
+      positionals.push(arg);
+      continue;
+    }
+
+    const key = arg.slice(2);
+    const next = argv[i + 1];
+    if (next && !next.startsWith('--')) {
+      flags[key] = next;
+      i++;
+    } else {
+      flags[key] = true;
+    }
+  }
+
+  return { positionals, flags };
+}
+
+function getServerOptions(flags, config) {
+  return {
+    host: flags.host || config.serverHost || DEFAULT_SERVER_HOST,
+    port: Number(flags.port || config.serverPort || DEFAULT_SERVER_PORT),
+  };
+}
+
+function isProcessAlive(pid) {
+  if (!pid || Number.isNaN(Number(pid))) {
+    return false;
+  }
+
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readPid(paths) {
+  if (!fs.existsSync(paths.pidFile)) {
+    return null;
+  }
+
+  const raw = fs.readFileSync(paths.pidFile, 'utf8').trim();
+  const pid = Number(raw);
+  return Number.isNaN(pid) ? null : pid;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+function resolvePluginPath() {
+  return path.dirname(require.resolve('@js-eyes/openclaw-plugin/package.json'));
+}
+
+function readPackageVersion(specifier) {
+  try {
+    return require(`${specifier}/package.json`).version;
+  } catch {
+    return 'unknown';
+  }
+}
+
+function getLocalVersions() {
+  return {
+    cli: pkg.version,
+    protocol: readPackageVersion('@js-eyes/protocol'),
+    config: readPackageVersion('@js-eyes/config'),
+    runtimePaths: readPackageVersion('@js-eyes/runtime-paths'),
+    serverCore: readPackageVersion('@js-eyes/server-core'),
+    openclawPlugin: readPackageVersion('@js-eyes/openclaw-plugin'),
+  };
+}
+
+function getCompatibilityReport(serverPayload) {
+  const versions = getLocalVersions();
+  const serverProtocolVersion = serverPayload?.data?.protocolVersion || null;
+  const serverVersion = serverPayload?.data?.serverVersion || null;
+  const serverStatus = !serverPayload
+    ? 'unreachable'
+    : (serverProtocolVersion === PROTOCOL_VERSION ? 'ok' : 'mismatch');
+
+  return {
+    versions,
+    matrix: COMPATIBILITY_MATRIX,
+    serverStatus,
+    serverProtocolVersion,
+    serverVersion,
+  };
+}
+
+function resolveExtensionAsset(browser, version = pkg.version) {
+  if (browser !== 'chrome' && browser !== 'firefox') {
+    throw new Error(`不支持的扩展类型: ${browser}`);
+  }
+
+  const filename = browser === 'chrome'
+    ? `js-eyes-chrome-v${version}.zip`
+    : `js-eyes-firefox-v${version}.xpi`;
+
+  return {
+    browser,
+    version,
+    filename,
+    url: `${RELEASE_BASE_URL}/v${version}/${filename}`,
+  };
+}
+
+async function commandStatus(flags) {
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const endpoint = `http://${host}:${port}/api/browser/status`;
+  const paths = getPaths();
+  const pid = readPid(paths);
+
+  try {
+    const payload = await fetchJson(endpoint);
+    const data = payload.data || {};
+    print(`Server: reachable (${endpoint})`);
+    print(`PID file: ${pid || 'none'}`);
+    print(`Protocol: ${data.protocolVersion || PROTOCOL_VERSION}`);
+    print(`Server version: ${data.serverVersion || 'unknown'}`);
+    print(`Uptime: ${data.uptime || 0}s`);
+    print(`Extensions: ${data.connections?.extensions?.length || 0}`);
+    print(`Automation clients: ${data.connections?.automationClients || 0}`);
+    print(`Tabs: ${data.tabs || 0}`);
+  } catch (error) {
+    print(`Server: unreachable (${endpoint})`);
+    print(`PID file: ${pid || 'none'}`);
+    if (pid && !isProcessAlive(pid)) {
+      print('发现陈旧 PID 文件，可执行 `js-eyes server stop` 清理。');
+    }
+    throw new Error(`状态检查失败: ${error.message}`);
+  }
+}
+
+async function commandDoctor(flags) {
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const endpoint = `http://${host}:${port}/api/browser/status`;
+  const pid = readPid(paths);
+
+  print(`JS Eyes CLI ${pkg.version}`);
+  print(`Config file: ${paths.configFile}`);
+  print(`Runtime dir: ${paths.runtimeDir}`);
+  print(`Log file: ${paths.serverLogFile}`);
+  print(`Downloads dir: ${paths.downloadsDir}`);
+  print(`OpenClaw plugin: ${resolvePluginPath()}`);
+  print(`Configured server: ${endpoint}`);
+  print(`Stored PID: ${pid || 'none'}`);
+  print(`PID alive: ${pid ? (isProcessAlive(pid) ? 'yes' : 'no') : 'n/a'}`);
+  const localVersions = getLocalVersions();
+  print('');
+  print('Local package versions:');
+  print(`  cli=${localVersions.cli}`);
+  print(`  protocol=${localVersions.protocol}`);
+  print(`  config=${localVersions.config}`);
+  print(`  runtime-paths=${localVersions.runtimePaths}`);
+  print(`  server-core=${localVersions.serverCore}`);
+  print(`  openclaw-plugin=${localVersions.openclawPlugin}`);
+  print('');
+  print('Compatibility matrix:');
+  print(`  protocolVersion=${COMPATIBILITY_MATRIX.protocolVersion}`);
+  print(`  cli=${COMPATIBILITY_MATRIX.cliVersion}`);
+  print(`  extension=${COMPATIBILITY_MATRIX.extensionVersion}`);
+  print(`  server-core=${COMPATIBILITY_MATRIX.serverCoreVersion}`);
+  print(`  client-sdk=${COMPATIBILITY_MATRIX.clientSdkVersion}`);
+  print(`  openclaw-plugin=${COMPATIBILITY_MATRIX.openclawPluginVersion}`);
+  print(`  skills(client-sdk)=${COMPATIBILITY_MATRIX.skillClientSdkVersion}`);
+
+  try {
+    const payload = await fetchJson(endpoint);
+    print(`Server health: ok (${payload.status || 'success'})`);
+    const compatibility = getCompatibilityReport(payload);
+    print(`Server protocol: ${compatibility.serverProtocolVersion || 'unknown'}`);
+    print(`Server version: ${compatibility.serverVersion || 'unknown'}`);
+    print(`Compatibility: ${compatibility.serverStatus}`);
+  } catch (error) {
+    print(`Server health: failed (${error.message})`);
+    print('Compatibility: unreachable');
+  }
+}
+
+async function commandConfig(positionals) {
+  const action = positionals[1];
+  const key = positionals[2];
+
+  switch (action) {
+    case 'get': {
+      const value = getConfigValue(key);
+      if (key) {
+        print(value === undefined ? 'undefined' : JSON.stringify(value, null, 2));
+      } else {
+        print(JSON.stringify(value, null, 2));
+      }
+      return;
+    }
+    case 'set': {
+      if (!key || positionals[3] === undefined) {
+        throw new Error('用法: js-eyes config set <key> <value>');
+      }
+      const value = parseConfigValue(positionals[3]);
+      const nextConfig = setConfigValue(key, value);
+      print(JSON.stringify(nextConfig, null, 2));
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes config get [key]` / `js-eyes config set <key> <value>`');
+  }
+}
+
+async function runForegroundServer(flags) {
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const server = createServer({ host, port, logger: console });
+
+  const cleanup = async (exitCode = 0) => {
+    if (cleanup.done) {
+      return;
+    }
+    cleanup.done = true;
+
+    try {
+      await server.stop();
+    } catch {}
+
+    const currentPid = readPid(paths);
+    if (currentPid === process.pid && fs.existsSync(paths.pidFile)) {
+      fs.rmSync(paths.pidFile, { force: true });
+    }
+
+    process.exit(exitCode);
+  };
+
+  await server.start();
+  fs.writeFileSync(paths.pidFile, `${process.pid}\n`, 'utf8');
+
+  print(`Server started on ws://${host}:${port}`);
+  print(`HTTP API: http://${host}:${port}`);
+  print(`PID: ${process.pid}`);
+  print(`Log file: ${paths.serverLogFile}`);
+
+  process.on('SIGINT', () => cleanup(0));
+  process.on('SIGTERM', () => cleanup(0));
+
+  return new Promise(() => {});
+}
+
+async function commandServer(positionals, flags) {
+  const action = positionals[1];
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+
+  switch (action) {
+    case 'start': {
+      if (flags.foreground) {
+        await runForegroundServer(flags);
+        return;
+      }
+
+      const existingPid = readPid(paths);
+      if (existingPid && isProcessAlive(existingPid)) {
+        print(`Server already running (PID ${existingPid})`);
+        return;
+      }
+
+      const logFd = fs.openSync(paths.serverLogFile, 'a');
+      const binPath = path.resolve(__dirname, '..', 'bin', 'js-eyes.js');
+      const child = spawn(process.execPath, [
+        binPath,
+        'server',
+        'start',
+        '--foreground',
+        '--host',
+        host,
+        '--port',
+        String(port),
+      ], {
+        detached: true,
+        stdio: ['ignore', logFd, logFd],
+      });
+
+      child.unref();
+      print(`Server start requested (PID ${child.pid})`);
+      print(`Logs: ${paths.serverLogFile}`);
+      return;
+    }
+    case 'stop': {
+      const pid = readPid(paths);
+      if (!pid) {
+        print('Server is not running.');
+        return;
+      }
+
+      if (!isProcessAlive(pid)) {
+        fs.rmSync(paths.pidFile, { force: true });
+        print(`Removed stale PID file (${pid}).`);
+        return;
+      }
+
+      process.kill(pid, 'SIGTERM');
+      print(`Sent SIGTERM to server PID ${pid}`);
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes server start [--foreground]` / `js-eyes server stop`');
+  }
+}
+
+async function commandOpenClaw(positionals) {
+  const action = positionals[1];
+
+  if (action !== 'plugin-path') {
+    throw new Error('支持的命令: `js-eyes openclaw plugin-path`');
+  }
+
+  print(resolvePluginPath());
+}
+
+async function commandExtension(positionals, flags) {
+  const action = positionals[1];
+  const browser = positionals[2];
+
+  if (action !== 'download' || !browser) {
+    throw new Error('用法: `js-eyes extension download <chrome|firefox> [--output /path/file]`');
+  }
+
+  const paths = ensureRuntimePaths();
+  const asset = resolveExtensionAsset(browser);
+  const outputPath = flags.output
+    ? path.resolve(flags.output)
+    : path.join(paths.downloadsDir, asset.filename);
+
+  const response = await fetch(asset.url);
+  if (!response.ok) {
+    throw new Error(`下载失败: HTTP ${response.status} (${asset.url})`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(outputPath, buffer);
+
+  print(`Downloaded ${browser} extension`);
+  print(`Version: ${asset.version}`);
+  print(`Source: ${asset.url}`);
+  print(`Saved to: ${outputPath}`);
+}
+
+function printHelp() {
+  print('JS Eyes CLI');
+  print('');
+  print('Commands:');
+  print('  js-eyes server start [--foreground] [--host localhost] [--port 18080]');
+  print('  js-eyes server stop');
+  print('  js-eyes status');
+  print('  js-eyes doctor');
+  print('  js-eyes config get [key]');
+  print('  js-eyes config set <key> <value>');
+  print('  js-eyes openclaw plugin-path');
+  print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const { positionals, flags } = parseArgs(argv);
+  const command = positionals[0];
+
+  switch (command) {
+    case 'server':
+      await commandServer(positionals, flags);
+      return;
+    case 'status':
+      await commandStatus(flags);
+      return;
+    case 'doctor':
+      await commandDoctor(flags);
+      return;
+    case 'config':
+      await commandConfig(positionals, flags);
+      return;
+    case 'openclaw':
+      await commandOpenClaw(positionals);
+      return;
+    case 'extension':
+      await commandExtension(positionals, flags);
+      return;
+    case '--help':
+    case '-h':
+    case 'help':
+    case undefined:
+      printHelp();
+      return;
+    default:
+      throw new Error(`未知命令: ${command}`);
+  }
+}
+
+module.exports = {
+  commandDoctor,
+  commandExtension,
+  commandStatus,
+  getServerOptions,
+  isProcessAlive,
+  main,
+  parseArgs,
+  readPid,
+  resolveExtensionAsset,
+  resolvePluginPath,
+};

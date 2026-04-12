@@ -43,15 +43,34 @@ JS Eyes is a browser extension + WebSocket server that gives AI agents full brow
 
 ```
 Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket ──>  AI Agent (OpenClaw)
- (Chrome/Edge/FF)                     (Node.js)                         (Plugin: index.mjs)
+ (Chrome/Edge/FF)                     (packages/server-core)            (packages/openclaw-plugin)
 ```
+
+### Monorepo Layout
+
+JS Eyes now uses a publish-oriented monorepo layout:
+
+| Path | Purpose |
+|------|---------|
+| `apps/cli` | Public `js-eyes` npm CLI |
+| `packages/protocol` | Shared protocol constants and compatibility matrix |
+| `packages/runtime-paths` | Runtime directories and filesystem layout |
+| `packages/config` | CLI config loading and persistence |
+| `packages/client-sdk` | Browser automation SDK for Node.js / skills |
+| `packages/server-core` | HTTP + WebSocket server core |
+| `packages/openclaw-plugin` | OpenClaw plugin package |
+| `packages/devtools` | Internal build/release tooling |
+| `extensions/*` | Browser extension source assets for Chrome/Edge and Firefox |
+| `skills/*` | Independent extension skills built on `@js-eyes/client-sdk` |
+
+The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, `openclaw-plugin/`, or `cli/`. Those legacy paths are generated only inside the published skill bundle for backward compatibility.
 
 ### Supported Agent Frameworks
 
 | Framework | Description |
 |-----------|-------------|
-| [js-eyes/server](./server) | Lightweight built-in server (HTTP+WS on single port, no auth) |
-| [OpenClaw](https://openclaw.ai/) (Plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
+| [apps/cli](./apps/cli) + [packages/server-core](./packages/server-core) | Lightweight built-in server and published npm CLI |
+| [OpenClaw](https://openclaw.ai/) + [packages/openclaw-plugin](./packages/openclaw-plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | Full-featured agent framework (separate WS port, HMAC auth, SSE, rate limiting) |
 
 ## Features
@@ -95,19 +114,19 @@ Or download directly from [js-eyes.com](https://js-eyes.com).
 1. Open browser and navigate to `chrome://extensions/` (or `edge://extensions/`)
 2. Enable "Developer mode" in the top right
 3. Click "Load unpacked"
-4. Select the `chrome-extension` folder
+4. Select the `extensions/chrome` folder
 
 #### Firefox
 
 **Signed XPI** (recommended): drag and drop the `.xpi` file into Firefox.
 
-**Temporary** (development): open `about:debugging` > This Firefox > Load Temporary Add-on > select `firefox-extension/manifest.json`.
+**Temporary** (development): open `about:debugging` > This Firefox > Load Temporary Add-on > select `extensions/firefox/manifest.json`.
 
 ### OpenClaw Skill Bundle
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.4.3.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (e.g. `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder
 4. Register the plugin in `~/.openclaw/openclaw.json` (see [OpenClaw Plugin](#openclaw-plugin))
@@ -120,6 +139,13 @@ If you prefer manual setup instead of the [one-command install](#quick-install):
 ```bash
 npm run server
 # Starts on http://localhost:18080 (HTTP + WebSocket)
+```
+
+Or, after publishing the CLI:
+
+```bash
+js-eyes server start
+js-eyes doctor
 ```
 
 **Option B** — Use as an [OpenClaw](https://openclaw.ai/) plugin (see [OpenClaw Plugin](#openclaw-plugin) section below).
@@ -191,6 +217,8 @@ JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, providing brows
 
 3. Restart OpenClaw — the server launches automatically and AI agents can control the browser via registered tools.
 
+For local source-repo development, point `plugins.load.paths` to `packages/openclaw-plugin` inside your clone rather than a root-level `openclaw-plugin` directory.
+
 ### Plugin Configuration
 
 | Option | Type | Default | Description |
@@ -201,6 +229,20 @@ JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, providing brows
 | `requestTimeout` | number | `60` | Request timeout in seconds |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | URL of the extension skill registry |
 | `skillsDir` | string | `""` | Skill install directory (empty = auto-detect `skills/` under skill root) |
+
+## Compatibility Matrix
+
+`js-eyes doctor` now prints the local package versions, server protocol version, and compatibility status. The current expected matrix is:
+
+| Surface | Expected version |
+|---------|------------------|
+| Protocol | `1.0` |
+| CLI | `1.4.3` |
+| Browser extension assets | `1.4.3` |
+| `@js-eyes/server-core` | `1.4.3` |
+| `@js-eyes/client-sdk` | `1.4.3` |
+| `@js-eyes/openclaw-plugin` | `1.4.3` |
+| Skills using `@js-eyes/client-sdk` | `1.4.3` |
 
 ## Extension Skills
 
@@ -264,7 +306,7 @@ npm run build:firefox
 npm run bump -- 1.4.3
 ```
 
-Output files are saved to the `dist/` directory.
+Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
 
 ## Troubleshooting
 

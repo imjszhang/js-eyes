@@ -100,7 +100,7 @@
 ### Changes
 - Unified build scripts: replaced 6 platform-specific shell scripts (PS1/SH) + sign-firefox.js with a single cross-platform Node.js build script (`releases/build.js`)
 - Added root `package.json` as the single source of truth for version management
-- Added `bump` command to sync version across `package.json`, `chrome-extension/manifest.json`, and `firefox-extension/manifest.json` in one step
+- Added `bump` command to sync version across `package.json`, `extensions/chrome/manifest.json`, and `extensions/firefox/manifest.json` in one step
 - Added npm scripts for convenient build commands (`npm run build`, `npm run build:chrome`, `npm run build:firefox:sign`, `npm run bump`)
 
 ### Downloads
