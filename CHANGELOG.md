@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2026-04-12
+
+### Changed
+
+- **Unified CLI Runtime Home**: Standardized the default `js-eyes` runtime directory to `~/.js-eyes` across macOS, Linux, and Windows.
+- **Automatic Legacy Migration**: Added first-run migration from the previous platform-specific runtime directories so existing config, cache, logs, downloads, and PID files keep working.
+
+### Fixed
+
+- **Release Metadata Consistency**: Synced package manifests, docs, site badges, popup version labels, and bundle references to `1.5.1`.
+
 ## [1.5.0] - 2026-04-12
 
 > Publish-oriented monorepo release with npm CLI packaging, unified extension/skill layout, and a cleaned-up build and install flow.

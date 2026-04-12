@@ -1,6 +1,6 @@
 {
   "name": "js-eyes",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "JS Eyes user CLI for local server management, diagnostics, and extension downloads",
   "main": "src/cli.js",
   "files": [
@@ -12,10 +12,10 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@js-eyes/config": "1.5.0",
-    "@js-eyes/openclaw-plugin": "1.5.0",
-    "@js-eyes/protocol": "1.5.0",
-    "@js-eyes/runtime-paths": "1.5.0",
-    "@js-eyes/server-core": "1.5.0"
+    "@js-eyes/config": "1.5.1",
+    "@js-eyes/openclaw-plugin": "1.5.1",
+    "@js-eyes/protocol": "1.5.1",
+    "@js-eyes/runtime-paths": "1.5.1",
+    "@js-eyes/server-core": "1.5.1"
   }
 }

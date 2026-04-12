@@ -100,8 +100,8 @@ The source repository no longer keeps root-level compatibility trees like `serve
 
 Download the latest release from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest):
 
-- **Chrome/Edge Extension**: `js-eyes-chrome-v1.5.0.zip`
-- **Firefox Extension**: `js-eyes-firefox-v1.5.0.xpi`
+- **Chrome/Edge Extension**: `js-eyes-chrome-v1.5.1.zip`
+- **Firefox Extension**: `js-eyes-firefox-v1.5.1.xpi`
 
 Or download directly from [js-eyes.com](https://js-eyes.com).
 
@@ -126,7 +126,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com).
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.5.0.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.5.1.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (e.g. `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder
 4. Register the plugin in `~/.openclaw/openclaw.json` (see [OpenClaw Plugin](#openclaw-plugin))
@@ -225,6 +225,22 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 Skill install state is tracked by the CLI runtime directory, while OpenClaw can still consume the same installed skill via its `openclaw-plugin` path.
 
+### CLI Runtime Directory
+
+By default, the published `js-eyes` CLI now stores config, logs, downloads, cache, and installed skills under `~/.js-eyes` on macOS, Linux, and Windows.
+
+- macOS: `~/.js-eyes`
+- Linux: `~/.js-eyes`
+- Windows: `%USERPROFILE%/.js-eyes`
+
+If an older installation exists in a legacy OS-specific runtime directory, `js-eyes` migrates it automatically on first run:
+
+- macOS: `~/Library/Application Support/js-eyes`
+- Linux: `$XDG_CONFIG_HOME/js-eyes` or `~/.config/js-eyes`
+- Windows: `%APPDATA%/js-eyes`
+
+If `JS_EYES_HOME` is set, that override still takes precedence and automatic migration is skipped.
+
 ## OpenClaw Plugin
 
 JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, providing browser automation tools directly to AI agents.
@@ -295,12 +311,12 @@ For local source-repo development, point `plugins.load.paths` to `packages/openc
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `1.5.0` |
-| Browser extension assets | `1.5.0` |
-| `@js-eyes/server-core` | `1.5.0` |
-| `@js-eyes/client-sdk` | `1.5.0` |
-| `@js-eyes/openclaw-plugin` | `1.5.0` |
-| Skills using `@js-eyes/client-sdk` | `1.5.0` |
+| CLI | `1.5.1` |
+| Browser extension assets | `1.5.1` |
+| `@js-eyes/server-core` | `1.5.1` |
+| `@js-eyes/client-sdk` | `1.5.1` |
+| `@js-eyes/openclaw-plugin` | `1.5.1` |
+| Skills using `@js-eyes/client-sdk` | `1.5.1` |
 
 ## Extension Skills
 
@@ -377,7 +393,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 1.5.0
+npm run bump -- 1.5.1
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

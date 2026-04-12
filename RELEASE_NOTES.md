@@ -1,29 +1,27 @@
 # Release Notes
 
-## v1.5.0
+## v1.5.1
 
 ### Changes
-- **Publishable npm CLI**: Added the public `js-eyes` CLI package for server management, diagnostics, extension downloads, and local skill hosting.
-- **Contract-based Skills**: All platform skills now ship with a shared `skill.contract.js`, a CLI adapter, and an OpenClaw adapter so one implementation can serve both hosts.
-- **Monorepo Release Layout**: Reorganized the repository into `apps/`, `packages/`, `extensions/`, and `skills/`, with build outputs and compatibility shims generated from one centralized toolchain.
-- **Extension Distribution Cleanup**: Browser extension sources, site download links, skill bundles, and Firefox packaging guidance were aligned around the 1.5.0 release flow.
-- **OpenClaw Native Plugin Alignment**: Main plugin and platform skill plugins now expose the metadata expected by the OpenClaw native plugin SDK flow.
+- **Unified Runtime Directory**: The published CLI now uses `~/.js-eyes` as the default runtime home on macOS, Linux, and Windows.
+- **Automatic Legacy Migration**: Existing runtime data is migrated automatically from the old platform-specific directories on first run.
+- **Version Sync Cleanup**: Release-facing docs, badges, manifests, popup labels, and bundle references are aligned on `1.5.1`.
 
 ### Downloads
 - [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
-- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v1.5.0/js-eyes-chrome-v1.5.0.zip)
-- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v1.5.0/js-eyes-firefox-v1.5.0.xpi)
-- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v1.5.0/js-eyes-skill-v1.5.0.zip)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v1.5.1/js-eyes-chrome-v1.5.1.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v1.5.1/js-eyes-firefox-v1.5.1.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v1.5.1/js-eyes-skill-v1.5.1.zip)
 
 ### Installation Instructions
 
 #### npm CLI
-1. Install `js-eyes` with `npm install -g js-eyes@1.5.0`
+1. Install `js-eyes` with `npm install -g js-eyes@1.5.1`
 2. Run `js-eyes --help` to verify the CLI is available
 3. Use `js-eyes server start` or `js-eyes skills list` to verify the local runtime
 
 #### Chrome/Edge
-1. Download `js-eyes-chrome-v1.5.0.zip`
+1. Download `js-eyes-chrome-v1.5.1.zip`
 2. Extract the ZIP file
 3. Open your browser and navigate to `chrome://extensions/` (or `edge://extensions/`)
 4. Enable "Developer mode" in the top right
@@ -31,7 +29,7 @@
 6. Select the extracted folder
 
 #### Firefox
-1. Download `js-eyes-firefox-v1.5.0.xpi`
+1. Download `js-eyes-firefox-v1.5.1.xpi`
 2. Open Firefox browser
 3. Drag and drop the `.xpi` file into the browser window
 4. Confirm installation

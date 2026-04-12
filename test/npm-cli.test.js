@@ -10,7 +10,7 @@ const { loadConfig, parseConfigValue, setConfigValue } = require('@js-eyes/confi
 const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/protocol');
 const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/protocol/skills');
 const protocolPkg = require('@js-eyes/protocol/package.json');
-const { getPaths } = require('@js-eyes/runtime-paths');
+const { ensureRuntimePaths, getPaths, resolveLegacyBaseDir } = require('@js-eyes/runtime-paths');
 const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv } = require('../apps/cli/src/cli');
 
 describe('runtime paths', () => {
@@ -37,6 +37,54 @@ describe('runtime paths', () => {
     assert.equal(paths.configFile, path.join(tempHome, 'config', 'config.json'));
     assert.equal(paths.downloadsDir, path.join(tempHome, 'downloads'));
     assert.equal(paths.skillsDir, path.join(tempHome, 'skills'));
+  });
+
+  it('uses ~/.js-eyes as the default runtime directory when not overridden', () => {
+    delete process.env.JS_EYES_HOME;
+    const paths = getPaths({ home: tempHome });
+    assert.equal(paths.baseDir, path.join(tempHome, '.js-eyes'));
+    assert.equal(paths.configFile, path.join(tempHome, '.js-eyes', 'config', 'config.json'));
+  });
+
+  it('migrates legacy macOS runtime data into ~/.js-eyes', () => {
+    delete process.env.JS_EYES_HOME;
+    const legacyBaseDir = resolveLegacyBaseDir('darwin', tempHome);
+    fs.mkdirSync(path.join(legacyBaseDir, 'config'), { recursive: true });
+    fs.mkdirSync(path.join(legacyBaseDir, 'runtime'), { recursive: true });
+    fs.mkdirSync(path.join(legacyBaseDir, 'logs'), { recursive: true });
+    fs.writeFileSync(path.join(legacyBaseDir, 'config', 'config.json'), '{"serverPort":19090}\n');
+    fs.writeFileSync(path.join(legacyBaseDir, 'runtime', 'server.pid'), '12345\n');
+    fs.writeFileSync(path.join(legacyBaseDir, 'logs', 'server.log'), 'legacy log\n');
+
+    const paths = ensureRuntimePaths({ home: tempHome, platform: 'darwin' });
+    assert.equal(fs.readFileSync(paths.configFile, 'utf8'), '{"serverPort":19090}\n');
+    assert.equal(fs.readFileSync(paths.pidFile, 'utf8'), '12345\n');
+    assert.equal(fs.readFileSync(paths.serverLogFile, 'utf8'), 'legacy log\n');
+    assert.equal(fs.existsSync(legacyBaseDir), false);
+  });
+
+  it('migrates legacy Linux runtime data into ~/.js-eyes', () => {
+    delete process.env.JS_EYES_HOME;
+    const env = { XDG_CONFIG_HOME: path.join(tempHome, '.config-root') };
+    const legacyBaseDir = resolveLegacyBaseDir('linux', tempHome, env);
+    fs.mkdirSync(path.join(legacyBaseDir, 'downloads'), { recursive: true });
+    fs.writeFileSync(path.join(legacyBaseDir, 'downloads', 'chrome.zip'), 'zip');
+
+    const paths = ensureRuntimePaths({ home: tempHome, platform: 'linux', env });
+    assert.equal(fs.readFileSync(path.join(paths.downloadsDir, 'chrome.zip'), 'utf8'), 'zip');
+    assert.equal(fs.existsSync(legacyBaseDir), false);
+  });
+
+  it('migrates legacy Windows runtime data into ~/.js-eyes', () => {
+    delete process.env.JS_EYES_HOME;
+    const env = { APPDATA: path.join(tempHome, 'AppData', 'Roaming') };
+    const legacyBaseDir = resolveLegacyBaseDir('win32', tempHome, env);
+    fs.mkdirSync(path.join(legacyBaseDir, 'cache'), { recursive: true });
+    fs.writeFileSync(path.join(legacyBaseDir, 'cache', 'state.json'), '{"ok":true}\n');
+
+    const paths = ensureRuntimePaths({ home: tempHome, platform: 'win32', env });
+    assert.equal(fs.readFileSync(path.join(paths.cacheDir, 'state.json'), 'utf8'), '{"ok":true}\n');
+    assert.equal(fs.existsSync(legacyBaseDir), false);
   });
 
   it('loads defaults and persists config updates', () => {
