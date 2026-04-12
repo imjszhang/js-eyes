@@ -592,6 +592,32 @@ async function buildChrome(t) {
   });
 }
 
+function finalizeFirefoxArtifact(t, version) {
+  const xpiFiles = fs.existsSync(SIGNED_DIR)
+    ? fs.readdirSync(SIGNED_DIR).filter((file) => file.endsWith('.xpi'))
+    : [];
+  if (xpiFiles.length === 0) {
+    console.error(`  ✗ ${t('firefox.signFailed').replace('{msg}', 'No signed XPI artifact found in dist/firefox-signed')}`);
+    process.exit(1);
+  }
+
+  console.log(`  ${t('firefox.signedFiles')}`);
+  xpiFiles.forEach((file) => {
+    const stat = fs.statSync(path.join(SIGNED_DIR, file));
+    console.log(`    - ${file} (${formatSize(stat.size)})`);
+  });
+
+  const preferred = xpiFiles.find((file) => file.includes(`-${version}.xpi`));
+  const latest = preferred || xpiFiles.sort().reverse()[0];
+  const distName = `js-eyes-firefox-v${version}.xpi`;
+  const distPath = path.join(DIST_DIR, distName);
+  fs.copyFileSync(path.join(SIGNED_DIR, latest), distPath);
+  console.log(`  ${t('firefox.copiedToDist').replace('{file}', distName)}`);
+  const stat = fs.statSync(distPath);
+  console.log(`  ${t('chrome.output').replace('{path}', distPath)}`);
+  console.log(`  ${t('chrome.size').replace('{size}', formatSize(stat.size))}`);
+}
+
 async function buildFirefox(t, sign = true) {
   console.log('');
   console.log(t('firefox.header'));
@@ -645,6 +671,15 @@ async function buildFirefox(t, sign = true) {
   ensureDir(SIGNED_DIR);
   ensureDir(DIST_DIR);
 
+  const existingSignedForVersion = fs.readdirSync(SIGNED_DIR)
+    .filter((file) => file.endsWith('.xpi'))
+    .filter((file) => file.includes(`-${version}.xpi`));
+  if (existingSignedForVersion.length > 0) {
+    console.log(`  ⚠ Reusing existing signed Firefox artifact for ${version}`);
+    finalizeFirefoxArtifact(t, version);
+    return;
+  }
+
   console.log(`  ${t('firefox.signing')}`);
   try {
     const cmd = `web-ext sign --api-key="${apiCfg.apiKey}" --api-secret="${apiCfg.apiSecret}" --artifacts-dir="${SIGNED_DIR}" --channel=unlisted`;
@@ -652,24 +687,14 @@ async function buildFirefox(t, sign = true) {
 
     execSync(cmd, { cwd: FIREFOX_DIR, stdio: 'inherit' });
     console.log(`  ✓ ${t('firefox.signOk')}`);
-
-    const xpiFiles = fs.readdirSync(SIGNED_DIR).filter((file) => file.endsWith('.xpi'));
-    if (xpiFiles.length > 0) {
-      console.log(`  ${t('firefox.signedFiles')}`);
-      xpiFiles.forEach((file) => {
-        const stat = fs.statSync(path.join(SIGNED_DIR, file));
-        console.log(`    - ${file} (${formatSize(stat.size)})`);
-      });
-      const latest = xpiFiles.sort().reverse()[0];
-      const distName = `js-eyes-firefox-v${version}.xpi`;
-      const distPath = path.join(DIST_DIR, distName);
-      fs.copyFileSync(path.join(SIGNED_DIR, latest), distPath);
-      console.log(`  ${t('firefox.copiedToDist').replace('{file}', distName)}`);
-      const stat = fs.statSync(distPath);
-      console.log(`  ${t('chrome.output').replace('{path}', distPath)}`);
-      console.log(`  ${t('chrome.size').replace('{size}', formatSize(stat.size))}`);
-    }
+    finalizeFirefoxArtifact(t, version);
   } catch (e) {
+    const message = e && typeof e.message === 'string' ? e.message : '';
+    if (message.includes('This upload has already been submitted.')) {
+      console.log(`  ⚠ Firefox ${version} has already been submitted to AMO, reusing the existing signed artifact`);
+      finalizeFirefoxArtifact(t, version);
+      return;
+    }
     console.error(`  ✗ ${t('firefox.signFailed').replace('{msg}', e.message)}`);
     process.exit(1);
   }
