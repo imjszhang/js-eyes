@@ -519,14 +519,14 @@
             </p>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- js-search-x skill card -->
+                <!-- js-x-ops-skill skill card -->
                 <div class="brutal-card p-8">
                     <div class="flex items-center gap-3 mb-4">
                         <div class="border-2 border-black w-12 h-12 flex items-center justify-center bg-[#FCD228] text-2xl">
                             🔍
                         </div>
                         <div>
-                            <h3 class="text-2xl font-bold uppercase" data-i18n="skills.xSearch.name">X Search</h3>
+                            <h3 class="text-2xl font-bold uppercase" data-i18n="skills.xSearch.name">X Ops</h3>
                             <div class="flex gap-2 mt-1">
                                 <span class="font-mono text-[10px] bg-black text-brand-yellow px-2 py-0.5 uppercase tracking-wider" data-i18n="skills.xSearch.toolsBadge">4 AI TOOLS</span>
                                 <span class="font-mono text-[10px] bg-[#E74C3C] text-white px-2 py-0.5 uppercase tracking-wider" data-i18n="skills.xSearch.depBadge">REQUIRES JS-EYES</span>
@@ -534,7 +534,7 @@
                         </div>
                     </div>
                     <p class="font-medium mb-4" data-i18n="skills.xSearch.desc">
-                        X.com (Twitter) content scraping — search tweets, get user timelines, fetch post details and home feed via browser automation.
+                        X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows via browser automation.
                     </p>
                     <div class="grid grid-cols-2 gap-2 mb-4">
                         <div class="border-2 border-black px-3 py-2 text-center">
@@ -565,7 +565,7 @@
                                 <button id="skill-os-tab-win" onclick="switchSkillOS('win')" class="bg-gray-800 text-gray-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all hover:text-gray-200">Windows</button>
                             </div>
                             <div class="relative group">
-                                <div id="skill-deploy-cmd" class="bg-gray-900 border border-gray-700 rounded px-3 py-2.5 text-brand-yellow text-xs leading-relaxed select-all cursor-pointer group-hover:border-[#FCD228] transition-colors">curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-search-x bash</div>
+                                <div id="skill-deploy-cmd" class="bg-gray-900 border border-gray-700 rounded px-3 py-2.5 text-brand-yellow text-xs leading-relaxed select-all cursor-pointer group-hover:border-[#FCD228] transition-colors">curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash</div>
                                 <button onclick="copySkillCmd()" class="absolute top-1/2 -translate-y-1/2 right-2 bg-gray-800 hover:bg-[#FCD228] hover:text-black text-gray-400 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-all border border-gray-600 hover:border-black">
                                     <span id="skill-copy-text" data-i18n="hero.deployCopy">Copy</span>
                                 </button>
@@ -795,8 +795,8 @@
     window.copyDeployCmd = copyDeployCmd;
 
     var SKILL_CMDS = {
-        unix: 'curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-search-x bash',
-        win:  '$env:JS_EYES_SKILL="js-search-x"; irm https://js-eyes.com/install.ps1 | iex'
+        unix: 'curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash',
+        win:  '$env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex'
     };
     var currentSkillOS = 'unix';
 

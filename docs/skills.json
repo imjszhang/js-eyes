@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-04-12T10:15:21.987Z",
+  "generated": "2026-04-12T10:23:37.619Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
@@ -60,30 +60,6 @@
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post"
-      ]
-    },
-    {
-      "id": "js-search-x",
-      "name": "JS Search X",
-      "description": "X.com (Twitter) content scraping and posting skill — search tweets, get user timelines, fetch post details, home feed, and publish replies/quotes/threads via browser automation.",
-      "version": "1.1.0",
-      "emoji": "🔍",
-      "requires": {
-        "skills": [
-          "js-eyes"
-        ],
-        "bins": [
-          "node"
-        ]
-      },
-      "downloadUrl": "https://js-eyes.com/skills/js-search-x/js-search-x-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-search-x/js-search-x-skill.zip",
-      "homepage": "https://github.com/imjszhang/js-eyes",
-      "tools": [
-        "x_search_tweets",
-        "x_get_profile",
-        "x_get_post",
-        "x_get_home_feed"
       ]
     },
     {

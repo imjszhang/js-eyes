@@ -250,7 +250,7 @@ JS Eyes supports **extension skills** — higher-level capabilities built on top
 
 | Skill | Description | Tools |
 |-------|-------------|-------|
-| [js-search-x](./skills/js-search-x/) | X.com (Twitter) content scraping — search tweets, user timelines, post details, home feed | `x_search_tweets`, `x_get_profile`, `x_get_post`, `x_get_home_feed` |
+| [js-x-ops-skill](./skills/js-x-ops-skill/) | X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows | `x_search_tweets`, `x_get_profile`, `x_get_post`, `x_get_home_feed` |
 
 ### Discovering Skills
 
@@ -270,18 +270,18 @@ https://js-eyes.com/skills.json
 
 ```bash
 # Linux / macOS (arg)
-curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-search-x
+curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-x-ops-skill
 
 # Linux / macOS (env var, same as PowerShell)
-curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-search-x bash
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 
 # Windows PowerShell
-$env:JS_EYES_SKILL="js-search-x"; irm https://js-eyes.com/install.ps1 | iex
+$env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
 **Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID — it downloads, extracts, installs dependencies, and registers the plugin automatically.
 
-**Manual:** download the skill zip from [js-eyes.com/skills/js-search-x/](https://js-eyes.com/skills/js-search-x/js-search-x-skill.zip), extract to `skills/js-eyes/skills/js-search-x/`, run `npm install`, and add the plugin path to `openclaw.json`.
+**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, and add the plugin path to `openclaw.json`.
 
 ## Building
 

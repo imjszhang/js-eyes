@@ -86,10 +86,10 @@ window.I18nLocales['en-US'] = {
         subtitle: 'Higher-level capabilities built on top of JS Eyes browser automation. Install individually \u2014 each adds new AI tools.',
         installLabel: 'INSTALL',
         xSearch: {
-            name: 'X Search',
+            name: 'X Ops',
             toolsBadge: '4 AI TOOLS',
             depBadge: 'REQUIRES JS-EYES',
-            desc: 'X.com (Twitter) content scraping \u2014 search tweets, get user timelines, fetch post details and home feed via browser automation.',
+            desc: 'X.com (Twitter) content operations \u2014 search content, browse timelines and feed, read post details, and handle posting flows via browser automation.',
             tool1Label: 'Search',
             tool2Label: 'Profile',
             tool3Label: 'Post',

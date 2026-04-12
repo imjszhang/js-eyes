@@ -208,7 +208,7 @@ JS Eyes 支持**扩展技能** — 基于基础浏览器自动化构建的高级
 
 | 技能 | 说明 | 工具 |
 |------|------|------|
-| [js-search-x](../skills/js-search-x/) | X.com (Twitter) 内容抓取 — 搜索推文、用户时间线、推文详情、首页推荐 | `x_search_tweets`、`x_get_profile`、`x_get_post`、`x_get_home_feed` |
+| [js-x-ops-skill](../skills/js-x-ops-skill/) | X.com (Twitter) 内容操作 — 搜索内容、浏览时间线与首页 Feed、读取帖子详情并处理发帖流程 | `x_search_tweets`、`x_get_profile`、`x_get_post`、`x_get_home_feed` |
 
 ### 发现技能
 
@@ -228,18 +228,18 @@ https://js-eyes.com/skills.json
 
 ```bash
 # Linux / macOS（方式一：参数）
-curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-search-x
+curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-x-ops-skill
 
 # Linux / macOS（方式二：环境变量，与 PowerShell 一致）
-curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-search-x bash
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 
 # Windows PowerShell
-$env:JS_EYES_SKILL="js-search-x"; irm https://js-eyes.com/install.ps1 | iex
+$env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
 **通过 AI Agent：** Agent 调用 `js_eyes_install_skill`，传入技能 ID — 自动下载、解压、安装依赖并注册插件。
 
-**手动安装：** 从 [js-eyes.com/skills/js-search-x/](https://js-eyes.com/skills/js-search-x/js-search-x-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-search-x/`，执行 `npm install`，然后在 `openclaw.json` 中添加插件路径。
+**手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`，然后在 `openclaw.json` 中添加插件路径。
 
 ## 构建与发布
 

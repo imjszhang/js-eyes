@@ -403,7 +403,7 @@ export default function register(api) {
         properties: {
           skillId: {
             type: "string",
-            description: "要安装的技能 ID（如 'js-search-x'）",
+            description: "要安装的技能 ID（如 'js-x-ops-skill'）",
           },
           force: {
             type: "boolean",
