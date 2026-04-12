@@ -26,3 +26,21 @@ metadata:
 ```bash
 node skills/js-jike-ops-skill/index.js post "https://web.okjike.com/originalPost/xxxx" --pretty
 ```
+
+## Recording
+
+`js-jike-ops-skill` 现已接入统一的 skill recording 底座，支持调用历史、结果缓存和调试记录。
+
+- 默认记录模式跟随 `js-eyes` 全局配置中的 `recording.mode`
+- CLI 可覆盖：
+  - `--recording-mode off|history|standard|debug`
+  - `--debug-recording`
+  - `--no-cache`
+  - `--recording-base-dir /absolute/path`
+  - `--run-id custom-id`
+
+默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-jike-ops-skill/`，其中包含：
+
+- `history/`：按月滚动的调用历史 `jsonl`
+- `cache/post`：帖子详情结构化缓存
+- `debug/`：调试模式下的页面步骤、DOM 统计和结果快照

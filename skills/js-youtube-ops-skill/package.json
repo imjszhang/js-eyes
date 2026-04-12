@@ -11,5 +11,9 @@
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@js-eyes/config": "^1.5.1",
+    "@js-eyes/skill-recording": "^1.5.1"
   }
 }

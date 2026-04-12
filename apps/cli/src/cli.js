@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { createServer } = require('@js-eyes/server-core');
 const { loadConfig, getConfigValue, parseConfigValue, setConfigValue } = require('@js-eyes/config');
-const { ensureRuntimePaths, getPaths } = require('@js-eyes/runtime-paths');
+const { ensureRuntimePaths, getPaths, resolveSkillRecordsDir } = require('@js-eyes/runtime-paths');
 const {
   COMPATIBILITY_MATRIX,
   DEFAULT_SERVER_HOST,
@@ -211,10 +211,12 @@ async function commandDoctor(flags) {
   print(`Log file: ${paths.serverLogFile}`);
   print(`Downloads dir: ${paths.downloadsDir}`);
   print(`Skills dir: ${resolveSkillsDir(paths, config)}`);
+  print(`Skill records dir: ${resolveSkillRecordsDir({ recordingBaseDir: config.recording?.baseDir })}`);
   print(`OpenClaw plugin: ${resolvePluginPath()}`);
   print(`Configured server: ${endpoint}`);
   print(`Stored PID: ${pid || 'none'}`);
   print(`PID alive: ${pid ? (isProcessAlive(pid) ? 'yes' : 'no') : 'n/a'}`);
+  print(`Recording mode: ${config.recording?.mode || 'standard'}`);
   const localVersions = getLocalVersions();
   print('');
   print('Local package versions:');

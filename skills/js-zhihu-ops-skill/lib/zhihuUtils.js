@@ -1,6 +1,11 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,6 +50,19 @@ async function waitForReady(browser, tabId, timeoutMs = 15000) {
     }
     await sleep(700);
   }
+}
+
+async function getZhihuDomStats(browser, tabId) {
+  return browser.executeScript(
+    tabId,
+    `(() => ({
+      answerBlocks: document.querySelectorAll('.ContentItem.AnswerItem').length,
+      articleBlocks: document.querySelectorAll('.Post-RichTextContainer').length,
+      richTextBlocks: document.querySelectorAll('.RichContent-inner, .Post-RichTextContainer').length,
+      scrollHeight: document.documentElement.scrollHeight,
+      title: document.title
+    }))()`,
+  );
 }
 
 function extractZhihuRichText($, element) {
@@ -178,24 +196,45 @@ function extractZhihuArticleContent(html, url) {
   };
 }
 
-async function scrapeZhihu(browser, url, extractor, platform) {
+async function scrapeZhihu(browser, url, extractor, platform, options = {}) {
   let tabId = null;
   let shouldClose = false;
+  const debugState = createDebugState();
 
   try {
+    recordStep(debugState, 'open_tab_started', { url, platform });
     const opened = await openOrReuseTab(browser, url);
     tabId = opened.tabId;
     shouldClose = !opened.isReused;
+    recordStep(debugState, 'open_tab_completed', opened);
 
     await waitForReady(browser, tabId);
+    recordStep(debugState, 'page_ready', { tabId });
+    recordDomStat(debugState, 'before_capture', await getZhihuDomStats(browser, tabId));
     const html = await browser.getTabHtml(tabId);
+    recordStep(debugState, 'html_captured', { htmlLength: html.length });
 
     return {
       platform,
       sourceUrl: url,
       timestamp: new Date().toISOString(),
       data: extractor(html, url),
+      metrics: {
+        htmlLength: html.length,
+      },
+      debug: {
+        steps: debugState.steps,
+        domStats: debugState.domStats,
+        rawHtml: options.runContext?.recording?.saveRawHtml ? html : undefined,
+      },
     };
+  } catch (error) {
+    recordStep(debugState, 'scrape_failed', { message: error.message });
+    error.debug = {
+      steps: debugState.steps,
+      domStats: debugState.domStats,
+    };
+    throw error;
   } finally {
     if (tabId && shouldClose) {
       try {
@@ -205,14 +244,14 @@ async function scrapeZhihu(browser, url, extractor, platform) {
   }
 }
 
-async function scrapeZhihuAnswer(browser, url) {
+async function scrapeZhihuAnswer(browser, url, options = {}) {
   assertZhihuAnswerUrl(url);
-  return scrapeZhihu(browser, url, extractZhihuAnswerContent, 'zhihu_answer');
+  return scrapeZhihu(browser, url, extractZhihuAnswerContent, 'zhihu_answer', options);
 }
 
-async function scrapeZhihuArticle(browser, url) {
+async function scrapeZhihuArticle(browser, url, options = {}) {
   assertZhihuArticleUrl(url);
-  return scrapeZhihu(browser, url, extractZhihuArticleContent, 'zhihu_zhuanlan');
+  return scrapeZhihu(browser, url, extractZhihuArticleContent, 'zhihu_zhuanlan', options);
 }
 
 module.exports = {

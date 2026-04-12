@@ -1,6 +1,11 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 const WECHAT_CONTENT_SELECTOR = '#js_content, .rich_media_content';
 const WECHAT_TITLE_SELECTOR = '.rich_media_title';
@@ -57,6 +62,21 @@ async function waitForWechatContent(browser, tabId, timeoutMs = 12000) {
     }
     await sleep(800);
   }
+}
+
+async function getWechatDomStats(browser, tabId) {
+  return browser.executeScript(
+    tabId,
+    `(() => {
+      const contentNode = document.querySelector('${WECHAT_CONTENT_SELECTOR}');
+      return {
+        imageCount: document.querySelectorAll('${WECHAT_CONTENT_SELECTOR} img').length,
+        contentTextLength: (contentNode?.innerText || contentNode?.textContent || '').trim().length,
+        scrollHeight: document.documentElement.scrollHeight,
+        title: document.title
+      };
+    })()`,
+  );
 }
 
 async function prepareWechatPage(browser, tabId) {
@@ -220,34 +240,60 @@ function extractWechatContent(html, url, imageUrls = []) {
   };
 }
 
-async function scrapeWechatArticle(browser, url) {
+async function scrapeWechatArticle(browser, url, options = {}) {
   assertWechatUrl(url);
 
   let tabId = null;
   let shouldClose = false;
+  const debugState = createDebugState();
 
   try {
+    recordStep(debugState, 'open_tab_started', { url });
     const opened = await openOrReuseTab(browser, url);
     tabId = opened.tabId;
     shouldClose = !opened.isReused;
+    recordStep(debugState, 'open_tab_completed', opened);
 
     if (!opened.isReused) {
       await waitForDocumentReady(browser, tabId);
     }
     await waitForWechatContent(browser, tabId);
+    recordStep(debugState, 'content_ready', { tabId });
     await prepareWechatPage(browser, tabId);
+    recordStep(debugState, 'page_prepared', { tabId });
+    recordDomStat(debugState, 'before_capture', await getWechatDomStats(browser, tabId));
 
     const [html, imageUrls] = await Promise.all([
       browser.getTabHtml(tabId),
       extractWechatImages(browser, tabId),
     ]);
+    recordStep(debugState, 'html_captured', {
+      htmlLength: html.length,
+      imageCount: imageUrls.length,
+    });
 
     return {
       platform: 'wechat',
       sourceUrl: url,
       timestamp: new Date().toISOString(),
       data: extractWechatContent(html, url, imageUrls),
+      metrics: {
+        htmlLength: html.length,
+        imageCount: imageUrls.length,
+      },
+      debug: {
+        steps: debugState.steps,
+        domStats: debugState.domStats,
+        rawHtml: options.runContext?.recording?.saveRawHtml ? html : undefined,
+      },
     };
+  } catch (error) {
+    recordStep(debugState, 'scrape_failed', { message: error.message });
+    error.debug = {
+      steps: debugState.steps,
+      domStats: debugState.domStats,
+    };
+    throw error;
   } finally {
     if (tabId && shouldClose) {
       try {

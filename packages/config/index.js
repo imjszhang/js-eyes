@@ -11,6 +11,14 @@ const {
 } = require('@js-eyes/protocol');
 const { ensureRuntimePaths } = require('@js-eyes/runtime-paths');
 
+const DEFAULT_RECORDING_CONFIG = {
+  mode: 'standard',
+  baseDir: '',
+  cacheTtlMinutes: 60,
+  saveRawHtml: false,
+  maxDebugBundles: 10,
+};
+
 const DEFAULT_CONFIG = {
   serverHost: DEFAULT_SERVER_HOST,
   serverPort: DEFAULT_SERVER_PORT,
@@ -20,10 +28,26 @@ const DEFAULT_CONFIG = {
   skillsDir: '',
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
+  recording: DEFAULT_RECORDING_CONFIG,
 };
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function mergeRecordingConfig(...configs) {
+  return configs.reduce((merged, config) => ({
+    ...merged,
+    ...(config || {}),
+  }), clone(DEFAULT_RECORDING_CONFIG));
+}
+
+function normalizeConfig(config = {}) {
+  return {
+    ...clone(DEFAULT_CONFIG),
+    ...(config || {}),
+    recording: mergeRecordingConfig(config.recording),
+  };
 }
 
 function loadConfig(options = {}) {
@@ -38,12 +62,12 @@ function loadConfig(options = {}) {
     }
   }
 
-  return { ...clone(DEFAULT_CONFIG), ...fileConfig };
+  return normalizeConfig(fileConfig);
 }
 
 function saveConfig(config, options = {}) {
   const paths = ensureRuntimePaths(options);
-  const nextConfig = { ...clone(DEFAULT_CONFIG), ...(config || {}) };
+  const nextConfig = normalizeConfig(config);
   fs.writeFileSync(paths.configFile, JSON.stringify(nextConfig, null, 2) + '\n', 'utf8');
   return nextConfig;
 }
@@ -99,8 +123,11 @@ function parseConfigValue(raw) {
 
 module.exports = {
   DEFAULT_CONFIG,
+  DEFAULT_RECORDING_CONFIG,
   getConfigValue,
   loadConfig,
+  mergeRecordingConfig,
+  normalizeConfig,
   parseConfigValue,
   saveConfig,
   setConfigValue,

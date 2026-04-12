@@ -38,12 +38,40 @@ function getPaths(options = {}) {
     configDir: path.join(baseDir, 'config'),
     configFile: path.join(baseDir, 'config', 'config.json'),
     skillsDir: path.join(baseDir, 'skills'),
+    skillRecordsDir: path.join(baseDir, 'skill-records'),
     runtimeDir: path.join(baseDir, 'runtime'),
     pidFile: path.join(baseDir, 'runtime', 'server.pid'),
     logsDir: path.join(baseDir, 'logs'),
     serverLogFile: path.join(baseDir, 'logs', 'server.log'),
     cacheDir: path.join(baseDir, 'cache'),
     downloadsDir: path.join(baseDir, 'downloads'),
+  };
+}
+
+function resolveSkillRecordsDir(options = {}) {
+  if (options.skillRecordsDir) {
+    return path.resolve(options.skillRecordsDir);
+  }
+  if (options.recordingBaseDir) {
+    return path.resolve(options.recordingBaseDir);
+  }
+  return getPaths(options).skillRecordsDir;
+}
+
+function getSkillRecordPaths(skillId, options = {}) {
+  if (!skillId) {
+    throw new Error('skillId 不能为空');
+  }
+
+  const skillRecordsDir = resolveSkillRecordsDir(options);
+  const skillDir = path.join(skillRecordsDir, skillId);
+
+  return {
+    skillRecordsDir,
+    skillDir,
+    historyDir: path.join(skillDir, 'history'),
+    cacheDir: path.join(skillDir, 'cache'),
+    debugDir: path.join(skillDir, 'debug'),
   };
 }
 
@@ -120,6 +148,7 @@ function ensureRuntimePaths(options = {}) {
   ensureDir(paths.baseDir);
   ensureDir(paths.configDir);
   ensureDir(paths.skillsDir);
+  ensureDir(paths.skillRecordsDir);
   ensureDir(paths.runtimeDir);
   ensureDir(paths.logsDir);
   ensureDir(paths.cacheDir);
@@ -127,12 +156,25 @@ function ensureRuntimePaths(options = {}) {
   return paths;
 }
 
+function ensureSkillRecordPaths(skillId, options = {}) {
+  const paths = getSkillRecordPaths(skillId, options);
+  ensureDir(paths.skillRecordsDir);
+  ensureDir(paths.skillDir);
+  ensureDir(paths.historyDir);
+  ensureDir(paths.cacheDir);
+  ensureDir(paths.debugDir);
+  return paths;
+}
+
 module.exports = {
   ensureDir,
+  ensureSkillRecordPaths,
   ensureRuntimePaths,
   getPaths,
+  getSkillRecordPaths,
   migrateLegacyBaseDir,
   resolveBaseDir,
   resolveDefaultBaseDir,
   resolveLegacyBaseDir,
+  resolveSkillRecordsDir,
 };

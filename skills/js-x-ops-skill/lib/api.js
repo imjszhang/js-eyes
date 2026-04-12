@@ -13,6 +13,17 @@
  *   const result = await searchTweets(browser, 'AI agent', { maxPages: 3 });
  */
 
+const pkg = require('../package.json');
+const {
+    appendHistory,
+    createDebugState,
+    createSkillRunContext,
+    readCacheEntry,
+    recordDomStat,
+    recordStep,
+    writeCacheEntry,
+    writeDebugBundle,
+} = require('@js-eyes/skill-recording');
 const {
     retryWithBackoff,
     createSafeExecuteScript,
@@ -25,6 +36,8 @@ const {
     saveProgress,
     appendPartialTweets,
 } = require('./xUtils');
+
+const SKILL_ID = pkg.name;
 
 // Lazy-load script modules to avoid circular dependency
 // (scripts import api.js, api.js imports scripts)
@@ -59,6 +72,144 @@ async function openAndWait(browser, tabId, url, safeExec, log) {
     }
 }
 
+function clone(value) {
+    return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function summarizeInput(value) {
+    try {
+        return JSON.stringify(value);
+    } catch (_) {
+        return String(value);
+    }
+}
+
+function createRecordingLogger(logger, debugState) {
+    const base = makeLog(logger);
+    const createForwarder = (level) => (...args) => {
+        const message = args.map((value) => String(value)).join(' ');
+        recordStep(debugState, 'log', { level, message });
+        base[level](...args);
+    };
+
+    return {
+        log: createForwarder('log'),
+        warn: createForwarder('warn'),
+        error: createForwarder('error'),
+    };
+}
+
+function createXRunContext(scrapeType, input, options = {}) {
+    return createSkillRunContext({
+        skillId: SKILL_ID,
+        toolName: scrapeType,
+        scrapeType,
+        skillVersion: pkg.version,
+        input,
+        recording: options.recording,
+        recordingMode: options.recordingMode,
+        debugRecording: options.debugRecording,
+        noCache: options.noCache,
+        normalizeInput: (value) => value,
+        buildCacheKeyParts: ({ skillId, toolName, normalizedInput, skillVersion }) => ({
+            skillId,
+            toolName,
+            input: normalizedInput,
+            version: skillVersion,
+        }),
+    });
+}
+
+function buildXMetrics(scrapeType, result, durationMs, cacheHit) {
+    if (scrapeType === 'x_post') {
+        return {
+            status: result.totalFailed > 0 ? 'partial' : 'success',
+            durationMs,
+            cacheHit,
+            totalRequested: result.totalRequested ?? 0,
+            totalSuccess: result.totalSuccess ?? 0,
+            totalFailed: result.totalFailed ?? 0,
+        };
+    }
+
+    return {
+        status: 'success',
+        durationMs,
+        cacheHit,
+        totalResults: result.totalResults ?? (Array.isArray(result.results) ? result.results.length : 0),
+    };
+}
+
+function buildXResponse(runContext, result, durationMs, cacheMeta = {}) {
+    return {
+        ...result,
+        platform: 'x',
+        scrapeType: runContext.scrapeType,
+        run: {
+            id: runContext.runId,
+            cacheHit: cacheMeta.hit === true,
+            recordingMode: runContext.recording.mode,
+        },
+        cache: {
+            hit: cacheMeta.hit === true,
+            key: runContext.cacheKey,
+            createdAt: cacheMeta.createdAt || null,
+            expiresAt: cacheMeta.expiresAt || null,
+        },
+        metrics: buildXMetrics(runContext.scrapeType, result, durationMs, cacheMeta.hit === true),
+    };
+}
+
+function buildXHistoryEntry(runContext, response, options = {}) {
+    const metrics = response?.metrics || {};
+    return {
+        run_id: runContext.runId,
+        skill_id: runContext.skillId,
+        tool_name: runContext.scrapeType,
+        timestamp: new Date().toISOString(),
+        input_summary: summarizeInput(runContext.normalizedInput),
+        status: options.status || metrics.status || 'success',
+        duration_ms: options.durationMs,
+        cache_hit: options.cacheHit === true,
+        cache_key: runContext.cacheKey,
+        debug_bundle_path: options.debugBundlePath || '',
+        error_summary: options.errorSummary || '',
+        total_results: metrics.totalResults ?? null,
+        total_requested: metrics.totalRequested ?? null,
+        total_success: metrics.totalSuccess ?? null,
+        total_failed: metrics.totalFailed ?? null,
+    };
+}
+
+function attachXCacheHit(runContext, cached, startedAtMs) {
+    if (!cached?.response) {
+        return null;
+    }
+
+    const cacheDurationMs = Date.now() - startedAtMs;
+    const response = clone(cached.response);
+    response.run = {
+        id: runContext.runId,
+        cacheHit: true,
+        recordingMode: runContext.recording.mode,
+    };
+    response.cache = {
+        hit: true,
+        key: runContext.cacheKey,
+        createdAt: cached.createdAt || null,
+        expiresAt: cached.expiresAt || null,
+    };
+    if (response.metrics) {
+        response.metrics.cacheHit = true;
+        response.metrics.durationMs = cacheDurationMs;
+    }
+    appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+        durationMs: cacheDurationMs,
+        cacheHit: true,
+    }));
+    return response;
+}
+
 // ============================================================================
 // searchTweets
 // ============================================================================
@@ -87,7 +238,7 @@ async function openAndWait(browser, tabId, url, safeExec, log) {
  * @param {string}  [options._outputDir]       可选，传入后启用增量保存
  * @returns {Promise<{searchKeyword,searchUrl,searchOptions,timestamp,totalResults,results}>}
  */
-async function searchTweets(browser, keyword, options = {}) {
+async function runSearchTweets(browser, keyword, options = {}) {
     const opts = {
         maxPages: 1, sort: 'top',
         minLikes: 0, minRetweets: 0, minReplies: 0,
@@ -319,7 +470,7 @@ async function searchTweets(browser, keyword, options = {}) {
  * @param {string}  [options._outputDir]
  * @returns {Promise<{username,profile,scrapeOptions,timestamp,totalResults,results}>}
  */
-async function getProfileTweets(browser, username, options = {}) {
+async function runGetProfileTweets(browser, username, options = {}) {
     const opts = {
         maxPages: 50, maxTweets: 0,
         since: null, until: null,
@@ -532,7 +683,7 @@ async function getProfileTweets(browser, username, options = {}) {
  * @param {object}  [options.logger]
  * @returns {Promise<{scrapeType,scrapeOptions,timestamp,totalRequested,totalSuccess,totalFailed,results}>}
  */
-async function getPost(browser, tweetInputs, options = {}) {
+async function runGetPost(browser, tweetInputs, options = {}) {
     const opts = { withThread: false, withReplies: 0, closeTab: false, ...options };
     const log = makeLog(opts.logger);
     const T = getPost_();
@@ -720,7 +871,7 @@ async function getPost(browser, tweetInputs, options = {}) {
  * @param {string}  [options._outputDir]
  * @returns {Promise<{feed,scrapeOptions,timestamp,totalResults,results}>}
  */
-async function getHomeFeed(browser, options = {}) {
+async function runGetHomeFeed(browser, options = {}) {
     const opts = {
         feed: 'foryou', maxPages: 5, maxTweets: 0,
         minLikes: 0, minRetweets: 0,
@@ -891,6 +1042,343 @@ async function getHomeFeed(browser, options = {}) {
     } catch (err) {
         if (tabId) { try { await releaseXTab(browser, tabId); } catch (_) {} }
         throw err;
+    }
+}
+
+async function searchTweets(browser, keyword, options = {}) {
+    const runContext = createXRunContext('x_search', {
+        keyword,
+        maxPages: options.maxPages || 1,
+        sort: options.sort || 'top',
+        minLikes: options.minLikes || 0,
+        minRetweets: options.minRetweets || 0,
+        minReplies: options.minReplies || 0,
+        lang: options.lang || null,
+        from: options.from || null,
+        to: options.to || null,
+        since: options.since || null,
+        until: options.until || null,
+        excludeReplies: options.excludeReplies === true,
+        excludeRetweets: options.excludeRetweets === true,
+        hasLinks: options.hasLinks === true,
+    }, options);
+    const startedAtMs = Date.now();
+    const cached = readCacheEntry(runContext, 'search');
+    const cachedResponse = attachXCacheHit(runContext, cached, startedAtMs);
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+
+    const debugState = createDebugState();
+    const logger = createRecordingLogger(options.logger, debugState);
+    let response = null;
+    let debugBundlePath = '';
+
+    try {
+        const result = await runSearchTweets(browser, keyword, { ...options, logger });
+        recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0 });
+        response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
+        const cacheEntry = writeCacheEntry(runContext, { response }, 'search');
+        if (cacheEntry) {
+            response.cache.createdAt = cacheEntry.createdAt;
+            response.cache.expiresAt = cacheEntry.expiresAt;
+        }
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    metrics: response.metrics,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: response,
+            }) || '';
+            response.debug = { bundlePath: debugBundlePath };
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            durationMs: response.metrics.durationMs,
+            cacheHit: false,
+            debugBundlePath,
+        }));
+        return response;
+    } catch (error) {
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    error: error.message,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: { error: error.message },
+            }) || '';
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            status: 'failed',
+            durationMs: Date.now() - startedAtMs,
+            cacheHit: false,
+            debugBundlePath,
+            errorSummary: error.message,
+        }));
+        throw error;
+    }
+}
+
+async function getProfileTweets(browser, username, options = {}) {
+    const runContext = createXRunContext('x_profile', {
+        username,
+        maxPages: options.maxPages || 50,
+        maxTweets: options.maxTweets || 0,
+        since: options.since || null,
+        until: options.until || null,
+        includeReplies: options.includeReplies === true,
+        includeRetweets: options.includeRetweets === true,
+        minLikes: options.minLikes || 0,
+        minRetweets: options.minRetweets || 0,
+    }, options);
+    const startedAtMs = Date.now();
+    const cached = readCacheEntry(runContext, 'profile');
+    const cachedResponse = attachXCacheHit(runContext, cached, startedAtMs);
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+
+    const debugState = createDebugState();
+    const logger = createRecordingLogger(options.logger, debugState);
+    let response = null;
+    let debugBundlePath = '';
+
+    try {
+        const result = await runGetProfileTweets(browser, username, { ...options, logger });
+        recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0 });
+        response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
+        const cacheEntry = writeCacheEntry(runContext, { response }, 'profile');
+        if (cacheEntry) {
+            response.cache.createdAt = cacheEntry.createdAt;
+            response.cache.expiresAt = cacheEntry.expiresAt;
+        }
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    metrics: response.metrics,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: response,
+            }) || '';
+            response.debug = { bundlePath: debugBundlePath };
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            durationMs: response.metrics.durationMs,
+            cacheHit: false,
+            debugBundlePath,
+        }));
+        return response;
+    } catch (error) {
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    error: error.message,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: { error: error.message },
+            }) || '';
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            status: 'failed',
+            durationMs: Date.now() - startedAtMs,
+            cacheHit: false,
+            debugBundlePath,
+            errorSummary: error.message,
+        }));
+        throw error;
+    }
+}
+
+async function getPost(browser, tweetInputs, options = {}) {
+    const runContext = createXRunContext('x_post', {
+        tweetInputs: Array.isArray(tweetInputs) ? tweetInputs : [tweetInputs],
+        withThread: options.withThread === true,
+        withReplies: options.withReplies || 0,
+    }, options);
+    const startedAtMs = Date.now();
+    const cached = readCacheEntry(runContext, 'post');
+    const cachedResponse = attachXCacheHit(runContext, cached, startedAtMs);
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+
+    const debugState = createDebugState();
+    const logger = createRecordingLogger(options.logger, debugState);
+    let response = null;
+    let debugBundlePath = '';
+
+    try {
+        const result = await runGetPost(browser, tweetInputs, { ...options, logger });
+        recordDomStat(debugState, 'result_summary', {
+            totalRequested: result.totalRequested || 0,
+            totalSuccess: result.totalSuccess || 0,
+            totalFailed: result.totalFailed || 0,
+        });
+        response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
+        const cacheEntry = writeCacheEntry(runContext, { response }, 'post');
+        if (cacheEntry) {
+            response.cache.createdAt = cacheEntry.createdAt;
+            response.cache.expiresAt = cacheEntry.expiresAt;
+        }
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    metrics: response.metrics,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: response,
+            }) || '';
+            response.debug = { bundlePath: debugBundlePath };
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            durationMs: response.metrics.durationMs,
+            cacheHit: false,
+            debugBundlePath,
+        }));
+        return response;
+    } catch (error) {
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    error: error.message,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: { error: error.message },
+            }) || '';
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            status: 'failed',
+            durationMs: Date.now() - startedAtMs,
+            cacheHit: false,
+            debugBundlePath,
+            errorSummary: error.message,
+        }));
+        throw error;
+    }
+}
+
+async function getHomeFeed(browser, options = {}) {
+    const runContext = createXRunContext('x_home', {
+        feed: options.feed || 'foryou',
+        maxPages: options.maxPages || 5,
+        maxTweets: options.maxTweets || 0,
+        minLikes: options.minLikes || 0,
+        minRetweets: options.minRetweets || 0,
+        excludeReplies: options.excludeReplies === true,
+        excludeRetweets: options.excludeRetweets === true,
+    }, options);
+    const startedAtMs = Date.now();
+    const cached = readCacheEntry(runContext, 'home');
+    const cachedResponse = attachXCacheHit(runContext, cached, startedAtMs);
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+
+    const debugState = createDebugState();
+    const logger = createRecordingLogger(options.logger, debugState);
+    let response = null;
+    let debugBundlePath = '';
+
+    try {
+        const result = await runGetHomeFeed(browser, { ...options, logger });
+        recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0, feed: result.feed });
+        response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
+        const cacheEntry = writeCacheEntry(runContext, { response }, 'home');
+        if (cacheEntry) {
+            response.cache.createdAt = cacheEntry.createdAt;
+            response.cache.expiresAt = cacheEntry.expiresAt;
+        }
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    metrics: response.metrics,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: response,
+            }) || '';
+            response.debug = { bundlePath: debugBundlePath };
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            durationMs: response.metrics.durationMs,
+            cacheHit: false,
+            debugBundlePath,
+        }));
+        return response;
+    } catch (error) {
+        if (runContext.recording.debugEnabled) {
+            debugBundlePath = writeDebugBundle(runContext, {
+                meta: {
+                    runId: runContext.runId,
+                    skillId: runContext.skillId,
+                    scrapeType: runContext.scrapeType,
+                    input: runContext.normalizedInput,
+                    recordingMode: runContext.recording.mode,
+                    cacheKey: runContext.cacheKey,
+                    error: error.message,
+                },
+                steps: debugState.steps,
+                domStats: debugState.domStats,
+                result: { error: error.message },
+            }) || '';
+        }
+        appendHistory(runContext, buildXHistoryEntry(runContext, response, {
+            status: 'failed',
+            durationMs: Date.now() - startedAtMs,
+            cacheHit: false,
+            debugBundlePath,
+            errorSummary: error.message,
+        }));
+        throw error;
     }
 }
 

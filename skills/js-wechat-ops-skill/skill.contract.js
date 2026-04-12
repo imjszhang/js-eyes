@@ -4,6 +4,7 @@ const manifest = require('./openclaw-plugin/openclaw.plugin.json');
 const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
 const { getArticle } = require('./lib/api');
+const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
   { name: 'article', description: '读取微信公众号文章详情' },
@@ -18,8 +19,10 @@ function makeLogger(logger) {
 }
 
 function createRuntime(config = {}, logger) {
+  const resolvedConfig = resolveRuntimeConfig(config);
   const runtimeConfig = {
-    serverUrl: config.jsEyesServerUrl || config.serverUrl || 'ws://localhost:18080',
+    serverUrl: resolvedConfig.serverUrl,
+    recording: resolvedConfig.recording,
   };
   const resolvedLogger = makeLogger(logger);
   let bot = null;
@@ -55,9 +58,11 @@ const TOOL_DEFINITIONS = [
       required: ['url'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return getArticle(runtime.ensureBot(), params.url, {
         browserServer: runtime.config.serverUrl,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -73,8 +78,8 @@ function createOpenClawAdapter(config = {}, logger) {
       description: tool.description,
       parameters: tool.parameters,
       optional: tool.optional,
-      async execute(_toolCallId, params) {
-        const result = await tool.execute(runtime, params);
+      async execute(toolCallId, params) {
+        const result = await tool.execute(runtime, params, { toolCallId });
         return runtime.jsonResult(result);
       },
     })),

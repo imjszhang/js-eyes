@@ -4,6 +4,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 const fsPromises = fs.promises;
 const YTDLP_FILENAMES = process.platform === 'win32'
@@ -168,6 +173,14 @@ async function ensureYtDlpAvailable() {
   }
 }
 
+function summarizeStderr(stderr = '', limit = 400) {
+  const normalized = String(stderr || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+  return normalized.length > limit ? normalized.slice(0, limit) : normalized;
+}
+
 function isCookieError(stderr = '') {
   return /Failed to decrypt with DPAPI|cookies-from-browser|could not find firefox profile|could not find chrome cookies|could not find edge cookies|browser cookies/i.test(stderr);
 }
@@ -176,8 +189,24 @@ async function runYtDlp(args, options = {}) {
   await ensureYtDlpAvailable();
 
   const runner = getYtDlpCommand();
-  const fullArgs = [...runner.prefixArgs, ...args, '--no-update'];
-  const result = await spawnCollect(runner.command, fullArgs);
+  const attempts = [];
+
+  async function execute(rawArgs, label) {
+    const fullArgs = [...runner.prefixArgs, ...rawArgs, '--no-update'];
+    const result = await spawnCollect(runner.command, fullArgs);
+    attempts.push({
+      label,
+      command: runner.command,
+      args: fullArgs,
+      exitCode: result.code,
+      stderrSummary: summarizeStderr(result.stderr),
+    });
+    return result;
+  }
+
+  const result = await execute(args, 'primary');
+  let finalResult = result;
+  let fallbackUsed = false;
 
   if (result.code !== 0 && options.allowCookieFallback && isCookieError(result.stderr)) {
     const sanitizedArgs = [];
@@ -188,10 +217,15 @@ async function runYtDlp(args, options = {}) {
       }
       sanitizedArgs.push(args[i]);
     }
-    return spawnCollect(runner.command, [...runner.prefixArgs, ...sanitizedArgs, '--no-update']);
+    finalResult = await execute(sanitizedArgs, 'cookie_fallback');
+    fallbackUsed = true;
   }
 
-  return result;
+  return {
+    ...finalResult,
+    attempts,
+    fallbackUsed,
+  };
 }
 
 async function getVideoInfo(url, options = {}) {
@@ -200,15 +234,21 @@ async function getVideoInfo(url, options = {}) {
     args.push('--cookies-from-browser', options.cookiesFromBrowser);
   }
 
-  const { code, stdout, stderr } = await runYtDlp(args, {
+  const processResult = await runYtDlp(args, {
     allowCookieFallback: !options.noCookies && !!options.cookiesFromBrowser,
   });
-  if (code !== 0 || !stdout.trim()) {
-    throw new Error(`yt-dlp 退出码: ${code}\n${stderr}`.trim());
+  if (processResult.code !== 0 || !processResult.stdout.trim()) {
+    const error = new Error(`yt-dlp 退出码: ${processResult.code}\n${processResult.stderr}`.trim());
+    error.processTrace = processResult.attempts;
+    throw error;
   }
 
   try {
-    return JSON.parse(stdout);
+    return {
+      videoInfo: JSON.parse(processResult.stdout),
+      processTrace: processResult.attempts,
+      fallbackUsed: processResult.fallbackUsed,
+    };
   } catch (error) {
     throw new Error(`解析视频信息失败: ${error.message}`);
   }
@@ -274,7 +314,7 @@ async function getSubtitles(url, videoId, options = {}) {
       args.push('--cookies-from-browser', options.cookiesFromBrowser);
     }
 
-    await runYtDlp(args, {
+    const processResult = await runYtDlp(args, {
       allowCookieFallback: !options.noCookies && !!options.cookiesFromBrowser,
     });
 
@@ -293,7 +333,12 @@ async function getSubtitles(url, videoId, options = {}) {
       } catch (_) {}
     }
 
-    return subtitles;
+    return {
+      subtitles,
+      processTrace: processResult.attempts,
+      fallbackUsed: processResult.fallbackUsed,
+      subtitleFileCount: Object.keys(subtitles).length,
+    };
   } finally {
     try {
       await fsPromises.rm(tempDir, { recursive: true, force: true });
@@ -334,25 +379,80 @@ async function getBilibiliVideoDetails(url, options = {}) {
     throw new Error(`无法解析视频 ID: ${url}`);
   }
 
+  const debugState = createDebugState();
+  recordStep(debugState, 'video_details_started', { url, videoId });
   const cookiesFromBrowser = options.noCookies ? null : (options.cookiesFromBrowser || 'firefox');
-  const videoInfo = await getVideoInfo(url, {
+  const videoInfoResult = await getVideoInfo(url, {
     cookiesFromBrowser,
     noCookies: !!options.noCookies,
   });
+  recordStep(debugState, 'video_info_loaded', {
+    attemptCount: videoInfoResult.processTrace.length,
+    fallbackUsed: videoInfoResult.fallbackUsed,
+  });
+  recordDomStat(debugState, 'video_info_process', {
+    attemptCount: videoInfoResult.processTrace.length,
+    fallbackUsed: videoInfoResult.fallbackUsed,
+  });
 
   let subtitles = {};
+  let subtitleTrace = [];
+  let subtitleFallbackUsed = false;
+  let subtitleFileCount = 0;
   if (options.includeSubtitles !== false) {
-    subtitles = await getSubtitles(url, videoId, {
+    const subtitleResult = await getSubtitles(url, videoId, {
       cookiesFromBrowser,
       noCookies: !!options.noCookies,
       subLangs: options.subLangs,
     });
+    subtitles = subtitleResult.subtitles;
+    subtitleTrace = subtitleResult.processTrace;
+    subtitleFallbackUsed = subtitleResult.fallbackUsed;
+    subtitleFileCount = subtitleResult.subtitleFileCount;
+    recordStep(debugState, 'subtitles_loaded', {
+      attemptCount: subtitleTrace.length,
+      fallbackUsed: subtitleFallbackUsed,
+      subtitleLanguages: Object.keys(subtitles),
+    });
+    recordDomStat(debugState, 'subtitle_process', {
+      attemptCount: subtitleTrace.length,
+      fallbackUsed: subtitleFallbackUsed,
+      subtitleFileCount,
+    });
   }
 
+  const data = normalizeVideoData(videoInfoResult.videoInfo, subtitles, url);
   return {
     platform: 'bilibili',
     timestamp: new Date().toISOString(),
-    data: normalizeVideoData(videoInfo, subtitles, url),
+    data,
+    metrics: {
+      videoId,
+      includeSubtitles: options.includeSubtitles !== false,
+      subtitleLanguageCount: Object.keys(subtitles).length,
+      subtitleFileCount,
+      videoInfoAttemptCount: videoInfoResult.processTrace.length,
+      subtitleAttemptCount: subtitleTrace.length,
+      fallbackUsed: videoInfoResult.fallbackUsed || subtitleFallbackUsed,
+    },
+    debug: {
+      steps: [
+        ...debugState.steps,
+        ...videoInfoResult.processTrace.map((attempt) => ({
+          timestamp: new Date().toISOString(),
+          step: 'yt_dlp_attempt',
+          phase: 'video_info',
+          ...attempt,
+        })),
+        ...subtitleTrace.map((attempt) => ({
+          timestamp: new Date().toISOString(),
+          step: 'yt_dlp_attempt',
+          phase: 'subtitles',
+          ...attempt,
+        })),
+      ],
+      domStats: debugState.domStats,
+    },
   };
 }
 
@@ -362,11 +462,23 @@ async function getBilibiliSubtitlesResult(url, options = {}) {
     throw new Error(`无法解析视频 ID: ${url}`);
   }
 
+  const debugState = createDebugState();
+  recordStep(debugState, 'subtitles_started', { url, videoId });
   const cookiesFromBrowser = options.noCookies ? null : (options.cookiesFromBrowser || 'firefox');
-  const subtitles = await getSubtitles(url, videoId, {
+  const subtitleResult = await getSubtitles(url, videoId, {
     cookiesFromBrowser,
     noCookies: !!options.noCookies,
     subLangs: options.subLangs,
+  });
+  recordStep(debugState, 'subtitles_loaded', {
+    attemptCount: subtitleResult.processTrace.length,
+    fallbackUsed: subtitleResult.fallbackUsed,
+    subtitleLanguages: Object.keys(subtitleResult.subtitles || {}),
+  });
+  recordDomStat(debugState, 'subtitle_process', {
+    attemptCount: subtitleResult.processTrace.length,
+    fallbackUsed: subtitleResult.fallbackUsed,
+    subtitleFileCount: subtitleResult.subtitleFileCount,
   });
 
   return {
@@ -375,8 +487,27 @@ async function getBilibiliSubtitlesResult(url, options = {}) {
     data: {
       id: videoId,
       source_url: url,
-      subtitles,
-      subtitle_languages: Object.keys(subtitles || {}),
+      subtitles: subtitleResult.subtitles,
+      subtitle_languages: Object.keys(subtitleResult.subtitles || {}),
+    },
+    metrics: {
+      videoId,
+      subtitleLanguageCount: Object.keys(subtitleResult.subtitles || {}).length,
+      subtitleFileCount: subtitleResult.subtitleFileCount,
+      subtitleAttemptCount: subtitleResult.processTrace.length,
+      fallbackUsed: subtitleResult.fallbackUsed,
+    },
+    debug: {
+      steps: [
+        ...debugState.steps,
+        ...subtitleResult.processTrace.map((attempt) => ({
+          timestamp: new Date().toISOString(),
+          step: 'yt_dlp_attempt',
+          phase: 'subtitles',
+          ...attempt,
+        })),
+      ],
+      domStats: debugState.domStats,
     },
   };
 }

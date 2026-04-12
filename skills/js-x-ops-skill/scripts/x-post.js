@@ -50,6 +50,7 @@ const { BrowserAutomation } = require('../lib/js-eyes-client');
 const path = require('path');
 const fs = require('fs').promises;
 const { getPost } = require('../lib/api');
+const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const {
     DEFAULT_GRAPHQL_FEATURES,
     BEARER_TOKEN,
@@ -91,7 +92,12 @@ function parseArgs() {
         threadMax: 25,         // 串推最大条数
         image: null,           // 发帖时附带的图片路径（--image path，仅单条或串推第1条）
         quote: null,           // Quote Tweet 引用目标（URL 或 ID，--quote url，需与 --post 搭配）
-        domOnly: false         // 强制 DOM 模式，跳过 GraphQL CreateTweet（--dom-only）
+        domOnly: false,        // 强制 DOM 模式，跳过 GraphQL CreateTweet（--dom-only）
+        recordingMode: null,
+        recordingBaseDir: null,
+        noCache: false,
+        debugRecording: false,
+        runId: null,
     };
 
     let collectingThread = false;
@@ -163,6 +169,24 @@ function parseArgs() {
                     break;
                 case 'domonly':
                     options.domOnly = true;
+                    break;
+                case 'recordingmode':
+                    options.recordingMode = nextArg;
+                    i++;
+                    break;
+                case 'recordingbasedir':
+                    options.recordingBaseDir = nextArg;
+                    i++;
+                    break;
+                case 'runid':
+                    options.runId = nextArg;
+                    i++;
+                    break;
+                case 'nocache':
+                    options.noCache = true;
+                    break;
+                case 'debugrecording':
+                    options.debugRecording = true;
                     break;
                 default:
                     console.warn(`未知选项: ${arg}`);
@@ -257,6 +281,11 @@ function printUsage() {
     console.log('  --thread-delay <ms>       串推每条之间延迟毫秒（默认 3500，建议 3～5 秒防限流）');
     console.log('  --thread-max <n>          串推最大条数（默认 25）');
     console.log('  --image <path>            发帖时附带图片（仅单条或串推第1条）');
+    console.log('  --recording-mode <mode>   off | history | standard | debug');
+    console.log('  --debug-recording         强制开启 debug recording');
+    console.log('  --no-cache                禁用 recording cache');
+    console.log('  --recording-base-dir <dir> 自定义 recording 落盘目录');
+    console.log('  --run-id <id>            自定义本次运行 ID');
     console.log('\n示例:');
     console.log('  node scripts/x-post.js https://x.com/elonmusk/status/1234567890');
     console.log('  node scripts/x-post.js 1234567890 9876543210 --pretty');
@@ -2468,6 +2497,15 @@ async function main() {
     if (!isPostMode) console.log(`输出文件: ${outputPath}`);
     console.log('='.repeat(60));
 
+    const runtimeConfig = resolveRuntimeConfig({
+        browserServer: options.browserServer,
+        recording: {
+            ...(options.recordingMode ? { mode: options.recordingMode } : {}),
+            ...(options.recordingBaseDir ? { baseDir: options.recordingBaseDir } : {}),
+        },
+    });
+    options.browserServer = runtimeConfig.serverUrl;
+
     const browser = new BrowserAutomation(options.browserServer);
 
     try {
@@ -2627,6 +2665,7 @@ async function main() {
             const result = await getPost(browser, tweetIds, {
                 ...options,
                 logger: console,
+                recording: runtimeConfig.recording,
             });
 
             const output = options.pretty

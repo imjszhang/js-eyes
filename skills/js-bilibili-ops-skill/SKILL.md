@@ -34,3 +34,23 @@ metadata:
 node skills/js-bilibili-ops-skill/index.js video "https://www.bilibili.com/video/BVxxxx"
 node skills/js-bilibili-ops-skill/index.js subtitles "https://www.bilibili.com/video/BVxxxx" --pretty
 ```
+
+## Recording
+
+`js-bilibili-ops-skill` 现已接入统一的 skill recording 底座，支持调用历史、结果缓存和调试记录。
+
+- 默认记录模式跟随 `js-eyes` 全局配置中的 `recording.mode`
+- CLI 可覆盖：
+  - `--recording-mode off|history|standard|debug`
+  - `--debug-recording`
+  - `--no-cache`
+  - `--recording-base-dir /absolute/path`
+  - `--run-id custom-id`
+
+该技能的 debug 语义以子进程链路为主，重点记录：
+
+- `yt-dlp` 调用命令与参数摘要
+- 每次尝试的 exit code
+- stderr 摘要与 cookie fallback 情况
+
+默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-bilibili-ops-skill/`。

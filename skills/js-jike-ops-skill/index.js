@@ -19,6 +19,12 @@ function printUsage() {
   for (const [command, info] of Object.entries(COMMANDS)) {
     console.log(`  ${command.padEnd(12)} ${info.description}`);
   }
+  console.log('\n常用选项:');
+  console.log('  --recording-mode off|history|standard|debug');
+  console.log('  --debug-recording');
+  console.log('  --no-cache');
+  console.log('  --recording-base-dir /absolute/path');
+  console.log('  --run-id custom-id');
 }
 
 async function main() {

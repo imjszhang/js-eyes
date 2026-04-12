@@ -4,6 +4,7 @@ const manifest = require('./openclaw-plugin/openclaw.plugin.json');
 const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
 const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require('./lib/api');
+const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
   { name: 'search', description: '搜索 X 平台内容' },
@@ -22,8 +23,10 @@ function makeLogger(logger) {
 
 function createRuntime(config = {}, logger) {
   const resolvedLogger = makeLogger(logger);
+  const resolvedConfig = resolveRuntimeConfig(config);
   const runtimeConfig = {
-    serverUrl: config.jsEyesServerUrl || config.serverUrl || 'ws://localhost:18080',
+    serverUrl: resolvedConfig.serverUrl,
+    recording: resolvedConfig.recording,
     requestTimeout: Number(config.requestTimeout || 60),
     defaultMaxPages: Number(config.defaultMaxPages || 3),
   };
@@ -84,7 +87,7 @@ const TOOL_DEFINITIONS = [
       required: ['keyword'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return searchTweets(runtime.ensureBot(), params.keyword, {
         maxPages: params.maxPages || runtime.config.defaultMaxPages,
         sort: params.sort || 'top',
@@ -97,6 +100,8 @@ const TOOL_DEFINITIONS = [
         excludeReplies: params.excludeReplies || false,
         excludeRetweets: params.excludeRetweets || false,
         logger: runtime.logger,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -119,7 +124,7 @@ const TOOL_DEFINITIONS = [
       required: ['username'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return getProfileTweets(runtime.ensureBot(), params.username, {
         maxPages: params.maxPages || runtime.config.defaultMaxPages,
         maxTweets: params.maxTweets || 0,
@@ -129,6 +134,8 @@ const TOOL_DEFINITIONS = [
         includeRetweets: params.includeRetweets || false,
         minLikes: params.minLikes || 0,
         logger: runtime.logger,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -149,12 +156,14 @@ const TOOL_DEFINITIONS = [
       required: ['tweetUrl'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       const inputs = params.tweetUrl.split(',').map((item) => item.trim()).filter(Boolean);
       return getPost(runtime.ensureBot(), inputs, {
         withThread: params.withThread || false,
         withReplies: params.withReplies || 0,
         logger: runtime.logger,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -174,7 +183,7 @@ const TOOL_DEFINITIONS = [
       },
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return getHomeFeed(runtime.ensureBot(), {
         feed: params.feed || 'foryou',
         maxPages: params.maxPages || runtime.config.defaultMaxPages,
@@ -183,6 +192,8 @@ const TOOL_DEFINITIONS = [
         excludeReplies: params.excludeReplies || false,
         excludeRetweets: params.excludeRetweets || false,
         logger: runtime.logger,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -198,8 +209,8 @@ function createOpenClawAdapter(config = {}, logger) {
       description: tool.description,
       parameters: tool.parameters,
       optional: tool.optional,
-      async execute(_toolCallId, params) {
-        const result = await tool.execute(runtime, params);
+      async execute(toolCallId, params) {
+        const result = await tool.execute(runtime, params, { toolCallId });
         return runtime.jsonResult(result);
       },
     })),

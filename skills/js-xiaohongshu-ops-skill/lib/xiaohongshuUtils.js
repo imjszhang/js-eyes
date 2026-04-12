@@ -1,6 +1,11 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,6 +44,18 @@ async function waitForReady(browser, tabId, timeoutMs = 15000) {
     }
     await sleep(700);
   }
+}
+
+async function getXhsDomStats(browser, tabId) {
+  return browser.executeScript(
+    tabId,
+    `(() => ({
+      commentItemCount: document.querySelectorAll('.comments-container .comment-item').length,
+      imageCount: document.querySelectorAll('meta[name="og:image"], meta[property="og:image"]').length,
+      scrollHeight: document.documentElement.scrollHeight,
+      title: document.title
+    }))()`,
+  );
 }
 
 function cookieHeaderFromCookies(cookies) {
@@ -272,24 +289,35 @@ async function scrapeXhsNote(browser, url, options = {}) {
 
   let tabId = null;
   let shouldClose = false;
+  const debugState = createDebugState();
 
   try {
+    recordStep(debugState, 'open_tab_started', { url });
     const opened = await openOrReuseTab(browser, url);
     tabId = opened.tabId;
     shouldClose = !opened.isReused;
+    recordStep(debugState, 'open_tab_completed', opened);
 
     await waitForReady(browser, tabId);
+    recordStep(debugState, 'page_ready', { tabId });
+    recordDomStat(debugState, 'before_capture', await getXhsDomStats(browser, tabId));
 
     const [html, cookies, userAgent] = await Promise.all([
       browser.getTabHtml(tabId),
       browser.getCookies(tabId),
       browser.executeScript(tabId, 'navigator.userAgent'),
     ]);
+    recordStep(debugState, 'html_captured', { htmlLength: html.length });
 
     void cookies;
     void userAgent;
     const domCommentInfo = extractXhsCommentsFromHtml(html);
     const pageCommentInfo = await fetchXhsCommentsInPage(browser, tabId, url, options.maxCommentPages || 0);
+    recordStep(debugState, 'comments_collected', {
+      domCommentCount: domCommentInfo.comments.length,
+      pageCommentCount: pageCommentInfo.comments.length,
+      pageCommentError: pageCommentInfo.error,
+    });
     const commentInfo = mergeCommentInfo(domCommentInfo, pageCommentInfo);
 
     return {
@@ -297,7 +325,27 @@ async function scrapeXhsNote(browser, url, options = {}) {
       sourceUrl: url,
       timestamp: new Date().toISOString(),
       data: extractNoteContent(html, url, commentInfo),
+      metrics: {
+        htmlLength: html.length,
+        domCommentCount: domCommentInfo.comments.length,
+        pageCommentCount: pageCommentInfo.comments.length,
+        totalCommentsCount: commentInfo.totalCount,
+        maxCommentPages: Number(options.maxCommentPages || 0),
+        pageCommentError: pageCommentInfo.error || null,
+      },
+      debug: {
+        steps: debugState.steps,
+        domStats: debugState.domStats,
+        rawHtml: options.runContext?.recording?.saveRawHtml ? html : undefined,
+      },
     };
+  } catch (error) {
+    recordStep(debugState, 'scrape_failed', { message: error.message });
+    error.debug = {
+      steps: debugState.steps,
+      domStats: debugState.domStats,
+    };
+    throw error;
   } finally {
     if (tabId && shouldClose) {
       try {

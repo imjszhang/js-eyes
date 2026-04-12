@@ -196,3 +196,16 @@ skills/js-x-ops-skill/
     ├── x-post.js             # 推文详情脚本
     └── x-home.js             # 首页推荐脚本
 ```
+
+## Recording
+
+`js-x-ops-skill` 现已接入统一的 skill recording 底座，覆盖 `search / profile / post / home` 四类只读内容抓取。
+
+- 默认记录模式跟随 `js-eyes` 全局配置中的 `recording.mode`
+- OpenClaw 工具调用会统一透传 `toolCallId -> runId`
+
+特殊处理约定：
+
+- 保留现有 GraphQL 请求级缓存，不直接替换。
+- skill recording cache 只缓存最终结构化结果，避免与 queryId / timeline 请求缓存语义冲突。
+- debug bundle 重点记录 GraphQL 路径、DOM fallback、限流/重试和分页过程日志。

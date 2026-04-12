@@ -46,6 +46,7 @@
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const path = require('path');
 const { searchTweets } = require('../lib/api');
+const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const {
     DEFAULT_GRAPHQL_FEATURES,
     BEARER_TOKEN,
@@ -105,7 +106,12 @@ function parseArgs() {
         excludeReplies: false,
         excludeRetweets: false,
         hasLinks: false,
-        resume: null
+        resume: null,
+        recordingMode: null,
+        recordingBaseDir: null,
+        noCache: false,
+        debugRecording: false,
+        runId: null,
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -179,6 +185,24 @@ function parseArgs() {
                 case 'resume':
                     options.resume = nextArg;
                     i++;
+                    break;
+                case 'recordingmode':
+                    options.recordingMode = nextArg;
+                    i++;
+                    break;
+                case 'recordingbasedir':
+                    options.recordingBaseDir = nextArg;
+                    i++;
+                    break;
+                case 'runid':
+                    options.runId = nextArg;
+                    i++;
+                    break;
+                case 'nocache':
+                    options.noCache = true;
+                    break;
+                case 'debugrecording':
+                    options.debugRecording = true;
                     break;
                 default:
                     console.warn(`未知选项: ${arg}`);
@@ -669,6 +693,11 @@ function printUsage() {
     console.log('  --exclude-retweets         排除转推');
     console.log('  --has-links                仅含链接的推文');
     console.log('  --resume <dir>             从中断的搜索目录恢复继续');
+    console.log('  --recording-mode <mode>    off | history | standard | debug');
+    console.log('  --debug-recording          强制开启 debug recording');
+    console.log('  --no-cache                 禁用 recording cache');
+    console.log('  --recording-base-dir <dir> 自定义 recording 落盘目录');
+    console.log('  --run-id <id>             自定义本次运行 ID');
     console.log('\n示例:');
     console.log('  node scripts/x-search.js "AI agent"');
     console.log('  node scripts/x-search.js "AI agent" --sort latest --max-pages 3');
@@ -743,6 +772,15 @@ async function main() {
     console.log(`输出文件: ${outputPath}`);
     console.log('='.repeat(60));
 
+    const runtimeConfig = resolveRuntimeConfig({
+        browserServer: options.browserServer,
+        recording: {
+            ...(options.recordingMode ? { mode: options.recordingMode } : {}),
+            ...(options.recordingBaseDir ? { baseDir: options.recordingBaseDir } : {}),
+        },
+    });
+    options.browserServer = runtimeConfig.serverUrl;
+
     const browser = new BrowserAutomation(options.browserServer);
 
     try {
@@ -750,6 +788,7 @@ async function main() {
             ...options,
             logger: console,
             _outputDir: outputDir,
+            recording: runtimeConfig.recording,
         });
 
         const output = options.pretty

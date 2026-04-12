@@ -1,0 +1,16 @@
+{
+  "name": "@js-eyes/skill-recording",
+  "version": "1.5.1",
+  "description": "Shared recording helpers for JS Eyes skills",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@js-eyes/runtime-paths": "1.5.1"
+  }
+}

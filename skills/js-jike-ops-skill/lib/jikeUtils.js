@@ -1,6 +1,11 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,6 +50,18 @@ async function waitForReady(browser, tabId, timeoutMs = 15000) {
     }
     await sleep(700);
   }
+}
+
+async function getJikeDomStats(browser, tabId) {
+  return browser.executeScript(
+    tabId,
+    `(() => ({
+      commentCount: document.querySelectorAll('[data-clickable-feedback="true"]').length,
+      imageCount: document.querySelectorAll('img').length,
+      scrollHeight: document.documentElement.scrollHeight,
+      title: document.title
+    }))()`,
+  );
 }
 
 function extractSingleJikeComment($, $comment, isReply = false) {
@@ -244,25 +261,46 @@ function extractJikeContent(html, url) {
   };
 }
 
-async function scrapeJikePost(browser, inputUrl) {
+async function scrapeJikePost(browser, inputUrl, options = {}) {
   const url = normalizeJikeUrl(inputUrl);
   let tabId = null;
   let shouldClose = false;
+  const debugState = createDebugState();
 
   try {
+    recordStep(debugState, 'open_tab_started', { url });
     const opened = await openOrReuseTab(browser, url);
     tabId = opened.tabId;
     shouldClose = !opened.isReused;
+    recordStep(debugState, 'open_tab_completed', opened);
 
     await waitForReady(browser, tabId);
+    recordStep(debugState, 'page_ready', { tabId });
+    recordDomStat(debugState, 'before_capture', await getJikeDomStats(browser, tabId));
     const html = await browser.getTabHtml(tabId);
+    recordStep(debugState, 'html_captured', { htmlLength: html.length });
 
     return {
       platform: 'jike',
       sourceUrl: url,
       timestamp: new Date().toISOString(),
       data: extractJikeContent(html, url),
+      metrics: {
+        htmlLength: html.length,
+      },
+      debug: {
+        steps: debugState.steps,
+        domStats: debugState.domStats,
+        rawHtml: options.runContext?.recording?.saveRawHtml ? html : undefined,
+      },
     };
+  } catch (error) {
+    recordStep(debugState, 'scrape_failed', { message: error.message });
+    error.debug = {
+      steps: debugState.steps,
+      domStats: debugState.domStats,
+    };
+    throw error;
   } finally {
     if (tabId && shouldClose) {
       try {

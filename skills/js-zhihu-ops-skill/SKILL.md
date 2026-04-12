@@ -28,3 +28,21 @@ metadata:
 node skills/js-zhihu-ops-skill/index.js answer "https://www.zhihu.com/question/1/answer/2" --pretty
 node skills/js-zhihu-ops-skill/index.js article "https://zhuanlan.zhihu.com/p/123456" --pretty
 ```
+
+## Recording
+
+`js-zhihu-ops-skill` 现已接入统一的 skill recording 底座，支持调用历史、结果缓存和调试记录。
+
+- 默认记录模式跟随 `js-eyes` 全局配置中的 `recording.mode`
+- CLI 可覆盖：
+  - `--recording-mode off|history|standard|debug`
+  - `--debug-recording`
+  - `--no-cache`
+  - `--recording-base-dir /absolute/path`
+  - `--run-id custom-id`
+
+默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-zhihu-ops-skill/`，其中包含：
+
+- `history/`：按月滚动的调用历史 `jsonl`
+- `cache/answer`、`cache/article`：按内容类型区分的结构化缓存
+- `debug/`：调试模式下的页面步骤、DOM 统计和结果快照

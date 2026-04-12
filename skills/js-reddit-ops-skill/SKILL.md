@@ -26,3 +26,21 @@ metadata:
 ```bash
 node skills/js-reddit-ops-skill/index.js post "https://www.reddit.com/r/test/comments/xxxx/title/" --pretty
 ```
+
+## Recording
+
+`js-reddit-ops-skill` 现在支持调用历史、结果缓存和调试记录。
+
+- 默认记录模式跟随 `js-eyes` 全局配置中的 `recording.mode`
+- 可通过 CLI 覆盖：
+  - `--recording-mode off|history|standard|debug`
+  - `--debug-recording`
+  - `--no-cache`
+  - `--recording-base-dir /absolute/path`
+  - `--run-id custom-id`
+
+默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-reddit-ops-skill/`，其中包含：
+
+- `history/`：按月滚动的调用历史 `jsonl`
+- `cache/`：结构化抓取结果缓存
+- `debug/`：调试模式下的步骤时间线、DOM 统计与结果快照

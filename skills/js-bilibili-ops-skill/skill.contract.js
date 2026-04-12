@@ -3,6 +3,7 @@
 const manifest = require('./openclaw-plugin/openclaw.plugin.json');
 const pkg = require('./package.json');
 const { getVideo, getSubtitles } = require('./lib/api');
+const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
   { name: 'video', description: '读取 Bilibili 视频元数据' },
@@ -10,10 +11,12 @@ const CLI_COMMANDS = [
 ];
 
 function createRuntime(config = {}, logger) {
+  const resolvedConfig = resolveRuntimeConfig(config);
   return {
     config: {
       cookiesFromBrowser: config.cookiesFromBrowser || 'firefox',
       subLangs: config.subLangs || 'zh-Hans,zh-Hant,ai-zh',
+      recording: resolvedConfig.recording,
     },
     logger: logger || console,
     textResult(text) {
@@ -39,11 +42,13 @@ const TOOL_DEFINITIONS = [
       required: ['url'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return getVideo(params.url, {
         cookiesFromBrowser: runtime.config.cookiesFromBrowser,
         subLangs: runtime.config.subLangs,
         includeSubtitles: params.includeSubtitles !== false,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -59,10 +64,12 @@ const TOOL_DEFINITIONS = [
       required: ['url'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return getSubtitles(params.url, {
         cookiesFromBrowser: runtime.config.cookiesFromBrowser,
         subLangs: runtime.config.subLangs,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
       });
     },
   },
@@ -78,8 +85,8 @@ function createOpenClawAdapter(config = {}, logger) {
       description: tool.description,
       parameters: tool.parameters,
       optional: tool.optional,
-      async execute(_toolCallId, params) {
-        const result = await tool.execute(runtime, params);
+      async execute(toolCallId, params) {
+        const result = await tool.execute(runtime, params, { toolCallId });
         return runtime.jsonResult(result);
       },
     })),

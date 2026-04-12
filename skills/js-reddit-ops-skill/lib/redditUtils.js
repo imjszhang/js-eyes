@@ -1,6 +1,11 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const {
+  createDebugState,
+  recordDomStat,
+  recordStep,
+} = require('@js-eyes/skill-recording');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -375,15 +380,34 @@ async function expandMoreReplies(browser, tabId, options = {}) {
   );
 }
 
-async function prepareRedditDom(browser, tabId) {
+async function prepareRedditDom(browser, tabId, debugState) {
+  const initialDom = await getCommentDomStats(browser, tabId);
+  recordDomStat(debugState, 'initial_dom', initialDom);
+
   await waitForCommentsReady(browser, tabId, 20000);
-  await scrollRedditThread(browser, tabId);
+  const beforePrepare = await getCommentDomStats(browser, tabId);
+  recordDomStat(debugState, 'before_prepare', beforePrepare);
+
+  const scrollResult = await scrollRedditThread(browser, tabId);
+  recordStep(debugState, 'scroll_thread_completed', scrollResult);
+  const afterScroll = await getCommentDomStats(browser, tabId);
+  recordDomStat(debugState, 'after_scroll', afterScroll);
 
   let previousSignature = '';
+  const preparePasses = [];
   for (let pass = 0; pass < 3; pass += 1) {
     const collapsedResult = await expandCollapsedComments(browser, tabId);
     const moreRepliesResult = await expandMoreReplies(browser, tabId);
     const stats = await getCommentDomStats(browser, tabId);
+    const passSummary = {
+      pass: pass + 1,
+      collapsedResult,
+      moreRepliesResult,
+      stats,
+    };
+    preparePasses.push(passSummary);
+    recordStep(debugState, 'prepare_pass_completed', passSummary);
+    recordDomStat(debugState, `prepare_pass_${pass + 1}`, stats);
     const signature = JSON.stringify(stats);
 
     if (
@@ -394,6 +418,14 @@ async function prepareRedditDom(browser, tabId) {
     }
     previousSignature = signature;
   }
+
+  const afterPrepare = await getCommentDomStats(browser, tabId);
+  recordDomStat(debugState, 'after_prepare', afterPrepare);
+  return {
+    beforePrepare,
+    afterPrepare,
+    preparePasses,
+  };
 }
 
 function extractSingleRedditComment($, $comment) {
@@ -552,27 +584,51 @@ function extractRedditContent(html, url) {
   };
 }
 
-async function scrapeRedditPost(browser, url) {
+async function scrapeRedditPost(browser, url, options = {}) {
   assertRedditUrl(url);
 
   let tabId = null;
   let shouldClose = false;
+  const debugState = createDebugState();
+  const metrics = {};
 
   try {
+    recordStep(debugState, 'open_tab_started', { url });
     const opened = await openOrReuseTab(browser, url);
     tabId = opened.tabId;
     shouldClose = !opened.isReused;
+    recordStep(debugState, 'open_tab_completed', opened);
 
     await waitForReady(browser, tabId);
-    await prepareRedditDom(browser, tabId);
+    recordStep(debugState, 'page_ready', { tabId });
+    const prepareMetrics = await prepareRedditDom(browser, tabId, debugState);
+    metrics.beforePrepare = prepareMetrics.beforePrepare;
+    metrics.afterPrepare = prepareMetrics.afterPrepare;
+    metrics.preparePasses = prepareMetrics.preparePasses;
     const html = await browser.getTabHtml(tabId);
+    recordStep(debugState, 'html_captured', { htmlLength: html.length });
+
+    const data = extractRedditContent(html, url);
 
     return {
       platform: 'reddit',
       sourceUrl: url,
       timestamp: new Date().toISOString(),
-      data: extractRedditContent(html, url),
+      data,
+      metrics,
+      debug: {
+        steps: debugState.steps,
+        domStats: debugState.domStats,
+        rawHtml: options.runContext?.recording?.saveRawHtml ? html : undefined,
+      },
     };
+  } catch (error) {
+    recordStep(debugState, 'scrape_failed', { message: error.message });
+    error.debug = {
+      steps: debugState.steps,
+      domStats: debugState.domStats,
+    };
+    throw error;
   } finally {
     if (tabId && shouldClose) {
       try {

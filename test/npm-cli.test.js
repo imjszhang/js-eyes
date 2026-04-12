@@ -6,13 +6,18 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadConfig, parseConfigValue, setConfigValue } = require('@js-eyes/config');
+const { loadConfig, mergeRecordingConfig, parseConfigValue, saveConfig, setConfigValue } = require('@js-eyes/config');
 const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/protocol');
 const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/protocol/skills');
 const protocolPkg = require('@js-eyes/protocol/package.json');
 const { getYtDlpCommand: getBilibiliYtDlpCommand } = require('../skills/js-bilibili-ops-skill/lib/bilibiliUtils');
 const { getYtDlpCommand: getYoutubeYtDlpCommand } = require('../skills/js-youtube-ops-skill/lib/youtubeUtils');
-const { ensureRuntimePaths, getPaths, resolveLegacyBaseDir } = require('@js-eyes/runtime-paths');
+const { ensureRuntimePaths, ensureSkillRecordPaths, getPaths, getSkillRecordPaths, resolveLegacyBaseDir } = require('@js-eyes/runtime-paths');
+const { createSkillRunContext } = require('@js-eyes/skill-recording');
+const { createRunContext } = require('../skills/js-reddit-ops-skill/lib/runContext');
+const { appendHistory } = require('../skills/js-reddit-ops-skill/lib/history');
+const { readCacheEntry, writeCacheEntry } = require('../skills/js-reddit-ops-skill/lib/cache');
+const { writeDebugBundle } = require('../skills/js-reddit-ops-skill/lib/debug');
 const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv } = require('../apps/cli/src/cli');
 
 describe('runtime paths', () => {
@@ -39,6 +44,7 @@ describe('runtime paths', () => {
     assert.equal(paths.configFile, path.join(tempHome, 'config', 'config.json'));
     assert.equal(paths.downloadsDir, path.join(tempHome, 'downloads'));
     assert.equal(paths.skillsDir, path.join(tempHome, 'skills'));
+    assert.equal(paths.skillRecordsDir, path.join(tempHome, 'skill-records'));
   });
 
   it('uses ~/.js-eyes as the default runtime directory when not overridden', () => {
@@ -94,12 +100,34 @@ describe('runtime paths', () => {
     assert.equal(initial.serverHost, 'localhost');
     assert.equal(initial.serverPort, 18080);
     assert.deepEqual(initial.skillsEnabled, {});
+    assert.equal(initial.recording.mode, 'standard');
+    assert.equal(initial.recording.cacheTtlMinutes, 60);
 
     setConfigValue('serverPort', 19090);
     setConfigValue('skillsEnabled.js-x-ops-skill', true);
+    setConfigValue('recording.mode', 'debug');
     const next = loadConfig();
     assert.equal(next.serverPort, 19090);
     assert.equal(next.skillsEnabled['js-x-ops-skill'], true);
+    assert.equal(next.recording.mode, 'debug');
+  });
+
+  it('preserves recording defaults when only one nested field is saved', () => {
+    saveConfig({ recording: { mode: 'history' } });
+    const config = loadConfig();
+    assert.equal(config.recording.mode, 'history');
+    assert.equal(config.recording.cacheTtlMinutes, 60);
+    assert.equal(config.recording.saveRawHtml, false);
+  });
+
+  it('derives per-skill record directories outside installed skill roots', () => {
+    const paths = getSkillRecordPaths('js-reddit-ops-skill');
+    assert.equal(paths.skillDir, path.join(tempHome, 'skill-records', 'js-reddit-ops-skill'));
+    assert.equal(paths.historyDir, path.join(tempHome, 'skill-records', 'js-reddit-ops-skill', 'history'));
+
+    const ensured = ensureSkillRecordPaths('js-reddit-ops-skill');
+    assert.equal(fs.existsSync(ensured.cacheDir), true);
+    assert.equal(fs.existsSync(ensured.debugDir), true);
   });
 });
 
@@ -110,6 +138,13 @@ describe('config parsing', () => {
     assert.equal(parseConfigValue('null'), null);
     assert.deepEqual(parseConfigValue('{"a":1}'), { a: 1 });
     assert.equal(parseConfigValue('hello'), 'hello');
+  });
+
+  it('merges recording defaults with overrides', () => {
+    const merged = mergeRecordingConfig({ mode: 'debug' }, { baseDir: '/tmp/js-eyes-records' });
+    assert.equal(merged.mode, 'debug');
+    assert.equal(merged.baseDir, '/tmp/js-eyes-records');
+    assert.equal(merged.cacheTtlMinutes, 60);
   });
 });
 
@@ -255,6 +290,115 @@ module.exports = {
     });
     assert.equal(result.status, 0);
     assert.equal(result.stdout, '["echo","hello"]');
+  });
+});
+
+describe('skill recording helpers', () => {
+  const originalHome = process.env.JS_EYES_HOME;
+  let tempHome;
+
+  beforeEach(() => {
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-recording-'));
+    process.env.JS_EYES_HOME = tempHome;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.JS_EYES_HOME;
+    } else {
+      process.env.JS_EYES_HOME = originalHome;
+    }
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  });
+
+  it('creates run contexts with cache and debug policy', () => {
+    const context = createRunContext({
+      skillId: 'js-reddit-ops-skill',
+      scrapeType: 'reddit_post',
+      skillVersion: '1.0.0',
+      url: 'https://www.reddit.com/r/test/comments/abc123/example/?utm_source=test',
+      recording: {
+        mode: 'debug',
+        baseDir: '',
+        cacheTtlMinutes: 5,
+        saveRawHtml: true,
+        maxDebugBundles: 2,
+      },
+    });
+
+    assert.equal(context.normalizedUrl, 'https://www.reddit.com/r/test/comments/abc123/example');
+    assert.equal(context.recording.cacheEnabled, true);
+    assert.equal(context.recording.debugEnabled, true);
+    assert.equal(context.paths.skillDir, path.join(tempHome, 'skill-records', 'js-reddit-ops-skill'));
+  });
+
+  it('creates generic run contexts with injected normalization and cache key parts', () => {
+    const context = createSkillRunContext({
+      skillId: 'js-zhihu-ops-skill',
+      scrapeType: 'zhihu_answer',
+      skillVersion: '1.0.0',
+      url: 'https://www.zhihu.com/question/1/answer/2/?utm_source=test',
+      recording: {
+        mode: 'history',
+        baseDir: '',
+        cacheTtlMinutes: 30,
+        saveRawHtml: false,
+        maxDebugBundles: 5,
+      },
+      normalizeInput: (input) => input.replace(/\/\?utm_source=test$/, ''),
+      buildCacheKeyParts: ({ skillId, scrapeType, normalizedInput }) => ({
+        skillId,
+        scrapeType,
+        url: normalizedInput,
+      }),
+    });
+
+    assert.equal(context.normalizedUrl, 'https://www.zhihu.com/question/1/answer/2');
+    assert.equal(context.recording.historyEnabled, true);
+    assert.equal(context.recording.cacheEnabled, false);
+  });
+
+  it('writes history, cache, and debug bundles into skill-specific directories', () => {
+    const context = createRunContext({
+      skillId: 'js-reddit-ops-skill',
+      scrapeType: 'reddit_post',
+      skillVersion: '1.0.0',
+      url: 'https://www.reddit.com/r/test/comments/abc123/example/',
+      runId: 'run-test',
+      recording: {
+        mode: 'debug',
+        baseDir: '',
+        cacheTtlMinutes: 5,
+        saveRawHtml: true,
+        maxDebugBundles: 3,
+      },
+    });
+
+    const historyPath = appendHistory(context, { run_id: context.runId, status: 'success' });
+    assert.equal(fs.existsSync(historyPath), true);
+
+    const cacheEntry = writeCacheEntry(context, {
+      response: {
+        platform: 'reddit',
+        scrapeType: 'reddit_post',
+        timestamp: new Date().toISOString(),
+        sourceUrl: context.sourceUrl,
+        result: { title: 'Example', comments: [] },
+        metrics: { status: 'success' },
+      },
+    });
+    assert.equal(fs.existsSync(cacheEntry.filePath), true);
+    assert.equal(readCacheEntry(context).cacheKey, context.cacheKey);
+
+    const bundleDir = writeDebugBundle(context, {
+      meta: { runId: context.runId },
+      steps: [{ step: 'started' }],
+      domStats: [{ label: 'before_prepare', commentCount: 0 }],
+      result: { ok: true },
+      rawHtml: '<html></html>',
+    });
+    assert.equal(fs.existsSync(path.join(bundleDir, 'meta.json')), true);
+    assert.equal(fs.existsSync(path.join(bundleDir, 'raw.html')), true);
   });
 });
 

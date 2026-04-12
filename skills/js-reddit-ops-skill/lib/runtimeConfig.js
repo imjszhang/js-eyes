@@ -1,0 +1,42 @@
+'use strict';
+
+const { loadConfig, mergeRecordingConfig, DEFAULT_RECORDING_CONFIG } = require('@js-eyes/config');
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function safeLoadGlobalConfig() {
+  try {
+    return loadConfig();
+  } catch (_) {
+    return {};
+  }
+}
+
+function resolveServerUrl(globalConfig, overrides = {}) {
+  return overrides.jsEyesServerUrl
+    || overrides.browserServer
+    || overrides.serverUrl
+    || `ws://${globalConfig.serverHost || 'localhost'}:${globalConfig.serverPort || 18080}`;
+}
+
+function resolveRecordingConfig(globalConfig = {}, overrides = {}) {
+  return mergeRecordingConfig(globalConfig.recording, overrides);
+}
+
+function resolveRuntimeConfig(overrides = {}) {
+  const globalConfig = safeLoadGlobalConfig();
+  return {
+    globalConfig,
+    serverUrl: resolveServerUrl(globalConfig, overrides),
+    recording: resolveRecordingConfig(globalConfig, overrides.recording),
+  };
+}
+
+module.exports = {
+  DEFAULT_RECORDING_CONFIG,
+  resolveRecordingConfig,
+  resolveRuntimeConfig,
+  safeLoadGlobalConfig,
+};
