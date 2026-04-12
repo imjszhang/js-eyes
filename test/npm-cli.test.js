@@ -10,6 +10,8 @@ const { loadConfig, parseConfigValue, setConfigValue } = require('@js-eyes/confi
 const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/protocol');
 const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/protocol/skills');
 const protocolPkg = require('@js-eyes/protocol/package.json');
+const { getYtDlpCommand: getBilibiliYtDlpCommand } = require('../skills/js-bilibili-ops-skill/lib/bilibiliUtils');
+const { getYtDlpCommand: getYoutubeYtDlpCommand } = require('../skills/js-youtube-ops-skill/lib/youtubeUtils');
 const { ensureRuntimePaths, getPaths, resolveLegacyBaseDir } = require('@js-eyes/runtime-paths');
 const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv } = require('../apps/cli/src/cli');
 
@@ -253,5 +255,42 @@ module.exports = {
     });
     assert.equal(result.status, 0);
     assert.equal(result.stdout, '["echo","hello"]');
+  });
+});
+
+describe('video skill yt-dlp resolution', () => {
+  const originalPath = process.env.PATH;
+  const originalYtDlpPath = process.env.YTDLP_PATH;
+  let tempBinDir;
+
+  beforeEach(() => {
+    tempBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-ytdlp-'));
+    const filename = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    fs.writeFileSync(path.join(tempBinDir, filename), '');
+    process.env.PATH = [tempBinDir, originalPath || ''].filter(Boolean).join(path.delimiter);
+    delete process.env.YTDLP_PATH;
+  });
+
+  afterEach(() => {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+
+    if (originalYtDlpPath === undefined) {
+      delete process.env.YTDLP_PATH;
+    } else {
+      process.env.YTDLP_PATH = originalYtDlpPath;
+    }
+
+    fs.rmSync(tempBinDir, { recursive: true, force: true });
+  });
+
+  it('prefers yt-dlp binaries discoverable from PATH', () => {
+    const expectedPath = path.join(tempBinDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+
+    assert.equal(getYoutubeYtDlpCommand().command, expectedPath);
+    assert.equal(getBilibiliYtDlpCommand().command, expectedPath);
   });
 });

@@ -6,8 +6,18 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const fsPromises = fs.promises;
-const YTDLP_PATH = path.join(__dirname, '..', '.venv', 'Scripts', 'yt-dlp.exe');
 const DEFAULT_REMOTE_COMPONENTS = process.env.YTDLP_REMOTE_COMPONENTS || 'ejs:github';
+const YTDLP_FILENAMES = process.platform === 'win32'
+  ? ['yt-dlp.exe', 'yt-dlp.cmd', 'yt-dlp.bat']
+  : ['yt-dlp'];
+const LOCAL_YTDLP_PATHS = [
+  path.join(__dirname, '..', '.venv', 'Scripts', 'yt-dlp.exe'),
+  path.join(__dirname, '..', '.venv', 'bin', 'yt-dlp'),
+];
+const COMMON_YTDLP_PATHS = [
+  '/opt/homebrew/bin/yt-dlp',
+  '/usr/local/bin/yt-dlp',
+];
 
 function extractVideoId(url) {
   const patterns = [
@@ -58,18 +68,66 @@ function getUserSiteYtDlpPath() {
   return null;
 }
 
+function getBundledYtDlpPath() {
+  for (const candidate of LOCAL_YTDLP_PATHS) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getPathYtDlpPath() {
+  const pathValue = process.env.PATH || '';
+  if (!pathValue) {
+    return null;
+  }
+
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const filename of YTDLP_FILENAMES) {
+      const candidate = path.join(dir, filename);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getCommonYtDlpPath() {
+  for (const candidate of COMMON_YTDLP_PATHS) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function getYtDlpCommand() {
   if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
     return { command: process.env.YTDLP_PATH, prefixArgs: [] };
   }
-  if (fs.existsSync(YTDLP_PATH)) {
-    return { command: YTDLP_PATH, prefixArgs: [] };
+  const bundledYtDlp = getBundledYtDlpPath();
+  if (bundledYtDlp) {
+    return { command: bundledYtDlp, prefixArgs: [] };
   }
   const userSiteYtDlp = getUserSiteYtDlpPath();
   if (userSiteYtDlp) {
     return { command: userSiteYtDlp, prefixArgs: [] };
   }
-  return { command: 'python', prefixArgs: ['-m', 'yt_dlp'] };
+  const pathYtDlp = getPathYtDlpPath();
+  if (pathYtDlp) {
+    return { command: pathYtDlp, prefixArgs: [] };
+  }
+  const commonYtDlp = getCommonYtDlpPath();
+  if (commonYtDlp) {
+    return { command: commonYtDlp, prefixArgs: [] };
+  }
+  return { command: process.platform === 'win32' ? 'python' : 'python3', prefixArgs: ['-m', 'yt_dlp'] };
 }
 
 async function checkYtDlp() {
@@ -348,6 +406,7 @@ async function getYoutubeSubtitlesResult(url, options = {}) {
 
 module.exports = {
   extractVideoId,
+  getYtDlpCommand,
   getYoutubeSubtitlesResult,
   getYoutubeVideoDetails,
 };
