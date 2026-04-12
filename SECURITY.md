@@ -33,7 +33,7 @@ All of the above use **localhost** or the host/port you set in OpenClaw plugin c
 ## Dependencies
 
 - **Runtime:** Only `ws` (WebSocket library) is required in the skill bundle. It is used for local WebSocket communication only.
-- **Excluded from ClawHub bundle:** Browser extensions (`chrome-extension/`, `firefox-extension/`), CLI, tests, and docs are not part of the skill package (see `.clawhubignore`). Code that references external URLs (e.g. GitHub API, Cloudflare) lives only in those excluded paths and is **not** shipped to ClawHub.
+- **Excluded from ClawHub bundle:** Browser extensions (`extensions/`), CLI, tests, and docs are not part of the skill package (see `.clawhubignore`). Code that references external URLs (e.g. GitHub API, Cloudflare) lives only in those excluded paths and is **not** shipped to ClawHub.
 
 ---
 

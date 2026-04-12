@@ -19,8 +19,7 @@ const {
     setupAutomationClient,
     resolveRequest,
   },
-} = require('../server/ws-handler');
-
+} = require('@js-eyes/server-core/ws-handler');
 // ── helpers ──────────────────────────────────────────────────────────
 
 function createMockSocket(readyState = 1) {

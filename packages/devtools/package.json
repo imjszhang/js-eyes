@@ -1,0 +1,11 @@
+{
+  "name": "@js-eyes/devtools",
+  "version": "1.5.0",
+  "description": "Internal build and release tools for JS Eyes monorepo",
+  "main": "bin/js-eyes-dev.js",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "archiver": "^7.0.1"
+  }
+}

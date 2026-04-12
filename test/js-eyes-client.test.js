@@ -4,7 +4,7 @@ const { describe, it, before, after, beforeEach, afterEach } = require('node:tes
 const assert = require('node:assert/strict');
 const { WebSocketServer } = require('ws');
 
-const { BrowserAutomation } = require('../clients/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 

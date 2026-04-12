@@ -1,0 +1,18 @@
+{
+  "name": "js-xiaohongshu-ops-skill",
+  "version": "1.0.0",
+  "description": "小红书内容读取技能，提供笔记详情与评论读取",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "note": "node index.js note"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Browser automation for AI agents — control tabs, extract content, execute scripts and manage cookies via WebSocket.
-version: 1.4.3
+version: 1.5.0
 metadata:
   openclaw:
     emoji: "\U0001F441"
@@ -38,10 +38,10 @@ JS Eyes connects a browser extension (Chrome / Edge / Firefox) to an AI agent fr
 
 ```
 Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket ──>  AI Agent (OpenClaw)
- (Chrome/Edge/FF)                     (Node.js)                         (Plugin: index.mjs)
+ (Chrome/Edge/FF)                     (packages/server-core)            (packages/openclaw-plugin)
 ```
 
-The browser extension runs in the user's browser and maintains a persistent WebSocket connection to the JS-Eyes server. The OpenClaw plugin connects to the same server and exposes 7 AI tools + a background service + CLI commands.
+The browser extension runs in the user's browser and maintains a persistent WebSocket connection to the JS-Eyes server. The OpenClaw plugin connects to the same server and exposes 9 AI tools + a background service + CLI commands.
 
 ## Provided AI Tools
 
@@ -54,6 +54,8 @@ The browser extension runs in the user's browser and maintains a persistent WebS
 | `js_eyes_get_html` | Get full HTML content of a tab |
 | `js_eyes_execute_script` | Run JavaScript in a tab and return result |
 | `js_eyes_get_cookies` | Get all cookies for a tab's domain |
+| `js_eyes_discover_skills` | Query the skill registry for available extension skills |
+| `js_eyes_install_skill` | Download, extract, and register an extension skill |
 
 ## CLI Commands
 
@@ -66,26 +68,30 @@ openclaw js-eyes server stop     # Stop the built-in server
 
 ## Skill Bundle Structure
 
-This skill bundle is published from the repository root and contains all files required to run the OpenClaw plugin:
+This document describes the published skill bundle layout. The source repository itself now keeps the real implementation under `apps/` and `packages/`; the legacy top-level paths below are generated only inside the installable bundle:
 
 ```
 js-eyes/
 ├── SKILL.md                        ← Skill entry point (this file)
-├── package.json                    ← Root package — declares ws dependency
+├── package.json                    ← Generated bundle root package (for npm install in extracted bundle)
 ├── LICENSE
 ├── openclaw-plugin/
-│   ├── openclaw.plugin.json        ← Plugin manifest (ID, config schema, UI hints)
-│   ├── package.json                ← ESM module descriptor, declares entry point
-│   └── index.mjs                   ← Plugin logic — registers 7 AI tools, 1 service, CLI
+│   ├── openclaw.plugin.json        ← Compatibility plugin manifest
+│   ├── package.json                ← Compatibility package descriptor
+│   └── index.mjs                   ← Thin compatibility wrapper → packages/openclaw-plugin
+├── packages/
+│   ├── client-sdk/                 ← Real BrowserAutomation SDK implementation
+│   ├── protocol/                   ← Shared protocol + compatibility matrix
+│   ├── server-core/                ← Real HTTP + WebSocket server implementation
+│   └── openclaw-plugin/            ← Real OpenClaw plugin implementation
 ├── server/
-│   ├── index.js                    ← HTTP + WebSocket server
-│   ├── ws-handler.js               ← Connection and message handling
-│   └── package.json
+│   ├── index.js                    ← Compatibility wrapper → packages/server-core
+│   └── ws-handler.js               ← Compatibility wrapper → packages/server-core/ws-handler
 └── clients/
-    └── js-eyes-client.js           ← Node.js client SDK for browser automation
+    └── js-eyes-client.js           ← Compatibility wrapper → packages/client-sdk
 ```
 
-> `openclaw-plugin/index.mjs` imports from `../server/` and `../clients/` via relative paths, so the directory layout above must be preserved — `openclaw-plugin/` cannot be used in isolation.
+> The published bundle keeps the old top-level paths only as compatibility shims. The actual runtime source of truth is `packages/*`.
 
 ## Prerequisites
 
@@ -122,9 +128,9 @@ curl -fsSL https://js-eyes.com/install.sh | bash
 irm https://js-eyes.com/install.ps1 | iex
 ```
 
-> **Alternative (GitHub direct):** If the above is unavailable, use the GitHub raw URL:
+> **Alternative (GitHub release asset):** If the site download is unavailable, use the versioned skill bundle attached to GitHub Releases:
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/imjszhang/js-eyes/main/install.sh | bash
+> curl -L -o js-eyes-skill.zip https://github.com/imjszhang/js-eyes/releases/download/v1.5.0/js-eyes-skill-v1.5.0.zip
 > ```
 
 By default, the skill is installed to `./skills/js-eyes`. To change the location:
@@ -186,11 +192,11 @@ Example config (replace the path with your actual install location — use `pwd`
 }
 ```
 
-> **Path note**: `index.mjs` imports from `../server/` and `../clients/` relative to itself, so the bundle directory layout must be preserved. Point `paths` at the `openclaw-plugin` subdirectory only.
+> **Path note**: point `paths` at the `openclaw-plugin` subdirectory only. The compatibility wrapper inside the bundle will load the real implementation from `packages/openclaw-plugin`.
 
 Restart OpenClaw to load the plugin.
 
-> **For developers**: clone the [full repository](https://github.com/imjszhang/js-eyes) and point `plugins.load.paths` to the `openclaw-plugin` directory inside your clone.
+> **For developers**: clone the [full repository](https://github.com/imjszhang/js-eyes) and point `plugins.load.paths` to `packages/openclaw-plugin` inside your clone.
 
 ## Browser Extension Setup
 
@@ -221,6 +227,24 @@ Expected output:
 
 You can also ask the AI agent to list your browser tabs — it should invoke `js_eyes_get_tabs` and return the tab list.
 
+## Using Skills from the CLI
+
+The published `js-eyes` CLI can also host extension skills directly, without requiring OpenClaw to be the installer of record:
+
+```bash
+# Discover remote + locally installed skills
+js-eyes skills list
+
+# Install and enable a skill
+js-eyes skills install js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+
+# Run a skill command through the js-eyes host
+js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+```
+
+This keeps one shared skill directory for both the CLI host and OpenClaw. OpenClaw still loads the skill through its own `openclaw-plugin` path.
+
 ## Plugin Configuration
 
 | Option | Type | Default | Description |
@@ -246,11 +270,15 @@ js-eyes ships with built-in extension skills that add higher-level capabilities 
 
 | Skill | Location | Description |
 |-------|----------|-------------|
-| **js-search-x** | `skills/js-search-x/` | X.com (Twitter) content scraping — search tweets, user timelines, post details, home feed |
+| **js-x-ops-skill** | `skills/js-x-ops-skill/` | X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows |
 
 Extension skills depend on js-eyes for browser automation and can be registered as separate OpenClaw plugins. See each skill's `SKILL.md` for setup instructions.
 
-To register the js-search-x plugin, add its `openclaw-plugin` path to your `openclaw.json`:
+The same installed skill can now be consumed in two ways:
+- by `js-eyes skill run ...` as a CLI-hosted extension
+- by OpenClaw through the skill's `openclaw-plugin` directory
+
+To register the js-x-ops-skill plugin, add its `openclaw-plugin` path to your `openclaw.json`:
 
 ```json
 {
@@ -258,12 +286,12 @@ To register the js-search-x plugin, add its `openclaw-plugin` path to your `open
     "load": {
       "paths": [
         "/path/to/skills/js-eyes/openclaw-plugin",
-        "/path/to/skills/js-eyes/skills/js-search-x/openclaw-plugin"
+        "/path/to/skills/js-eyes/skills/js-x-ops-skill/openclaw-plugin"
       ]
     },
     "entries": {
       "js-eyes": { "enabled": true },
-      "js-search-x": { "enabled": true }
+      "js-x-ops-skill": { "enabled": true }
     }
   }
 }

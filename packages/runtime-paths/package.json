@@ -1,0 +1,13 @@
+{
+  "name": "@js-eyes/runtime-paths",
+  "version": "1.5.0",
+  "description": "Runtime directories for JS Eyes CLI and services",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,17 +1,130 @@
 {
   "version": 1,
-  "generated": "2026-02-26T10:09:53.928Z",
+  "generated": "2026-04-12T11:42:36.876Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "1.4.3"
+    "version": "1.5.0"
   },
   "skills": [
     {
-      "id": "js-search-x",
-      "name": "JS Search X",
-      "description": "X.com (Twitter) content scraping skill — search tweets, get user timelines, fetch post details and home feed via browser automation.",
+      "id": "js-bilibili-ops-skill",
+      "name": "JS Bilibili Ops Skill",
+      "description": "Bilibili 视频读取 skill，提供视频元数据与字幕读取能力。",
       "version": "1.0.0",
+      "emoji": "🎬",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "bilibili_get_video",
+        "bilibili_get_subtitles"
+      ],
+      "commands": [
+        "video",
+        "subtitles"
+      ],
+      "runtime": {
+        "requiresLocalBrowserCookies": true,
+        "platforms": [
+          "bilibili.com"
+        ]
+      }
+    },
+    {
+      "id": "js-jike-ops-skill",
+      "name": "JS Jike Ops Skill",
+      "description": "即刻内容读取 skill，提供帖子详情、图片、互动数据和评论读取能力。",
+      "version": "1.0.0",
+      "emoji": "💬",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "jike_get_post"
+      ],
+      "commands": [
+        "post"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "okjike.com"
+        ]
+      }
+    },
+    {
+      "id": "js-reddit-ops-skill",
+      "name": "JS Reddit Ops Skill",
+      "description": "Reddit 内容读取 skill，提供帖子详情、图片和评论树读取能力。",
+      "version": "1.0.0",
+      "emoji": "🧵",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "reddit_get_post"
+      ],
+      "commands": [
+        "post"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "reddit.com"
+        ]
+      }
+    },
+    {
+      "id": "js-wechat-ops-skill",
+      "name": "JS WeChat Ops Skill",
+      "description": "微信公众号内容读取 skill，基于 JS-Eyes 浏览器自动化获取文章标题、作者、正文、封面和图片列表。",
+      "version": "1.0.0",
+      "emoji": "📰",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "wechat_get_article"
+      ],
+      "commands": [
+        "article"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "mp.weixin.qq.com"
+        ]
+      }
+    },
+    {
+      "id": "js-x-ops-skill",
+      "name": "JS X Ops Skill",
+      "description": "X.com (Twitter) content operations skill — search content, browse timelines and home feed, read post details, and handle posting workflows via browser automation.",
+      "version": "1.1.0",
       "emoji": "🔍",
       "requires": {
         "skills": [
@@ -21,15 +134,116 @@
           "node"
         ]
       },
-      "downloadUrl": "https://js-eyes.com/skills/js-search-x/js-search-x-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-search-x/js-search-x-skill.zip",
+      "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
         "x_get_profile",
         "x_get_post",
         "x_get_home_feed"
-      ]
+      ],
+      "commands": [
+        "search",
+        "profile",
+        "post",
+        "home"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "requiresLogin": true,
+        "platforms": [
+          "x.com"
+        ]
+      }
+    },
+    {
+      "id": "js-xiaohongshu-ops-skill",
+      "name": "JS Xiaohongshu Ops Skill",
+      "description": "小红书内容读取 skill，提供笔记详情、图片、作者信息和评论读取。",
+      "version": "1.0.0",
+      "emoji": "🌸",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "xhs_get_note"
+      ],
+      "commands": [
+        "note"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "xiaohongshu.com"
+        ]
+      }
+    },
+    {
+      "id": "js-youtube-ops-skill",
+      "name": "JS YouTube Ops Skill",
+      "description": "YouTube 视频读取 skill，提供视频元数据与字幕读取能力。",
+      "version": "1.0.0",
+      "emoji": "📺",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "youtube_get_video",
+        "youtube_get_subtitles"
+      ],
+      "commands": [
+        "video",
+        "subtitles"
+      ],
+      "runtime": {
+        "requiresLocalBrowserCookies": true,
+        "platforms": [
+          "youtube.com"
+        ]
+      }
+    },
+    {
+      "id": "js-zhihu-ops-skill",
+      "name": "JS Zhihu Ops Skill",
+      "description": "知乎内容读取 skill，提供回答与专栏详情读取能力。",
+      "version": "1.0.0",
+      "emoji": "📘",
+      "requires": {
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "zhihu_get_answer",
+        "zhihu_get_article"
+      ],
+      "commands": [
+        "answer",
+        "article"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "zhihu.com"
+        ]
+      }
     }
   ]
 }

@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-04-12
+
+> Publish-oriented monorepo release with npm CLI packaging, unified extension/skill layout, and a cleaned-up build and install flow.
+
+### Added
+
+- **Public npm CLI Package**: Added publishable `js-eyes` CLI under `apps/cli` for local server management, diagnostics, and extension download workflows.
+- **Workspace Runtime Packages**: Split runtime code into dedicated workspace packages for protocol, config, runtime paths, client SDK, server core, OpenClaw plugin, and devtools.
+- **Generated Skill Bundle Layout**: Build pipeline now stages a self-contained `js-eyes` skill bundle with generated compatibility wrappers and versioned release assets.
+- **Extension Skill Registry Flow**: Site build now publishes the skill registry and packaged extension skills using the current `skills/*` workspace layout.
+- **CLI Skill Host Flow**: Added `js-eyes skills ...` and `js-eyes skill run ...` commands so the CLI can discover, install, enable, and execute extension skills directly.
+- **Shared Skill Contract**: Introduced a reusable skill contract/runtime flow so CLI-hosted skills and OpenClaw skill adapters can share one capability definition.
+
+### Changed
+
+- **Source Repository Layout**: Reorganized the project around `apps/`, `packages/`, `extensions/`, and `skills/` to match the publishable product surfaces.
+- **Browser Extension Sources**: Consolidated extension source trees under `extensions/chrome` and `extensions/firefox`.
+- **Build and Release Tooling**: Centralized site generation, extension packaging, skill bundle assembly, version bumping, and release helpers in `packages/devtools`.
+- **Install Script Sources**: `install.sh` and `install.ps1` now prefer published skill bundle assets from `js-eyes.com`, GitHub Releases, and jsDelivr instead of source archive fallbacks.
+- **Version Syncing**: Version bump flow now updates internal `@js-eyes/*` dependency versions alongside package and manifest versions.
+- **X Platform Skill Naming**: Unified the X.com extension skill on `js-x-ops-skill` and removed the duplicate `js-search-x` source tree.
+- **Skill Installation Pipeline**: Main plugin skill discovery/installation and CLI skill management now reuse the same runtime helpers and installed skill layout.
+
+### Removed
+
+- **Legacy Source Trees**: Removed obsolete root-level runtime directories from the source repository, keeping compatibility paths only in the published skill bundle.
+- **Duplicate X Skill Package**: Removed the redundant `skills/js-search-x` implementation and old packaged site artifact.
+
+### Fixed
+
+- **Site Download Links**: Site build now hides extension download buttons when the corresponding release artifacts are unavailable, preventing broken links.
+- **Firefox Packaging Guidance**: Updated installation guidance to avoid invalid manual ZIP-to-XPI packaging flows.
+- **Server Address Consistency**: Synced documentation, site copy, and extension UI defaults to the current `http://localhost:18080` connection flow.
+- **Cross-Extension Copy Consistency**: Aligned Chrome and Firefox popup/help text and skill install examples with the current layout and naming.
+
 ## [1.4.0] - 2026-02-24
 
 > Both Firefox and Chrome extensions are now feature-equivalent for multi-server adaptation.

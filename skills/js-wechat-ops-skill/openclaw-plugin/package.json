@@ -1,0 +1,17 @@
+{
+  "name": "js-wechat-ops-skill",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for js-wechat-ops-skill",
+  "type": "module",
+  "main": "index.mjs",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "openclaw": ">=0.0.0"
+  },
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}

@@ -172,24 +172,16 @@ _tmpdir=$(mktemp -d)
 trap 'rm -rf "$_tmpdir"' EXIT
 
 SKILL_ZIP="${_tmpdir}/skill.zip"
-ARCHIVE_ZIP="${_tmpdir}/archive.zip"
-USE_SKILL_ZIP=0
-
 urls_skill_zip=("${SITE_URL}/js-eyes-skill.zip")
-urls_archive=()
 if [ -n "$TAG" ]; then
-  urls_archive=("https://github.com/${REPO}/archive/refs/tags/${TAG}.zip")
-else
-  urls_archive=("https://github.com/${REPO}/archive/refs/heads/main.zip")
+  VERSION="${TAG#v}"
+  urls_skill_zip+=("https://github.com/${REPO}/releases/download/${TAG}/js-eyes-skill-v${VERSION}.zip")
 fi
+urls_skill_zip+=("https://cdn.jsdelivr.net/gh/${REPO}@main/docs/js-eyes-skill.zip")
 
 info "Downloading skill bundle..."
 
-if try_download "$SKILL_ZIP" "${urls_skill_zip[@]}"; then
-  USE_SKILL_ZIP=1
-elif [ "${#urls_archive[@]}" -gt 0 ] && try_download "$ARCHIVE_ZIP" "${urls_archive[@]}"; then
-  USE_SKILL_ZIP=0
-else
+if ! try_download "$SKILL_ZIP" "${urls_skill_zip[@]}"; then
   err "All download sources failed. Check your network and try again."
   exit 1
 fi
@@ -208,28 +200,7 @@ extract_zip() {
   fi
 }
 
-if [ "$USE_SKILL_ZIP" = "1" ]; then
-  extract_zip "$SKILL_ZIP" "$TARGET"
-else
-  EXTRACT_DIR="${_tmpdir}/extract"
-  mkdir -p "$EXTRACT_DIR"
-  extract_zip "$ARCHIVE_ZIP" "$EXTRACT_DIR"
-  EXTRACTED=""
-  for d in "$EXTRACT_DIR"/*/; do
-    [ -d "$d" ] && EXTRACTED="${d%/}" && break
-  done
-  if [ -z "$EXTRACTED" ]; then
-    err "Failed to extract archive."; exit 1
-  fi
-
-  BUNDLE_FILES="SKILL.md SECURITY.md package.json LICENSE"
-  for f in $BUNDLE_FILES; do
-    [ -f "${EXTRACTED}/${f}" ] && cp "${EXTRACTED}/${f}" "${TARGET}/"
-  done
-  for d in openclaw-plugin server clients; do
-    [ -d "${EXTRACTED}/${d}" ] && cp -r "${EXTRACTED}/${d}" "${TARGET}/"
-  done
-fi
+extract_zip "$SKILL_ZIP" "$TARGET"
 
 # Fix permissions: OpenClaw rejects world-writable plugin paths
 find "$TARGET" -type f -exec chmod 644 {} + 2>/dev/null || true
