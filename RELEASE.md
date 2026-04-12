@@ -1,6 +1,6 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-04-12 19:38:34 +0800
+Last updated: 2026-04-12 21:06:12 +0800
 
 ## Scope
 
@@ -18,6 +18,7 @@ This checklist is for shipping a formal `vX.Y.Z` release from `develop` to `main
 - `gh auth status` works
 - `npm whoami` works for the npm account that owns `js-eyes`
 - `.env` or shell environment contains:
+  - `npm_key` (preferred npm publish token)
   - `AMO_API_KEY`
   - `AMO_API_SECRET`
 - Firefox signing binary is available through the repo install:
@@ -65,8 +66,26 @@ The public CLI package is `apps/cli` with package name `js-eyes`.
 Publish from `main`:
 
 ```bash
-npm publish --workspace apps/cli --access public
+set -a
+source ".env"
+set +a
+
+tmp="$(mktemp)"
+printf '%s\n' \
+  "//registry.npmjs.org/:_authToken=${npm_key}" \
+  "registry=https://registry.npmjs.org/" \
+  > "$tmp"
+
+npm publish --workspace apps/cli --access public --userconfig "$tmp"
+rm -f "$tmp"
 ```
+
+Notes:
+
+- Prefer publishing with the npm token from `.env` to avoid interactive OTP prompts.
+- The repository currently stores the npm publish token under `npm_key`.
+- If `.env` is unavailable, you can export the same value in the shell before publishing.
+- Only fall back to interactive `npm publish ... --otp <code>` when token-based publish is not available for the npm account.
 
 Verify:
 
