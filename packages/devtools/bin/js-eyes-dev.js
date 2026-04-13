@@ -7,7 +7,7 @@
  */
 
 const i18n = require('../i18n');
-const { buildSite, buildChrome, buildFirefox, bump, getVersion } = require('../lib/builder');
+const { buildSite, buildSkillZip, buildChrome, buildFirefox, bump, getVersion } = require('../lib/builder');
 const { gitStatus, gitAddAll, gitCommit, gitPush, gitDiffStat, gitTagExists, generateCommitMessage, ghRelease, ghAvailable } = require('../lib/git');
 const { setupGitHubPages } = require('../lib/github-pages');
 const { setupCloudflare } = require('../lib/cloudflare');
@@ -50,6 +50,9 @@ async function cmdBuild(sub, flags) {
   const target = sub || 'all';
 
   switch (target) {
+    case 'skill':
+      await buildSkillZip();
+      break;
     case 'site':
       await buildSite(t, { clean });
       break;
@@ -235,6 +238,7 @@ function showHelp() {
   console.log(t('help.usage'));
   console.log('');
   console.log(t('help.commands'));
+  console.log(t('help.cmdBuildSkill'));
   console.log(t('help.cmdBuildSite'));
   console.log(t('help.cmdBuildChrome'));
   console.log(t('help.cmdBuildFirefox'));

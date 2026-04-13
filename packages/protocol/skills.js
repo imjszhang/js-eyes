@@ -37,8 +37,20 @@ function resolveSkillsDir(paths, config = {}) {
   return path.resolve('skills');
 }
 
-function getOpenClawConfigPath() {
-  return path.join(os.homedir(), '.openclaw', 'openclaw.json');
+function getOpenClawConfigPath(options = {}) {
+  const env = options.env || process.env;
+  const home = options.home || os.homedir();
+
+  if (env.OPENCLAW_CONFIG_PATH) {
+    return path.resolve(env.OPENCLAW_CONFIG_PATH);
+  }
+  if (env.OPENCLAW_STATE_DIR) {
+    return path.resolve(env.OPENCLAW_STATE_DIR, 'openclaw.json');
+  }
+  if (env.OPENCLAW_HOME) {
+    return path.resolve(env.OPENCLAW_HOME, '.openclaw', 'openclaw.json');
+  }
+  return path.join(home, '.openclaw', 'openclaw.json');
 }
 
 function normalizeSkillMetadata(skillDir) {

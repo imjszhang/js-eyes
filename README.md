@@ -33,7 +33,7 @@ curl -fsSL https://js-eyes.com/install.sh | bash
 irm https://js-eyes.com/install.ps1 | iex
 ```
 
-This downloads the skill bundle, installs dependencies, and prints the OpenClaw registration path. See [Manual Installation](#manual-installation) for other options.
+This downloads the skill bundle, installs dependencies, and prints the OpenClaw registration path. The standard ClawHub/OpenClaw path expects Node.js 22+ for plugin mode. See [Manual Installation](#manual-installation) for other options.
 
 ---
 
@@ -127,9 +127,9 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
 1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.5.1.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
-2. Extract to a directory (e.g. `./skills/js-eyes`)
-3. Run `npm install` inside the extracted folder
-4. Register the plugin in `~/.openclaw/openclaw.json` (see [OpenClaw Plugin](#openclaw-plugin))
+2. Extract to a directory (for example `./skills/js-eyes`)
+3. Run `npm install` inside the extracted folder with Node.js 22 or newer
+4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
 
 ### npm link Development Mode
 
@@ -267,8 +267,16 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 
 ### Setup
 
+Use this order for the standard ClawHub/OpenClaw install path:
+
 1. Install the browser extension in Chrome/Edge/Firefox (same as above)
-2. Add the plugin to your OpenClaw config (`~/.openclaw/openclaw.json`):
+2. Run `npm install` in the skill root with Node.js 22+
+3. Resolve the OpenClaw config path using this precedence:
+   - `OPENCLAW_CONFIG_PATH`
+   - `OPENCLAW_STATE_DIR/openclaw.json`
+   - `OPENCLAW_HOME/.openclaw/openclaw.json`
+   - default `~/.openclaw/openclaw.json`
+4. Add the plugin to the resolved OpenClaw config:
 
 ```json
 {
@@ -289,7 +297,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 }
 ```
 
-3. Restart OpenClaw — the server launches automatically and AI agents can control the browser via registered tools.
+5. Restart or refresh OpenClaw — the server launches automatically and AI agents can control the browser via registered tools.
 
 For local source-repo development, point `plugins.load.paths` directly to the repo-root `openclaw-plugin` directory inside your clone.
 
@@ -320,7 +328,7 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 
 ## Extension Skills
 
-JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. Each skill adds new AI tools and can be installed independently.
+JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. The main ClawHub bundle is intentionally minimal and does **not** preinstall child skills. Each extension skill adds new AI tools and can be installed independently after the base stack is working.
 
 Each skill can now play two roles at once:
 - extend the `js-eyes` CLI with skill-specific commands
@@ -357,7 +365,7 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
-**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID — it downloads, extracts, installs dependencies, and registers the plugin automatically.
+**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID — it downloads, extracts, installs dependencies, and registers the plugin automatically against the resolved OpenClaw config path.
 
 **Via the js-eyes CLI:**
 
@@ -373,13 +381,16 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 ### Prerequisites
 
-- Node.js >= 16
+- Node.js >= 22
 - Run `npm install` in the project root
 - `npm run build:firefox` requires `AMO_API_KEY` and `AMO_API_SECRET` (for Mozilla signing). The repository now installs `web-ext` locally via `npm install`, so no separate global install is required.
 
 ### Build Commands
 
 ```bash
+# Build the main ClawHub/OpenClaw skill bundle only
+npm run build:skill
+
 # Build site (docs/) + skill bundles + skills.json registry
 npm run build:site
 
@@ -398,7 +409,24 @@ npm run bump -- 1.5.1
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
 
+For ClawHub publishing, use the generated bundle output (`dist/skill-bundle/js-eyes/` or the versioned zip in `dist/`) as the source of truth instead of publishing from the monorepo root.
+
 For the maintainer release checklist (`develop` -> `main`, npm CLI publish, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
+
+## Smoke Test
+
+Use this checklist after a fresh ClawHub install:
+
+1. `cd ./skills/js-eyes && npm install`
+2. Confirm the resolved `openclaw.json` contains:
+   - `plugins.load.paths` -> absolute path to `./skills/js-eyes/openclaw-plugin`
+   - `plugins.entries["js-eyes"].enabled` -> `true`
+3. Restart or refresh OpenClaw
+4. Run `openclaw js-eyes status`
+5. Install the browser extension, connect it to `http://localhost:18080`, then run `openclaw js-eyes tabs`
+6. Ask the agent to call `js_eyes_get_tabs`
+7. Ask the agent to call `js_eyes_discover_skills`
+8. Install one child skill with `js_eyes_install_skill` and confirm the plugin path is added to the resolved OpenClaw config
 
 ## Troubleshooting
 

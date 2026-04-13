@@ -21,12 +21,12 @@ window.I18nLocales['en-US'] = {
         deployCmdWin: 'irm https://js-eyes.com/install.ps1 | iex',
         deployCopy: 'Copy',
         deployResult1: '\u2713 js-eyes installed',
-        deployResult2: '\u2713 Plugin registered',
+        deployResult2: '\u2713 Plugin registered in resolved openclaw.json',
         deployResult3: '\u2713 Server auto-started on http://localhost:18080',
         deployResult4: '\u2713 Extension connected — 3 tabs synced',
         btnChrome: 'Chrome / Edge Extension',
         btnFirefox: 'Firefox Extension',
-        deployTip: 'You can also copy the command and send it to your OpenClaw or other Agent.',
+        deployTip: 'You can also copy the command and send it to your OpenClaw or other Agent. Plugin mode expects Node.js 22+.',
     },
     marquee: {
         text: 'WEBSOCKET // TAB MANAGEMENT // REMOTE CONTROL // CONTENT EXTRACTION // COOKIE SYNC // CODE INJECTION // OPENCLAW PLUGIN // HEALTH CHECK // SSE FALLBACK // AUTO DISCOVERY // ADAPTIVE AUTH // WEBSOCKET // TAB MANAGEMENT // REMOTE CONTROL //',
@@ -37,7 +37,7 @@ window.I18nLocales['en-US'] = {
         form: { name: 'Auto-fill Forms', desc: 'AI fills out forms, submits applications, and handles repetitive input tasks automatically. Say goodbye to tedious data entry.' },
         extract: { name: 'Content Extraction', desc: 'AI reads and extracts key information from any webpage \u2014 prices, articles, competitor data \u2014 and summarizes it for you.' },
         multitab: { name: 'Multi-tab Orchestration', desc: 'AI manages multiple tabs simultaneously \u2014 compare products, research topics, or process tasks in parallel like a dedicated assistant.' },
-        zeroconfig: { name: 'Zero Config', desc: 'Install the extension and it just works. Auto-discovers the server, connects instantly \u2014 no ports, no config files, no hassle.' },
+        zeroconfig: { name: 'Guided Setup', desc: 'Install the skill bundle, register the plugin path, and let the extension connect to the built-in server. The workflow is standardized for ClawHub + OpenClaw.' },
         crossbrowser: { name: 'Cross-browser', desc: 'Works on Chrome, Edge, and Firefox. One solution for all major browsers \u2014 your whole team covered regardless of preference.' },
     },
     browsers: {
@@ -49,8 +49,8 @@ window.I18nLocales['en-US'] = {
     workflow: {
         title: 'How It Works',
         step1: { name: 'Install Extension', desc: 'Download and load the browser extension \u2014 the only step you do by hand.' },
-        step2: { name: 'Send to Agent', desc: 'Copy the deploy command and send it to your OpenClaw or other AI Agent. It handles server installation for you.' },
-        step3: { name: 'Auto Connect', desc: 'Agent sets up the server, the extension discovers it automatically \u2014 everything connects with zero config.' },
+        step2: { name: 'Send to Agent', desc: 'Copy the deploy command and send it to your OpenClaw or other AI Agent. It installs the bundle, dependencies, and plugin path for you.' },
+        step3: { name: 'Reload & Connect', desc: 'Refresh OpenClaw, then let the browser extension connect to the built-in server at http://localhost:18080.' },
         step4: { name: 'Just Talk', desc: 'Tell your Agent what to do \u2014 browse, fill forms, extract data. Chat is all you need.' },
     },
     arch: {
@@ -70,7 +70,7 @@ window.I18nLocales['en-US'] = {
         openclaw: {
             name: 'OpenClaw',
             badge: 'PLUGIN',
-            desc: 'Registers as OpenClaw plugin with 7 AI tools, background server, and CLI commands. Works with WhatsApp, Telegram, Discord and 50+ integrations. Zero-config.',
+            desc: 'Registers as an OpenClaw plugin with 9 AI tools, a background server, and CLI commands. Best for the standard ClawHub/OpenClaw path with Node.js 22+.',
             btn: 'Get OpenClaw',
             hot: 'HOT',
         },
@@ -83,7 +83,7 @@ window.I18nLocales['en-US'] = {
     },
     skills: {
         title: 'Extension Skills',
-        subtitle: 'Higher-level capabilities built on top of JS Eyes browser automation. Install individually \u2014 each adds new AI tools.',
+        subtitle: 'Higher-level capabilities built on top of JS Eyes browser automation. The main ClawHub bundle stays minimal, so install child skills individually as needed.',
         installLabel: 'INSTALL',
         xSearch: {
             name: 'X Ops',

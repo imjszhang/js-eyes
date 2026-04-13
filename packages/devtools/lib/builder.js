@@ -150,7 +150,7 @@ function createBundlePackageJson(version) {
       '@js-eyes/server-core': version,
     },
     engines: {
-      node: '>=16.0.0',
+      node: '>=22.0.0',
     },
     license: 'MIT',
   };
@@ -297,6 +297,16 @@ function parseYamlValue(str) {
   let val = str;
   if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
     val = val.slice(1, -1);
+  }
+  if (
+    (val.startsWith('{') && val.endsWith('}')) ||
+    (val.startsWith('[') && val.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(val);
+    } catch {
+      // Leave as string when it is not valid JSON.
+    }
   }
   val = val.replace(/\\U([0-9A-Fa-f]{8})/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
   val = val.replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
@@ -778,8 +788,10 @@ function bump(t, newVersion) {
 
 module.exports = {
   buildSite,
+  buildSkillZip,
   buildChrome,
   buildFirefox,
   bump,
   getVersion,
+  parseSkillFrontmatter,
 };

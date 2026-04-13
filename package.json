@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "npx serve src",
     "build": "node packages/devtools/bin/js-eyes-dev.js build all --clean",
+    "build:skill": "node packages/devtools/bin/js-eyes-dev.js build skill",
     "build:site": "node packages/devtools/bin/js-eyes-dev.js build site --clean",
     "build:chrome": "node packages/devtools/bin/js-eyes-dev.js build chrome",
     "build:firefox": "node packages/devtools/bin/js-eyes-dev.js build firefox",
@@ -24,12 +25,15 @@
     "release": "node packages/devtools/bin/js-eyes-dev.js release",
     "setup:gh-pages": "node packages/devtools/bin/js-eyes-dev.js setup-github-pages",
     "setup:cloudflare": "node packages/devtools/bin/js-eyes-dev.js setup-cloudflare",
-    "test": "node --test test/ws-handler.test.js test/utils.test.js test/js-eyes-client.test.js test/npm-cli.test.js",
+    "test": "node --test test/ws-handler.test.js test/utils.test.js test/js-eyes-client.test.js test/npm-cli.test.js test/skill-bundle.test.js",
     "test:server": "node --test test/ws-handler.test.js",
     "test:extension": "node --test test/utils.test.js",
     "test:client": "node --test test/js-eyes-client.test.js",
     "test:cli": "node --test test/npm-cli.test.js",
     "server": "node apps/cli/bin/js-eyes.js server start --foreground"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "archiver": "^7.0.1",

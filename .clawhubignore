@@ -5,12 +5,19 @@ extensions/
 docs/
 src/
 test/
+apps/
+skills/
 
 # Build artifacts and dependencies
 dist/
 build/
 node_modules/
 work_dir/
+packages/devtools/
+packages/config/
+packages/runtime-paths/
+packages/skill-recording/
+package-lock.json
 *.zip
 *.xpi
 
@@ -24,6 +31,7 @@ config.json.example
 # Project docs already covered by SKILL.md
 README.md
 CHANGELOG.md
+RELEASE.md
 RELEASE_NOTES.md
 
 # Git and IDE
@@ -32,6 +40,9 @@ RELEASE_NOTES.md
 .vscode/
 .idea/
 .cursor/
+*.swp
+*.swo
+*~
 
 # OS files
 .DS_Store
@@ -39,6 +50,14 @@ Thumbs.db
 
 # Logs and temp
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
 *.tmp
 *.temp
 .cache/
+
+# Install helpers not needed inside the bundle
+install.sh
+install.ps1

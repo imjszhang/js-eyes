@@ -122,6 +122,7 @@ module.exports = {
   help: {
     usage: 'Usage: node packages/devtools/bin/js-eyes-dev.js <command> [options]',
     commands: 'Commands:',
+    cmdBuildSkill: '  build skill            Build the main ClawHub skill bundle',
     cmdBuildSite: '  build site             Build site (src/ → docs/)',
     cmdBuildChrome: '  build chrome           Build Chrome extension as ZIP',
     cmdBuildFirefox: '  build firefox          Build & sign Firefox extension',

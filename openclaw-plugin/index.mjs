@@ -440,12 +440,15 @@ function register(api) {
             logger: api.logger,
           });
           let configUpdated = false;
+          let configPath = null;
           try {
-            configUpdated = updateOpenClawSkillEntry({
+            const updateResult = updateOpenClawSkillEntry({
               skillId,
               pluginPath: installResult.pluginPath,
               enabled: true,
-            }).updated;
+            });
+            configUpdated = updateResult.updated;
+            configPath = updateResult.openclawConfigPath;
           } catch (error) {
             api.logger.warn(`[js-eyes] Could not update openclaw.json: ${error.message}`);
           }
@@ -459,14 +462,14 @@ function register(api) {
           ];
 
           if (configUpdated) {
-            lines.push("✓ 已自动更新 ~/.openclaw/openclaw.json");
+            lines.push(`✓ 已自动更新 ${configPath}`);
           } else {
-            lines.push("⚠ 需要手动添加到 ~/.openclaw/openclaw.json:");
+            lines.push(`⚠ 需要手动添加到 ${configPath || "OpenClaw 配置文件"}:`);
             lines.push(`  plugins.load.paths 添加: "${installResult.pluginPath}"`);
             lines.push(`  plugins.entries 添加: "${skillId}": { "enabled": true }`);
           }
           lines.push("");
-          lines.push("请重启 OpenClaw 以加载新技能。");
+          lines.push("请重启 OpenClaw 或开启新会话以加载新技能。");
 
           return textResult(lines.join("\n"));
         } catch (err) {
