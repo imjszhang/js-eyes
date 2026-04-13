@@ -100,10 +100,10 @@ The source repository no longer keeps root-level compatibility trees like `serve
 
 Download the latest release from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest):
 
-- **Chrome/Edge Extension**: `js-eyes-chrome-v1.5.1.zip`
-- **Firefox Extension**: `js-eyes-firefox-v1.5.1.xpi`
+- **Chrome/Edge Extension**: release asset `js-eyes-chrome-v<version>.zip`
+- **Firefox Extension**: release asset `js-eyes-firefox-v<version>.xpi`
 
-Or download directly from [js-eyes.com](https://js-eyes.com).
+Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Firefox buttons on the website open the latest GitHub release so they always point at the current published assets.
 
 ## Manual Installation
 

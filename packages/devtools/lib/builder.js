@@ -69,12 +69,16 @@ function pruneUnavailableExtensionDownloads(assetStates) {
 
   for (const asset of assetStates) {
     if (asset.exists) continue;
+    if (asset.preserveWhenMissing) {
+      console.log(`  ⚠ ${asset.dest} missing from dist/, keeping ${asset.label} download button`);
+      continue;
+    }
     const linkPattern = new RegExp(`\\s*<a id="${asset.linkId}"[\\s\\S]*?<\\/a>\\s*`, 'm');
     html = html.replace(linkPattern, '\n');
     console.log(`  ⚠ ${asset.dest} missing from dist/, hiding ${asset.label} download button`);
   }
 
-  if (assetStates.every((asset) => !asset.exists)) {
+  if (assetStates.every((asset) => !asset.exists && !asset.preserveWhenMissing)) {
     html = html.replace(/\s*<div id="extension-download-links"[\s\S]*?<\/div>\s*/m, '\n');
     console.log('  ⚠ No extension artifacts found in dist/, hiding site download buttons');
   }
@@ -477,12 +481,14 @@ async function buildSite(t, options = {}) {
       dest: 'js-eyes-chrome-latest.zip',
       linkId: 'download-chrome-link',
       label: 'Chrome',
+      preserveWhenMissing: true,
     },
     {
       src: path.join(DIST_DIR, `js-eyes-firefox-v${version}.xpi`),
       dest: 'js-eyes-firefox-latest.xpi',
       linkId: 'download-firefox-link',
       label: 'Firefox',
+      preserveWhenMissing: true,
     },
   ];
   for (const asset of extensionAssets) {
