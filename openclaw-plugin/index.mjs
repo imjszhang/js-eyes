@@ -41,15 +41,15 @@ patchWindowsHide();
 
 const require = createRequire(import.meta.url);
 const manifest = require("./openclaw.plugin.json");
-const { BrowserAutomation } = require("@js-eyes/client-sdk");
-const { createServer } = require("@js-eyes/server-core");
-const { SKILLS_REGISTRY_URL } = require("@js-eyes/protocol");
+const { BrowserAutomation } = require("../packages/client-sdk");
+const { createServer } = require("../packages/server-core");
+const { SKILLS_REGISTRY_URL } = require("../packages/protocol");
 const {
   discoverLocalSkills,
   fetchSkillsRegistry,
   installSkillFromRegistry,
   updateOpenClawSkillEntry,
-} = require("@js-eyes/protocol/skills");
+} = require("../packages/protocol/skills");
 
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
@@ -80,9 +80,9 @@ function resolveSkillRoot() {
 const SKILL_ROOT = resolveSkillRoot();
 const DEFAULT_REGISTRY = SKILLS_REGISTRY_URL;
 
-async function resolvePluginEntry(definition) {
+function resolvePluginEntry(definition) {
   try {
-    const sdk = await import("openclaw/plugin-sdk/plugin-entry");
+    const sdk = require("openclaw/plugin-sdk/plugin-entry");
     if (typeof sdk.definePluginEntry === "function") {
       return sdk.definePluginEntry(definition);
     }
@@ -585,4 +585,4 @@ const definition = {
   register,
 };
 
-export default await resolvePluginEntry(definition);
+export default resolvePluginEntry(definition);

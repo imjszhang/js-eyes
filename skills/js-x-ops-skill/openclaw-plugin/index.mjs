@@ -20,4 +20,4 @@ const definition = {
   register,
 };
 
-export default await resolveOpenClawPluginEntry(definition);
+export default resolveOpenClawPluginEntry(definition);

@@ -94,8 +94,27 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function resolvePluginPath() {
-  return path.dirname(require.resolve('@js-eyes/openclaw-plugin/package.json'));
+  const configuredPath = process.env.JS_EYES_PLUGIN_DIR
+    ? path.resolve(process.env.JS_EYES_PLUGIN_DIR)
+    : null;
+  const repoRoot = path.resolve(__dirname, '..', '..', '..');
+  const candidates = [
+    configuredPath,
+    path.join(repoRoot, 'openclaw-plugin'),
+    path.join(process.cwd(), 'openclaw-plugin'),
+  ].filter(Boolean);
+
+  const pluginDir = candidates.find((candidate) =>
+    fs.existsSync(path.join(candidate, 'openclaw.plugin.json')));
+  if (!pluginDir) {
+    throw new Error('未找到 `openclaw-plugin` 组件目录');
+  }
+  return pluginDir;
 }
 
 function flagsToArgv(flags) {
@@ -125,6 +144,14 @@ function readPackageVersion(specifier) {
   }
 }
 
+function readPluginVersion() {
+  try {
+    return readJson(path.join(resolvePluginPath(), 'package.json')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function getLocalVersions() {
   return {
     cli: pkg.version,
@@ -132,7 +159,7 @@ function getLocalVersions() {
     config: readPackageVersion('@js-eyes/config'),
     runtimePaths: readPackageVersion('@js-eyes/runtime-paths'),
     serverCore: readPackageVersion('@js-eyes/server-core'),
-    openclawPlugin: readPackageVersion('@js-eyes/openclaw-plugin'),
+    openclawPlugin: readPluginVersion(),
   };
 }
 
@@ -212,7 +239,11 @@ async function commandDoctor(flags) {
   print(`Downloads dir: ${paths.downloadsDir}`);
   print(`Skills dir: ${resolveSkillsDir(paths, config)}`);
   print(`Skill records dir: ${resolveSkillRecordsDir({ recordingBaseDir: config.recording?.baseDir })}`);
-  print(`OpenClaw plugin: ${resolvePluginPath()}`);
+  try {
+    print(`OpenClaw plugin: ${resolvePluginPath()}`);
+  } catch (error) {
+    print(`OpenClaw plugin: unavailable (${error.message})`);
+  }
   print(`Configured server: ${endpoint}`);
   print(`Stored PID: ${pid || 'none'}`);
   print(`PID alive: ${pid ? (isProcessAlive(pid) ? 'yes' : 'no') : 'n/a'}`);

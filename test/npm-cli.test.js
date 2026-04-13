@@ -18,7 +18,7 @@ const { createRunContext } = require('../skills/js-reddit-ops-skill/lib/runConte
 const { appendHistory } = require('../skills/js-reddit-ops-skill/lib/history');
 const { readCacheEntry, writeCacheEntry } = require('../skills/js-reddit-ops-skill/lib/cache');
 const { writeDebugBundle } = require('../skills/js-reddit-ops-skill/lib/debug');
-const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv } = require('../apps/cli/src/cli');
+const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv, resolvePluginPath } = require('../apps/cli/src/cli');
 
 describe('runtime paths', () => {
   const originalHome = process.env.JS_EYES_HOME;
@@ -169,12 +169,12 @@ describe('repository layout', () => {
     'js-zhihu-ops-skill',
   ];
 
-  it('keeps runtime entrypoints under packages instead of root compatibility trees', () => {
-    assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'openclaw-plugin', 'index.mjs')), true);
+  it('keeps the OpenClaw plugin as a root-level optional component', () => {
+    assert.equal(fs.existsSync(path.join(repoRoot, 'openclaw-plugin', 'index.mjs')), true);
     assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'server-core', 'index.js')), true);
     assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'client-sdk', 'index.js')), true);
 
-    assert.equal(fs.existsSync(path.join(repoRoot, 'openclaw-plugin', 'index.mjs')), false);
+    assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'openclaw-plugin', 'index.mjs')), false);
     assert.equal(fs.existsSync(path.join(repoRoot, 'server', 'index.js')), false);
     assert.equal(fs.existsSync(path.join(repoRoot, 'clients', 'js-eyes-client.js')), false);
     assert.equal(fs.existsSync(path.join(repoRoot, 'cli', 'cli.js')), false);
@@ -222,6 +222,10 @@ describe('cli helpers', () => {
 
   it('reconstructs argv from parsed flags', () => {
     assert.deepEqual(flagsToArgv({ force: true, port: '19090' }), ['--force', '--port', '19090']);
+  });
+
+  it('resolves the repo-root OpenClaw plugin component path', () => {
+    assert.equal(resolvePluginPath(), path.join(path.resolve(__dirname, '..'), 'openclaw-plugin'));
   });
 });
 

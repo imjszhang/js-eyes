@@ -118,7 +118,7 @@ const SKILL_BUNDLE_STAGE_ROOT = path.join(DIST_DIR, 'skill-bundle');
 const MAIN_SKILL_STAGE_DIR = path.join(SKILL_BUNDLE_STAGE_ROOT, 'js-eyes');
 const MAIN_SKILL_DIST_ASSET = (version) => path.join(DIST_DIR, `js-eyes-skill-v${version}.zip`);
 const INSTALL_SCRIPTS = ['install.sh', 'install.ps1'];
-const BUNDLE_RUNTIME_PACKAGES = ['client-sdk', 'openclaw-plugin', 'protocol', 'server-core'];
+const BUNDLE_RUNTIME_PACKAGES = ['client-sdk', 'protocol', 'server-core'];
 
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
 const SITE_URL = 'https://js-eyes.com';
@@ -142,7 +142,6 @@ function createBundlePackageJson(version) {
     workspaces: ['packages/*'],
     dependencies: {
       '@js-eyes/client-sdk': version,
-      '@js-eyes/openclaw-plugin': version,
       '@js-eyes/protocol': version,
       '@js-eyes/server-core': version,
     },
@@ -150,20 +149,6 @@ function createBundlePackageJson(version) {
       node: '>=16.0.0',
     },
     license: 'MIT',
-  };
-}
-
-function createCompatPluginPackageJson(version) {
-  return {
-    name: 'js-eyes-openclaw-plugin-compat',
-    version,
-    private: true,
-    type: 'module',
-    main: 'index.mjs',
-    license: 'MIT',
-    openclaw: {
-      extensions: ['./index.mjs'],
-    },
   };
 }
 
@@ -191,19 +176,16 @@ function stageRuntimePackages(stageDir) {
   }
 }
 
-function stageCompatWrappers(stageDir, version) {
-  const compatPluginDir = path.join(stageDir, 'openclaw-plugin');
-  ensureDir(compatPluginDir);
-  fs.copyFileSync(
-    path.join(PROJECT_ROOT, 'packages', 'openclaw-plugin', 'openclaw.plugin.json'),
-    path.join(compatPluginDir, 'openclaw.plugin.json'),
-  );
-  writeFile(path.join(compatPluginDir, 'index.mjs'), 'export { default } from "../packages/openclaw-plugin/index.mjs";\n');
-  writeFile(
-    path.join(compatPluginDir, 'package.json'),
-    JSON.stringify(createCompatPluginPackageJson(version), null, 2) + '\n',
-  );
+function stageOpenClawPlugin(stageDir) {
+  const src = path.join(PROJECT_ROOT, 'openclaw-plugin');
+  const dest = path.join(stageDir, 'openclaw-plugin');
+  if (!fs.existsSync(src)) {
+    throw new Error('Bundle OpenClaw plugin missing: openclaw-plugin');
+  }
+  copyDirSync(src, dest);
+}
 
+function stageCompatWrappers(stageDir, version) {
   const compatServerDir = path.join(stageDir, 'server');
   ensureDir(compatServerDir);
   writeFile(path.join(compatServerDir, 'index.js'), "'use strict';\n\nmodule.exports = require('../packages/server-core');\n");
@@ -237,6 +219,7 @@ function prepareMainSkillBundleStage() {
   );
 
   stageRuntimePackages(MAIN_SKILL_STAGE_DIR);
+  stageOpenClawPlugin(MAIN_SKILL_STAGE_DIR);
   stageCompatWrappers(MAIN_SKILL_STAGE_DIR, version);
 
   return { version, stageDir: MAIN_SKILL_STAGE_DIR };
@@ -706,8 +689,8 @@ function collectVersionFiles() {
     { path: CHROME_MANIFEST, name: 'extensions/chrome/manifest.json', jsonType: 'manifest' },
     { path: FIREFOX_MANIFEST, name: 'extensions/firefox/manifest.json', jsonType: 'manifest' },
     {
-      path: path.join(PROJECT_ROOT, 'packages', 'openclaw-plugin', 'openclaw.plugin.json'),
-      name: 'packages/openclaw-plugin/openclaw.plugin.json',
+      path: path.join(PROJECT_ROOT, 'openclaw-plugin', 'openclaw.plugin.json'),
+      name: 'openclaw-plugin/openclaw.plugin.json',
     },
     {
       path: path.join(PROJECT_ROOT, 'extensions', 'firefox', 'popup', 'package.json'),

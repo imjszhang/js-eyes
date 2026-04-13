@@ -94,9 +94,9 @@ async function fetchSkillsRegistry(registryUrl) {
   return response.json();
 }
 
-async function resolveOpenClawPluginEntry(definition) {
+function resolveOpenClawPluginEntry(definition) {
   try {
-    const sdk = await import('openclaw/plugin-sdk/plugin-entry');
+    const sdk = require('openclaw/plugin-sdk/plugin-entry');
     if (typeof sdk.definePluginEntry === 'function') {
       return sdk.definePluginEntry(definition);
     }

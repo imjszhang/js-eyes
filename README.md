@@ -43,7 +43,7 @@ JS Eyes is a browser extension + WebSocket server that gives AI agents full brow
 
 ```
 Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket ──>  AI Agent (OpenClaw)
- (Chrome/Edge/FF)                     (packages/server-core)            (packages/openclaw-plugin)
+ (Chrome/Edge/FF)                     (packages/server-core)            (openclaw-plugin)
 ```
 
 ### Monorepo Layout
@@ -58,19 +58,19 @@ JS Eyes now uses a publish-oriented monorepo layout:
 | `packages/config` | CLI config loading and persistence |
 | `packages/client-sdk` | Browser automation SDK for Node.js / skills |
 | `packages/server-core` | HTTP + WebSocket server core |
-| `packages/openclaw-plugin` | OpenClaw plugin package |
+| `openclaw-plugin` | Optional OpenClaw plugin component |
 | `packages/devtools` | Internal build/release tooling |
 | `extensions/*` | Browser extension source assets for Chrome/Edge and Firefox |
 | `skills/*` | Independent extension skills built on `@js-eyes/client-sdk` |
 
-The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, `openclaw-plugin/`, or `cli/`. Those legacy paths are generated only inside the published skill bundle for backward compatibility.
+The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, or `cli/`. The `openclaw-plugin/` directory is now a first-class optional component at the repo root.
 
 ### Supported Agent Frameworks
 
 | Framework | Description |
 |-----------|-------------|
 | [apps/cli](./apps/cli) + [packages/server-core](./packages/server-core) | Lightweight built-in server and published npm CLI |
-| [OpenClaw](https://openclaw.ai/) + [packages/openclaw-plugin](./packages/openclaw-plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
+| [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](./openclaw-plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | Full-featured agent framework (separate WS port, HMAC auth, SSE, rate limiting) |
 
 ## Features
@@ -291,7 +291,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 
 3. Restart OpenClaw — the server launches automatically and AI agents can control the browser via registered tools.
 
-For local source-repo development, point `plugins.load.paths` to `packages/openclaw-plugin` inside your clone rather than a root-level `openclaw-plugin` directory.
+For local source-repo development, point `plugins.load.paths` directly to the repo-root `openclaw-plugin` directory inside your clone.
 
 ### Plugin Configuration
 
@@ -315,7 +315,7 @@ For local source-repo development, point `plugins.load.paths` to `packages/openc
 | Browser extension assets | `1.5.1` |
 | `@js-eyes/server-core` | `1.5.1` |
 | `@js-eyes/client-sdk` | `1.5.1` |
-| `@js-eyes/openclaw-plugin` | `1.5.1` |
+| `openclaw-plugin` | `1.5.1` |
 | Skills using `@js-eyes/client-sdk` | `1.5.1` |
 
 ## Extension Skills

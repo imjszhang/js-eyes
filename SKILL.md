@@ -38,7 +38,7 @@ JS Eyes connects a browser extension (Chrome / Edge / Firefox) to an AI agent fr
 
 ```
 Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket ──>  AI Agent (OpenClaw)
- (Chrome/Edge/FF)                     (packages/server-core)            (packages/openclaw-plugin)
+ (Chrome/Edge/FF)                     (packages/server-core)            (openclaw-plugin)
 ```
 
 The browser extension runs in the user's browser and maintains a persistent WebSocket connection to the JS-Eyes server. The OpenClaw plugin connects to the same server and exposes 9 AI tools + a background service + CLI commands.
@@ -68,7 +68,7 @@ openclaw js-eyes server stop     # Stop the built-in server
 
 ## Skill Bundle Structure
 
-This document describes the published skill bundle layout. The source repository itself now keeps the real implementation under `apps/` and `packages/`; the legacy top-level paths below are generated only inside the installable bundle:
+This document describes the published skill bundle layout. The source repository keeps the server and SDK implementation under `packages/`, while `openclaw-plugin/` is now a real top-level optional component:
 
 ```
 js-eyes/
@@ -76,14 +76,13 @@ js-eyes/
 ├── package.json                    ← Generated bundle root package (for npm install in extracted bundle)
 ├── LICENSE
 ├── openclaw-plugin/
-│   ├── openclaw.plugin.json        ← Compatibility plugin manifest
-│   ├── package.json                ← Compatibility package descriptor
-│   └── index.mjs                   ← Thin compatibility wrapper → packages/openclaw-plugin
+│   ├── openclaw.plugin.json        ← Real plugin manifest
+│   ├── package.json                ← Optional component descriptor
+│   └── index.mjs                   ← Real OpenClaw plugin implementation
 ├── packages/
 │   ├── client-sdk/                 ← Real BrowserAutomation SDK implementation
 │   ├── protocol/                   ← Shared protocol + compatibility matrix
 │   ├── server-core/                ← Real HTTP + WebSocket server implementation
-│   └── openclaw-plugin/            ← Real OpenClaw plugin implementation
 ├── server/
 │   ├── index.js                    ← Compatibility wrapper → packages/server-core
 │   └── ws-handler.js               ← Compatibility wrapper → packages/server-core/ws-handler
@@ -192,11 +191,11 @@ Example config (replace the path with your actual install location — use `pwd`
 }
 ```
 
-> **Path note**: point `paths` at the `openclaw-plugin` subdirectory only. The compatibility wrapper inside the bundle will load the real implementation from `packages/openclaw-plugin`.
+> **Path note**: point `paths` at the `openclaw-plugin` subdirectory only.
 
 Restart OpenClaw to load the plugin.
 
-> **For developers**: clone the [full repository](https://github.com/imjszhang/js-eyes) and point `plugins.load.paths` to `packages/openclaw-plugin` inside your clone.
+> **For developers**: clone the [full repository](https://github.com/imjszhang/js-eyes) and point `plugins.load.paths` to the repo-root `openclaw-plugin` directory.
 
 ## Browser Extension Setup
 
