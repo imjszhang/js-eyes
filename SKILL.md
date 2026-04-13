@@ -43,6 +43,95 @@ Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket 
 
 The browser extension runs in the user's browser and maintains a persistent WebSocket connection to the JS-Eyes server. The OpenClaw plugin connects to the same server and exposes 9 AI tools + a background service + CLI commands.
 
+## OpenClaw environment & runtime mode
+
+Before installing or debugging, determine **where OpenClaw reads its config** and whether you are using **OpenClaw plugin mode** (recommended for AI tools) or running **without OpenClaw** (manual server + browser extension, or `js-eyes` CLI for extension skills only).
+
+### Step 0 — OS and environment variables
+
+Pick shell commands by OS, then list OpenClaw-related variables:
+
+**OS hints**
+
+| Check | Windows | macOS / Linux |
+|-------|---------|----------------|
+| OS | `echo %OS%` or `$env:OS` (PowerShell) | `uname -s` |
+| Home | `%USERPROFILE%` | `$HOME` |
+| Default OpenClaw state dir | `%USERPROFILE%\.openclaw\` | `~/.openclaw/` |
+| Default config file | `%USERPROFILE%\.openclaw\openclaw.json` | `~/.openclaw/openclaw.json` |
+
+**Environment variables**
+
+```powershell
+# Windows (PowerShell)
+Get-ChildItem Env: | Where-Object { $_.Name -match '^OPENCLAW_' }
+```
+
+```bash
+# Windows (CMD / Git Bash) — if grep is available
+set | grep -iE "^OPENCLAW_"
+
+# macOS / Linux
+env | grep -iE "^OPENCLAW_"
+```
+
+| Variable | If set |
+|----------|--------|
+| `OPENCLAW_CONFIG_PATH` | Use this file path as the config file (**highest priority**) |
+| `OPENCLAW_STATE_DIR` | Config is `$OPENCLAW_STATE_DIR/openclaw.json` |
+| `OPENCLAW_HOME` | State dir is `$OPENCLAW_HOME/.openclaw/` → config at `.../.openclaw/openclaw.json` |
+
+**Config resolution order** (first match wins):
+
+1. `OPENCLAW_CONFIG_PATH` → that file
+2. `OPENCLAW_STATE_DIR` → `$OPENCLAW_STATE_DIR/openclaw.json`
+3. `OPENCLAW_HOME` → `$OPENCLAW_HOME/.openclaw/openclaw.json`
+4. Default → `~/.openclaw/openclaw.json` (Windows: `%USERPROFILE%\.openclaw\openclaw.json`)
+
+Use the resolved path in all steps below.
+
+### Step 1 — OpenClaw CLI and plugin registration
+
+1. Check the CLI: Windows `where openclaw`, macOS/Linux `which openclaw`
+2. If found: `openclaw --version`
+3. Open the resolved config JSON and verify:
+   - `plugins.load.paths` includes a path ending in `openclaw-plugin` **inside this skill’s install directory** (the folder that contains `openclaw.plugin.json` next to `index.mjs`)
+   - `plugins.entries["js-eyes"].enabled` is `true` (add the entry if missing — see [Register the plugin](#register-the-plugin))
+
+**Interpretation**
+
+| Condition | Mode |
+|-----------|------|
+| `openclaw` on PATH, path + `js-eyes` entry OK | **OpenClaw plugin mode** — use `openclaw js-eyes ...` and `js_eyes_*` tools |
+| No `openclaw` or plugin not registered | **Without OpenClaw** — start the WebSocket server yourself (or use the install script / `npm` scripts from the bundle), point the browser extension at `ws://<host>:<port>`, optionally use the `js-eyes` CLI for extension skills |
+
+### Mode comparison
+
+| Aspect | OpenClaw plugin mode | Without OpenClaw |
+|--------|---------------------|------------------|
+| Main config | `openclaw.json` → `plugins.entries.js-eyes.config` (`serverHost`, `serverPort`, `autoStartServer`, …) | Server bind address/port however you start `server-core`; extension must match |
+| Commands | `openclaw js-eyes status`, `tabs`, `server …` | Start Node server from the skill/repo; optional `js-eyes skills …` / `js-eyes skill run …` |
+| AI tools (`js_eyes_*`) | Exposed via OpenClaw when the plugin loads | Not available through OpenClaw |
+
+## Deployment probe
+
+Run in order; stop early if OpenClaw is not installed and you only care about standalone server + extension.
+
+> **Prerequisite**: resolve the config file path using [Step 0](#step-0--os-and-environment-variables).
+
+1. **CLI** — `where` / `which openclaw`; if present, `openclaw --version`
+2. **Plugin config** — in `openclaw.json`, confirm `plugins.load.paths` includes this skill’s `openclaw-plugin/` directory and `plugins.entries["js-eyes"]` is enabled; note `serverPort` / `serverHost` / `autoStartServer` from `plugins.entries["js-eyes"].config` if present
+3. **Dependencies** — from the skill root (parent of `openclaw-plugin/`), run `npm install` if you have not already (required for `ws`)
+4. **Runtime** — `openclaw js-eyes status` — expect server uptime and (after extension connect) a non-zero browser client count when appropriate
+5. **Browser** — extension UI shows connected/green for `http://<serverHost>:<serverPort>` (or your custom URL) matching the plugin config
+
+## Config files map
+
+| File | Typical location | Purpose |
+|------|------------------|---------|
+| `openclaw.json` | Resolved via [Step 0](#step-0--os-and-environment-variables) | Register `openclaw-plugin`, enable `js-eyes`, set `serverPort` / `autoStartServer`, etc. |
+| `openclaw-plugin/openclaw.plugin.json` | Inside this skill / repo | Plugin manifest — rarely edited by end users |
+
 ## Provided AI Tools
 
 | Tool | Description |
@@ -163,7 +252,18 @@ npm install
 
 ### Register the plugin
 
-Add the plugin to `~/.openclaw/openclaw.json`. The path must point to the `openclaw-plugin` subdirectory inside the skill, **not** the skill root:
+**OpenClaw plugin registration** — use after the skill files are on disk ([Option A](#option-a--one-command-install-recommended), [Option B](#option-b--clawhub), or a git clone of the repo). For config file location and verification, see [OpenClaw environment & runtime mode](#openclaw-environment--runtime-mode) and [Deployment probe](#deployment-probe).
+
+**Installation steps**
+
+1. `cd` to the skill root (the directory that contains `package.json`, `openclaw-plugin/`, and `SKILL.md`) and run `npm install` if you have not already
+2. Edit the resolved OpenClaw config (usually `~/.openclaw/openclaw.json`; see [Step 0](#step-0--os-and-environment-variables) if unsure)
+3. Append the absolute path to **`openclaw-plugin`** (not the skill root) to `plugins.load.paths`
+4. Ensure `plugins.entries["js-eyes"]` exists with `"enabled": true` and optional `config` (defaults below)
+5. Restart OpenClaw so the plugin loads
+6. Run `openclaw js-eyes status` to confirm
+
+Add the plugin to `openclaw.json`. The path must point to the `openclaw-plugin` subdirectory inside the skill, **not** the skill root:
 
 | Install method | `<SKILL_ROOT>` | Plugin path for `plugins.load.paths` |
 |----------------|----------------|--------------------------------------|
@@ -209,7 +309,7 @@ The plugin talks to browsers through the JS Eyes extension. Install it separatel
 
 ## Verify
 
-Run the CLI command to confirm everything is working:
+For a full OpenClaw-side check (config path, plugin paths, CLI version), follow [Deployment probe](#deployment-probe) first. Then confirm the server and extension:
 
 ```bash
 openclaw js-eyes status
@@ -257,6 +357,7 @@ This keeps one shared skill directory for both the CLI host and OpenClaw. OpenCl
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| Unsure where `openclaw.json` is | Overrides via env vars or non-default install | Use [Step 0](#step-0--os-and-environment-variables) to resolve the path |
 | Extension shows "Disconnected" | Server not running | Check `openclaw js-eyes status`; ensure `autoStartServer` is `true` |
 | `js_eyes_get_tabs` returns empty | No extension connected | Click extension icon, verify address is correct, click Connect |
 | `Cannot find module 'ws'` | Dependencies not installed | Run `npm install` in the skill root (where `package.json` declares `ws`) |
