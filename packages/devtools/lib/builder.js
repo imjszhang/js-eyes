@@ -314,7 +314,7 @@ function parseYamlValue(str) {
 }
 
 function loadSkillContract(skillDir) {
-  const contractPath = path.join(skillDir, 'skill.contract.js');
+  const contractPath = path.resolve(skillDir, 'skill.contract.js');
   if (!fs.existsSync(contractPath)) return null;
   delete require.cache[require.resolve(contractPath)];
   return require(contractPath);
@@ -332,9 +332,10 @@ function discoverSubSkills() {
     const skillMd = path.join(skillDir, 'SKILL.md');
     if (!fs.existsSync(skillMd)) continue;
 
+    const contract = loadSkillContract(skillDir);
+    if (!contract) continue;
     const meta = parseSkillFrontmatter(skillMd);
     if (!meta || !meta.name) continue;
-    const contract = loadSkillContract(skillDir);
 
     const tools = Array.isArray(contract?.openclaw?.tools)
       ? contract.openclaw.tools.map((tool) => tool.name)

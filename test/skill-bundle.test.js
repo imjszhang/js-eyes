@@ -167,4 +167,57 @@ module.exports = {
     assert.deepEqual(summary.registered, ['mock_tool']);
     assert.equal(summary.skipped.length, 1);
   });
+
+  it('ignores parent skill docs without a child skill contract', () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-parent-skill-doc-'));
+    const parentSkillDir = path.join(tempDir, 'js-eyes');
+    fs.mkdirSync(parentSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(parentSkillDir, 'SKILL.md'), [
+      '---',
+      'name: js-eyes',
+      'description: Parent skill compatibility doc',
+      '---',
+      '',
+      '# JS Eyes',
+      '',
+    ].join('\n'));
+
+    const childSkillDir = path.join(tempDir, 'mock-skill');
+    fs.mkdirSync(childSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(childSkillDir, 'package.json'), JSON.stringify({
+      name: 'mock-skill',
+      version: '1.0.0',
+    }, null, 2));
+    fs.writeFileSync(path.join(childSkillDir, 'skill.contract.js'), `
+module.exports = {
+  id: 'mock-skill',
+  name: 'Mock Skill',
+  version: '1.0.0'
+};
+`, 'utf8');
+
+    const skills = discoverLocalSkills(tempDir);
+    assert.deepEqual(skills.map((skill) => skill.id), ['mock-skill']);
+  });
+
+  it('discovers local skills from a relative skills directory path', () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-relative-skills-'));
+    const skillDir = path.join(tempDir, 'mock-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify({
+      name: 'mock-skill',
+      version: '1.0.0',
+    }, null, 2));
+    fs.writeFileSync(path.join(skillDir, 'skill.contract.js'), `
+module.exports = {
+  id: 'mock-skill',
+  name: 'Mock Skill',
+  version: '1.0.0'
+};
+`, 'utf8');
+
+    const relativeSkillsDir = path.relative(process.cwd(), tempDir);
+    const skills = discoverLocalSkills(relativeSkillsDir);
+    assert.deepEqual(skills.map((skill) => skill.id), ['mock-skill']);
+  });
 });
