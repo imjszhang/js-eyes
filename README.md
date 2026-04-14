@@ -223,7 +223,7 @@ js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
-Skill install state is tracked by the CLI runtime directory, while OpenClaw can still consume the same installed skill via its `openclaw-plugin` path.
+Skill install state is tracked by the JS Eyes runtime config. OpenClaw only needs to load the main `js-eyes` plugin; the main plugin auto-discovers enabled local skills from the same runtime `skills/` directory when it starts.
 
 ### CLI Runtime Directory
 
@@ -263,7 +263,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 | `js_eyes_execute_script` | Run JavaScript in a tab and return result |
 | `js_eyes_get_cookies` | Get all cookies for a tab's domain |
 | `js_eyes_discover_skills` | Query the skill registry for available extension skills |
-| `js_eyes_install_skill` | Download, extract, and register an extension skill |
+| `js_eyes_install_skill` | Download, extract, and enable an extension skill so the main plugin can auto-load it |
 
 ### Setup
 
@@ -319,20 +319,22 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `1.5.1` |
-| Browser extension assets | `1.5.1` |
-| `@js-eyes/server-core` | `1.5.1` |
-| `@js-eyes/client-sdk` | `1.5.1` |
-| `openclaw-plugin` | `1.5.1` |
-| Skills using `@js-eyes/client-sdk` | `1.5.1` |
+| CLI | `2.0.0` |
+| Browser extension assets | `2.0.0` |
+| `@js-eyes/server-core` | `2.0.0` |
+| `@js-eyes/client-sdk` | `2.0.0` |
+| `openclaw-plugin` | `2.0.0` |
+| Skills using `@js-eyes/client-sdk` | `2.0.0` |
 
 ## Extension Skills
 
 JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. The main ClawHub bundle is intentionally minimal and does **not** preinstall child skills. Each extension skill adds new AI tools and can be installed independently after the base stack is working.
 
-Each skill can now play two roles at once:
+The recommended hosting model is now:
 - extend the `js-eyes` CLI with skill-specific commands
-- expose the same capability set to OpenClaw through the skill's native `openclaw-plugin`
+- let the main `js-eyes` OpenClaw plugin discover and register enabled local skills during startup
+
+Migration note: child skills no longer ship their own `openclaw-plugin` wrapper files. OpenClaw should keep loading only the main `js-eyes` plugin, which then auto-loads enabled local skills.
 
 | Skill | Description | Tools |
 |-------|-------------|-------|
@@ -365,7 +367,7 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
-**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID — it downloads, extracts, installs dependencies, and registers the plugin automatically against the resolved OpenClaw config path.
+**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID. It downloads, extracts, installs dependencies, enables the skill in the JS Eyes host config, and the main plugin loads it after an OpenClaw restart or a new session.
 
 **Via the js-eyes CLI:**
 
@@ -375,7 +377,7 @@ js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
-**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, and add the plugin path to `openclaw.json`.
+**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, ensure the skill is enabled in the JS Eyes host config, then restart OpenClaw or open a new session.
 
 ## Building
 
@@ -404,7 +406,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 1.5.1
+npm run bump -- 2.0.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
@@ -426,7 +428,7 @@ Use this checklist after a fresh ClawHub install:
 5. Install the browser extension, connect it to `http://localhost:18080`, then run `openclaw js-eyes tabs`
 6. Ask the agent to call `js_eyes_get_tabs`
 7. Ask the agent to call `js_eyes_discover_skills`
-8. Install one child skill with `js_eyes_install_skill` and confirm the plugin path is added to the resolved OpenClaw config
+8. Install one child skill with `js_eyes_install_skill`, restart OpenClaw or open a new session, and confirm the new tools are auto-loaded by the main plugin
 
 ## Troubleshooting
 
@@ -435,7 +437,7 @@ Use this checklist after a fresh ClawHub install:
 | Extension shows "Disconnected" | Check `openclaw js-eyes status`; ensure `autoStartServer` is `true` |
 | `js_eyes_get_tabs` returns empty | Click extension icon, verify address, click Connect |
 | `Cannot find module 'ws'` | Run `npm install` in the skill root |
-| Tools not appearing in OpenClaw | Ensure `plugins.load.paths` points to the `openclaw-plugin` subdirectory |
+| Tools not appearing in OpenClaw | Ensure `plugins.load.paths` points to the main `openclaw-plugin` subdirectory and the target child skill is not disabled in the JS Eyes host config |
 | Plugin path not found (Windows) | Use forward slashes in JSON, e.g. `C:/Users/you/skills/js-eyes/openclaw-plugin` |
 
 ## Related Projects

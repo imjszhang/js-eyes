@@ -16,11 +16,12 @@ const {
 const {
   discoverLocalSkills,
   fetchSkillsRegistry,
+  getLegacyOpenClawSkillState,
   installSkillFromRegistry,
+  isSkillEnabled,
   readSkillById,
   resolveSkillsDir,
   runSkillCli,
-  updateOpenClawSkillEntry,
 } = require('@js-eyes/protocol/skills');
 const pkg = require('../package.json');
 
@@ -126,14 +127,6 @@ function flagsToArgv(flags) {
     }
   }
   return argv;
-}
-
-function getSkillsState(config) {
-  return config.skillsEnabled || {};
-}
-
-function isSkillEnabled(config, skillId) {
-  return getSkillsState(config)[skillId] === true;
 }
 
 function readPackageVersion(specifier) {
@@ -455,9 +448,11 @@ async function commandSkills(positionals, flags) {
 
   switch (action) {
     case 'list': {
-      const enabled = getSkillsState(config);
       const installed = discoverLocalSkills(skillsDir);
       const installedMap = new Map(installed.map((skill) => [skill.id, skill]));
+      const legacyState = getLegacyOpenClawSkillState({
+        skillIds: installed.map((skill) => skill.id),
+      });
       const registryUrl = flags.registry || config.skillsRegistryUrl;
 
       try {
@@ -479,7 +474,7 @@ async function commandSkills(positionals, flags) {
             lines.push(`  Tools: ${skill.tools.join(', ')}`);
           }
           if (local) {
-            lines.push(`  Enabled: ${enabled[skill.id] === true ? 'yes' : 'no'}`);
+            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${local.skillDir}`);
           }
           lines.push('');
@@ -506,7 +501,7 @@ async function commandSkills(positionals, flags) {
           if (skill.tools.length > 0) {
             lines.push(`  Tools: ${skill.tools.join(', ')}`);
           }
-          lines.push(`  Enabled: ${enabled[skill.id] === true ? 'yes' : 'no'}`);
+          lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
           lines.push(`  Installed at: ${skill.skillDir}`);
           lines.push('');
         }
@@ -528,22 +523,12 @@ async function commandSkills(positionals, flags) {
       });
       setConfigValue(`skillsEnabled.${skillId}`, true);
 
-      let ocUpdated = false;
-      try {
-        ocUpdated = updateOpenClawSkillEntry({
-          skillId,
-          pluginPath: result.pluginPath,
-          enabled: true,
-        }).updated;
-      } catch {
-        ocUpdated = false;
-      }
-
       print(`Installed skill: ${result.skill.name || skillId}`);
       print(`Skill id: ${skillId}`);
       print(`Location: ${result.targetDir}`);
-      print(`Plugin path: ${result.pluginPath}`);
-      print(`OpenClaw config updated: ${ocUpdated ? 'yes' : 'no'}`);
+      print('Enabled in JS Eyes host config: yes');
+      print('OpenClaw child plugin config updated: no (main js-eyes plugin auto-loads local skills)');
+      print('Restart OpenClaw or start a new session to load the new skill tools.');
       return;
     }
     case 'enable':
@@ -559,19 +544,9 @@ async function commandSkills(positionals, flags) {
       const enabledValue = action === 'enable';
       setConfigValue(`skillsEnabled.${skillId}`, enabledValue);
 
-      let ocUpdated = false;
-      try {
-        ocUpdated = updateOpenClawSkillEntry({
-          skillId,
-          pluginPath: skill.pluginPath.replace(/\\/g, '/'),
-          enabled: enabledValue,
-        }).updated;
-      } catch {
-        ocUpdated = false;
-      }
-
       print(`${enabledValue ? 'Enabled' : 'Disabled'} skill: ${skillId}`);
-      print(`OpenClaw config updated: ${ocUpdated ? 'yes' : 'no'}`);
+      print('OpenClaw child plugin config updated: no (main js-eyes plugin reads JS Eyes host config)');
+      print('Restart OpenClaw or start a new session for the change to take effect.');
       return;
     }
     default:
@@ -593,7 +568,8 @@ async function commandSkill(positionals, flags) {
   if (!skill) {
     throw new Error(`技能未安装: ${skillId}`);
   }
-  if (!isSkillEnabled(config, skillId)) {
+  const legacyState = getLegacyOpenClawSkillState({ skillIds: [skillId] });
+  if (!isSkillEnabled(config, skillId, legacyState)) {
     throw new Error(`技能已安装但未启用: ${skillId}。请先执行 \`js-eyes skills enable ${skillId}\``);
   }
 

@@ -177,15 +177,11 @@ node skills/js-x-ops-skill/index.js home --feed foryou --max-pages 5
 
 ## 目录结构
 
-```
+```text
 skills/js-x-ops-skill/
 ├── SKILL.md                  # 技能描述（本文件）
 ├── package.json
 ├── index.js                  # CLI 入口
-├── openclaw-plugin/
-│   ├── openclaw.plugin.json  # OpenClaw 插件清单
-│   ├── package.json
-│   └── index.mjs             # 注册 4 个 AI 工具
 ├── lib/
 │   ├── api.js                # 编程 API（searchTweets/getProfileTweets/getPost/getHomeFeed）
 │   ├── js-eyes-client.js     # 浏览器控制（连接 js-eyes WebSocket 服务器）

@@ -1,6 +1,6 @@
 {
   "name": "js-wechat-ops-skill",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "微信公众号内容读取技能，基于 JS-Eyes 浏览器自动化获取文章正文与配图",
   "private": true,
   "main": "index.js",
@@ -12,8 +12,8 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
-    "@js-eyes/config": "^1.5.1",
-    "@js-eyes/skill-recording": "^1.5.1",
+    "@js-eyes/config": "^2.0.0",
+    "@js-eyes/skill-recording": "^2.0.0",
     "cheerio": "^1.1.2",
     "ws": "^8.18.0"
   }

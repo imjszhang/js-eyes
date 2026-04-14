@@ -1,6 +1,5 @@
 'use strict';
 
-const manifest = require('./openclaw-plugin/openclaw.plugin.json');
 const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
 const { getPost } = require('./lib/api');
@@ -87,10 +86,10 @@ function createOpenClawAdapter(config = {}, logger) {
 }
 
 module.exports = {
-  id: manifest.id,
-  name: manifest.name || 'JS Reddit Ops Skill',
-  version: manifest.version || pkg.version,
-  description: manifest.description || pkg.description,
+  id: pkg.name,
+  name: 'JS Reddit Ops Skill',
+  version: pkg.version,
+  description: pkg.description,
   runtime: {
     requiresServer: true,
     requiresBrowserExtension: true,
@@ -101,7 +100,6 @@ module.exports = {
     commands: CLI_COMMANDS,
   },
   openclaw: {
-    manifestPath: './openclaw-plugin/openclaw.plugin.json',
     tools: TOOL_DEFINITIONS.map((tool) => ({
       name: tool.name,
       label: tool.label,

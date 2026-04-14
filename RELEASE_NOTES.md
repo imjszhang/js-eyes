@@ -1,5 +1,38 @@
 # Release Notes
 
+## v2.0.0
+
+### Changes
+- **Single OpenClaw Plugin Model**: OpenClaw now loads only the main `js-eyes` plugin. Installed extension skills are discovered and registered by the main plugin at startup.
+- **Breaking Change - No Child Plugin Wrappers**: Extension skills no longer ship their own `openclaw-plugin` wrapper files or require separate `plugins.load.paths` entries.
+- **Host-Owned Skill Enablement**: Skill enable/disable state now lives in JS Eyes runtime config, with compatibility migration from legacy child plugin `enabled` entries.
+- **Updated Install Flow**: `js_eyes_install_skill` and `js-eyes skills install` now install, enable, and prepare skills for host-side auto-loading after an OpenClaw restart or new session.
+- **Version Line Bump**: Monorepo packages, extension manifests, plugin metadata, and extension skill packages are aligned on `2.0.0`.
+
+### Migration Notes
+- Keep only the main `js-eyes` plugin registered in OpenClaw.
+- Do not add child skill plugin paths manually.
+- Restart OpenClaw or open a new session after installing or enabling a skill.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.0.0/js-eyes-chrome-v2.0.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.0.0/js-eyes-firefox-v2.0.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.0.0/js-eyes-skill-v2.0.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. Install `js-eyes` with `npm install -g js-eyes@2.0.0`
+2. Run `js-eyes --help` to verify the CLI is available
+3. Use `js-eyes skills list` or `js-eyes server start` to verify the local runtime
+
+#### OpenClaw
+1. Keep `plugins.load.paths` pointed only at the main `js-eyes/openclaw-plugin`
+2. Ensure `plugins.entries["js-eyes"].enabled` is `true`
+3. Install skills through `js_eyes_install_skill` or `js-eyes skills install <skillId>`
+4. Restart OpenClaw or start a new session so the main plugin can auto-load enabled skills
+
 ## v1.5.1
 
 ### Changes

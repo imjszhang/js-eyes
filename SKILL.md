@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 1.5.1
+version: 2.0.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -28,7 +28,7 @@ A successful setup has all of the following:
 3. `plugins.entries["js-eyes"].enabled` is `true`.
 4. The user can run `openclaw js-eyes status`.
 5. The browser extension is connected to `http://<serverHost>:<serverPort>` and `js_eyes_get_tabs` returns real tabs.
-6. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically.
+6. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir`.
 
 ## Setup Workflow
 
@@ -132,8 +132,10 @@ The main `js-eyes` bundle is intentionally minimal. It does not preinstall child
 After the base plugin works:
 
 - Use `js_eyes_discover_skills` to list available extension skills.
-- Use `js_eyes_install_skill` to download, install dependencies, and register child skill plugins.
-- Tell the user that newly installed extension skill plugins usually require an OpenClaw restart or a new session before their tools appear.
+- Use `js_eyes_install_skill` to download, install dependencies, and enable extension skills in the JS Eyes host config.
+- Tell the user that newly installed extension skills usually require an OpenClaw restart or a new session before their tools appear because the main `js-eyes` plugin discovers them on startup.
+
+Do not instruct the user to register child-skill plugin paths manually. Child skills no longer ship their own `openclaw-plugin` wrappers.
 
 Prefer the built-in install flow over manual zip extraction when the user wants additional JS Eyes capabilities.
 
@@ -150,6 +152,7 @@ Check all three items:
 1. `plugins.load.paths` points to `{baseDir}/openclaw-plugin`
 2. `plugins.entries["js-eyes"].enabled` is `true`
 3. OpenClaw has been restarted or refreshed since the config change
+4. If this is an extension skill, confirm it is not disabled in the JS Eyes host config or legacy OpenClaw child-plugin entries
 
 ### Browser Extension Stays Disconnected
 
