@@ -336,22 +336,9 @@ function discoverSubSkills() {
     if (!meta || !meta.name) continue;
     const contract = loadSkillContract(skillDir);
 
-    const pluginJson = path.join(skillDir, 'openclaw-plugin', 'openclaw.plugin.json');
-    let pluginMeta = null;
-    if (fs.existsSync(pluginJson)) {
-      try { pluginMeta = JSON.parse(fs.readFileSync(pluginJson, 'utf8')); } catch {}
-    }
-
-    const pluginEntry = path.join(skillDir, 'openclaw-plugin', 'index.mjs');
     const tools = Array.isArray(contract?.openclaw?.tools)
       ? contract.openclaw.tools.map((tool) => tool.name)
       : [];
-    if (tools.length === 0 && fs.existsSync(pluginEntry)) {
-      const src = fs.readFileSync(pluginEntry, 'utf8');
-      const re = /name:\s*["']([a-z_]+)["']/g;
-      let match;
-      while ((match = re.exec(src)) !== null) tools.push(match[1]);
-    }
     const commands = Array.isArray(contract?.cli?.commands)
       ? contract.cli.commands.map((command) => command.name)
       : [];
@@ -361,9 +348,9 @@ function discoverSubSkills() {
       id: meta.name,
       dir: skillDir,
       dirName: entry.name,
-      name: (pluginMeta && pluginMeta.name) || meta.name,
+      name: contract?.name || meta.name,
       description: meta.description || '',
-      version: meta.version || '1.0.0',
+      version: contract?.version || meta.version || '1.0.0',
       emoji: oc.emoji || '',
       homepage: oc.homepage || '',
       requires: oc.requires || {},

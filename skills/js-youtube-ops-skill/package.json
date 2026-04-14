@@ -1,6 +1,6 @@
 {
   "name": "js-youtube-ops-skill",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "YouTube 视频读取技能，提供视频元数据与字幕读取",
   "private": true,
   "main": "index.js",
@@ -13,7 +13,7 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
-    "@js-eyes/config": "^1.5.1",
-    "@js-eyes/skill-recording": "^1.5.1"
+    "@js-eyes/config": "^2.0.0",
+    "@js-eyes/skill-recording": "^2.0.0"
   }
 }

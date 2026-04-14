@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-04-14
+
+> Breaking release that removes child OpenClaw plugin wrappers and makes `js-eyes` the single OpenClaw plugin entrypoint for extension skills.
+
+### Changed
+
+- **Single Plugin Loading Model**: OpenClaw now loads only the main `js-eyes` plugin, which discovers and registers enabled local skills from `skills/` at startup.
+- **Skill Host State**: Extension-skill enablement is now owned by JS Eyes runtime config (`skillsEnabled`) instead of relying on child plugin entries inside `openclaw.json`.
+- **Install Flow**: `js_eyes_install_skill` and `js-eyes skills install` now install and enable local skills for host-side auto-loading instead of writing child plugin paths into OpenClaw config.
+- **Build and Registry Metadata**: Skill packaging and registry generation now read capability metadata directly from `skill.contract.js` and package metadata.
+- **Version Line**: Bumped the monorepo, runtime packages, plugin metadata, extension manifests, and child skill packages to `2.0.0`.
+
+### Removed
+
+- **Child OpenClaw Plugin Wrappers**: Removed `skills/*/openclaw-plugin/` wrapper files from extension skills.
+- **Legacy Child Plugin Registration Flow**: Removed the old runtime helper that wrote child skill `plugins.load.paths` and `plugins.entries` into `openclaw.json`.
+
+### Fixed
+
+- **Duplicate Tool Registration Handling**: Main plugin skill auto-loading now skips duplicate tool names safely and isolates per-skill registration failures.
+- **Legacy Enablement Compatibility**: Existing child-plugin `enabled` state in `openclaw.json` is migrated into JS Eyes host config on first load.
+
 ## [1.5.1] - 2026-04-12
 
 ### Changed

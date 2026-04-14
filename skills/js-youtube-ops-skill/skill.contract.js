@@ -1,6 +1,5 @@
 'use strict';
 
-const manifest = require('./openclaw-plugin/openclaw.plugin.json');
 const pkg = require('./package.json');
 const { getVideo, getSubtitles } = require('./lib/api');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
@@ -94,10 +93,10 @@ function createOpenClawAdapter(config = {}, logger) {
 }
 
 module.exports = {
-  id: manifest.id,
-  name: manifest.name || 'JS YouTube Ops Skill',
-  version: manifest.version || pkg.version,
-  description: manifest.description || pkg.description,
+  id: pkg.name,
+  name: 'JS YouTube Ops Skill',
+  version: pkg.version,
+  description: pkg.description,
   runtime: {
     requiresLocalBrowserCookies: true,
     platforms: ['youtube.com'],
@@ -107,7 +106,6 @@ module.exports = {
     commands: CLI_COMMANDS,
   },
   openclaw: {
-    manifestPath: './openclaw-plugin/openclaw.plugin.json',
     tools: TOOL_DEFINITIONS.map((tool) => ({
       name: tool.name,
       label: tool.label,

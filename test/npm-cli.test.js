@@ -185,10 +185,9 @@ describe('repository layout', () => {
       const skillDir = path.join(repoRoot, 'skills', skillId);
       assert.equal(fs.existsSync(path.join(skillDir, 'skill.contract.js')), true, `${skillId} missing skill.contract.js`);
       assert.equal(fs.existsSync(path.join(skillDir, 'cli', 'index.js')), true, `${skillId} missing cli/index.js`);
-
-      const pluginPkg = require(path.join(skillDir, 'openclaw-plugin', 'package.json'));
-      assert.equal(pluginPkg.engines.node, '>=22.0.0');
-      assert.equal(pluginPkg.peerDependencies.openclaw, '>=0.0.0');
+      assert.equal(fs.existsSync(path.join(skillDir, 'openclaw-plugin', 'index.mjs')), false, `${skillId} should not ship child plugin entry`);
+      assert.equal(fs.existsSync(path.join(skillDir, 'openclaw-plugin', 'package.json')), false, `${skillId} should not ship child plugin package`);
+      assert.equal(fs.existsSync(path.join(skillDir, 'openclaw-plugin', 'openclaw.plugin.json')), false, `${skillId} should not ship child plugin manifest`);
     }
   });
 });
@@ -237,21 +236,11 @@ describe('skill runtime helpers', () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-skill-'));
     skillRoot = path.join(tempRoot, 'mock-skill');
     fs.mkdirSync(path.join(skillRoot, 'cli'), { recursive: true });
-    fs.mkdirSync(path.join(skillRoot, 'openclaw-plugin'), { recursive: true });
 
     fs.writeFileSync(path.join(skillRoot, 'package.json'), JSON.stringify({
       name: 'mock-skill',
       version: '1.0.0',
       description: 'mock skill',
-    }, null, 2));
-    fs.writeFileSync(path.join(skillRoot, 'openclaw-plugin', 'openclaw.plugin.json'), JSON.stringify({
-      id: 'mock-skill',
-      name: 'Mock Skill',
-      description: 'mock skill',
-      configSchema: {
-        type: 'object',
-        additionalProperties: false,
-      },
     }, null, 2));
     fs.writeFileSync(path.join(skillRoot, 'skill.contract.js'), `
 module.exports = {

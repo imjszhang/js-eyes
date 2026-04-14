@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/config",
-  "version": "1.5.1",
+  "version": "2.0.0",
   "description": "Runtime config helpers for JS Eyes CLI",
   "main": "index.js",
   "files": [
@@ -11,7 +11,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/protocol": "1.5.1",
-    "@js-eyes/runtime-paths": "1.5.1"
+    "@js-eyes/protocol": "2.0.0",
+    "@js-eyes/runtime-paths": "2.0.0"
   }
 }

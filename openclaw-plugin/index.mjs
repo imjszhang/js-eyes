@@ -42,13 +42,17 @@ patchWindowsHide();
 const require = createRequire(import.meta.url);
 const manifest = require("./openclaw.plugin.json");
 const { BrowserAutomation } = require("../packages/client-sdk");
+const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
 const { SKILLS_REGISTRY_URL } = require("../packages/protocol");
 const {
   discoverLocalSkills,
   fetchSkillsRegistry,
+  getLegacyOpenClawSkillState,
   installSkillFromRegistry,
-  updateOpenClawSkillEntry,
+  isSkillEnabled,
+  loadSkillContract,
+  registerOpenClawTools,
 } = require("../packages/protocol/skills");
 
 const nodeFs = require("node:fs");
@@ -79,6 +83,17 @@ function resolveSkillRoot() {
 
 const SKILL_ROOT = resolveSkillRoot();
 const DEFAULT_REGISTRY = SKILLS_REGISTRY_URL;
+const BUILTIN_TOOL_NAMES = [
+  "js_eyes_get_tabs",
+  "js_eyes_list_clients",
+  "js_eyes_open_url",
+  "js_eyes_close_tab",
+  "js_eyes_get_html",
+  "js_eyes_execute_script",
+  "js_eyes_get_cookies",
+  "js_eyes_discover_skills",
+  "js_eyes_install_skill",
+];
 
 function resolvePluginEntry(definition) {
   try {
@@ -90,6 +105,63 @@ function resolvePluginEntry(definition) {
     // Fallback for local development without the OpenClaw SDK package installed.
   }
   return definition.register;
+}
+
+function registerLocalSkills(api, skillsDir, pluginConfig) {
+  const localSkills = discoverLocalSkills(skillsDir);
+  if (localSkills.length === 0) {
+    api.logger.info(`[js-eyes] No local skills found in ${skillsDir}`);
+    return;
+  }
+
+  let hostConfig = loadConfig();
+  const legacyState = getLegacyOpenClawSkillState({
+    skillIds: localSkills.map((skill) => skill.id),
+  });
+  let migratedCount = 0;
+  for (const skill of localSkills) {
+    if (!Object.prototype.hasOwnProperty.call(hostConfig.skillsEnabled || {}, skill.id)
+      && Object.prototype.hasOwnProperty.call(legacyState, skill.id)) {
+      setConfigValue(`skillsEnabled.${skill.id}`, legacyState[skill.id]);
+      migratedCount++;
+    }
+  }
+  if (migratedCount > 0) {
+    hostConfig = loadConfig();
+    api.logger.info(`[js-eyes] Migrated ${migratedCount} legacy OpenClaw skill state entr${migratedCount === 1 ? "y" : "ies"} into JS Eyes config`);
+  }
+
+  const registeredNames = new Set(BUILTIN_TOOL_NAMES);
+  for (const skill of localSkills) {
+    if (!isSkillEnabled(hostConfig, skill.id, legacyState)) {
+      api.logger.info(`[js-eyes] Skipping disabled local skill "${skill.id}"`);
+      continue;
+    }
+
+    try {
+      const contract = skill.contract || loadSkillContract(skill.skillDir);
+      if (!contract || typeof contract.createOpenClawAdapter !== "function") {
+        api.logger.warn(`[js-eyes] Skipping local skill "${skill.id}" because createOpenClawAdapter() is missing`);
+        continue;
+      }
+
+      const adapter = contract.createOpenClawAdapter(pluginConfig, api.logger);
+      const summary = registerOpenClawTools(api, adapter, {
+        logger: api.logger,
+        registeredNames,
+        sourceName: skill.id,
+      });
+
+      if (summary.registered.length > 0) {
+        api.logger.info(`[js-eyes] Loaded local skill "${skill.id}" with ${summary.registered.length} tool(s)`);
+      }
+      if (summary.skipped.length > 0 || summary.failed.length > 0) {
+        api.logger.warn(`[js-eyes] Local skill "${skill.id}" completed with ${summary.skipped.length} skipped and ${summary.failed.length} failed tool registration(s)`);
+      }
+    } catch (error) {
+      api.logger.warn(`[js-eyes] Failed to load local skill "${skill.id}": ${error.message}`);
+    }
+  }
 }
 
 function register(api) {
@@ -439,37 +511,17 @@ function register(api) {
             force,
             logger: api.logger,
           });
-          let configUpdated = false;
-          let configPath = null;
-          try {
-            const updateResult = updateOpenClawSkillEntry({
-              skillId,
-              pluginPath: installResult.pluginPath,
-              enabled: true,
-            });
-            configUpdated = updateResult.updated;
-            configPath = updateResult.openclawConfigPath;
-          } catch (error) {
-            api.logger.warn(`[js-eyes] Could not update openclaw.json: ${error.message}`);
-          }
+          setConfigValue(`skillsEnabled.${skillId}`, true);
 
           const lines = [
             `✓ 技能 "${installResult.skill.name}" (${skillId}) 安装成功！`,
             `  安装路径: ${installResult.targetDir}`,
-            `  插件路径: ${installResult.pluginPath}`,
             `  提供工具: ${(installResult.skill.tools || []).join(", ")}`,
             "",
           ];
-
-          if (configUpdated) {
-            lines.push(`✓ 已自动更新 ${configPath}`);
-          } else {
-            lines.push(`⚠ 需要手动添加到 ${configPath || "OpenClaw 配置文件"}:`);
-            lines.push(`  plugins.load.paths 添加: "${installResult.pluginPath}"`);
-            lines.push(`  plugins.entries 添加: "${skillId}": { "enabled": true }`);
-          }
+          lines.push("✓ 已写入 JS Eyes 技能启用状态");
           lines.push("");
-          lines.push("请重启 OpenClaw 或开启新会话以加载新技能。");
+          lines.push("请重启 OpenClaw 或开启新会话，主插件会从 skills 目录自动加载该技能。");
 
           return textResult(lines.join("\n"));
         } catch (err) {
@@ -479,6 +531,8 @@ function register(api) {
     },
     { optional: true },
   );
+
+  registerLocalSkills(api, skillsDir, pluginCfg);
 
   api.registerCli(
     ({ program }) => {
