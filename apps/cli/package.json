@@ -1,6 +1,6 @@
 {
   "name": "js-eyes",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "JS Eyes user CLI for local server management, diagnostics, and extension downloads",
   "main": "src/cli.js",
   "files": [
@@ -12,9 +12,9 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@js-eyes/config": "2.0.0",
-    "@js-eyes/protocol": "2.0.0",
-    "@js-eyes/runtime-paths": "2.0.0",
-    "@js-eyes/server-core": "2.0.0"
+    "@js-eyes/config": "2.0.1",
+    "@js-eyes/protocol": "2.0.1",
+    "@js-eyes/runtime-paths": "2.0.1",
+    "@js-eyes/server-core": "2.0.1"
   }
 }

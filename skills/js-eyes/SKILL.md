@@ -11,10 +11,22 @@ This compatibility skill exists so OpenClaw can resolve `js-eyes` as the parent 
 
 The actual JS Eyes bundle root is the directory that contains this `skills/` folder. The OpenClaw plugin path to register is `<bundle-root>/openclaw-plugin`.
 
+This skill is a marker only. It does not ship runnable supporting files, scripts, reference files, or implementation modules under this directory.
+
+Do not resolve relative implementation paths such as `./lib/...`, `./scripts/...`, or `./references/...` from `skills/js-eyes/`.
+
 Use this skill when:
 
 - Verifying that the main JS Eyes plugin is installed for extension skills.
 - Locating the main OpenClaw plugin path for JS Eyes.
 - Troubleshooting missing `js_eyes_*` tools after installing JS Eyes extensions.
 
-This directory is intentionally documentation-only. The runnable OpenClaw plugin lives in the main bundle's `openclaw-plugin` directory, and JS Eyes extension skills with executable adapters live alongside this folder under `skills/`.
+This directory is intentionally documentation-only.
+
+The runnable OpenClaw plugin lives in the main bundle's `openclaw-plugin` directory.
+
+Executable extension logic lives in concrete child skill directories under `<bundle-root>/skills/<child-skill-id>/`, for example:
+
+- `<bundle-root>/skills/js-zhihu-ops-skill/`
+- `<bundle-root>/skills/js-x-ops-skill/`
+- `<bundle-root>/skills/js-wechat-ops-skill/`
