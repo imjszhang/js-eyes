@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-14T04:22:27.480Z",
+  "generated": "2026-04-14T07:47:42.827Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.0.0"
+    "version": "2.0.1"
   },
   "skills": [
     {

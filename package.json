@@ -1,6 +1,6 @@
 {
   "name": "js-eyes-monorepo",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "JS Eyes monorepo for npm CLI, runtime packages, and extension skills",
   "workspaces": [

@@ -18,10 +18,14 @@ function readJson(filePath) {
 }
 
 function loadSkillContract(skillDir) {
-  const contractPath = path.join(skillDir, SKILL_CONTRACT_FILE);
+  const contractPath = path.resolve(skillDir, SKILL_CONTRACT_FILE);
   if (!fs.existsSync(contractPath)) return null;
   delete require.cache[require.resolve(contractPath)];
   return require(contractPath);
+}
+
+function hasSkillContract(skillDir) {
+  return fs.existsSync(path.join(skillDir, SKILL_CONTRACT_FILE));
 }
 
 function resolveSkillsDir(paths, config = {}) {
@@ -84,13 +88,15 @@ function discoverLocalSkills(skillsDir) {
   const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
   return entries
     .filter((entry) => entry.isDirectory())
-    .map((entry) => normalizeSkillMetadata(path.join(skillsDir, entry.name)))
+    .map((entry) => path.join(skillsDir, entry.name))
+    .filter((skillDir) => hasSkillContract(skillDir))
+    .map((skillDir) => normalizeSkillMetadata(skillDir))
     .filter((skill) => skill && skill.id);
 }
 
 function readSkillById(skillsDir, skillId) {
   const skillDir = path.join(skillsDir, skillId);
-  if (!fs.existsSync(skillDir)) return null;
+  if (!fs.existsSync(skillDir) || !hasSkillContract(skillDir)) return null;
   return normalizeSkillMetadata(skillDir);
 }
 
