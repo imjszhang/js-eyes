@@ -1890,6 +1890,10 @@ class BrowserControl {
         case 'get_cookies_by_domain':
           await this.handleGetCookiesByDomain(payload);
           break;
+
+        case 'get_page_info':
+          await this.handleGetPageInfo(payload);
+          break;
           
         case 'upload_file_to_tab':
           await this.handleUploadFileToTab(payload);
@@ -2487,6 +2491,48 @@ class BrowserControl {
   }
 
   /**
+   * 处理获取页面信息请求（通过 WebSocket 从服务器转发）
+   */
+  async handleGetPageInfo(message) {
+    try {
+      const { tabId, requestId } = message;
+
+      if (!tabId) {
+        this.sendMessage({
+          type: 'error',
+          message: '缺少 tabId 参数',
+          requestId: requestId
+        });
+        return;
+      }
+
+      const tab = await chrome.tabs.get(parseInt(tabId));
+
+      this.sendMessage({
+        type: 'get_page_info_complete',
+        tabId: tab.id,
+        data: {
+          tabId: tab.id,
+          url: tab.url,
+          title: tab.title,
+          status: tab.status,
+          favIconUrl: tab.favIconUrl
+        },
+        requestId: requestId,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('处理获取页面信息请求时出错:', error);
+      this.sendMessage({
+        type: 'error',
+        message: error.message,
+        requestId: message.requestId
+      });
+    }
+  }
+
+  /**
    * 按域名获取cookies（直接从浏览器获取，不需要tabId）
    * @param {string} domain 域名，如 "xiaohongshu.com"
    * @param {boolean} includeSubdomains 是否包含子域名
@@ -2838,79 +2884,43 @@ class BrowserControl {
   async handleUploadFileToTab(message) {
     try {
       const { tabId, files, targetSelector, requestId } = message;
-      
+
       console.log(`开始处理文件上传请求: tabId=${tabId}, files=${files.length}个, requestId=${requestId}`);
-      
-      // 验证参数
+
       if (!tabId || !files || !Array.isArray(files) || files.length === 0) {
         throw new Error('缺少必要参数: tabId, files');
       }
-      
-      // 转换Base64数据为Blob
-      const fileBlobs = [];
-      for (let i = 0; i < files.length; i++) {
-        const fileData = files[i];
-        
-        try {
-          // 解码Base64数据
-          const base64Data = fileData.base64.replace(/^data:[^;]+;base64,/, '');
-          const binaryData = atob(base64Data);
-          
-          // 创建Uint8Array
-          const uint8Array = new Uint8Array(binaryData.length);
-          for (let j = 0; j < binaryData.length; j++) {
-            uint8Array[j] = binaryData.charCodeAt(j);
-          }
-          
-          // 创建Blob
-          const blob = new Blob([uint8Array], { type: fileData.type });
-          fileBlobs.push({
-            blob: blob,
-            name: fileData.name,
-            size: fileData.size,
-            type: fileData.type
-          });
-          
-          console.log(`文件转换成功: ${fileData.name} (${Math.round(fileData.size / 1024)}KB)`);
-          
-        } catch (error) {
-          console.error(`文件转换失败: ${fileData.name}`, error);
-          throw new Error(`文件转换失败: ${fileData.name} - ${error.message}`);
-        }
-      }
-      
-      // 注入脚本到目标标签页来处理文件上传
+
+      const fileMeta = files.map(f => ({
+        base64: f.base64.replace(/^data:[^;]+;base64,/, ''),
+        name: f.name,
+        type: f.type || 'application/octet-stream',
+      }));
+
       const results = await chrome.scripting.executeScript({
         target: { tabId: parseInt(tabId) },
         func: this.generateFileUploadScript,
-        args: [targetSelector || 'input[type="file"]']
+        args: [fileMeta, targetSelector || 'input[type="file"]']
       });
-      
+
       const uploadResult = results[0].result;
-      
+
       if (uploadResult && uploadResult.success) {
-        console.log(`文件上传成功: tabId=${tabId}, 上传了${fileBlobs.length}个文件`);
-        
-        // 发送成功响应
+        console.log(`文件上传成功: tabId=${tabId}, 上传了${files.length}个文件`);
+
         this.sendMessage({
           type: 'upload_file_to_tab_complete',
           tabId: tabId,
-          uploadedFiles: fileBlobs.map(file => ({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            lastModified: Date.now()
-          })),
+          uploadedFiles: uploadResult.uploadedFiles || [],
           targetSelector: targetSelector,
-          message: `成功上传 ${fileBlobs.length} 个文件`,
+          message: `成功上传 ${files.length} 个文件`,
           requestId: requestId,
           timestamp: new Date().toISOString()
         });
-        
       } else {
         throw new Error(uploadResult?.error || '文件上传失败');
       }
-      
+
     } catch (error) {
       console.error('处理文件上传请求时出错:', error);
       this.sendMessage({
@@ -2922,81 +2932,55 @@ class BrowserControl {
   }
 
   /**
-   * 生成文件上传脚本函数（用于 executeScript）
+   * 注入到页面中执行的文件上传脚本。
+   * 使用 DataTransfer API 构造 FileList 赋给 input.files。
    */
-  generateFileUploadScript(targetSelector) {
+  generateFileUploadScript(fileMeta, targetSelector) {
     try {
-      console.log('开始执行文件上传脚本...');
-      
-      // 查找目标文件输入元素
       let fileInput = document.querySelector(targetSelector);
-      
+
       if (!fileInput) {
-        // 如果没有找到指定选择器，尝试查找其他可能的文件输入元素
-        const alternativeSelectors = [
+        const fallbacks = [
           'input[type="file"]',
           'input[accept*="image"]',
           'input[accept*="file"]',
-          '[data-testid*="upload"]',
-          '[class*="upload"] input',
-          '[class*="file"] input'
+          '[data-testid*="upload"] input[type="file"]',
         ];
-        
-        let found = false;
-        for (const selector of alternativeSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            console.log('找到替代文件输入元素:', selector);
-            fileInput = element;
-            found = true;
-            break;
-          }
-        }
-        
-        if (!found) {
-          throw new Error('未找到文件输入元素: ' + targetSelector);
+        for (const sel of fallbacks) {
+          const el = document.querySelector(sel);
+          if (el) { fileInput = el; break; }
         }
       }
-      
-      console.log('找到文件输入元素:', fileInput);
-      
-      // 注意：由于安全限制，我们无法直接创建File对象并设置到input.files
-      // 但我们可以触发文件输入的点击事件，让用户手动选择文件
-      // 或者使用其他方法来设置文件
-      
-      // 方法1: 尝试触发文件输入事件
-      try {
-        fileInput.focus();
-        fileInput.click();
-        
-        // 触发change事件
-        const changeEvent = new Event('change', { bubbles: true });
-        fileInput.dispatchEvent(changeEvent);
-        
-        // 触发input事件
-        const inputEvent = new Event('input', { bubbles: true });
-        fileInput.dispatchEvent(inputEvent);
-        
-        console.log('文件输入事件已触发');
-        
-      } catch (error) {
-        console.warn('触发文件输入事件失败:', error.message);
+
+      if (!fileInput) {
+        return { success: false, error: '未找到文件输入元素: ' + targetSelector };
       }
-      
-      // 返回成功结果
-      return {
-        success: true,
-        message: '文件上传脚本执行完成，已触发文件输入相关事件',
-        targetElement: fileInput.tagName + (fileInput.className ? '.' + fileInput.className : ''),
-        targetSelector: targetSelector
-      };
-      
+
+      const dt = new DataTransfer();
+
+      for (const meta of fileMeta) {
+        const binary = atob(meta.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const file = new File([bytes], meta.name, { type: meta.type, lastModified: Date.now() });
+        dt.items.add(file);
+      }
+
+      fileInput.files = dt.files;
+
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const uploaded = Array.from(dt.files).map(f => ({
+        name: f.name, size: f.size, type: f.type, lastModified: f.lastModified,
+      }));
+
+      return { success: true, uploadedFiles: uploaded };
+
     } catch (error) {
-      console.error('文件上传脚本执行失败:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   }
 

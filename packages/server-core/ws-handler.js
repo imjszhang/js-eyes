@@ -255,6 +255,25 @@ function handleExtensionMessage(raw, clientId, state) {
         requestId,
       }, state);
       break;
+    case 'get_cookies_by_domain_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: 'get_cookies_by_domain_complete',
+        domain: data.domain,
+        cookies: data.cookies || [],
+        total: data.total || 0,
+        requestId,
+      }, state);
+      break;
+    case 'get_page_info_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: 'get_page_info_complete',
+        tabId: data.tabId,
+        data: data.data || {},
+        requestId,
+      }, state);
+      break;
     default:
       break;
   }
@@ -333,6 +352,15 @@ function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     case 'get_cookies':
       forwardToExtension('get_cookies', data, socket, state, ['tabId'], target);
+      break;
+    case 'get_cookies_by_domain':
+      forwardToExtension('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target);
+      break;
+    case 'get_page_info':
+      forwardToExtension('get_page_info', data, socket, state, ['tabId'], target);
+      break;
+    case 'upload_file_to_tab':
+      forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target);
       break;
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });
