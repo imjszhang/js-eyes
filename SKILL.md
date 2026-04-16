@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.0.0
+version: 2.1.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -26,9 +26,28 @@ A successful setup has all of the following:
 1. `npm install` has been run in `{baseDir}` with Node.js 22 or newer.
 2. OpenClaw loads `{baseDir}/openclaw-plugin` via `plugins.load.paths`.
 3. `plugins.entries["js-eyes"].enabled` is `true`.
-4. The user can run `openclaw js-eyes status`.
-5. The browser extension is connected to `http://<serverHost>:<serverPort>` and `js_eyes_get_tabs` returns real tabs.
-6. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir`.
+4. `tools.alsoAllow` (preferred) or `tools.allow` includes `js-eyes`, so the plugin's optional tools are actually exposed to the model.
+5. The user can run `openclaw js-eyes status`.
+6. The browser extension is connected to `http://<serverHost>:<serverPort>` and `js_eyes_get_tabs` returns real tabs.
+7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir`.
+
+## Deployment Modes
+
+Treat `{baseDir}` as the bundle or repository root that contains `openclaw-plugin/`, `skills/`, and the package manifests.
+
+There are two supported complete deployment modes:
+
+1. ClawHub / bundle deployment
+   - `{baseDir}` is the installed JS Eyes bundle root.
+   - Run `npm install` in `{baseDir}` so the plugin runtime can resolve its dependencies.
+   - Register `{baseDir}/openclaw-plugin` in OpenClaw.
+
+2. Source-repo / development deployment
+   - `{baseDir}` is the root of a local `js-eyes` git clone.
+   - Run `npm install` in the repo root, not inside `openclaw-plugin/`.
+   - Point OpenClaw `plugins.load.paths` at the repo-root `openclaw-plugin` directory.
+   - If you are debugging the browser side, load the extension from `extensions/chrome/` or `extensions/firefox/manifest.json` as appropriate.
+   - After plugin/runtime code changes, restart or refresh OpenClaw so the updated plugin code is reloaded.
 
 ## Setup Workflow
 
@@ -43,6 +62,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
 5. Update the resolved `openclaw.json`:
    - ensure `plugins.load.paths` contains the absolute path to `{baseDir}/openclaw-plugin`
    - ensure `plugins.entries["js-eyes"].enabled` is `true`
+   - ensure `tools.alsoAllow` contains `js-eyes` (preferred additive mode), or ensure `tools.allow` includes `js-eyes`
    - if needed, create `plugins.entries["js-eyes"].config` with:
      - `serverHost: "localhost"`
      - `serverPort: 18080`
@@ -73,6 +93,9 @@ Update the resolved OpenClaw config so it contains the plugin path and enablemen
 
 ```json
 {
+  "tools": {
+    "alsoAllow": ["js-eyes"]
+  },
   "plugins": {
     "load": {
       "paths": ["/absolute/path/to/js-eyes/openclaw-plugin"]
@@ -96,19 +119,22 @@ Important details:
 - The path must end in `openclaw-plugin`.
 - On Windows JSON paths, prefer forward slashes such as `C:/Users/name/skills/js-eyes/openclaw-plugin`.
 - If `paths` or `entries` already exist, merge rather than overwrite.
+- `js-eyes` registers its tools as optional plugin tools, so a complete deployment also needs `tools.alsoAllow: ["js-eyes"]` or an equivalent `tools.allow` entry.
 
 ## Verification Workflow
 
 After setup, verify the stack in this order:
 
-1. `openclaw js-eyes status`
-2. Check whether the built-in server is reachable and reports uptime.
-3. Confirm that at least one browser extension client is connected.
-4. Ask the agent to use `js_eyes_get_tabs` or run `openclaw js-eyes tabs`.
-5. If the user wants extension skills, call `js_eyes_discover_skills` only after the base stack works.
+1. `openclaw plugins inspect js-eyes`
+2. `openclaw js-eyes status`
+3. Check whether the built-in server is reachable and reports uptime.
+4. Confirm that at least one browser extension client is connected.
+5. Ask the agent to use `js_eyes_get_tabs` or run `openclaw js-eyes tabs`.
+6. If the user wants extension skills, call `js_eyes_discover_skills` only after the base stack works.
 
 Expected status checks:
 
+- `openclaw plugins inspect js-eyes` shows the plugin as loaded.
 - Server responds on `http://localhost:18080` by default.
 - `openclaw js-eyes status` shows uptime and browser client counts.
 - `js_eyes_get_tabs` returns tabs instead of an empty browser list.
@@ -151,8 +177,9 @@ Check all three items:
 
 1. `plugins.load.paths` points to `{baseDir}/openclaw-plugin`
 2. `plugins.entries["js-eyes"].enabled` is `true`
-3. OpenClaw has been restarted or refreshed since the config change
-4. If this is an extension skill, confirm it is not disabled in the JS Eyes host config or legacy OpenClaw child-plugin entries
+3. `tools.alsoAllow` or `tools.allow` includes `js-eyes`
+4. OpenClaw has been restarted or refreshed since the config change
+5. If this is an extension skill, confirm it is not disabled in the JS Eyes host config or legacy OpenClaw child-plugin entries
 
 ### Browser Extension Stays Disconnected
 

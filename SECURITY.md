@@ -2,39 +2,77 @@
 
 ## Overview
 
-JS Eyes is a **local-first** browser automation skill. It does not contact any external APIs, analytics, or third-party services. All network communication is limited to endpoints **you** configure (localhost or your own server).
+JS Eyes is a **local-first** browser automation stack. Its normal runtime loop talks only to the JS Eyes server you configure, which defaults to `localhost:18080`.
 
-## Why VirusTotal May Flag This Skill
+There are two deployment shapes to keep in mind:
 
-Static analysis tools (including VirusTotal Code Insight) often flag code that:
+- **ClawHub / bundle deployment:** install the JS Eyes bundle, run `npm install` in the bundle root, register `openclaw-plugin`, and allow the plugin tools in OpenClaw.
+- **Source-repo / development deployment:** clone this repository, run `npm install` in the repo root, point OpenClaw at the repo-root `openclaw-plugin`, and optionally load the unpacked browser extension directly from `extensions/chrome/` or `extensions/firefox/`.
 
-- Uses `fetch()` or `WebSocket` (common in both legitimate automation and malware)
-- Builds URLs dynamically (e.g. `http://${host}:${port}/api/...`)
-- Exposes an “API” surface
+Those two modes share the same local runtime behavior, but the source repository also contains release tooling, docs, site assets, and extension source files that reference public URLs for packaging and documentation workflows.
 
-In this project, those patterns are used **only** to talk to a **user-configured** JS-Eyes server (default `localhost:18080`). There are no hardcoded external domains, no telemetry, and no call-home behavior.
+## Complete OpenClaw Deployment Notes
 
-## What This Skill Does (Network-Wise)
+A complete local OpenClaw deployment needs all of the following:
 
-| Component        | Network behavior |
-|-----------------|------------------|
-| OpenClaw plugin | Connects via WebSocket to `serverHost:serverPort` (default `localhost:18080`). Uses `fetch()` only for local HTTP endpoints like `/api/browser/status` and `/api/browser/tabs`. |
-| Client SDK      | Connects via WebSocket to the URL you pass (e.g. `ws://localhost:18080`). |
-| Server          | Listens on a single HTTP+WebSocket port; does not initiate outbound connections. |
+- `plugins.load.paths` points to the bundle or repo-root `openclaw-plugin` directory.
+- `plugins.entries["js-eyes"].enabled` is `true`.
+- `tools.alsoAllow: ["js-eyes"]` or an equivalent `tools.allow` entry is present, because `js-eyes` registers optional plugin tools.
+- The browser extension is configured to connect to the chosen `serverHost` / `serverPort`.
 
-All of the above use **localhost** or the host/port you set in OpenClaw plugin config. No data is sent to the internet unless you explicitly point the extension or client at a remote server you control.
+Without the tool allowlist step, the plugin can load successfully while `js_eyes_*` tools still remain unavailable to the model.
+
+## Runtime Network Behavior
+
+Base runtime behavior:
+
+- **OpenClaw plugin:** connects via WebSocket to `ws://serverHost:serverPort` and uses HTTP only for JS Eyes server endpoints such as `/api/browser/status` and `/api/browser/tabs`.
+- **Client SDK and browser extension:** connect only to the JS Eyes server URL you configure.
+- **Server:** listens on a single HTTP+WebSocket port and does not need outbound internet access for the core browser automation loop.
+
+By default this is all local traffic. No browser content is sent to a third-party service unless you explicitly point JS Eyes at a remote server you control.
+
+## Explicitly User-Initiated Network Access
+
+Some features intentionally access external URLs, but only when the user or agent explicitly chooses those workflows:
+
+- **Extension skill discovery/install:** `js_eyes_discover_skills`, `js_eyes_install_skill`, and the install scripts may fetch the configured registry URL such as `https://js-eyes.com/skills.json`.
+- **Release, docs, and packaging workflows in the source repo:** development tooling may reference GitHub Releases, project websites, Cloudflare deployment targets, Mozilla AMO, or similar public endpoints.
+- **Browser automation targets:** once connected, JS Eyes can automate whatever websites the user asks it to open; that traffic is the intended workload, not telemetry.
+
+These are different from hidden analytics or call-home behavior. They happen only when the corresponding feature is invoked.
+
+## Why VirusTotal May Flag JS Eyes
+
+Static analysis tools, including VirusTotal Code Insight, often flag projects that:
+
+- use `fetch()` or `WebSocket`
+- build URLs dynamically, such as `http://${host}:${port}/api/...`
+- expose an API or automation surface
+- include installer scripts or release/download URLs in the repository
+
+In JS Eyes, those patterns map to local browser automation, optional skill installation, or developer-facing release workflows. They are not used for silent telemetry or covert outbound control.
+
+## ClawHub Bundle vs Full Repository
+
+The ClawHub-distributed skill bundle is narrower than the full source repository:
+
+- **Included in the bundle:** the runtime pieces needed for JS Eyes skill/plugin behavior.
+- **Not shipped in the ClawHub bundle:** browser extension source, most docs, tests, and release/publishing tooling.
+
+That means a scan of the full repository can surface external URLs that are irrelevant to the base ClawHub runtime package.
 
 ## If ClawHub Shows a VirusTotal Warning
 
-- **Install with confidence (same as before):** You can use `clawhub install js-eyes --force` when you understand that the warning is due to the patterns above, not malicious behavior.
-- **Report a false positive:** VirusTotal aggregates results from many vendors. To report a false positive, use the [VirusTotal false positive process](https://docs.virustotal.com/docs/false-positive): identify the vendor(s) that flagged the file from your VirusTotal report and contact them directly.
-- **Ask OpenClaw/ClawHub:** If you maintain or use the ClawHub pipeline, you can ask OpenClaw maintainers whether they support manual review or whitelisting for known-good skills like js-eyes.
+- **Review the behavior in context:** the most common triggers are the local automation patterns above, not remote-control malware behavior.
+- **Report a false positive:** use the [VirusTotal false positive process](https://docs.virustotal.com/docs/false-positive) for the specific vendor(s) that flagged the file.
+- **Use manual review when needed:** if you maintain an internal allowlist or review process for OpenClaw/ClawHub skills, JS Eyes is a good candidate for a reviewed exception because its behavior is inspectable and mostly local-first.
 
 ## Dependencies
 
-- **Runtime:** Only `ws` (WebSocket library) is required in the skill bundle. It is used for local WebSocket communication only.
-- **Excluded from ClawHub bundle:** Browser extensions (`extensions/`), CLI, tests, and docs are not part of the skill package (see `.clawhubignore`). Code that references external URLs (e.g. GitHub API, Cloudflare) lives only in those excluded paths and is **not** shipped to ClawHub.
+- **Core runtime dependency:** `ws` is required for WebSocket communication.
+- **Full development repository:** includes additional packages, build tools, docs, and browser extension assets needed for local development and release workflows.
 
 ---
 
-*Last updated: 2025-02 — for js-eyes skill bundle as distributed via ClawHub.*
+*Last updated: 2026-04-16 — aligned with the 2.1.x JS Eyes/OpenClaw plugin deployment flow.*
