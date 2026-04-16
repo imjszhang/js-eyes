@@ -1,11 +1,12 @@
 {
   "name": "@js-eyes/protocol",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Shared protocol constants for JS Eyes runtime packages",
   "main": "index.js",
   "files": [
     "index.js",
-    "skills.js"
+    "skills.js",
+    "zip-extract.js"
   ],
   "license": "MIT",
   "publishConfig": {

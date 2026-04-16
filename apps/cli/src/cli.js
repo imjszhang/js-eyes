@@ -5,23 +5,42 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { createServer } = require('@js-eyes/server-core');
 const { loadConfig, getConfigValue, parseConfigValue, setConfigValue } = require('@js-eyes/config');
-const { ensureRuntimePaths, getPaths, resolveSkillRecordsDir } = require('@js-eyes/runtime-paths');
+const {
+  chmodBestEffort,
+  ensureRuntimePaths,
+  ensureSecretFilePermissions,
+  getPaths,
+  resolveSkillRecordsDir,
+} = require('@js-eyes/runtime-paths');
+const {
+  ensureToken,
+  readToken,
+  rotateToken,
+  getTokenFilePath,
+} = require('@js-eyes/runtime-paths/token');
 const {
   COMPATIBILITY_MATRIX,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
+  POLICY_ENFORCEMENT_LEVELS,
   PROTOCOL_VERSION,
   RELEASE_BASE_URL,
+  isLoopbackHost,
+  resolveSecurityConfig,
 } = require('@js-eyes/protocol');
 const {
+  applySkillInstall,
   discoverLocalSkills,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
   installSkillFromRegistry,
   isSkillEnabled,
+  planSkillInstall,
   readSkillById,
+  readSkillIntegrity,
   resolveSkillsDir,
   runSkillCli,
+  verifySkillIntegrity,
 } = require('@js-eyes/protocol/skills');
 const pkg = require('../package.json');
 
@@ -83,16 +102,23 @@ function readPid(paths) {
   return Number.isNaN(pid) ? null : pid;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
+async function fetchJson(url, options = {}) {
+  const headers = { Accept: 'application/json', ...(options.headers || {}) };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+  const response = await fetch(url, { headers });
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} ${response.statusText}`);
   }
 
   return response.json();
+}
+
+function readServerToken() {
+  if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
+  return readToken();
 }
 
 function readJson(filePath) {
@@ -196,9 +222,10 @@ async function commandStatus(flags) {
   const endpoint = `http://${host}:${port}/api/browser/status`;
   const paths = getPaths();
   const pid = readPid(paths);
+  const token = readServerToken();
 
   try {
-    const payload = await fetchJson(endpoint);
+    const payload = await fetchJson(endpoint, { token });
     const data = payload.data || {};
     print(`Server: reachable (${endpoint})`);
     print(`PID file: ${pid || 'none'}`);
@@ -218,19 +245,35 @@ async function commandStatus(flags) {
   }
 }
 
+function checkFilePermissions(filePath) {
+  if (!fs.existsSync(filePath)) return { exists: false };
+  try {
+    const stat = fs.statSync(filePath);
+    const mode = stat.mode & 0o777;
+    return { exists: true, mode, secure: mode === 0o600 || mode === 0o400 };
+  } catch (error) {
+    return { exists: true, error: error.message };
+  }
+}
+
 async function commandDoctor(flags) {
   const paths = ensureRuntimePaths();
   const config = loadConfig();
+  const security = resolveSecurityConfig(config);
   const { host, port } = getServerOptions(flags, config);
   const endpoint = `http://${host}:${port}/api/browser/status`;
   const pid = readPid(paths);
+  const token = readServerToken();
+  const skillsDir = resolveSkillsDir(paths, config);
 
   print(`JS Eyes CLI ${pkg.version}`);
   print(`Config file: ${paths.configFile}`);
   print(`Runtime dir: ${paths.runtimeDir}`);
+  print(`Token file: ${paths.tokenFile}${token ? '' : ' (missing)'}`);
+  print(`Audit log: ${paths.auditLogFile}`);
   print(`Log file: ${paths.serverLogFile}`);
   print(`Downloads dir: ${paths.downloadsDir}`);
-  print(`Skills dir: ${resolveSkillsDir(paths, config)}`);
+  print(`Skills dir: ${skillsDir}`);
   print(`Skill records dir: ${resolveSkillRecordsDir({ recordingBaseDir: config.recording?.baseDir })}`);
   try {
     print(`OpenClaw plugin: ${resolvePluginPath()}`);
@@ -241,6 +284,139 @@ async function commandDoctor(flags) {
   print(`Stored PID: ${pid || 'none'}`);
   print(`PID alive: ${pid ? (isProcessAlive(pid) ? 'yes' : 'no') : 'n/a'}`);
   print(`Recording mode: ${config.recording?.mode || 'standard'}`);
+
+  print('');
+  print('Security checks:');
+  print(`  allowAnonymous: ${security.allowAnonymous ? 'YES (insecure)' : 'no'}`);
+  print(`  host loopback: ${isLoopbackHost(host) ? 'yes' : 'NO (binds to non-loopback)'}`);
+  print(`  allowRawEval: ${security.allowRawEval ? 'YES (insecure)' : 'no'}`);
+  print(`  requireLockfile: ${security.requireLockfile ? 'yes' : 'NO'}`);
+  print(`  allowedOrigins: ${(security.allowedOrigins || []).join(', ') || '(none)'}`);
+  print(`  registry url: ${config.skillsRegistryUrl}${config.skillsRegistryUrl?.includes('js-eyes.com') ? '' : ' (custom — please verify)'}`);
+
+  print('');
+  print('Policy engine (2.3):');
+  print(`  enforcement: ${security.enforcement}${security.enforcement === 'off' ? ' (audit only)' : ''}`);
+  print(`  taskOrigin.enabled: ${security.taskOrigin?.enabled ? 'yes' : 'no'}`);
+  print(`  taskOrigin.sources: ${(security.taskOrigin?.sources || []).join(', ') || '(none)'}`);
+  print(`  taint.enabled: ${security.taint?.enabled ? 'yes' : 'no'} (mode=${security.taint?.mode || 'n/a'})`);
+  print(`  egressAllowlist: ${(security.egressAllowlist || []).join(', ') || '(empty)'}`);
+
+  const pendingDir = paths.pendingEgressDir;
+  let pendingCount = 0;
+  if (fs.existsSync(pendingDir)) {
+    pendingCount = fs.readdirSync(pendingDir).filter((n) => n.endsWith('.json')).length;
+  }
+  const backlogTag = pendingCount >= 10 ? ' WARN (backlog)' : '';
+  print(`  pending-egress: ${pendingCount} at ${pendingDir}${backlogTag}`);
+
+  try {
+    if (!fs.existsSync(paths.auditLogFile)) {
+      print('  soft-block last: (audit log not yet created)');
+    } else {
+      const raw = fs.readFileSync(paths.auditLogFile, 'utf8').split('\n').filter(Boolean);
+      const recent = raw.slice(-500).map((line) => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(Boolean);
+      const softBlocks = recent.filter((r) => r && (r.event === 'policy.soft-block' || r.event === 'automation.soft-block' || r.rule_decision === 'soft-block'));
+      if (softBlocks.length > 0) {
+        const latest = softBlocks[softBlocks.length - 1];
+        print(`  soft-block last: ${latest.ts} tool=${latest.tool || latest.action || 'n/a'} rule=${latest.rule || 'n/a'}`);
+        const counts = new Map();
+        for (const r of softBlocks) {
+          const k = `${r.tool || r.action || 'n/a'}::${r.rule || (Array.isArray(r.reasons) ? r.reasons[0]?.rule : 'n/a')}`;
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+        const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        print(`  soft-block top3: ${top.map(([k, v]) => `${k} x${v}`).join(' | ') || '(none)'}`);
+      } else {
+        print('  soft-block last: (none recently)');
+      }
+    }
+  } catch (error) {
+    print(`  soft-block stats: error (${error.message})`);
+  }
+
+  try {
+    const wildcardSkills = [];
+    const unknownSkills = [];
+    if (fs.existsSync(skillsDir)) {
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const skillId = entry.name;
+        const skillDir = path.join(skillsDir, skillId);
+        const contractPath = path.join(skillDir, 'skill.contract.js');
+        if (!fs.existsSync(contractPath)) continue;
+        try {
+          const raw = fs.readFileSync(contractPath, 'utf8');
+          const platformsMatch = raw.match(/platforms\s*:\s*\[([^\]]*)\]/);
+          if (!platformsMatch) {
+            unknownSkills.push(skillId);
+            continue;
+          }
+          const items = platformsMatch[1]
+            .split(',')
+            .map((s) => s.trim().replace(/^['"`]|['"`]$/g, ''))
+            .filter(Boolean);
+          if (items.length === 0 || items.includes('*')) {
+            wildcardSkills.push(skillId);
+          }
+        } catch {
+          unknownSkills.push(skillId);
+        }
+      }
+    }
+    if (wildcardSkills.length > 0) {
+      print(`  skills with platforms=['*']: ${wildcardSkills.join(', ')} (weakest protection)`);
+    } else {
+      print('  skills with platforms=[\'*\']: (none)');
+    }
+    if (unknownSkills.length > 0) {
+      print(`  skills platforms unknown: ${unknownSkills.join(', ')}`);
+    }
+  } catch (error) {
+    print(`  skill platforms check: skipped (${error.message})`);
+  }
+
+  print('');
+  print('File permissions (POSIX only, target = 600):');
+  for (const target of [paths.configFile, paths.tokenFile, paths.auditLogFile]) {
+    const status = checkFilePermissions(target);
+    if (!status.exists) {
+      print(`  ${target}: missing`);
+    } else if (status.error) {
+      print(`  ${target}: error (${status.error})`);
+    } else {
+      print(`  ${target}: ${status.mode.toString(8).padStart(3, '0')} ${status.secure ? 'OK' : 'WARN'}`);
+    }
+  }
+
+  print('');
+  print('Skill integrity:');
+  const skillDirs = fs.existsSync(skillsDir)
+    ? fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => ({ id: entry.name, dir: path.join(skillsDir, entry.name) }))
+    : [];
+  if (skillDirs.length === 0) {
+    print('  (no installed skills)');
+  } else {
+    for (const { id, dir } of skillDirs) {
+      try {
+        const result = verifySkillIntegrity(dir);
+        if (!result.hasIntegrity) {
+          print(`  ${id}: NO integrity manifest (skill installed before pinning)`);
+        } else if (result.ok) {
+          print(`  ${id}: OK (${result.checked} files)`);
+        } else {
+          print(`  ${id}: FAIL — ${result.mismatches.length} mismatched / ${result.missing.length} missing`);
+        }
+      } catch (error) {
+        print(`  ${id}: ERROR (${error.message})`);
+      }
+    }
+  }
+
   const localVersions = getLocalVersions();
   print('');
   print('Local package versions:');
@@ -261,7 +437,7 @@ async function commandDoctor(flags) {
   print(`  skills(client-sdk)=${COMPATIBILITY_MATRIX.skillClientSdkVersion}`);
 
   try {
-    const payload = await fetchJson(endpoint);
+    const payload = await fetchJson(endpoint, { token });
     print(`Server health: ok (${payload.status || 'success'})`);
     const compatibility = getCompatibilityReport(payload);
     print(`Server protocol: ${compatibility.serverProtocolVersion || 'unknown'}`);
@@ -304,8 +480,17 @@ async function commandConfig(positionals) {
 async function runForegroundServer(flags) {
   const paths = ensureRuntimePaths();
   const config = loadConfig();
+  const security = resolveSecurityConfig(config);
   const { host, port } = getServerOptions(flags, config);
-  const server = createServer({ host, port, logger: console });
+  const server = createServer({
+    host,
+    port,
+    logger: console,
+    config,
+    security,
+    auditLogFile: paths.auditLogFile,
+    pendingEgressDir: paths.pendingEgressDir,
+  });
 
   const cleanup = async (exitCode = 0) => {
     if (cleanup.done) {
@@ -332,6 +517,11 @@ async function runForegroundServer(flags) {
   print(`HTTP API: http://${host}:${port}`);
   print(`PID: ${process.pid}`);
   print(`Log file: ${paths.serverLogFile}`);
+  print(`Audit log: ${paths.auditLogFile}`);
+  print(`Auth token file: ${paths.tokenFile}${server.token ? '' : ' (allowAnonymous)'}`);
+  if (security.allowAnonymous) {
+    print('!! WARNING: allowAnonymous=true — accepting unauthenticated connections.');
+  }
 
   process.on('SIGINT', () => cleanup(0));
   process.on('SIGTERM', () => cleanup(0));
@@ -396,8 +586,244 @@ async function commandServer(positionals, flags) {
       print(`Sent SIGTERM to server PID ${pid}`);
       return;
     }
+    case 'token': {
+      const subaction = positionals[2] || 'show';
+      switch (subaction) {
+        case 'show': {
+          const tk = readToken();
+          if (!tk) {
+            print('No server token found. It will be generated on next `js-eyes server start`.');
+            print(`Token file: ${paths.tokenFile}`);
+            return;
+          }
+          if (flags.reveal) {
+            print(tk);
+          } else {
+            print(`Token (masked): ${tk.slice(0, 8)}...${tk.slice(-4)}`);
+            print('Re-run with --reveal to print the full token.');
+          }
+          print(`Token file: ${getTokenFilePath()}`);
+          return;
+        }
+        case 'init': {
+          const result = ensureToken();
+          print(result.created ? 'Generated new token.' : 'Token already exists.');
+          print(`Token file: ${result.path}`);
+          return;
+        }
+        case 'rotate': {
+          const result = rotateToken();
+          print('Token rotated. Restart the server and reconfigure clients.');
+          print(`Token file: ${result.path}`);
+          if (flags.reveal) print(result.token);
+          return;
+        }
+        default:
+          throw new Error('用法: `js-eyes server token [show|init|rotate] [--reveal]`');
+      }
+    }
     default:
-      throw new Error('支持的命令: `js-eyes server start [--foreground]` / `js-eyes server stop`');
+      throw new Error('支持的命令: `js-eyes server start [--foreground]` / `js-eyes server stop` / `js-eyes server token [show|init|rotate]`');
+  }
+}
+
+async function commandAudit(positionals, flags) {
+  const action = positionals[1];
+  const paths = ensureRuntimePaths();
+  if (action !== 'tail') {
+    throw new Error('用法: `js-eyes audit tail [--lines 100] [--since <iso>]`');
+  }
+  if (!fs.existsSync(paths.auditLogFile)) {
+    print(`No audit log yet at ${paths.auditLogFile}`);
+    return;
+  }
+  const limit = Number(flags.lines || 100);
+  const since = flags.since ? new Date(flags.since).getTime() : null;
+  const raw = fs.readFileSync(paths.auditLogFile, 'utf8').split('\n').filter(Boolean);
+  let rows = raw.slice(-Math.max(limit * 4, limit)).map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  if (since !== null && !Number.isNaN(since)) {
+    rows = rows.filter((r) => new Date(r.ts || 0).getTime() >= since);
+  }
+  rows = rows.slice(-limit);
+  for (const row of rows) {
+    print(JSON.stringify(row));
+  }
+}
+
+async function commandConsent(positionals) {
+  const action = positionals[1];
+  const id = positionals[2];
+  const paths = ensureRuntimePaths();
+  const consentsDir = paths.consentsDir;
+  if (!fs.existsSync(consentsDir)) {
+    print(`No pending consents at ${consentsDir}`);
+    return;
+  }
+
+  function listPending() {
+    return fs.readdirSync(consentsDir).filter((name) => name.endsWith('.json')).map((name) => {
+      const filePath = path.join(consentsDir, name);
+      try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        return { id: name.replace(/\.json$/, ''), filePath, data };
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+  }
+
+  switch (action) {
+    case 'list': {
+      const items = listPending();
+      if (items.length === 0) {
+        print('No pending consent requests.');
+        return;
+      }
+      for (const item of items) {
+        const status = item.data.status || 'pending';
+        print(`- ${item.id} [${status}] tool=${item.data.toolName || 'n/a'} requestedAt=${item.data.requestedAt || 'n/a'}`);
+        if (item.data.summary) print(`    ${item.data.summary}`);
+      }
+      return;
+    }
+    case 'approve':
+    case 'deny': {
+      if (!id) throw new Error(`用法: \`js-eyes consent ${action} <id>\``);
+      const filePath = path.join(consentsDir, `${id}.json`);
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`Consent ${id} not found.`);
+      }
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      data.status = action === 'approve' ? 'approved' : 'denied';
+      data.decidedAt = new Date().toISOString();
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
+      chmodBestEffort(filePath, 0o600);
+      print(`Consent ${id} ${data.status}.`);
+      return;
+    }
+    default:
+      throw new Error('用法: `js-eyes consent list|approve <id>|deny <id>`');
+  }
+}
+
+async function commandEgress(positionals, flags) {
+  const action = positionals[1];
+  const paths = ensureRuntimePaths();
+  const dir = paths.pendingEgressDir;
+
+  function listPending() {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => {
+        const file = path.join(dir, name);
+        try {
+          const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return { id: name.replace(/\.json$/, ''), file, data };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  switch (action) {
+    case 'list': {
+      const items = listPending();
+      if (items.length === 0) {
+        print(`No pending egress at ${dir}`);
+        return;
+      }
+      print(`Pending egress (${items.length}) at ${dir}`);
+      for (const item of items) {
+        const host = item.data.host || item.data.params?.url || 'unknown';
+        print(`- ${item.id} host=${host} tool=${item.data.tool || 'n/a'} ts=${item.data.ts || 'n/a'}`);
+        if (item.data.reason) print(`    reason: ${item.data.reason}`);
+      }
+      return;
+    }
+    case 'approve': {
+      const id = positionals[2];
+      if (!id) throw new Error('用法: `js-eyes egress approve <id>`');
+      const file = path.join(dir, `${id}.json`);
+      if (!fs.existsSync(file)) throw new Error(`Egress request ${id} not found.`);
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const host = data.host;
+      if (!host) throw new Error(`Egress request ${id} has no host field.`);
+      const sessionFile = path.join(dir, '.session-allowlist.json');
+      let session = [];
+      if (fs.existsSync(sessionFile)) {
+        try { session = JSON.parse(fs.readFileSync(sessionFile, 'utf8')); } catch {}
+      }
+      if (!Array.isArray(session)) session = [];
+      if (!session.includes(host)) session.push(host);
+      fs.writeFileSync(sessionFile, JSON.stringify(session, null, 2) + '\n');
+      chmodBestEffort(sessionFile, 0o600);
+      fs.rmSync(file, { force: true });
+      print(`Approved egress ${id} -> ${host} (session allowlist).`);
+      print('Note: session-level approvals do not auto-execute the original call; agent needs to re-invoke it.');
+      return;
+    }
+    case 'allow': {
+      const domain = positionals[2];
+      if (!domain) throw new Error('用法: `js-eyes egress allow <domain>`');
+      const config = loadConfig();
+      const security = config.security || {};
+      const current = Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [];
+      if (!current.includes(domain)) current.push(domain);
+      const nextConfig = setConfigValue('security.egressAllowlist', current);
+      print(`Added ${domain} to security.egressAllowlist.`);
+      print(`Current allowlist: ${(nextConfig.security?.egressAllowlist || []).join(', ') || '(empty)'}`);
+      return;
+    }
+    case 'clear': {
+      const items = listPending();
+      let removed = 0;
+      for (const item of items) {
+        try { fs.rmSync(item.file, { force: true }); removed++; } catch {}
+      }
+      print(`Cleared ${removed} pending egress record(s).`);
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes egress list` / `approve <id>` / `allow <domain>` / `clear`');
+  }
+}
+
+async function commandSecurity(positionals, flags) {
+  const action = positionals[1];
+
+  switch (action) {
+    case 'show': {
+      const config = loadConfig();
+      const security = resolveSecurityConfig(config);
+      print(JSON.stringify({
+        enforcement: security.enforcement,
+        taskOrigin: security.taskOrigin,
+        egressAllowlist: security.egressAllowlist,
+        taint: security.taint,
+        profile: security.profile,
+        allowAnonymous: security.allowAnonymous,
+        allowRawEval: security.allowRawEval,
+        requireLockfile: security.requireLockfile,
+      }, null, 2));
+      return;
+    }
+    case 'enforce': {
+      const level = positionals[2];
+      if (!level || !POLICY_ENFORCEMENT_LEVELS.includes(level)) {
+        throw new Error(`用法: \`js-eyes security enforce <${POLICY_ENFORCEMENT_LEVELS.join('|')}>\``);
+      }
+      const nextConfig = setConfigValue('security.enforcement', level);
+      print(`security.enforcement = ${nextConfig.security?.enforcement}`);
+      if (level === 'off') print('!! Policy rules will only audit, not block.');
+      if (level === 'strict') print('!! Policy rules will reject violating calls (breaks existing workflows if task origin is not declared).');
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes security show` / `enforce <off|soft|strict>`');
   }
 }
 
@@ -511,24 +937,103 @@ async function commandSkills(positionals, flags) {
     }
     case 'install': {
       if (!skillId) {
-        throw new Error('用法: `js-eyes skills install <skillId> [--force]`');
+        throw new Error('用法: `js-eyes skills install <skillId> [--force] [--plan] [--allow-postinstall]`');
       }
 
-      const result = await installSkillFromRegistry({
+      const security = resolveSecurityConfig(config);
+      const planOnly = Boolean(flags.plan);
+
+      const planResult = await planSkillInstall({
         skillId,
         registryUrl: flags.registry || config.skillsRegistryUrl,
         skillsDir,
         force: Boolean(flags.force),
         logger: console,
       });
+      const plan = planResult.plan;
+
+      print(`Skill: ${planResult.skill.name || skillId}`);
+      print(`Source: ${plan.sourceUrl}`);
+      print(`SHA-256: ${plan.bundleSha256}`);
+      print(`Bundle size: ${plan.bundleSize} bytes`);
+      print(`Declared tools: ${(plan.declaredTools || []).join(', ') || '(none)'}`);
+      print(`Has package-lock.json: ${plan.hasLockfile ? 'yes' : 'no'}`);
+      print(`Files in bundle: ${plan.stagedFiles.length}`);
+      print(`Target dir: ${plan.targetDir}`);
+      print(`Staging dir: ${plan.stagingDir}`);
+
+      if (planOnly) {
+        const planFile = path.join(paths.runtimeDir, 'pending-skills', `${skillId}.json`);
+        fs.mkdirSync(path.dirname(planFile), { recursive: true });
+        fs.writeFileSync(planFile, JSON.stringify(plan, null, 2) + '\n');
+        chmodBestEffort(planFile, 0o600);
+        print('');
+        print(`Plan written to ${planFile}`);
+        print(`Run \`js-eyes skills approve ${skillId}\` to apply.`);
+        return;
+      }
+
+      const apply = applySkillInstall(plan, {
+        requireLockfile: security.requireLockfile,
+        allowPostinstall: Boolean(flags['allow-postinstall']),
+      });
       setConfigValue(`skillsEnabled.${skillId}`, true);
 
-      print(`Installed skill: ${result.skill.name || skillId}`);
-      print(`Skill id: ${skillId}`);
-      print(`Location: ${result.targetDir}`);
+      print('');
+      print('Installed.');
+      print(`Location: ${apply.targetDir}`);
       print('Enabled in JS Eyes host config: yes');
-      print('OpenClaw child plugin config updated: no (main js-eyes plugin auto-loads local skills)');
+      print('Integrity manifest written: .integrity.json');
       print('Restart OpenClaw or start a new session to load the new skill tools.');
+      return;
+    }
+    case 'approve': {
+      if (!skillId) {
+        throw new Error('用法: `js-eyes skills approve <skillId>`');
+      }
+      const planFile = path.join(paths.runtimeDir, 'pending-skills', `${skillId}.json`);
+      if (!fs.existsSync(planFile)) {
+        throw new Error(`No pending plan for ${skillId}. Run \`js-eyes skills install ${skillId} --plan\` first.`);
+      }
+      const security = resolveSecurityConfig(config);
+      const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+      const apply = applySkillInstall(plan, {
+        requireLockfile: security.requireLockfile,
+        allowPostinstall: Boolean(flags['allow-postinstall']),
+      });
+      setConfigValue(`skillsEnabled.${skillId}`, true);
+      fs.rmSync(planFile, { force: true });
+      print(`Approved and installed ${skillId} at ${apply.targetDir}`);
+      return;
+    }
+    case 'verify': {
+      const targets = skillId ? [skillId] : discoverLocalSkills(skillsDir).map((s) => s.id);
+      let failed = 0;
+      for (const id of targets) {
+        const skill = readSkillById(skillsDir, id);
+        if (!skill) {
+          print(`- ${id}: NOT INSTALLED`);
+          failed++;
+          continue;
+        }
+        const result = verifySkillIntegrity(skill.skillDir);
+        if (!result.hasIntegrity) {
+          print(`- ${id}: NO integrity manifest`);
+          failed++;
+          continue;
+        }
+        if (result.ok) {
+          print(`- ${id}: OK (${result.checked} files)`);
+        } else {
+          print(`- ${id}: FAIL (${result.mismatches.length} mismatched, ${result.missing.length} missing)`);
+          for (const m of result.mismatches) print(`    mismatch: ${m}`);
+          for (const m of result.missing) print(`    missing: ${m}`);
+          failed++;
+        }
+      }
+      if (failed > 0) {
+        process.exitCode = 2;
+      }
       return;
     }
     case 'enable':
@@ -550,7 +1055,7 @@ async function commandSkills(positionals, flags) {
       return;
     }
     default:
-      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId>` / `enable <skillId>` / `disable <skillId>`');
+      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>`');
   }
 }
 
@@ -591,12 +1096,19 @@ function printHelp() {
   print('Commands:');
   print('  js-eyes server start [--foreground] [--host localhost] [--port 18080]');
   print('  js-eyes server stop');
+  print('  js-eyes server token [show|init|rotate] [--reveal]');
   print('  js-eyes status');
   print('  js-eyes doctor');
+  print('  js-eyes audit tail [--lines 100] [--since <iso>]');
+  print('  js-eyes consent list|approve <id>|deny <id>');
+  print('  js-eyes egress list|approve <id>|allow <domain>|clear');
+  print('  js-eyes security show|enforce <off|soft|strict>');
   print('  js-eyes config get [key]');
   print('  js-eyes config set <key> <value>');
   print('  js-eyes skills list [--registry https://js-eyes.com/skills.json]');
-  print('  js-eyes skills install <skillId> [--force]');
+  print('  js-eyes skills install <skillId> [--force] [--plan] [--allow-postinstall]');
+  print('  js-eyes skills approve <skillId>');
+  print('  js-eyes skills verify [skillId]');
   print('  js-eyes skills enable <skillId>');
   print('  js-eyes skills disable <skillId>');
   print('  js-eyes skill run <skillId> <command> [args...]');
@@ -633,6 +1145,18 @@ async function main(argv = process.argv.slice(2)) {
     case 'extension':
       await commandExtension(positionals, flags);
       return;
+    case 'audit':
+      await commandAudit(positionals, flags);
+      return;
+    case 'consent':
+      await commandConsent(positionals, flags);
+      return;
+    case 'egress':
+      await commandEgress(positionals, flags);
+      return;
+    case 'security':
+      await commandSecurity(positionals, flags);
+      return;
     case '--help':
     case '-h':
     case 'help':
@@ -646,7 +1170,9 @@ async function main(argv = process.argv.slice(2)) {
 
 module.exports = {
   commandDoctor,
+  commandEgress,
   commandExtension,
+  commandSecurity,
   commandSkill,
   commandSkills,
   commandStatus,

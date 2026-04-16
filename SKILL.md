@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.1.0
+version: 2.3.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -28,8 +28,9 @@ A successful setup has all of the following:
 3. `plugins.entries["js-eyes"].enabled` is `true`.
 4. `tools.alsoAllow` (preferred) or `tools.allow` includes `js-eyes`, so the plugin's optional tools are actually exposed to the model.
 5. The user can run `openclaw js-eyes status`.
-6. The browser extension is connected to `http://<serverHost>:<serverPort>` and `js_eyes_get_tabs` returns real tabs.
+6. The browser extension is connected to `http://<serverHost>:<serverPort>`, the popup **Server Token** field is populated (2.2.0+), and `js_eyes_get_tabs` returns real tabs.
 7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir`.
+8. `js-eyes doctor` reports a clean security posture (token present, `allowAnonymous=false`, `allowRawEval=false`, host bound to loopback, skill integrity OK).
 
 ## Deployment Modes
 
@@ -69,8 +70,10 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
      - `autoStartServer: true`
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
-8. If the server is healthy but no browser is connected, guide the user through browser extension installation and connection.
-9. After the base setup works, prefer `js_eyes_discover_skills` and `js_eyes_install_skill` for extension skills.
+8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`, then `js-eyes server token show --reveal` to copy it into the browser extension popup **Server Token** field.
+9. If the server is healthy but no browser is connected, guide the user through browser extension installation, server-token entry, and connection.
+10. After the base setup works, prefer `js_eyes_discover_skills` and `js_eyes_install_skill` for extension skills — 2.2.0 writes a plan under `runtime/pending-skills/<id>.json`; finalize with `js-eyes skills approve <id>` then `js-eyes skills enable <id>`.
+11. Run `js-eyes doctor` to confirm the hardened defaults (token present, `allowAnonymous=false`, loopback-bound, skill integrity OK) before handing off.
 
 When asked to fix a broken setup, prefer repairing the existing config instead of repeating the whole installation.
 
@@ -146,10 +149,11 @@ If the plugin is enabled but no browser is connected:
 1. Install the JS Eyes browser extension separately from GitHub Releases or the website.
 2. Open the extension popup.
 3. Set the server address to `http://<serverHost>:<serverPort>`.
-4. Click `Connect`.
-5. Re-run `openclaw js-eyes status`.
+4. Paste the server token from `js-eyes server token show --reveal` into the **Server Token (2.2.0+)** field.
+5. Click `Connect`.
+6. Re-run `openclaw js-eyes status`.
 
-The browser extension is not bundled inside the main ClawHub skill. It must be installed separately.
+The browser extension is not bundled inside the main ClawHub skill. It must be installed separately. Connections without a matching server token are rejected unless the operator has set `security.allowAnonymous=true`.
 
 ## Dynamic Extension Skills
 
@@ -158,8 +162,10 @@ The main `js-eyes` bundle is intentionally minimal. It does not preinstall child
 After the base plugin works:
 
 - Use `js_eyes_discover_skills` to list available extension skills.
-- Use `js_eyes_install_skill` to download, install dependencies, and enable extension skills in the JS Eyes host config.
-- Tell the user that newly installed extension skills usually require an OpenClaw restart or a new session before their tools appear because the main `js-eyes` plugin discovers them on startup.
+- Use `js_eyes_install_skill` to stage a **plan** — 2.2.0+ downloads the bundle, verifies its `sha256` against `skills.json`, and writes `runtime/pending-skills/<id>.json` without installing.
+- Finalize the plan with `js-eyes skills approve <id>`, then enable it with `js-eyes skills enable <id>`.
+- Use `js-eyes skills verify` (or `js-eyes doctor`) to confirm `.integrity.json` still matches the on-disk skill files.
+- Tell the user that newly installed/approved extension skills usually require an OpenClaw restart or a new session before their tools appear because the main `js-eyes` plugin discovers them on startup.
 
 Do not instruct the user to register child-skill plugin paths manually. Child skills no longer ship their own `openclaw-plugin` wrappers.
 
@@ -189,6 +195,23 @@ Check:
 2. `serverHost` / `serverPort` in plugin config
 3. The extension popup server URL
 4. Whether `autoStartServer` is `true`
+5. (2.2.0+) The popup **Server Token** field matches `js-eyes server token show --reveal`. Tail `logs/audit.log` via `js-eyes audit tail` — `conn.reject` with `reason: token` or `reason: origin` points to token/Origin mismatches.
+
+### Sensitive Tool Calls Hang Without Output (2.2.0+)
+
+`execute_script*`, `get_cookies*`, `upload_file*`, `inject_css`, and `install_skill` default to the `confirm` policy and wait for operator approval.
+
+1. `js-eyes consent list` to see pending requests.
+2. `js-eyes consent approve <id>` or `js-eyes consent deny <id>` to resolve.
+3. To disable the gate for a specific tool, set `security.toolPolicies.<tool>=allow` in `config.json` (logs an audit event).
+
+### Skill Fails to Load With Integrity Error (2.2.0+)
+
+The main plugin refuses to register skills whose files no longer match `.integrity.json`.
+
+1. `js-eyes skills verify <id>` to see which files drifted.
+2. Re-install: `js-eyes skills install <id>` → `js-eyes skills approve <id>` → `js-eyes skills enable <id>`.
+3. If the drift was expected (manual patch), re-generate the manifest by reinstalling; do not edit `.integrity.json` by hand.
 
 ### Custom OpenClaw Config Location
 

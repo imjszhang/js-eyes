@@ -4,12 +4,17 @@ const fs = require('fs');
 const path = require('path');
 const {
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
+  DEFAULT_SECURITY_CONFIG,
+  DEFAULT_TASK_ORIGIN_CONFIG,
+  DEFAULT_TAINT_CONFIG,
+  DEFAULT_PROFILE_CONFIG,
+  POLICY_ENFORCEMENT_LEVELS,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   RELEASE_BASE_URL,
   SKILLS_REGISTRY_URL,
 } = require('@js-eyes/protocol');
-const { ensureRuntimePaths } = require('@js-eyes/runtime-paths');
+const { chmodBestEffort, ensureRuntimePaths } = require('@js-eyes/runtime-paths');
 
 const DEFAULT_RECORDING_CONFIG = {
   mode: 'standard',
@@ -29,6 +34,7 @@ const DEFAULT_CONFIG = {
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
+  security: DEFAULT_SECURITY_CONFIG,
 };
 
 function clone(value) {
@@ -42,11 +48,70 @@ function mergeRecordingConfig(...configs) {
   }), clone(DEFAULT_RECORDING_CONFIG));
 }
 
+function mergeSecurityConfig(...configs) {
+  const base = clone(DEFAULT_SECURITY_CONFIG);
+  return configs.reduce((merged, config) => {
+    if (!config || typeof config !== 'object') return merged;
+    const next = { ...merged, ...config };
+    if (Array.isArray(config.allowedOrigins)) {
+      next.allowedOrigins = Array.from(new Set([
+        ...(merged.allowedOrigins || []),
+        ...config.allowedOrigins,
+      ]));
+    }
+    if (config.toolPolicies && typeof config.toolPolicies === 'object') {
+      next.toolPolicies = { ...(merged.toolPolicies || {}), ...config.toolPolicies };
+    }
+    if (Array.isArray(config.sensitiveCookieDomains)) {
+      next.sensitiveCookieDomains = Array.from(new Set([
+        ...(merged.sensitiveCookieDomains || []),
+        ...config.sensitiveCookieDomains,
+      ]));
+    }
+    if (Array.isArray(config.egressAllowlist)) {
+      next.egressAllowlist = Array.from(new Set([
+        ...(merged.egressAllowlist || []),
+        ...config.egressAllowlist,
+      ]));
+    }
+    if (typeof config.enforcement === 'string') {
+      next.enforcement = POLICY_ENFORCEMENT_LEVELS.includes(config.enforcement)
+        ? config.enforcement
+        : (merged.enforcement || DEFAULT_SECURITY_CONFIG.enforcement);
+    }
+    if (config.taskOrigin && typeof config.taskOrigin === 'object') {
+      next.taskOrigin = {
+        ...(merged.taskOrigin || clone(DEFAULT_TASK_ORIGIN_CONFIG)),
+        ...config.taskOrigin,
+        sources: Array.isArray(config.taskOrigin.sources)
+          ? config.taskOrigin.sources.slice()
+          : (merged.taskOrigin && Array.isArray(merged.taskOrigin.sources)
+            ? merged.taskOrigin.sources.slice()
+            : DEFAULT_TASK_ORIGIN_CONFIG.sources.slice()),
+      };
+    }
+    if (config.taint && typeof config.taint === 'object') {
+      next.taint = {
+        ...(merged.taint || clone(DEFAULT_TAINT_CONFIG)),
+        ...config.taint,
+      };
+    }
+    if (config.profile && typeof config.profile === 'object') {
+      next.profile = {
+        ...(merged.profile || clone(DEFAULT_PROFILE_CONFIG)),
+        ...config.profile,
+      };
+    }
+    return next;
+  }, base);
+}
+
 function normalizeConfig(config = {}) {
   return {
     ...clone(DEFAULT_CONFIG),
     ...(config || {}),
     recording: mergeRecordingConfig(config.recording),
+    security: mergeSecurityConfig(config.security),
   };
 }
 
@@ -69,6 +134,7 @@ function saveConfig(config, options = {}) {
   const paths = ensureRuntimePaths(options);
   const nextConfig = normalizeConfig(config);
   fs.writeFileSync(paths.configFile, JSON.stringify(nextConfig, null, 2) + '\n', 'utf8');
+  chmodBestEffort(paths.configFile, 0o600);
   return nextConfig;
 }
 
@@ -127,6 +193,7 @@ module.exports = {
   getConfigValue,
   loadConfig,
   mergeRecordingConfig,
+  mergeSecurityConfig,
   normalizeConfig,
   parseConfigValue,
   saveConfig,

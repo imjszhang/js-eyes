@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-15T19:32:43.392Z",
+  "generated": "2026-04-16T16:21:01.818Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.1.0"
+    "version": "2.3.0"
   },
   "skills": [
     {
@@ -19,7 +19,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "bilibili_get_video",
@@ -34,7 +33,9 @@
         "platforms": [
           "bilibili.com"
         ]
-      }
+      },
+      "sha256": "1c518b350259495e3ef3402fbc992db0b17b078ba280c5fb4a12dfc51906b1bb",
+      "size": 13588
     },
     {
       "id": "js-browser-ops-skill",
@@ -51,7 +52,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -71,7 +71,9 @@
         "platforms": [
           "*"
         ]
-      }
+      },
+      "sha256": "065e09278dcd2326daf0a05f63bf45137810c12d2ea79040d20ca614b1e1f873",
+      "size": 19139
     },
     {
       "id": "js-jike-ops-skill",
@@ -85,7 +87,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
@@ -99,7 +100,9 @@
         "platforms": [
           "okjike.com"
         ]
-      }
+      },
+      "sha256": "c544973ea207a4db914f74efd9ec2a91966dd4f973c4f4801d267200da964f65",
+      "size": 14992
     },
     {
       "id": "js-reddit-ops-skill",
@@ -113,7 +116,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post"
@@ -127,7 +129,9 @@
         "platforms": [
           "reddit.com"
         ]
-      }
+      },
+      "sha256": "d0aa13b206415228561261c0381032cbe30bb40755b7aa9a889344f590c4c3c4",
+      "size": 18356
     },
     {
       "id": "js-wechat-ops-skill",
@@ -141,7 +145,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "wechat_get_article"
@@ -155,7 +158,9 @@
         "platforms": [
           "mp.weixin.qq.com"
         ]
-      }
+      },
+      "sha256": "1145addeeb3a26f269ae9a76c45f427d16af36d44f10ea83a3b8fcc984a3ae9f",
+      "size": 15226
     },
     {
       "id": "js-x-ops-skill",
@@ -172,7 +177,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
@@ -193,7 +197,9 @@
         "platforms": [
           "x.com"
         ]
-      }
+      },
+      "sha256": "5880559f18dbcc1b92f36bdd72a13b37462fab478851704c19b3392367dc7d72",
+      "size": 90286
     },
     {
       "id": "js-xiaohongshu-ops-skill",
@@ -207,7 +213,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "xhs_get_note"
@@ -221,7 +226,9 @@
         "platforms": [
           "xiaohongshu.com"
         ]
-      }
+      },
+      "sha256": "a727bdf7df4421425abda98f3ee81f225fdb04997a2d42bdc439b32acaf10347",
+      "size": 16480
     },
     {
       "id": "js-youtube-ops-skill",
@@ -235,7 +242,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "youtube_get_video",
@@ -250,7 +256,9 @@
         "platforms": [
           "youtube.com"
         ]
-      }
+      },
+      "sha256": "249b419163486fe0e158f842fe89699b4c3c306a7aa980a954cd7156e5ed5445",
+      "size": 13809
     },
     {
       "id": "js-zhihu-ops-skill",
@@ -264,7 +272,6 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
-      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "zhihu_get_answer",
@@ -280,7 +287,9 @@
         "platforms": [
           "zhihu.com"
         ]
-      }
+      },
+      "sha256": "295805bd8f3cf3d0d5522725ba6196e418a617ad77dad551d03fcfc8fb64d3f2",
+      "size": 15940
     }
   ]
 }

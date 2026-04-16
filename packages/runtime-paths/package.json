@@ -1,10 +1,11 @@
 {
   "name": "@js-eyes/runtime-paths",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Runtime directories for JS Eyes CLI and services",
   "main": "index.js",
   "files": [
-    "index.js"
+    "index.js",
+    "token.js"
   ],
   "license": "MIT",
   "publishConfig": {

@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-04-17
+
+> Security Policy Engine release. Adds a declarative, non-interactive rules layer that sits between tool callers and the browser (task origin + canary taint + egress allowlist + pending-egress). Default `enforcement=soft` → audit + plan-only behavior; existing workflows keep working. See [RELEASE.md](RELEASE.md#230-migration-guide-policy-engine) for the migration guide.
+
+### Added
+
+- **Policy Engine (`packages/client-sdk/policy/`)**: New `PolicyContext` composes `TaskOriginTracker` (L4a same-origin task), `TaintRegistry` (L4b canary + substring), and `EgressGate` (L5 allowlist + pending-egress). `BrowserAutomation.attachPolicy(ctx)` injects the engine into `openUrl`, `executeScript`, `injectCss`, `getCookies`, `getCookiesByDomain`, and `uploadFileToTab`. When no context is attached, all sinks pass through unchanged.
+- **Pending Egress Queue**: Non-allowlisted `openUrl` calls write a plan to `~/.js-eyes/runtime/pending-egress/<id>.json` (`0600`) and return `status: 'pending-egress'` instead of executing. CLI: `js-eyes egress list|approve <id>|allow <domain>|clear`.
+- **Security Enforcement CLI**: `js-eyes security show` prints the resolved policy; `js-eyes security enforce <off|soft|strict>` writes `security.enforcement` to `config.json`. `off` = audit only; `soft` = plan-only on violation (default); `strict` = hard reject.
+- **Server-Side Policy Fallback**: `packages/server-core/ws-handler.js` runs the same rule engine on the WebSocket dispatch path. External automation clients that bypass `client-sdk` still hit the server-side gate. Decisions emit `automation.soft-block` / `automation.pending-egress` / `automation.policy-error` audit events with `task_origin`, `taint_hit`, `egress_matched`, `rule_decision`, and `enforcement` fields.
+- **Cookie Canaries**: `getCookies` / `getCookiesByDomain` attach an `__canary: "jse-c-<hex>"` marker to each returned cookie. Any sink tool whose serialized parameters contain a registered cookie value, a cookie canary, or common encoded variants (`encodeURIComponent`, `base64`, `hex`) is soft-blocked as `taint-hit`.
+- **HTTP Security Headers**: `packages/server-core/index.js` now sends `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response, closing the `externally_connectable` surface even if a future handler returns HTML.
+- **Extension Defensive Guard**: Chrome and Firefox background scripts drop incoming messages whose status/code is `pending-egress`, `POLICY_SOFT_BLOCK`, or `POLICY_PENDING_EGRESS`, ensuring a soft-blocked response cannot be re-interpreted as an instruction.
+- **Doctor Policy Report**: `js-eyes doctor` now reports `enforcement` mode, task-origin / taint / egress config, pending-egress backlog count, last `soft-block` timestamp, top-3 blocked tool/rule pairs, and skills whose `runtime.platforms` is empty or `['*']`.
+
+### Changed
+
+- **`DEFAULT_SECURITY_CONFIG`**: Adds `enforcement: 'soft'`, `taskOrigin: { enabled: true, sources: [...] }`, `egressAllowlist: []`, `taint: { enabled: true, mode: 'canary+substring', minValueLength: 6 }`, and `profile: { default: 'full' }`. All new fields default-merge in `packages/config/index.js`; loading a 2.2.x `config.json` produces no errors.
+- **Runtime Paths**: `~/.js-eyes/runtime/pending-egress/` is created on first server start or CLI invocation, alongside the existing `pending-consents/` directory.
+
+### Compatibility
+
+- **Default `enforcement=soft`**: Existing agents, skills, and tools keep working. Violating calls are routed to plan-only or pending-egress records, not rejected. Set `JS_EYES_POLICY_ENFORCEMENT=off` or `js-eyes security enforce off` to fall back to audit-only behavior.
+- **`skill.contract.runtime.platforms` reused**: A skill whose `platforms` is missing or `['*']` receives the weakest protection (scope defaults to callers' user messages + active tab + fetched links). Skills that already declare explicit platforms automatically opt into strict scope.
+- **No Protocol Frame Changes**: WS frames keep the same shape; policy decisions are folded into the existing `*_response` / `error` frames with extra `code`, `rule`, `reasons`, `pendingId` fields. Older extensions that do not understand these fields gracefully fall through (handled at `handleMessage`'s defensive guard).
+
+## [2.2.0] - 2026-04-17
+
+> Security hardening release. Default behavior is now token-authenticated, Origin-checked, loopback-bound, with SHA-256-pinned supply chain and sensitive-tool consent gateway. See [RELEASE.md](RELEASE.md#220-migration-guide-security-hardening) for the full migration guide.
+
+### Added
+
+- **Local Server Authentication**: `packages/server-core` now generates a random bearer token on first start and writes it to `runtime/server.token` (POSIX `0600`, Windows `icacls`). Clients authenticate via `Authorization: Bearer <token>`, `Sec-WebSocket-Protocol: bearer.<token>, js-eyes`, or (loopback-only) `?token=<token>`. CLI: `js-eyes server token [show|init|rotate] [--reveal]`.
+- **Origin Allowlist and Loopback Enforcement**: WebSocket upgrades and HTTP requests now require an `Origin` from `security.allowedOrigins` (default covers bundled extensions and loopback). Non-loopback host binds require `security.allowRemoteHost=true`.
+- **Structured Audit Log**: New `packages/server-core/audit.js` writes JSONL events (`conn.accept/reject`, `tool.invoke`, `skill.install.plan/apply`, `skill.verify.fail`, `config.change`) to `logs/audit.log` with `0600`. CLI: `js-eyes audit tail`.
+- **Sensitive Tool Consent Gateway**: `openclaw-plugin` wraps `execute_script`, `execute_script_action`, `get_cookies`, `get_cookies_by_domain`, `upload_file`, `upload_file_to_tab`, `inject_css`, and `install_skill` through `wrapSensitiveTool`. Policies `allow|confirm|deny` resolve from `security.toolPolicies`; consent decisions are logged to `runtime/pending-consents/<id>.json`. CLI: `js-eyes consent list|approve <id>|deny <id>`.
+- **Skill Supply Chain Hardening**:
+  - Registry entries now ship with `sha256` and `size`. `docs/skills.json` entries are regenerated by `packages/devtools/lib/builder.js`, with per-zip `.sha256` sidecars.
+  - Two-phase installer: `planSkillInstall` stages the bundle and records a plan under `runtime/pending-skills/<skillId>.json`; `applySkillInstall` (via `js-eyes skills approve <id>`) finalizes the install.
+  - `packages/protocol/zip-extract.js` replaces `execSync unzip` / `Expand-Archive` with an in-process reader that rejects Zip Slip, symlinks, and oversized entries.
+  - `installSkillDependencies` requires `package-lock.json` and runs `npm ci --ignore-scripts --no-audit --no-fund`. Install scripts (`install.sh`/`install.ps1`) mirror the enforcement.
+  - `.integrity.json` is written on install. `registerLocalSkills` refuses to load tampered files. CLI: `js-eyes skills verify [id]`.
+- **Secure Server Token in Browser Extensions**: Chrome/Firefox popups expose a "Server Token (2.2.0+)" field. The background service worker forwards the token via `Sec-WebSocket-Protocol` and query parameter.
+- **Doctor Security Checks**: `js-eyes doctor` now surfaces `allowAnonymous`, host binding, `allowRawEval`, `requireLockfile`, allowed origins, registry URL, key file permissions, and skill integrity status.
+- **CLI Commands**: `js-eyes skills install --plan`, `skills approve`, `skills verify`, `server token`, `audit tail`, `consent list|approve|deny`.
+
+### Changed
+
+- **Default Skill State**: `isSkillEnabled` now returns `false` unless explicitly opted in via `skillsEnabled.<id>=true`. Existing skills without an explicit setting after upgrade are left disabled with a warning.
+- **Raw Eval Disabled by Default**: Chrome/Firefox `handleExecuteScript*` refuse raw JS payloads unless `security.allowRawEval=true` (host config) or `allowRawEval=true` (extension storage). Rejected calls return `RAW_EVAL_DISABLED`.
+- **CORS Tightened**: `Access-Control-Allow-Origin: *` is removed. The server echoes the caller Origin only when it is on the allowlist.
+- **HTTP API Minimization**: `/api/browser/tabs`, `/api/browser/clients`, and `/api/browser/config` return `unauthorized` / minimal payloads for unauthenticated callers. `/api/browser/health` remains anonymous-friendly.
+- **File Permissions**: `config.json`, `runtime/server.token`, `logs/audit.log`, `runtime/pending-consents/*.json`, and `skills/**/.integrity.json` are created/rewritten with `0600` (best-effort `icacls` on Windows).
+- **Extension Manifests**: Chrome `externally_connectable.matches` narrowed to `http://127.0.0.1:18080/*` and `http://localhost:18080/*`; `web_accessible_resources.use_dynamic_url=true`.
+- **Version Line**: Monorepo packages, extension manifests, plugin metadata, and extension skill bundles aligned on `2.2.0`.
+
+### Security
+
+- **`allowAnonymous` Compatibility Toggle**: Operators upgrading from 2.1.x can set `security.allowAnonymous=true` to accept unauthenticated WS/HTTP clients during a transition. Every anonymous connection is audited, and `js-eyes doctor` reports the insecure mode.
+- **`@main` Fallback URLs Rejected**: Registry and install scripts refuse mutable `@main` / `refs/heads/main` CDN URLs for skill downloads; only tagged/commit-pinned URLs are honored.
+- **Consent Gateway Coverage**: Sensitive tools are routed through the consent gateway even when invoked by locally trusted OpenClaw tools, giving a single audit trail for all dangerous actions.
+
 ## [2.0.0] - 2026-04-14
 
 > Breaking release that removes child OpenClaw plugin wrappers and makes `js-eyes` the single OpenClaw plugin entrypoint for extension skills.

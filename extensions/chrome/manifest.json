@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "icons": {
@@ -55,7 +55,8 @@
       ],
       "matches": [
         "<all_urls>"
-      ]
+      ],
+      "use_dynamic_url": true
     }
   ],
   "content_security_policy": {
@@ -63,10 +64,8 @@
   },
   "externally_connectable": {
     "matches": [
-      "http://localhost:*/*",
-      "https://localhost:*/*",
-      "http://127.0.0.1:*/*",
-      "https://127.0.0.1:*/*"
+      "http://localhost:18080/*",
+      "http://127.0.0.1:18080/*"
     ]
   },
   "minimum_chrome_version": "88"

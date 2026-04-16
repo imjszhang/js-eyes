@@ -168,10 +168,15 @@ npm run server
 
 1. 点击浏览器工具栏中的扩展图标
 2. 输入服务器 HTTP 地址（如 `http://localhost:18080`）
-3. 点击"Connect"— 扩展会自动探测 WebSocket 端点和服务器能力
-4. 如果服务器需要认证，在安全设置中配置认证密钥
+3. 将本地服务器 Token 粘贴到 **Server Token (2.2.0+)**（使用 `js-eyes server token show --reveal` 获取）
+4. 点击 "Connect" — 扩展会自动探测 WebSocket 端点和服务器能力
+5. 如果服务器启用了额外的 HMAC 认证，在安全设置中配置认证密钥
 
 **自动连接：** 扩展启动时自动连接，断线后指数退避自动重连。
+
+> 2.2.0 默认启用安全加固。未携带匹配 Token 的连接会被拒绝，除非在 `config.json` 中把 `security.allowAnonymous` 设为 `true`。详见 [SECURITY.md](../SECURITY.md) 与 [2.2.0 迁移指南](../RELEASE.md#220-migration-guide-security-hardening)。
+>
+> 2.3.0 在所有敏感 sink 前引入非交互式策略引擎（`task origin` + `taint` + `egress allowlist`）。默认 `enforcement=soft`，现有工作流全部不变；详见 [2.3.0 迁移指南](../RELEASE.md#230-migration-guide-policy-engine)。
 
 ### 3. 验证连接
 
@@ -198,6 +203,59 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
 技能的安装状态由 `js-eyes` 自己的运行时配置维护。OpenClaw 只需要加载主插件 `js-eyes`；主插件会在启动时自动扫描同一份技能目录并注册已启用的子技能。
+
+> 从 2.2.0 开始，`install_skill` 只会把**安装计划**写入 `runtime/pending-skills/<id>.json`。运维需执行 `js-eyes skills approve <id>` 才会落地，再用 `js-eyes skills enable <id>` 启用。详见 [SECURITY.md](../SECURITY.md#supply-chain-hardening-220)。
+
+### 5. 安全快速入门（2.2.0+ / 2.3.0+）
+
+```bash
+# 生成 / 查看 / 轮换本地服务器 Token
+js-eyes server token init
+js-eyes server token show --reveal
+js-eyes server token rotate
+
+# 查看 JSONL 审计日志
+js-eyes audit tail
+
+# 审批待处理的敏感工具调用
+js-eyes consent list
+js-eyes consent approve <consent-id>
+
+# 2.3.0+：策略引擎档位与 pending-egress
+js-eyes security show
+js-eyes security enforce <off|soft|strict>    # 默认 soft
+js-eyes egress list
+js-eyes egress approve <id>                   # 会话级放行
+js-eyes egress allow <domain>                 # 静态加到 config.security.egressAllowlist
+
+# 两步式技能安装 + 完整性锁定
+js-eyes skills install js-x-ops-skill   # 仅写入 plan，并提示审批
+js-eyes skills approve js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+js-eyes skills verify                   # 对所有已安装技能重新校验 .integrity.json
+
+# 一次性的安全自检（含 2.3 策略引擎状态）
+js-eyes doctor
+```
+
+2.2.0 的安全默认值：
+
+- WebSocket / HTTP 必须携带 Bearer Token，`Origin` 必须在白名单内；若需绑定非 loopback 主机，必须显式设置 `security.allowRemoteHost=true`。
+- `execute_script`、`get_cookies*`、`upload_file*`、`inject_css`、`install_skill` 默认策略为 `confirm`，需要经过 consent 审批。
+- 原始 `eval` 脚本默认拒绝；需同时开启 `security.allowRawEval`（宿主）与扩展存储中的 `allowRawEval` 才会放行，建议改用 `execute_action` 声明式执行。
+- `config.json`、`server.token`、`audit.log`、`pending-consents/*.json` 在 POSIX 上以 `0600` 写入，在 Windows 上通过 `icacls` 限定权限。
+
+2.3.0 新增：
+
+- 声明式策略引擎（task origin / taint / egress）默认 `enforcement=soft`，现有流程不变；违规 `openUrl` 会转成 `pending-egress` 记录，其它 sink 返回 `POLICY_SOFT_BLOCK`，Agent 可以感知并重新规划。
+- `getCookies*` 返回值会自动附加 `__canary` 金丝雀标记；任何 sink 参数里出现该金丝雀或原始 cookie 值都会被 soft block。
+- `server-core` HTTP 响应全部加了 `Content-Security-Policy: default-src 'none'`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`。
+
+兼容性开关（谨慎使用）：
+
+- `security.allowAnonymous=true`：迁移期间允许匿名客户端连接；每次匿名会话都会写审计日志，`js-eyes doctor` 也会打印警告。
+- `security.toolPolicies.<tool>=allow`：临时恢复 2.2.0 之前的行为。
+- `js-eyes security enforce off`（或 `JS_EYES_POLICY_ENFORCEMENT=off`）：把 2.3 策略引擎降级为纯审计模式。
 
 ### CLI 运行时目录
 
@@ -364,7 +422,7 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步版本号到所有 manifest
-npm run bump -- 2.0.0
+npm run bump -- 2.3.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

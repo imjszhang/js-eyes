@@ -236,6 +236,18 @@
           <span class="text-[11px] text-gray-600 font-bold" id="auth-key-hint" data-i18n="authKeyHint">Key is stored locally and never transmitted</span>
           <button id="clear-auth-key" class="text-[11px] text-red-600 font-bold uppercase hover:underline" data-i18n="btnClearKey">Clear Key</button>
         </div>
+
+        <label for="server-token-input" class="block text-xs text-black mt-4 mb-1.5 font-bold uppercase" data-i18n="serverTokenLabel">Server Token (2.2.0+):</label>
+        <div class="flex gap-2 items-center">
+          <div class="relative flex-1">
+            <input type="password" id="server-token-input" value="" placeholder="Paste server.token file contents" class="brutal-input w-full px-3 py-2 text-xs font-mono font-bold pr-10">
+          </div>
+          <button id="save-server-token" class="brutal-btn-primary px-4 py-2 text-xs font-bold uppercase whitespace-nowrap" data-i18n="btnSave">Save</button>
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+          <span class="text-[11px] text-gray-600 font-bold" id="server-token-hint" data-i18n="serverTokenHint">Required when server.allowAnonymous=false (see runtime/server.token).</span>
+          <button id="clear-server-token" class="text-[11px] text-red-600 font-bold uppercase hover:underline" data-i18n="btnClearKey">Clear Token</button>
+        </div>
       </div>
       
       <div class="mt-4">

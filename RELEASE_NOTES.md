@@ -1,5 +1,99 @@
 # Release Notes
 
+## v2.3.0
+
+### Highlights
+- **Policy Engine**: New declarative rules layer in `@js-eyes/client-sdk/policy` (task origin, canary taint, egress allowlist). `BrowserAutomation.attachPolicy(ctx)` wires it into every sink; unattached SDK callers keep passing through.
+- **Pending Egress Queue**: Non-allowlisted `openUrl` calls become `runtime/pending-egress/<id>.json` records instead of executing. `js-eyes egress list|approve|allow|clear` manages the backlog.
+- **Cookie Canaries**: Every returned cookie gets a `jse-c-<hex>` canary; sinks that serialize a tainted value or canary are soft-blocked as `taint-hit`.
+- **Server-Side Fallback**: `packages/server-core/ws-handler.js` runs the same engine against raw automation WebSocket messages, covering external agents that bypass `client-sdk`.
+- **Enforcement Levels**: `off` (audit only), `soft` (default; plan-only + audit), `strict` (hard reject). Controlled via `js-eyes security enforce <level>`, `config.security.enforcement`, or `JS_EYES_POLICY_ENFORCEMENT`.
+- **HTTP Hardening**: server responses now carry `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()`.
+- **Doctor Policy Report**: enforcement level, pending-egress backlog, most-recent soft-block, top-3 blocked tool/rule pairs, and skills with `platforms: ['*']` are all surfaced by `js-eyes doctor`.
+
+### Breaking Changes
+- None by default. `enforcement=soft` means existing workflows continue to work; violations produce plan-only / audit records.
+- `strict` mode rejects tool calls whose tab / domain is outside the task scope; opt in only after reviewing `js-eyes doctor` and `js-eyes egress list`.
+
+### Migration Notes
+1. `js-eyes doctor` — read the new "Policy engine (2.3)" section. If you see a pending-egress backlog, run `js-eyes egress list` and approve or allow what you expect.
+2. Skills that declare explicit `runtime.platforms` automatically get the tightest scope; skills with `['*']` stay on the weakest-protection path (reported by doctor).
+3. If a production agent depends on calling sinks that touch off-scope origins, either declare the origins in `skill.contract.runtime.platforms`, set `config.security.egressAllowlist`, or keep `enforcement=soft`.
+4. External WebSocket clients that bypass `client-sdk` should handle the new `pending-egress` / `POLICY_SOFT_BLOCK` response shapes.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-chrome-v2.3.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-firefox-v2.3.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-skill-v2.3.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.3.0`
+2. `js-eyes doctor` — review the new `Policy engine (2.3)` block; the default `soft` mode is safe to keep.
+3. Optional: `js-eyes security enforce strict` after you've verified there are no pending-egress items you care about.
+
+#### OpenClaw
+- Upgrade the CLI (`js-eyes`) to 2.3.0; the OpenClaw plugin auto-loads the shared protocol module, so the engine becomes active on the next tool invocation.
+
+#### Browser Extensions
+- Chrome / Edge / Firefox 2.3.0 extensions add a defensive guard so `pending-egress` / `POLICY_SOFT_BLOCK` server responses are never re-interpreted as instructions. No popup UI change.
+
+---
+
+## v2.2.0
+
+### Highlights
+- **Local Server Authentication**: Random bearer token generated on first start; WebSocket/HTTP clients must present it unless `security.allowAnonymous=true`.
+- **Origin Allowlist + Loopback Enforcement**: Server rejects non-allowlisted `Origin` and refuses non-loopback host binds without `security.allowRemoteHost=true`.
+- **Supply Chain Hardening**: `skills.json` entries ship with `sha256`/`size`, install is a two-phase `plan → approve → apply` flow, Zip Slip-safe extractor, `npm ci --ignore-scripts` with `package-lock.json` enforced.
+- **Skill Integrity Pinning**: `.integrity.json` is written on install; `registerLocalSkills` verifies files on load; `js-eyes skills verify` and `js-eyes doctor` expose drift.
+- **Sensitive Tool Consent Gateway**: `execute_script*`, `get_cookies*`, `upload_file*`, `inject_css`, `install_skill` default to `confirm` policy, with CLI `js-eyes consent` to approve/deny pending requests.
+- **Extensions**: Popups expose a "Server Token" field, raw `eval` disabled by default (`allowRawEval=false`), `externally_connectable` narrowed to port 18080.
+- **Audit Log**: JSONL at `logs/audit.log` with `js-eyes audit tail`.
+- **Secure Defaults on Disk**: `config.json`, `server.token`, `audit.log`, and consent files write at `0600` (POSIX) or locked via `icacls` (Windows).
+
+### Breaking Changes
+- Clients that do not send a token are rejected unless the operator opts into `security.allowAnonymous=true`.
+- `isSkillEnabled` defaults to `false`; installed skills must be re-enabled explicitly.
+- Raw `<script>` payloads via `execute_script` are refused unless both host and extension set `allowRawEval=true`.
+- Skill bundles downloaded without a `sha256` in the registry are refused by `install.sh`/`install.ps1`.
+- `@main` / `refs/heads/main` CDN fallback URLs are no longer honored for skill downloads.
+
+### Migration Notes
+1. `js-eyes server token init` to (re)generate the token; share it with the browser extension popup and any automation clients.
+2. Rebuild or re-install browser extensions (2.2.0) so the popup exposes the "Server Token" field.
+3. `js-eyes skills verify` to confirm installed skills pass integrity; re-run `js-eyes skills install <id>` + `skills approve <id>` + `skills enable <id>` if any drift is reported.
+4. Operators running without auth (testing / legacy clients) may set `security.allowAnonymous=true`, but every anonymous connection is audited and `js-eyes doctor` will flag the insecure state.
+5. Review `SECURITY.md` and the [2.2.0 migration guide in RELEASE.md](RELEASE.md#220-migration-guide-security-hardening) before rolling out.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-chrome-v2.2.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-firefox-v2.2.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-skill-v2.2.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.2.0`
+2. `js-eyes server token init` (or inspect existing token via `js-eyes server token show --reveal`)
+3. `js-eyes server start`, then `js-eyes doctor` to verify the hardened defaults
+
+#### OpenClaw
+1. Keep only the main `js-eyes/openclaw-plugin` in `plugins.load.paths`
+2. Ensure `security.toolPolicies` matches your risk appetite (defaults: `execute_script*` / `get_cookies*` / `upload_file*` / `install_skill` → `confirm`)
+3. Install skills via `js_eyes_install_skill` — pending plans must be approved with `js-eyes skills approve <id>` before they take effect
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.2.0.zip`, extract, load unpacked
+2. Open the popup and paste the server token into "Server Token (2.2.0+)"
+
+#### Firefox
+1. Download `js-eyes-firefox-v2.2.0.xpi` and install
+2. Open the popup and paste the server token into "Server Token (2.2.0+)"
+
 ## v2.0.0
 
 ### Changes

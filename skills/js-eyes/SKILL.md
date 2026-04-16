@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Parent skill marker for JS Eyes browser automation and extension skill dependencies.
-version: 2.1.0
+version: 2.3.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
