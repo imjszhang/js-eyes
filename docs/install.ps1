@@ -26,6 +26,50 @@ function Try-Download {
     return $false
 }
 
+function Verify-Sha256 {
+    param([string]$File, [string]$Expected)
+    if (-not $Expected -or $Expected.Trim() -eq '' -or $Expected -eq 'null') {
+        Write-Warn "No sha256 in registry; refusing to proceed without integrity hash."
+        return $false
+    }
+    $actual = (Get-FileHash -Path $File -Algorithm SHA256).Hash.ToLower()
+    $exp = $Expected.ToLower()
+    if ($actual -ne $exp) {
+        Write-Err "SHA-256 mismatch: expected $exp, got $actual"
+        return $false
+    }
+    Write-Ok "SHA-256 verified ($actual)"
+    return $true
+}
+
+function Run-NpmCi {
+    param([string]$Dir)
+    if (-not (Test-Path (Join-Path $Dir 'package.json'))) { return $true }
+    if (-not (Test-Path (Join-Path $Dir 'package-lock.json'))) {
+        Write-Err "$Dir missing package-lock.json; refusing 'npm install' (set JS_EYES_REQUIRE_LOCKFILE=0 to relax)."
+        if ($env:JS_EYES_REQUIRE_LOCKFILE -eq '0') {
+            Push-Location $Dir
+            try { npm install --ignore-scripts --no-audit --no-fund } finally { Pop-Location }
+            return $LASTEXITCODE -eq 0
+        }
+        return $false
+    }
+    Push-Location $Dir
+    try { npm ci --ignore-scripts --no-audit --no-fund } finally { Pop-Location }
+    return $LASTEXITCODE -eq 0
+}
+
+function Confirm-Overwrite {
+    param([string]$Prompt)
+    if ($env:JS_EYES_FORCE -eq '1') { return $true }
+    if ([Environment]::UserInteractive -eq $false -and -not $Host.UI.RawUI) {
+        Write-Warn "Non-interactive shell; refusing to proceed (set JS_EYES_FORCE=1 to override)."
+        return $false
+    }
+    $reply = Read-Host "  $Prompt [y/N]"
+    return ($reply -in @('y', 'Y'))
+}
+
 # ── Sub-skill installer (callable after sourcing) ─────────────────────
 
 function Install-JsEyesSkill {
@@ -65,10 +109,7 @@ function Install-JsEyesSkill {
     $Target = Join-Path $JsEyesRoot "skills\$SkillId"
     if (Test-Path $Target) {
         Write-Warn "Directory already exists: $Target"
-        if ($env:JS_EYES_FORCE -ne "1") {
-            $reply = Read-Host "  Overwrite? [y/N]"
-            if ($reply -notin @('y', 'Y')) { Write-Info "Aborted."; return }
-        }
+        if (-not (Confirm-Overwrite -Prompt 'Overwrite?')) { Write-Info "Aborted."; return }
         Remove-Item $Target -Recurse -Force
     }
     New-Item -ItemType Directory -Path $Target -Force | Out-Null
@@ -79,7 +120,9 @@ function Install-JsEyesSkill {
     try {
         $ZipPath = Join-Path $TmpDir "skill.zip"
         $Urls = @($Skill.downloadUrl)
-        if ($Skill.downloadUrlFallback) { $Urls += $Skill.downloadUrlFallback }
+        if ($Skill.downloadUrlFallback -and ($Skill.downloadUrlFallback -notmatch '/(refs/heads/)?main(?=[/?])')) {
+            $Urls += $Skill.downloadUrlFallback
+        }
         Write-Info "Downloading $SkillId..."
 
         if (-not (Try-Download -Dest $ZipPath -Urls $Urls)) {
@@ -87,14 +130,20 @@ function Install-JsEyesSkill {
             return
         }
 
+        if (-not (Verify-Sha256 -File $ZipPath -Expected $Skill.sha256)) {
+            Write-Err "Refusing to install skill without verified SHA-256."
+            return
+        }
+
         Write-Info "Extracting..."
         Expand-Archive -Path $ZipPath -DestinationPath $Target -Force
 
         if (Test-Path (Join-Path $Target "package.json")) {
-            Write-Info "Installing dependencies..."
-            Push-Location $Target
-            try { npm install --production 2>$null } catch { npm install }
-            Pop-Location
+            Write-Info "Installing dependencies (npm ci --ignore-scripts)..."
+            if (-not (Run-NpmCi -Dir $Target)) {
+                Write-Err "Dependency installation failed."
+                return
+            }
         }
     } finally {
         Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -158,12 +207,9 @@ $Target = Join-Path $InstallDir $SkillName
 
 if (Test-Path $Target) {
     Write-Warn "Directory already exists: $Target"
-    if ($env:JS_EYES_FORCE -ne "1") {
-        $reply = Read-Host "  Overwrite? [y/N]"
-        if ($reply -notin @('y', 'Y')) {
-            Write-Info "Aborted."
-            exit 0
-        }
+    if (-not (Confirm-Overwrite -Prompt 'Overwrite?')) {
+        Write-Info "Aborted."
+        exit 0
     }
     Remove-Item $Target -Recurse -Force
 }
@@ -178,11 +224,12 @@ New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 try {
     $SkillZip  = Join-Path $TmpDir "skill.zip"
     $UrlsSkillZip = @("$SiteUrl/js-eyes-skill.zip")
+    $ShaUrl       = "$SiteUrl/js-eyes-skill.zip.sha256"
     if ($Tag) {
         $Version = $Tag -replace '^v', ''
         $UrlsSkillZip += "https://github.com/$Repo/releases/download/$Tag/js-eyes-skill-v$Version.zip"
+        $ShaUrl       = "https://github.com/$Repo/releases/download/$Tag/js-eyes-skill-v$Version.zip.sha256"
     }
-    $UrlsSkillZip += "https://cdn.jsdelivr.net/gh/$Repo@main/docs/js-eyes-skill.zip"
 
     Write-Info "Downloading skill bundle..."
 
@@ -191,7 +238,18 @@ try {
         exit 1
     }
 
-    # ── Extract ───────────────────────────────────────────────────────
+    $ExpectedSha = $null
+    try {
+        $line = Invoke-WebRequest -Uri $ShaUrl -UseBasicParsing -TimeoutSec 15
+        $ExpectedSha = ($line.Content -split '\s+')[0]
+    } catch {
+        $ExpectedSha = $null
+    }
+    if (-not (Verify-Sha256 -File $SkillZip -Expected $ExpectedSha)) {
+        Write-Err "Refusing to install js-eyes without verified SHA-256."
+        Write-Err "Expected sha file URL: $ShaUrl"
+        exit 1
+    }
 
     Write-Info "Extracting skill bundle..."
 
@@ -202,10 +260,11 @@ try {
 
 # ── Install dependencies ──────────────────────────────────────────────
 
-Write-Info "Installing dependencies..."
-Push-Location $Target
-try { npm install --production 2>$null } catch { npm install }
-Pop-Location
+Write-Info "Installing dependencies (npm ci --ignore-scripts)..."
+if (-not (Run-NpmCi -Dir $Target)) {
+    Write-Err "Dependency installation failed."
+    exit 1
+}
 
 # ── Done ──────────────────────────────────────────────────────────────
 
