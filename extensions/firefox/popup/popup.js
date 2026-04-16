@@ -181,6 +181,52 @@ class JSEyesPopup {
     document.getElementById('clear-auth-key').addEventListener('click', () => {
       this.clearAuthKey();
     });
+
+    const saveServerTokenBtn = document.getElementById('save-server-token');
+    const clearServerTokenBtn = document.getElementById('clear-server-token');
+    const serverTokenInput = document.getElementById('server-token-input');
+    if (saveServerTokenBtn) {
+      saveServerTokenBtn.addEventListener('click', () => this.saveServerToken());
+    }
+    if (serverTokenInput) {
+      serverTokenInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') this.saveServerToken();
+      });
+    }
+    if (clearServerTokenBtn) {
+      clearServerTokenBtn.addEventListener('click', () => this.clearServerToken());
+    }
+  }
+
+  async saveServerToken() {
+    const input = document.getElementById('server-token-input');
+    const token = (input?.value || '').trim();
+    if (!token) {
+      this.showStatus && this.showStatus('Server token cannot be empty', 'error');
+      return;
+    }
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'save_server_token', token });
+      if (response && response.success) {
+        input.value = '';
+        if (this.showStatus) this.showStatus('Server token saved', 'success');
+      } else if (this.showStatus) {
+        this.showStatus('Save failed: ' + ((response && response.error) || 'unknown'), 'error');
+      }
+    } catch (error) {
+      if (this.showStatus) this.showStatus('Save failed: ' + error.message, 'error');
+    }
+  }
+
+  async clearServerToken() {
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'clear_server_token' });
+      if (response && response.success && this.showStatus) {
+        this.showStatus('Server token cleared', 'success');
+      }
+    } catch (error) {
+      if (this.showStatus) this.showStatus('Clear failed: ' + error.message, 'error');
+    }
   }
 
   /**

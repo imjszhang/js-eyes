@@ -194,10 +194,13 @@ js-eyes doctor
 
 1. Click the extension icon in the browser toolbar
 2. Enter the server HTTP address (e.g. `http://localhost:18080`)
-3. Click "Connect" — the extension automatically discovers WebSocket endpoint and server capabilities
-4. For servers with authentication, configure the auth key in security settings
+3. Paste the local server token into **Server Token (2.2.0+)** (run `js-eyes server token show --reveal` to retrieve it)
+4. Click "Connect" — the extension automatically discovers the WebSocket endpoint and server capabilities
+5. For servers with additional HMAC authentication, configure the auth key in security settings
 
 **Auto-Connect:** the extension reconnects automatically on startup and after disconnections (exponential backoff).
+
+> 2.2.0 is security-hardened by default. Connections without a matching server token are rejected unless you set `security.allowAnonymous=true` in `config.json`. See [SECURITY.md](./SECURITY.md) and the [2.2.0 migration guide](./RELEASE.md#220-migration-guide-security-hardening).
 
 ### 3. Verify Connection
 
@@ -224,6 +227,45 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
 Skill install state is tracked by the JS Eyes runtime config. OpenClaw only needs to load the main `js-eyes` plugin; the main plugin auto-discovers enabled local skills from the same runtime `skills/` directory when it starts.
+
+> Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
+
+### 5. Security Quickstart (2.2.0+)
+
+```bash
+# Generate / inspect / rotate the local server token
+js-eyes server token init
+js-eyes server token show --reveal
+js-eyes server token rotate
+
+# Tail the audit log (JSONL)
+js-eyes audit tail
+
+# Review and approve sensitive tool calls awaiting consent
+js-eyes consent list
+js-eyes consent approve <consent-id>
+
+# Two-step skill install with integrity pinning
+js-eyes skills install js-x-ops-skill   # writes a plan; prompts to approve
+js-eyes skills approve js-x-ops-skill
+js-eyes skills enable js-x-ops-skill
+js-eyes skills verify                   # re-check .integrity.json across installed skills
+
+# One-shot posture check
+js-eyes doctor
+```
+
+Secure defaults in 2.2.0:
+
+- WebSocket/HTTP require a bearer token and an allow-listed `Origin`; non-loopback host binds require `security.allowRemoteHost=true`.
+- `execute_script`, `get_cookies*`, `upload_file*`, `inject_css`, and `install_skill` default to the `confirm` policy and require a consent approval.
+- Raw `eval`-style scripts are refused unless both host (`security.allowRawEval`) and extension (`allowRawEval`) opt in; use `execute_action` for declarative actions instead.
+- `config.json`, `server.token`, `audit.log`, and pending-consents files are written at `0600` on POSIX and locked via `icacls` on Windows.
+
+Compatibility escape hatches (use sparingly):
+
+- `security.allowAnonymous=true` accepts unauthenticated clients during a migration — every anonymous session is audited and `js-eyes doctor` will flag it.
+- `security.toolPolicies.<tool>=allow` restores pre-2.2.0 behavior for a specific tool.
 
 ### CLI Runtime Directory
 
@@ -319,12 +361,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.0.0` |
-| Browser extension assets | `2.0.0` |
-| `@js-eyes/server-core` | `2.0.0` |
-| `@js-eyes/client-sdk` | `2.0.0` |
-| `openclaw-plugin` | `2.0.0` |
-| Skills using `@js-eyes/client-sdk` | `2.0.0` |
+| CLI | `2.2.0` |
+| Browser extension assets | `2.2.0` |
+| `@js-eyes/server-core` | `2.2.0` |
+| `@js-eyes/client-sdk` | `2.2.0` |
+| `openclaw-plugin` | `2.2.0` |
+| Skills using `@js-eyes/client-sdk` | `2.2.0` |
 
 ## Extension Skills
 
@@ -406,7 +448,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 2.0.0
+npm run bump -- 2.2.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

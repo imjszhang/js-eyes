@@ -10,6 +10,7 @@
  */
 
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -363,6 +364,17 @@ function discoverSubSkills() {
   return skills;
 }
 
+function hashFile(filePath) {
+  const buf = fs.readFileSync(filePath);
+  const hash = crypto.createHash('sha256').update(buf).digest('hex');
+  return { sha256: hash, size: buf.length };
+}
+
+function writeShaSidecar(zipPath, sha256) {
+  const sidecar = `${zipPath}.sha256`;
+  fs.writeFileSync(sidecar, `${sha256}  ${path.basename(zipPath)}\n`, 'utf8');
+}
+
 async function buildSubSkillZips() {
   const skills = discoverSubSkills();
   if (skills.length === 0) return;
@@ -393,12 +405,18 @@ async function buildSubSkillZips() {
     });
 
     const stats = fs.statSync(outputFile);
-    console.log(`  ✓ Sub-skill bundle: skills/${skill.dirName}/${zipName} (${formatSize(stats.size)})`);
+    const { sha256 } = hashFile(outputFile);
+    writeShaSidecar(outputFile, sha256);
+    skill._sha256 = sha256;
+    skill._size = stats.size;
+    console.log(`  ✓ Sub-skill bundle: skills/${skill.dirName}/${zipName} (${formatSize(stats.size)}, sha256 ${sha256.slice(0, 12)}…)`);
   }
+
+  return skills;
 }
 
-async function buildSkillsRegistry() {
-  const skills = discoverSubSkills();
+async function buildSkillsRegistry(preBuiltSkills) {
+  const skills = preBuiltSkills || discoverSubSkills();
   const version = getVersion();
 
   const registry = {
@@ -408,7 +426,16 @@ async function buildSkillsRegistry() {
     parentSkill: { id: 'js-eyes', version },
     skills: skills.map((skill) => {
       const primary = `${SITE_URL}/skills/${skill.dirName}/${skill.id}-skill.zip`;
-      const fallback = `https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/${skill.dirName}/${skill.id}-skill.zip`;
+      let sha256 = skill._sha256;
+      let size = skill._size;
+      if (!sha256) {
+        const zipPath = path.join(DOCS_DIR, 'skills', skill.dirName, `${skill.id}-skill.zip`);
+        if (fs.existsSync(zipPath)) {
+          const info = hashFile(zipPath);
+          sha256 = info.sha256;
+          size = info.size;
+        }
+      }
       return {
         id: skill.id,
         name: skill.name,
@@ -417,7 +444,8 @@ async function buildSkillsRegistry() {
         emoji: skill.emoji,
         requires: skill.requires,
         downloadUrl: primary,
-        downloadUrlFallback: fallback,
+        sha256: sha256 || null,
+        size: size || null,
         homepage: skill.homepage,
         tools: skill.tools,
         commands: skill.commands,
@@ -502,8 +530,8 @@ async function buildSite(t, options = {}) {
   pruneUnavailableExtensionDownloads(extensionAssets);
 
   await buildSkillZip();
-  await buildSubSkillZips();
-  await buildSkillsRegistry();
+  const subSkillResults = await buildSubSkillZips();
+  await buildSkillsRegistry(subSkillResults);
 
   console.log(`  ✓ ${t('site.done')}`);
 }
@@ -531,8 +559,11 @@ async function buildSkillZip() {
   });
 
   const stats = fs.statSync(outputFile);
+  const { sha256 } = hashFile(outputFile);
+  writeShaSidecar(outputFile, sha256);
   fs.copyFileSync(outputFile, distAsset);
-  console.log(`  ✓ Skill bundle: ${SKILL_ZIP_NAME} (${formatSize(stats.size)})`);
+  writeShaSidecar(distAsset, sha256);
+  console.log(`  ✓ Skill bundle: ${SKILL_ZIP_NAME} (${formatSize(stats.size)}, sha256 ${sha256.slice(0, 12)}…)`);
   console.log(`  ✓ Skill bundle asset: ${path.basename(distAsset)}`);
 }
 

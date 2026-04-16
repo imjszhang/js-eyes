@@ -4,12 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const {
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
+  DEFAULT_SECURITY_CONFIG,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   RELEASE_BASE_URL,
   SKILLS_REGISTRY_URL,
 } = require('@js-eyes/protocol');
-const { ensureRuntimePaths } = require('@js-eyes/runtime-paths');
+const { chmodBestEffort, ensureRuntimePaths } = require('@js-eyes/runtime-paths');
 
 const DEFAULT_RECORDING_CONFIG = {
   mode: 'standard',
@@ -29,6 +30,7 @@ const DEFAULT_CONFIG = {
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
+  security: DEFAULT_SECURITY_CONFIG,
 };
 
 function clone(value) {
@@ -42,11 +44,36 @@ function mergeRecordingConfig(...configs) {
   }), clone(DEFAULT_RECORDING_CONFIG));
 }
 
+function mergeSecurityConfig(...configs) {
+  const base = clone(DEFAULT_SECURITY_CONFIG);
+  return configs.reduce((merged, config) => {
+    if (!config || typeof config !== 'object') return merged;
+    const next = { ...merged, ...config };
+    if (Array.isArray(config.allowedOrigins)) {
+      next.allowedOrigins = Array.from(new Set([
+        ...(merged.allowedOrigins || []),
+        ...config.allowedOrigins,
+      ]));
+    }
+    if (config.toolPolicies && typeof config.toolPolicies === 'object') {
+      next.toolPolicies = { ...(merged.toolPolicies || {}), ...config.toolPolicies };
+    }
+    if (Array.isArray(config.sensitiveCookieDomains)) {
+      next.sensitiveCookieDomains = Array.from(new Set([
+        ...(merged.sensitiveCookieDomains || []),
+        ...config.sensitiveCookieDomains,
+      ]));
+    }
+    return next;
+  }, base);
+}
+
 function normalizeConfig(config = {}) {
   return {
     ...clone(DEFAULT_CONFIG),
     ...(config || {}),
     recording: mergeRecordingConfig(config.recording),
+    security: mergeSecurityConfig(config.security),
   };
 }
 
@@ -69,6 +96,7 @@ function saveConfig(config, options = {}) {
   const paths = ensureRuntimePaths(options);
   const nextConfig = normalizeConfig(config);
   fs.writeFileSync(paths.configFile, JSON.stringify(nextConfig, null, 2) + '\n', 'utf8');
+  chmodBestEffort(paths.configFile, 0o600);
   return nextConfig;
 }
 
@@ -127,6 +155,7 @@ module.exports = {
   getConfigValue,
   loadConfig,
   mergeRecordingConfig,
+  mergeSecurityConfig,
   normalizeConfig,
   parseConfigValue,
   saveConfig,

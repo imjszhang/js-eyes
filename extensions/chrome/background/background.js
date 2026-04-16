@@ -61,6 +61,7 @@ const EXTENSION_CONFIG = {
     ],
     sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
     requestTimeout: 60000,
+    allowRawEval: false,
     rateLimit: {
       maxRequestsPerSecond: 10,
       blockDuration: 5000
@@ -1120,7 +1121,10 @@ class BrowserControl {
   async loadSettings() {
     try {
       const authStorageKey = this.securityConfig.auth?.storageKey || 'auth_secret_key';
-      const result = await chrome.storage.local.get(['serverUrl', 'autoConnect', authStorageKey]);
+      const result = await chrome.storage.local.get(['serverUrl', 'autoConnect', 'serverToken', 'allowRawEval', authStorageKey]);
+      if (typeof result.allowRawEval === 'boolean') {
+        this.securityConfig.allowRawEval = result.allowRawEval;
+      }
       
       if (result.serverUrl) {
         // 使用用户设置的服务器地址（可能是 http:// 或 ws:// 格式）
@@ -1149,13 +1153,42 @@ class BrowserControl {
         this.authSecretKey = null;
         console.log('未配置认证密钥');
       }
-      
+
+      if (result.serverToken) {
+        this.serverToken = String(result.serverToken);
+        console.log('已加载服务器 token（用于 2.2.0+ 本地服务鉴权）');
+      } else {
+        this.serverToken = null;
+      }
+
     } catch (error) {
       console.error('加载设置时出错:', error);
       // 使用默认设置
       this.serverUrl = this.defaultServerUrl;
       this.autoConnect = true;
       this.authSecretKey = null;
+      this.serverToken = null;
+    }
+  }
+
+  async saveServerToken(token) {
+    try {
+      const value = token && String(token).trim();
+      if (!value) {
+        await chrome.storage.local.remove('serverToken');
+        this.serverToken = null;
+        console.log('服务器 token 已清除');
+      } else {
+        await chrome.storage.local.set({ serverToken: value });
+        this.serverToken = value;
+        console.log('服务器 token 已保存');
+      }
+      if (this.isConnected) {
+        this.reconnectWithNewSettings();
+      }
+    } catch (error) {
+      console.error('保存服务器 token 失败:', error);
+      throw error;
     }
   }
 
@@ -1298,7 +1331,20 @@ class BrowserControl {
       this.pendingChallenge = null;
       this.sessionExpiresAt = null;
       
-      this.ws = new WebSocket(this.serverUrl);
+      let wsUrl = this.serverUrl;
+      let wsProtocols = undefined;
+      if (this.serverToken && typeof this.serverToken === 'string') {
+        try {
+          const u = new URL(this.serverUrl);
+          u.searchParams.set('token', this.serverToken);
+          wsUrl = u.toString();
+        } catch (_) {
+          const sep = this.serverUrl.includes('?') ? '&' : '?';
+          wsUrl = `${this.serverUrl}${sep}token=${encodeURIComponent(this.serverToken)}`;
+        }
+        wsProtocols = [`bearer.${this.serverToken}`, 'js-eyes'];
+      }
+      this.ws = wsProtocols ? new WebSocket(wsUrl, wsProtocols) : new WebSocket(wsUrl);
       
       this.ws.onopen = () => {
         if (connectionId !== this._currentConnectionId) {
@@ -2339,7 +2385,21 @@ class BrowserControl {
   async handleExecuteScript(message) {
     const { tabId, code, requestId } = message;
     const timeout = this.securityConfig.requestTimeout || 30000;
-    
+
+    if (!this.securityConfig.allowRawEval) {
+      const reason = 'execute_script with raw JavaScript is disabled by default in JS Eyes 2.2.0 (security.allowRawEval=false). Use the declarative execute_action / execute_script_action tools, or opt in via host config security.allowRawEval=true.';
+      console.warn('[Security] handleExecuteScript refused:', reason);
+      this.sendMessage({
+        type: 'error',
+        message: reason,
+        requestId,
+        code: 'RAW_EVAL_DISABLED',
+      });
+      if (this.queueManager && requestId) this.queueManager.remove(requestId);
+      if (this.deduplicator && requestId) this.deduplicator.markCompleted(requestId);
+      return;
+    }
+
     try {
       const executeCode = async function(scriptCode) {
         try {
@@ -3147,6 +3207,22 @@ class BrowserControl {
           });
         return true;
       }
+      if (message.type === 'get_server_token') {
+        sendResponse({ hasServerToken: !!this.serverToken });
+        return true;
+      }
+      if (message.type === 'save_server_token') {
+        this.saveServerToken(message.token)
+          .then(() => sendResponse({ success: true }))
+          .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+      }
+      if (message.type === 'clear_server_token') {
+        this.saveServerToken(null)
+          .then(() => sendResponse({ success: true }))
+          .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+      }
       if (message.type === 'send_tabs_data') {
         this.sendTabsData();
         sendResponse({ success: true });
@@ -3387,7 +3463,15 @@ class BrowserControl {
    */
   async handleExecuteScriptRequest(payload, sender) {
     const timeout = this.securityConfig.requestTimeout || 30000;
-    
+
+    if (!this.securityConfig.allowRawEval) {
+      return {
+        success: false,
+        error: 'execute_script with raw JavaScript is disabled (JS Eyes 2.2.0 security.allowRawEval=false). Use declarative execute_action, or opt in via host config security.allowRawEval=true.',
+        code: 'RAW_EVAL_DISABLED',
+      };
+    }
+
     try {
       const { tabId, code } = payload || {};
       

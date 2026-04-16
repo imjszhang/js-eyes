@@ -1,5 +1,57 @@
 # Release Notes
 
+## v2.2.0
+
+### Highlights
+- **Local Server Authentication**: Random bearer token generated on first start; WebSocket/HTTP clients must present it unless `security.allowAnonymous=true`.
+- **Origin Allowlist + Loopback Enforcement**: Server rejects non-allowlisted `Origin` and refuses non-loopback host binds without `security.allowRemoteHost=true`.
+- **Supply Chain Hardening**: `skills.json` entries ship with `sha256`/`size`, install is a two-phase `plan → approve → apply` flow, Zip Slip-safe extractor, `npm ci --ignore-scripts` with `package-lock.json` enforced.
+- **Skill Integrity Pinning**: `.integrity.json` is written on install; `registerLocalSkills` verifies files on load; `js-eyes skills verify` and `js-eyes doctor` expose drift.
+- **Sensitive Tool Consent Gateway**: `execute_script*`, `get_cookies*`, `upload_file*`, `inject_css`, `install_skill` default to `confirm` policy, with CLI `js-eyes consent` to approve/deny pending requests.
+- **Extensions**: Popups expose a "Server Token" field, raw `eval` disabled by default (`allowRawEval=false`), `externally_connectable` narrowed to port 18080.
+- **Audit Log**: JSONL at `logs/audit.log` with `js-eyes audit tail`.
+- **Secure Defaults on Disk**: `config.json`, `server.token`, `audit.log`, and consent files write at `0600` (POSIX) or locked via `icacls` (Windows).
+
+### Breaking Changes
+- Clients that do not send a token are rejected unless the operator opts into `security.allowAnonymous=true`.
+- `isSkillEnabled` defaults to `false`; installed skills must be re-enabled explicitly.
+- Raw `<script>` payloads via `execute_script` are refused unless both host and extension set `allowRawEval=true`.
+- Skill bundles downloaded without a `sha256` in the registry are refused by `install.sh`/`install.ps1`.
+- `@main` / `refs/heads/main` CDN fallback URLs are no longer honored for skill downloads.
+
+### Migration Notes
+1. `js-eyes server token init` to (re)generate the token; share it with the browser extension popup and any automation clients.
+2. Rebuild or re-install browser extensions (2.2.0) so the popup exposes the "Server Token" field.
+3. `js-eyes skills verify` to confirm installed skills pass integrity; re-run `js-eyes skills install <id>` + `skills approve <id>` + `skills enable <id>` if any drift is reported.
+4. Operators running without auth (testing / legacy clients) may set `security.allowAnonymous=true`, but every anonymous connection is audited and `js-eyes doctor` will flag the insecure state.
+5. Review `SECURITY.md` and the [2.2.0 migration guide in RELEASE.md](RELEASE.md#220-migration-guide-security-hardening) before rolling out.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-chrome-v2.2.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-firefox-v2.2.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.2.0/js-eyes-skill-v2.2.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.2.0`
+2. `js-eyes server token init` (or inspect existing token via `js-eyes server token show --reveal`)
+3. `js-eyes server start`, then `js-eyes doctor` to verify the hardened defaults
+
+#### OpenClaw
+1. Keep only the main `js-eyes/openclaw-plugin` in `plugins.load.paths`
+2. Ensure `security.toolPolicies` matches your risk appetite (defaults: `execute_script*` / `get_cookies*` / `upload_file*` / `install_skill` → `confirm`)
+3. Install skills via `js_eyes_install_skill` — pending plans must be approved with `js-eyes skills approve <id>` before they take effect
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.2.0.zip`, extract, load unpacked
+2. Open the popup and paste the server token into "Server Token (2.2.0+)"
+
+#### Firefox
+1. Download `js-eyes-firefox-v2.2.0.xpi` and install
+2. Open the popup and paste the server token into "Server Token (2.2.0+)"
+
 ## v2.0.0
 
 ### Changes

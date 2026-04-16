@@ -38,11 +38,15 @@ function getPaths(options = {}) {
     configDir: path.join(baseDir, 'config'),
     configFile: path.join(baseDir, 'config', 'config.json'),
     skillsDir: path.join(baseDir, 'skills'),
+    skillsStagingDir: path.join(baseDir, 'skills-staging'),
     skillRecordsDir: path.join(baseDir, 'skill-records'),
     runtimeDir: path.join(baseDir, 'runtime'),
     pidFile: path.join(baseDir, 'runtime', 'server.pid'),
+    tokenFile: path.join(baseDir, 'runtime', 'server.token'),
+    consentsDir: path.join(baseDir, 'runtime', 'pending-consents'),
     logsDir: path.join(baseDir, 'logs'),
     serverLogFile: path.join(baseDir, 'logs', 'server.log'),
+    auditLogFile: path.join(baseDir, 'logs', 'audit.log'),
     cacheDir: path.join(baseDir, 'cache'),
     downloadsDir: path.join(baseDir, 'downloads'),
   };
@@ -78,6 +82,44 @@ function getSkillRecordPaths(skillId, options = {}) {
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function chmodBestEffort(target, mode) {
+  if (process.platform === 'win32') {
+    return { ok: false, reason: 'windows-skip' };
+  }
+  try {
+    fs.chmodSync(target, mode);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+function writeSecretFile(filePath, contents, options = {}) {
+  const mode = options.mode || 0o600;
+  const dir = path.dirname(filePath);
+  ensureDir(dir);
+  try {
+    const fd = fs.openSync(filePath, 'w', mode);
+    try {
+      fs.writeSync(fd, typeof contents === 'string' ? contents : Buffer.from(contents));
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    fs.writeFileSync(filePath, contents);
+  }
+  chmodBestEffort(filePath, mode);
+  return filePath;
+}
+
+function ensureSecretFilePermissions(filePath, options = {}) {
+  const mode = options.mode || 0o600;
+  if (!fs.existsSync(filePath)) {
+    return { ok: false, reason: 'missing' };
+  }
+  return chmodBestEffort(filePath, mode);
 }
 
 function readFileIfExists(file) {
@@ -148,8 +190,10 @@ function ensureRuntimePaths(options = {}) {
   ensureDir(paths.baseDir);
   ensureDir(paths.configDir);
   ensureDir(paths.skillsDir);
+  ensureDir(paths.skillsStagingDir);
   ensureDir(paths.skillRecordsDir);
   ensureDir(paths.runtimeDir);
+  ensureDir(paths.consentsDir);
   ensureDir(paths.logsDir);
   ensureDir(paths.cacheDir);
   ensureDir(paths.downloadsDir);
@@ -167,7 +211,9 @@ function ensureSkillRecordPaths(skillId, options = {}) {
 }
 
 module.exports = {
+  chmodBestEffort,
   ensureDir,
+  ensureSecretFilePermissions,
   ensureSkillRecordPaths,
   ensureRuntimePaths,
   getPaths,
@@ -177,4 +223,5 @@ module.exports = {
   resolveDefaultBaseDir,
   resolveLegacyBaseDir,
   resolveSkillRecordsDir,
+  writeSecretFile,
 };

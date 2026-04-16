@@ -1,8 +1,57 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-04-12 21:06:12 +0800
+Last updated: 2026-04-17
+
+## 2.2.0 Migration Guide (Security Hardening)
+
+JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when upgrading an existing 2.1.x install.
+
+### Server
+
+1. `js-eyes server token init` generates `runtime/server.token` (POSIX `0600`, Windows `icacls`). Re-run on every host after upgrade.
+2. Existing `~/.js-eyes/config/config.json` is migrated in place. Review the new `security` block:
+   - `allowAnonymous: false` by default. Set to `true` **only** for clients that cannot yet send a token (for example, older DeepSeek Cowork builds). A warning is logged on every anonymous connection.
+   - `allowRawEval: false` by default. Set to `true` only when a skill legitimately needs arbitrary JS eval; the extension refuses `execute_script` payloads otherwise.
+   - `requireLockfile: true` by default. Keep this unless installing a skill that intentionally ships without `package-lock.json`.
+3. The server refuses to bind to a non-loopback host unless `security.allowRemoteHost=true`.
+4. `Access-Control-Allow-Origin: *` is replaced by an allowlist. Update `security.allowedOrigins` for any custom client UI (the defaults cover the bundled extensions and `http://localhost:18080`).
+
+### Clients
+
+- **CLI / OpenClaw plugin:** read the token from `runtime/server.token` automatically. No code changes required unless you override the config path.
+- **Browser extensions:** open the extension popup, paste the `server.token` contents into the new "Server Token (2.2.0+)" field, and save. The background service worker forwards the token via `Sec-WebSocket-Protocol: bearer.<token>` and as `?token=<token>` on the WebSocket URL.
+- **Custom WebSocket clients:** include the token in either the `Sec-WebSocket-Protocol` subprotocol list (`bearer.<token>, js-eyes`) or as a loopback-only `?token=<token>` query parameter. Remote clients **must** use the header form.
+
+### Skills
+
+- All skills are left **disabled** after upgrade. Re-enable only the ones you trust with `js-eyes skills enable <id>`.
+- Skill registry entries must carry `sha256` and `size`. Re-run `npm run build:site` to regenerate `docs/skills.json` and the per-skill `.sha256` sidecars.
+- New workflow:
+  - `js-eyes skills install <id> --plan` downloads and stages the bundle, writing a plan file under `runtime/pending-skills/`.
+  - `js-eyes skills approve <id>` applies the staged plan, runs `npm ci --ignore-scripts`, and writes `.integrity.json`.
+  - `js-eyes skills verify [id]` re-validates file hashes against `.integrity.json`.
+- OpenClaw's `js_eyes_install_skill` tool only produces plans; approval still requires the CLI.
+
+### Operator Maintenance
+
+- `js-eyes doctor` now surfaces: `allowAnonymous`, host binding, file permissions on `config.json` / `server.token` / `audit.log`, skill integrity, and whether the configured registry URL is a known value.
+- `js-eyes audit tail` streams JSONL events from `logs/audit.log` (connection, skill install, config change, sensitive tool invocation). Redirect to long-term storage if you need retention beyond rotation.
+- `js-eyes consent list` / `consent approve <id>` / `consent deny <id>` manage the consent queue under `runtime/pending-consents/`.
+
+### Backward Compatibility Toggle
+
+If you must keep anonymous clients working during a transition window:
+
+```bash
+# As a last resort: accept unauthenticated WS/HTTP clients.
+js-eyes config set security.allowAnonymous true
+```
+
+Every anonymous request is logged to `audit.log` and reported by `js-eyes doctor`. Plan to remove the toggle before the 2.3.0 release.
 
 ## Scope
+
+## Release Scope
 
 This checklist is for shipping a formal `vX.Y.Z` release from `develop` to `main`, including:
 

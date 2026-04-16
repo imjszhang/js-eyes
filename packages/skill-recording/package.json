@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/skill-recording",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Shared recording helpers for JS Eyes skills",
   "main": "index.js",
   "files": [
@@ -11,6 +11,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/runtime-paths": "2.1.0"
+    "@js-eyes/runtime-paths": "2.2.0"
   }
 }

@@ -44,17 +44,23 @@ const manifest = require("./openclaw.plugin.json");
 const { BrowserAutomation } = require("../packages/client-sdk");
 const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
-const { SKILLS_REGISTRY_URL } = require("../packages/protocol");
+const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
 const {
+  applySkillInstall,
   discoverLocalSkills,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
-  installSkillFromRegistry,
   isSkillEnabled,
   loadSkillContract,
+  planSkillInstall,
+  readSkillIntegrity,
   registerOpenClawTools,
+  verifySkillIntegrity,
 } = require("../packages/protocol/skills");
+const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
+const { ensureToken, readToken } = require("../packages/runtime-paths/token.js");
 
+const nodeCrypto = require("node:crypto");
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
 
@@ -111,35 +117,55 @@ function resolvePluginEntry(definition) {
   return definition.register;
 }
 
-function registerLocalSkills(api, skillsDir, pluginConfig) {
+function registerLocalSkills(api, skillsDir, pluginConfig, helpers = {}) {
   const localSkills = discoverLocalSkills(skillsDir);
   if (localSkills.length === 0) {
     api.logger.info(`[js-eyes] No local skills found in ${skillsDir}`);
     return;
   }
 
-  let hostConfig = loadConfig();
+  const hostConfig = loadConfig();
   const legacyState = getLegacyOpenClawSkillState({
     skillIds: localSkills.map((skill) => skill.id),
   });
-  let migratedCount = 0;
+  let firstRunMigrations = 0;
   for (const skill of localSkills) {
-    if (!Object.prototype.hasOwnProperty.call(hostConfig.skillsEnabled || {}, skill.id)
-      && Object.prototype.hasOwnProperty.call(legacyState, skill.id)) {
-      setConfigValue(`skillsEnabled.${skill.id}`, legacyState[skill.id]);
-      migratedCount++;
+    if (!Object.prototype.hasOwnProperty.call(hostConfig.skillsEnabled || {}, skill.id)) {
+      const legacyValue = Object.prototype.hasOwnProperty.call(legacyState, skill.id)
+        ? legacyState[skill.id]
+        : false;
+      setConfigValue(`skillsEnabled.${skill.id}`, legacyValue === true);
+      firstRunMigrations++;
+      if (legacyValue !== true) {
+        api.logger.warn(
+          `[js-eyes] Skill "${skill.id}" left disabled by default; run \`js-eyes skills enable ${skill.id}\` to opt-in`,
+        );
+      }
     }
   }
-  if (migratedCount > 0) {
-    hostConfig = loadConfig();
-    api.logger.info(`[js-eyes] Migrated ${migratedCount} legacy OpenClaw skill state entr${migratedCount === 1 ? "y" : "ies"} into JS Eyes config`);
+  let effectiveConfig = hostConfig;
+  if (firstRunMigrations > 0) {
+    effectiveConfig = loadConfig();
   }
 
   const registeredNames = new Set(BUILTIN_TOOL_NAMES);
   for (const skill of localSkills) {
-    if (!isSkillEnabled(hostConfig, skill.id, legacyState)) {
+    if (!isSkillEnabled(effectiveConfig, skill.id, legacyState)) {
       api.logger.info(`[js-eyes] Skipping disabled local skill "${skill.id}"`);
       continue;
+    }
+
+    const integrity = verifySkillIntegrity(skill.skillDir);
+    if (integrity.hasIntegrity && !integrity.ok) {
+      api.logger.warn(
+        `[js-eyes] Refusing to load tampered skill "${skill.id}": ${integrity.mismatches.length} mismatched, ${integrity.missing.length} missing`,
+      );
+      continue;
+    }
+    if (!integrity.hasIntegrity) {
+      api.logger.warn(
+        `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy install); load allowed but consider reinstalling`,
+      );
     }
 
     try {
@@ -150,10 +176,15 @@ function registerLocalSkills(api, skillsDir, pluginConfig) {
       }
 
       const adapter = contract.createOpenClawAdapter(pluginConfig, api.logger);
+      const installManifest = readSkillIntegrity(skill.skillDir);
+      const declaredTools = installManifest?.declaredTools || skill.tools || [];
+
       const summary = registerOpenClawTools(api, adapter, {
         logger: api.logger,
         registeredNames,
         sourceName: skill.id,
+        declaredTools,
+        wrapTool: helpers.wrapSensitiveTool || null,
       });
 
       if (summary.registered.length > 0) {
@@ -180,13 +211,23 @@ function register(api) {
     ? nodePath.resolve(pluginCfg.skillsDir)
     : nodePath.join(SKILL_ROOT, "skills");
 
+  const runtimePaths = ensureRuntimePaths();
+  const hostConfig = loadConfig();
+  const security = resolveSecurityConfig(hostConfig);
+
   let bot = null;
   let server = null;
+
+  function getServerToken() {
+    if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
+    return readToken();
+  }
 
   function ensureBot() {
     if (!bot) {
       bot = new BrowserAutomation(`ws://${serverHost}:${serverPort}`, {
         defaultTimeout: requestTimeout,
+        token: getServerToken(),
         logger: {
           info: (msg) => api.logger.info(msg),
           warn: (msg) => api.logger.warn(msg),
@@ -197,8 +238,72 @@ function register(api) {
     return bot;
   }
 
+  const sensitiveToolNames = new Set([
+    ...SENSITIVE_TOOL_NAMES,
+    ...(Object.keys(security.toolPolicies || {}).filter((name) => security.toolPolicies[name] === 'confirm' || security.toolPolicies[name] === 'deny')),
+  ]);
+
+  function summarizeParams(params = {}) {
+    try {
+      const json = JSON.stringify(params);
+      return json.length > 200 ? json.slice(0, 200) + `…(+${json.length - 200})` : json;
+    } catch {
+      return '[unserializable]';
+    }
+  }
+
+  function recordConsentDecision(toolName, params, decision) {
+    try {
+      const id = nodeCrypto.randomBytes(8).toString('hex');
+      const filePath = nodePath.join(runtimePaths.consentsDir, `${id}.json`);
+      const record = {
+        id,
+        toolName,
+        decision,
+        requestedAt: new Date().toISOString(),
+        decidedAt: new Date().toISOString(),
+        summary: summarizeParams(params),
+        status: decision,
+      };
+      nodeFs.writeFileSync(filePath, JSON.stringify(record, null, 2) + '\n');
+      chmodBestEffort(filePath, 0o600);
+    } catch (error) {
+      api.logger.warn(`[js-eyes] Failed to record consent log: ${error.message}`);
+    }
+  }
+
+  function wrapSensitiveTool(definition, ctx = {}) {
+    if (!definition || !definition.name) return definition;
+    const policyMap = security.toolPolicies || {};
+    const policy = policyMap[definition.name]
+      || (sensitiveToolNames.has(definition.name) ? 'confirm' : 'allow');
+    if (policy === 'allow') return definition;
+
+    const originalExecute = definition.execute;
+    return {
+      ...definition,
+      async execute(toolCallId, params) {
+        if (policy === 'deny') {
+          recordConsentDecision(definition.name, params, 'deny');
+          api.logger.warn(`[js-eyes] Tool "${definition.name}" denied by policy`);
+          return { content: [{ type: 'text', text: `Tool "${definition.name}" denied by JS Eyes policy (security.toolPolicies).` }] };
+        }
+        // policy === 'confirm'
+        recordConsentDecision(definition.name, params, 'auto-confirm');
+        api.logger.warn(
+          `[js-eyes] Tool "${definition.name}" requires confirmation (policy=confirm). source=${ctx.source || 'core'} params=${summarizeParams(params)}`,
+        );
+        return originalExecute(toolCallId, params);
+      },
+    };
+  }
+
   function textResult(text) {
     return { content: [{ type: "text", text }] };
+  }
+
+  function registerBuiltin(definition, options) {
+    api.registerTool(wrapSensitiveTool(definition, { source: 'builtin' }), options);
   }
 
   api.registerService({
@@ -209,9 +314,14 @@ function register(api) {
         return;
       }
       try {
+        const tokenInfo = security.allowAnonymous ? null : ensureToken();
         server = createServer({
           port: serverPort,
           host: serverHost,
+          token: tokenInfo?.token || undefined,
+          security,
+          config: hostConfig,
+          auditLogFile: runtimePaths.auditLogFile,
           logger: {
             info: (msg) => ctx.logger.info(msg),
             warn: (msg) => ctx.logger.warn(msg),
@@ -219,6 +329,9 @@ function register(api) {
           },
         });
         await server.start();
+        if (tokenInfo?.path) {
+          ctx.logger.info(`[js-eyes] Server token file: ${tokenInfo.path}`);
+        }
         ctx.logger.info(`[js-eyes] Server started on ws://${serverHost}:${serverPort}`);
       } catch (err) {
         ctx.logger.error(`[js-eyes] Failed to start server: ${err.message}`);
@@ -374,7 +487,7 @@ function register(api) {
     { optional: true },
   );
 
-  api.registerTool(
+  registerBuiltin(
     {
       name: "js_eyes_execute_script",
       label: "JS Eyes: Execute Script",
@@ -400,7 +513,7 @@ function register(api) {
     { optional: true },
   );
 
-  api.registerTool(
+  registerBuiltin(
     {
       name: "js_eyes_get_cookies",
       label: "JS Eyes: Get Cookies",
@@ -425,7 +538,7 @@ function register(api) {
     { optional: true },
   );
 
-  api.registerTool(
+  registerBuiltin(
     {
       name: "js_eyes_inject_css",
       label: "JS Eyes: Inject CSS",
@@ -448,7 +561,7 @@ function register(api) {
     { optional: true },
   );
 
-  api.registerTool(
+  registerBuiltin(
     {
       name: "js_eyes_get_cookies_by_domain",
       label: "JS Eyes: Get Cookies By Domain",
@@ -502,7 +615,7 @@ function register(api) {
     { optional: true },
   );
 
-  api.registerTool(
+  registerBuiltin(
     {
       name: "js_eyes_upload_file",
       label: "JS Eyes: Upload File",
@@ -606,10 +719,10 @@ function register(api) {
   );
 
   api.registerTool(
-    {
+    wrapSensitiveTool({
       name: "js_eyes_install_skill",
-      label: "JS Eyes: Install Skill",
-      description: "下载并安装一个 JS Eyes 扩展技能。自动下载技能包、解压、安装依赖，并将插件路径注册到 OpenClaw 配置中。安装完成后需要重启 OpenClaw 才能使用新工具。",
+      label: "JS Eyes: Plan Skill Install",
+      description: "下载并校验一个 JS Eyes 扩展技能的安装计划：核对 SHA-256、解到 staging 目录、列出工具/依赖。出于安全考虑，不会自动启用或写入到 skills 目录；需要用户在终端执行 `js-eyes skills approve <skillId>` 才会真正落地。",
       parameters: {
         type: "object",
         properties: {
@@ -619,7 +732,7 @@ function register(api) {
           },
           force: {
             type: "boolean",
-            description: "强制覆盖已有安装（默认 false）",
+            description: "如果该技能已经安装，是否允许覆盖（仍然只生成计划）",
           },
         },
         required: ["skillId"],
@@ -627,35 +740,43 @@ function register(api) {
       async execute(_toolCallId, params) {
         const { skillId, force } = params;
         try {
-          const installResult = await installSkillFromRegistry({
+          const planResult = await planSkillInstall({
             skillId,
             registryUrl: skillsRegistryUrl,
             skillsDir,
             force,
             logger: api.logger,
           });
-          setConfigValue(`skillsEnabled.${skillId}`, true);
+          const plan = planResult.plan;
+          const planFile = nodePath.join(runtimePaths.runtimeDir, 'pending-skills', `${skillId}.json`);
+          nodeFs.mkdirSync(nodePath.dirname(planFile), { recursive: true });
+          nodeFs.writeFileSync(planFile, JSON.stringify(plan, null, 2) + '\n');
+          chmodBestEffort(planFile, 0o600);
 
           const lines = [
-            `✓ 技能 "${installResult.skill.name}" (${skillId}) 安装成功！`,
-            `  安装路径: ${installResult.targetDir}`,
-            `  提供工具: ${(installResult.skill.tools || []).join(", ")}`,
-            "",
+            `已生成安装计划，但未执行。请人工 review 后批准。`,
+            `  技能: ${planResult.skill.name} (${skillId})`,
+            `  来源: ${plan.sourceUrl}`,
+            `  SHA-256: ${plan.bundleSha256}`,
+            `  Bundle 大小: ${plan.bundleSize} bytes`,
+            `  声明工具: ${(plan.declaredTools || []).join(', ') || '(none)'}`,
+            `  依赖锁文件: ${plan.hasLockfile ? '存在' : '缺失'}`,
+            `  Staging: ${plan.stagingDir}`,
+            `  目标: ${plan.targetDir}`,
+            ``,
+            `请在主机终端执行: js-eyes skills approve ${skillId}`,
+            `（也可以直接执行 \`js-eyes skills install ${skillId}\` 来在终端审阅+安装）`,
           ];
-          lines.push("✓ 已写入 JS Eyes 技能启用状态");
-          lines.push("");
-          lines.push("请重启 OpenClaw 或开启新会话，主插件会从 skills 目录自动加载该技能。");
-
           return textResult(lines.join("\n"));
         } catch (err) {
-          return textResult(`安装技能 "${skillId}" 失败: ${err.message}`);
+          return textResult(`生成安装计划失败 (${skillId}): ${err.message}`);
         }
       },
-    },
+    }),
     { optional: true },
   );
 
-  registerLocalSkills(api, skillsDir, pluginCfg);
+  registerLocalSkills(api, skillsDir, pluginCfg, { wrapSensitiveTool });
 
   api.registerCli(
     ({ program }) => {

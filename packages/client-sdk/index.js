@@ -4,12 +4,29 @@ const WebSocket = require('ws');
 const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT } = require('@js-eyes/protocol');
 
 const DEFAULT_SERVER_URL = `ws://${DEFAULT_SERVER_HOST}:${DEFAULT_SERVER_PORT}`;
+const WS_SUBPROTOCOL_PREFIX = 'jse-token.';
+
+function tryReadServerToken() {
+  try {
+    const { readToken } = require('@js-eyes/runtime-paths/token');
+    return readToken();
+  } catch {
+    return null;
+  }
+}
 
 class BrowserAutomation {
   constructor(serverUrl, options = {}) {
     this.serverUrl = this._normalizeWsUrl(serverUrl || DEFAULT_SERVER_URL);
     this.logger = options.logger || console;
     this.defaultTimeout = options.defaultTimeout || 60;
+    if (Object.prototype.hasOwnProperty.call(options, 'token')) {
+      this.token = options.token || null;
+    } else if (process.env.JS_EYES_SERVER_TOKEN) {
+      this.token = process.env.JS_EYES_SERVER_TOKEN;
+    } else {
+      this.token = tryReadServerToken();
+    }
 
     this.requestInterval = options.requestInterval || 200;
     this._lastRequestTime = 0;
@@ -52,12 +69,22 @@ class BrowserAutomation {
 
     this._connectPromise = new Promise((resolve, reject) => {
       this._wsState = 'connecting';
-      const wsUrl = `${this.serverUrl}?type=automation`;
+      const params = new URLSearchParams({ type: 'automation' });
+      if (this.token) params.set('token', this.token);
+      const wsUrl = `${this.serverUrl}?${params.toString()}`;
 
-      this.logger.info(`[JS-Eyes] 正在连接: ${wsUrl}`);
+      const sanitizedUrl = `${this.serverUrl}?type=automation${this.token ? '&token=***' : ''}`;
+      this.logger.info(`[JS-Eyes] 正在连接: ${sanitizedUrl}`);
+
+      const protocols = this.token ? [WS_SUBPROTOCOL_PREFIX + this.token] : undefined;
+      const wsOptions = this.token
+        ? { headers: { Authorization: `Bearer ${this.token}` } }
+        : undefined;
 
       try {
-        this.ws = new WebSocket(wsUrl);
+        this.ws = protocols
+          ? new WebSocket(wsUrl, protocols, wsOptions)
+          : new WebSocket(wsUrl, wsOptions);
       } catch (err) {
         this._wsState = 'disconnected';
         this._connectPromise = null;

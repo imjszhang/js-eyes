@@ -12,46 +12,191 @@ const {
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   PROTOCOL_VERSION,
+  WS_CLOSE_CODE_AUTH_REQUIRED,
+  isLoopbackHost,
+  isOriginAllowed,
+  resolveSecurityConfig,
 } = require('@js-eyes/protocol');
+const { ensureToken } = require('@js-eyes/runtime-paths/token');
+const { checkAccess, WS_SUBPROTOCOL_PREFIX } = require('./auth');
+const { createAuditLogger, NOOP_AUDIT } = require('./audit');
+const { loadConfig } = tryLoadConfigModule();
 const pkg = require('./package.json');
+
+function tryLoadConfigModule() {
+  try {
+    return require('@js-eyes/config');
+  } catch {
+    return { loadConfig: () => ({}) };
+  }
+}
+
+function resolveAuditLogger(options) {
+  if (options.auditLogger) return options.auditLogger;
+  if (!options.auditLogFile) return NOOP_AUDIT;
+  return createAuditLogger({
+    filePath: options.auditLogFile,
+    fallbackLogger: options.logger || console,
+  });
+}
+
+function resolveServerToken(options, security) {
+  if (options.token) return { token: options.token, path: null, created: false };
+  if (security.allowAnonymous && options.allowNoToken !== false) {
+    return { token: null, path: null, created: false };
+  }
+  try {
+    return ensureToken({ baseDir: options.baseDir });
+  } catch (error) {
+    const logger = options.logger || console;
+    logger.warn?.(`[js-eyes-server] token 初始化失败: ${error.message}`);
+    return { token: null, path: null, created: false };
+  }
+}
 
 function createServer(options = {}) {
   const port = options.port || DEFAULT_SERVER_PORT;
   const host = options.host || DEFAULT_SERVER_HOST;
   const logger = options.logger || console;
 
+  let config = {};
+  try {
+    config = options.config || loadConfig();
+  } catch {
+    config = {};
+  }
+  const security = options.security || resolveSecurityConfig(config);
+
+  if (!isLoopbackHost(host) && !security.allowRemoteBind) {
+    throw new Error(
+      `拒绝绑定到非回环地址 "${host}"。如确需暴露到本机外，请设置 JS_EYES_ALLOW_REMOTE_BIND=1 或 config.security.allowRemoteBind=true。`,
+    );
+  }
+  if (!isLoopbackHost(host)) {
+    logger.warn?.(`[js-eyes-server] WARNING: binding to non-loopback host ${host}; 本地服务将对外可达`);
+  }
+
+  const audit = resolveAuditLogger({
+    auditLogger: options.auditLogger,
+    auditLogFile: options.auditLogFile,
+    logger,
+  });
+
+  const { token: serverToken, path: tokenFilePath, created: tokenCreated } =
+    resolveServerToken(options, security);
+
+  if (security.allowAnonymous) {
+    logger.warn?.(
+      '[js-eyes-server] WARNING: allowAnonymous=true (or JS_EYES_INSECURE=1) — 服务端将接受未鉴权 / 未在白名单内的客户端，仅用于过渡兼容',
+    );
+  }
+  if (tokenCreated && tokenFilePath) {
+    logger.info?.(`[js-eyes-server] Generated new server token at ${tokenFilePath} (chmod 600)`);
+  }
+
   const state = createState();
+  state.serverToken = serverToken;
+  state.security = security;
+  state.audit = audit;
+
   let cleanupTimer = null;
 
-  function jsonResponse(res, statusCode, data) {
+  function originFromHeaders(req) {
+    const raw = req.headers && (req.headers.origin || req.headers.Origin);
+    return raw || null;
+  }
+
+  function jsonResponse(res, statusCode, data, req) {
     const body = JSON.stringify(data, null, 2);
-    res.writeHead(statusCode, {
+    const baseHeaders = {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
+      'Cache-Control': 'no-store',
+    };
+    const origin = req ? originFromHeaders(req) : null;
+    if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
+      baseHeaders['Access-Control-Allow-Origin'] = origin;
+      baseHeaders['Vary'] = 'Origin';
+      baseHeaders['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+      baseHeaders['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
+    }
+    res.writeHead(statusCode, baseHeaders);
     res.end(body);
   }
 
   function handleHttpRequest(req, res) {
+    const origin = originFromHeaders(req);
+
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
+      const headers = { 'Cache-Control': 'no-store' };
+      if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+        headers['Vary'] = 'Origin';
+        headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+        headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
+      }
+      res.writeHead(204, headers);
       res.end();
       return;
     }
 
     if (req.method !== 'GET') {
-      jsonResponse(res, 405, { status: 'error', message: 'Method not allowed' });
+      jsonResponse(res, 405, { status: 'error', message: 'Method not allowed' }, req);
       return;
     }
 
-    const url = new URL(req.url, `http://${req.headers.host || DEFAULT_SERVER_HOST}`);
-    const pathname = url.pathname.replace(/\/+$/, '') || '/';
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || DEFAULT_SERVER_HOST}`);
+    const pathname = parsedUrl.pathname.replace(/\/+$/, '') || '/';
+
+    if (pathname === '/api/browser/health') {
+      jsonResponse(res, 200, {
+        status: 'healthy',
+        protocolVersion: PROTOCOL_VERSION,
+        timestamp: new Date().toISOString(),
+      }, req);
+      return;
+    }
+
+    const access = checkAccess({
+      token: serverToken,
+      headers: req.headers,
+      url: req.url,
+      host: req.headers.host,
+      origin,
+      security,
+      requireToken: Boolean(serverToken),
+    });
+
+    if (!access.allowed) {
+      audit.write('http.reject', {
+        path: pathname,
+        origin,
+        reason: access.reason,
+        remote: req.socket?.remoteAddress,
+      });
+      jsonResponse(res, 401, {
+        status: 'error',
+        message: 'unauthorized',
+        reason: access.reason,
+      }, req);
+      return;
+    }
+
+    if (access.anonymous) {
+      logger.warn?.(`[js-eyes-server] anonymous HTTP access accepted (${pathname}) reason=${access.reason}`);
+      audit.write('http.anonymous', {
+        path: pathname,
+        origin,
+        reason: access.reason,
+        remote: req.socket?.remoteAddress,
+      });
+    }
+
+    audit.write('http.accept', {
+      path: pathname,
+      origin,
+      anonymous: access.anonymous,
+      remote: req.socket?.remoteAddress,
+    });
 
     switch (pathname) {
       case '/':
@@ -61,7 +206,8 @@ function createServer(options = {}) {
           protocolVersion: PROTOCOL_VERSION,
           websocket: `ws://${host}:${port}`,
           endpoints: ['/api/browser/status', '/api/browser/tabs', '/api/browser/clients', '/api/browser/health'],
-        });
+          authRequired: Boolean(serverToken) && !security.allowAnonymous,
+        }, req);
         break;
       case '/api/browser/status': {
         const browsers = getExtensionSummaries(state);
@@ -73,6 +219,8 @@ function createServer(options = {}) {
             uptime: Math.floor(process.uptime()),
             protocolVersion: PROTOCOL_VERSION,
             serverVersion: pkg.version,
+            authRequired: Boolean(serverToken) && !security.allowAnonymous,
+            allowAnonymous: Boolean(security.allowAnonymous),
             connections: {
               extensions: browsers.map(({ clientId, browserName, connectedAt, tabCount }) => (
                 { clientId, browserName, connectedAt, tabCount }
@@ -82,7 +230,7 @@ function createServer(options = {}) {
             tabs: totalTabs,
             pendingRequests: state.pendingResponses.size,
           },
-        });
+        }, req);
         break;
       }
       case '/api/browser/tabs': {
@@ -95,7 +243,7 @@ function createServer(options = {}) {
           browsers,
           tabs: allTabs,
           activeTabId: lastBrowser ? lastBrowser.activeTabId : null,
-        });
+        }, req);
         break;
       }
       case '/api/browser/clients': {
@@ -104,17 +252,9 @@ function createServer(options = {}) {
           status: 'success',
           protocolVersion: PROTOCOL_VERSION,
           clients: browsers,
-        });
+        }, req);
         break;
       }
-      case '/api/browser/health':
-        jsonResponse(res, 200, {
-          status: 'healthy',
-          protocolVersion: PROTOCOL_VERSION,
-          timestamp: new Date().toISOString(),
-          extensions: state.extensionClients.size,
-        });
-        break;
       case '/api/browser/config':
         jsonResponse(res, 200, {
           status: 'success',
@@ -123,23 +263,67 @@ function createServer(options = {}) {
             host,
             extensionPort: port,
             protocolVersion: PROTOCOL_VERSION,
+            authRequired: Boolean(serverToken) && !security.allowAnonymous,
           },
-        });
+        }, req);
         break;
       default:
-        jsonResponse(res, 404, { status: 'error', message: 'Not found' });
+        jsonResponse(res, 404, { status: 'error', message: 'Not found' }, req);
         break;
     }
   }
 
   const httpServer = http.createServer(handleHttpRequest);
-  const wss = new WebSocketServer({ server: httpServer });
 
-  wss.on('connection', (socket, request) => {
-    handleConnection(socket, request, state);
+  const wss = new WebSocketServer({
+    server: httpServer,
+    handleProtocols: (protocols) => {
+      for (const p of protocols) {
+        if (typeof p === 'string' && p.startsWith(WS_SUBPROTOCOL_PREFIX)) {
+          return p;
+        }
+      }
+      return false;
+    },
+    verifyClient: (info, cb) => {
+      const origin = info.origin || (info.req && (info.req.headers.origin || info.req.headers.Origin));
+      const access = checkAccess({
+        token: serverToken,
+        headers: info.req.headers,
+        url: info.req.url,
+        host: info.req.headers.host,
+        origin,
+        security,
+        requireToken: Boolean(serverToken),
+      });
+
+      if (!access.allowed) {
+        audit.write('ws.reject', {
+          origin,
+          url: info.req.url,
+          reason: access.reason,
+          remote: info.req.socket?.remoteAddress,
+        });
+        cb(false, 401, 'Unauthorized');
+        return;
+      }
+
+      info.req._jsEyesAccess = access;
+      if (access.anonymous) {
+        logger.warn?.(`[js-eyes-server] anonymous WebSocket accepted origin=${origin || '<none>'} reason=${access.reason}`);
+      }
+      cb(true);
+    },
   });
 
-  wss.on('error', () => {});
+  wss.on('connection', (socket, request) => {
+    const access = request._jsEyesAccess || { allowed: true, anonymous: false, reason: null };
+    handleConnection(socket, request, state, { audit, access });
+  });
+
+  wss.on('error', (err) => {
+    logger.error?.(`[js-eyes-server] wss error: ${err.message}`);
+  });
 
   function start() {
     return new Promise((resolve, reject) => {
@@ -156,6 +340,12 @@ function createServer(options = {}) {
       httpServer.listen(port, host, () => {
         logger.info(`[js-eyes-server] WebSocket: ws://${host}:${port}`);
         logger.info(`[js-eyes-server] HTTP API:  http://${host}:${port}`);
+        audit.write('server.start', {
+          host,
+          port,
+          tokenRequired: Boolean(serverToken),
+          allowAnonymous: Boolean(security.allowAnonymous),
+        });
         resolve();
       });
     });
@@ -164,6 +354,7 @@ function createServer(options = {}) {
   function stop() {
     return new Promise((resolve) => {
       logger.info('[js-eyes-server] Shutting down...');
+      audit.write('server.stop', { host, port });
 
       if (cleanupTimer) {
         clearInterval(cleanupTimer);
@@ -185,6 +376,7 @@ function createServer(options = {}) {
       wss.close(() => {
         httpServer.close(() => {
           clearTimeout(forceTimer);
+          audit.close?.();
           logger.info('[js-eyes-server] Server stopped.');
           resolve();
         });
@@ -192,10 +384,13 @@ function createServer(options = {}) {
     });
   }
 
-  return { start, stop, httpServer, wss, state };
+  return { start, stop, httpServer, wss, state, token: serverToken, tokenFilePath };
 }
 
-module.exports = { createServer };
+module.exports = {
+  createServer,
+  WS_CLOSE_CODE_AUTH_REQUIRED,
+};
 
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -214,6 +409,9 @@ if (require.main === module) {
     console.log('=== js-eyes server ===');
     console.log(`WebSocket: ws://${host}:${port}`);
     console.log(`HTTP API:  http://${host}:${port}`);
+    if (server.token) {
+      console.log(`Auth token file: ${server.tokenFilePath || '(from options)'}`);
+    }
     console.log(`Status:    http://${host}:${port}/api/browser/status`);
     console.log(`Tabs:      http://${host}:${port}/api/browser/tabs`);
     console.log('');

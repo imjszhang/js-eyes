@@ -38,8 +38,48 @@ confirm() {
   printf "  %s [y/N] " "$1"
   if [ -t 0 ]; then read -r reply
   elif [ -e /dev/tty ]; then read -r reply < /dev/tty
-  else return 0; fi
+  else
+    warn "Non-interactive shell; refusing to proceed (set JS_EYES_FORCE=1 to override)."
+    return 1
+  fi
   [ "$reply" = "y" ] || [ "$reply" = "Y" ]
+}
+
+verify_sha256() {
+  local file="$1" expected="$2"
+  if [ -z "$expected" ] || [ "$expected" = "null" ]; then
+    warn "No sha256 in registry for this download; refusing to proceed without integrity hash."
+    return 1
+  fi
+  local actual=""
+  if command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$file" | awk '{print $1}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$file" | awk '{print $1}')
+  else
+    err "Neither shasum nor sha256sum is installed; cannot verify integrity."
+    return 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    err "SHA-256 mismatch: expected ${expected}, got ${actual}"
+    return 1
+  fi
+  ok "SHA-256 verified (${actual})"
+}
+
+run_npm_ci() {
+  local dir="$1"
+  if [ ! -f "${dir}/package.json" ]; then return 0; fi
+  if [ ! -f "${dir}/package-lock.json" ]; then
+    err "${dir} missing package-lock.json; refusing 'npm install' (set JS_EYES_REQUIRE_LOCKFILE=0 to relax)."
+    if [ "${JS_EYES_REQUIRE_LOCKFILE:-1}" = "0" ]; then
+      warn "Falling back to 'npm install --ignore-scripts --no-audit --no-fund'"
+      (cd "$dir" && npm install --ignore-scripts --no-audit --no-fund)
+      return $?
+    fi
+    return 1
+  fi
+  (cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund)
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────
@@ -71,7 +111,9 @@ if [ -n "$SUB_SKILL" ]; then
     const s = r.skills && r.skills.find(x => x.id === process.argv[2]);
     if (!s) process.exit(1);
     const urls = [s.downloadUrl];
-    if (s.downloadUrlFallback) urls.push(s.downloadUrlFallback);
+    if (s.downloadUrlFallback && !/(refs\\/heads\\/)?main(?=[\\/?])/.test(s.downloadUrlFallback)) {
+      urls.push(s.downloadUrlFallback);
+    }
     console.log(urls.join('\n'));
   " "$REGISTRY_JSON" "$SUB_SKILL" 2>/dev/null) || true
 
@@ -81,6 +123,12 @@ if [ -n "$SUB_SKILL" ]; then
     printf '%s' "$REGISTRY_JSON" | grep '"id"' | sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/  - \1/'
     exit 1
   fi
+
+  EXPECTED_SHA256=$(node -e "
+    let r; try { r = JSON.parse(process.argv[1]); } catch (_) { process.exit(0); }
+    const s = r.skills && r.skills.find(x => x.id === process.argv[2]);
+    if (s && s.sha256) console.log(s.sha256);
+  " "$REGISTRY_JSON" "$SUB_SKILL" 2>/dev/null) || true
 
   download_urls=()
   while IFS= read -r _line; do
@@ -104,6 +152,11 @@ if [ -n "$SUB_SKILL" ]; then
     err "Failed to download skill bundle."; exit 1
   fi
 
+  if ! verify_sha256 "$SKILL_ZIP" "$EXPECTED_SHA256"; then
+    err "Refusing to install skill without verified SHA-256."
+    exit 1
+  fi
+
   info "Extracting..."
   if command -v unzip >/dev/null 2>&1; then
     unzip -qo "$SKILL_ZIP" -d "$TARGET"
@@ -118,8 +171,11 @@ if [ -n "$SUB_SKILL" ]; then
   find "$TARGET" -type d -exec chmod 755 {} + 2>/dev/null || true
 
   if [ -f "${TARGET}/package.json" ]; then
-    info "Installing dependencies..."
-    (cd "$TARGET" && npm install --production 2>/dev/null || npm install)
+    info "Installing dependencies (npm ci --ignore-scripts)..."
+    if ! run_npm_ci "$TARGET"; then
+      err "Dependency installation failed."
+      exit 1
+    fi
   fi
 
   ABSOLUTE_TARGET=$(cd "$TARGET" && pwd)
@@ -172,17 +228,26 @@ _tmpdir=$(mktemp -d)
 trap 'rm -rf "$_tmpdir"' EXIT
 
 SKILL_ZIP="${_tmpdir}/skill.zip"
+SKILL_ZIP_SHA256_URL="${SITE_URL}/js-eyes-skill.zip.sha256"
 urls_skill_zip=("${SITE_URL}/js-eyes-skill.zip")
 if [ -n "$TAG" ]; then
   VERSION="${TAG#v}"
   urls_skill_zip+=("https://github.com/${REPO}/releases/download/${TAG}/js-eyes-skill-v${VERSION}.zip")
+  SKILL_ZIP_SHA256_URL="https://github.com/${REPO}/releases/download/${TAG}/js-eyes-skill-v${VERSION}.zip.sha256"
 fi
-urls_skill_zip+=("https://cdn.jsdelivr.net/gh/${REPO}@main/docs/js-eyes-skill.zip")
 
 info "Downloading skill bundle..."
 
 if ! try_download "$SKILL_ZIP" "${urls_skill_zip[@]}"; then
   err "All download sources failed. Check your network and try again."
+  exit 1
+fi
+
+EXPECTED_SHA256_LINE=$(http_get "${SKILL_ZIP_SHA256_URL}" 2>/dev/null || true)
+EXPECTED_SHA256=$(printf '%s' "${EXPECTED_SHA256_LINE}" | awk 'NR==1{print $1}')
+if ! verify_sha256 "$SKILL_ZIP" "$EXPECTED_SHA256"; then
+  err "Refusing to install js-eyes without verified SHA-256."
+  err "Expected sha file URL: ${SKILL_ZIP_SHA256_URL}"
   exit 1
 fi
 
@@ -207,8 +272,11 @@ find "$TARGET" -type f -exec chmod 644 {} + 2>/dev/null || true
 find "$TARGET" -type d -exec chmod 755 {} + 2>/dev/null || true
 
 # ── Install dependencies ──────────────────────────────────────────────
-info "Installing dependencies..."
-(cd "$TARGET" && npm install --production 2>/dev/null || npm install)
+info "Installing dependencies (npm ci --ignore-scripts)..."
+if ! run_npm_ci "$TARGET"; then
+  err "Dependency installation failed."
+  exit 1
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────
 ABSOLUTE_TARGET=$(cd "$TARGET" && pwd)

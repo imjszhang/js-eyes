@@ -40,19 +40,29 @@ function getExtensionSummaries(state) {
   return summaries;
 }
 
-function handleConnection(socket, request, state) {
+function handleConnection(socket, request, state, options = {}) {
   const clientAddress = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
   const url = new URL(request.url, `ws://${request.headers.host || 'localhost'}`);
   const clientType = url.searchParams.get('type') || 'extension';
+  const audit = options.audit || state.audit || null;
+  const access = options.access || { anonymous: false };
+
+  audit?.write?.('ws.accept', {
+    clientType,
+    remote: clientAddress,
+    origin: request.headers.origin || null,
+    anonymous: Boolean(access.anonymous),
+    reason: access.reason || null,
+  });
 
   if (clientType === 'automation') {
-    setupAutomationClient(socket, clientAddress, state);
+    setupAutomationClient(socket, clientAddress, state, { audit, access });
   } else {
-    setupExtensionClient(socket, clientAddress, state);
+    setupExtensionClient(socket, clientAddress, state, { audit, access });
   }
 }
 
-function setupExtensionClient(socket, clientAddress, state) {
+function setupExtensionClient(socket, clientAddress, state, options = {}) {
   const clientId = generateId();
 
   console.log(`[Extension] Connected: ${clientAddress} (${clientId})`);
@@ -66,6 +76,7 @@ function setupExtensionClient(socket, clientAddress, state) {
     userAgent: null,
     tabs: [],
     activeTabId: null,
+    anonymous: Boolean(options.access?.anonymous),
   });
 
   send(socket, {
@@ -94,7 +105,7 @@ function setupExtensionClient(socket, clientAddress, state) {
   });
 }
 
-function setupAutomationClient(socket, clientAddress, state) {
+function setupAutomationClient(socket, clientAddress, state, options = {}) {
   const clientId = generateId();
 
   console.log(`[Automation] Connected: ${clientAddress} (${clientId})`);
@@ -104,6 +115,7 @@ function setupAutomationClient(socket, clientAddress, state) {
     clientAddress,
     createdAt: Date.now(),
     lastActivity: Date.now(),
+    anonymous: Boolean(options.access?.anonymous),
   });
 
   send(socket, {
@@ -295,6 +307,14 @@ function handleExtensionError(data, state) {
   }
 }
 
+const SENSITIVE_AUTOMATION_ACTIONS = new Set([
+  'execute_script',
+  'inject_css',
+  'get_cookies',
+  'get_cookies_by_domain',
+  'upload_file_to_tab',
+]);
+
 function handleAutomationMessage(raw, clientId, socket, state) {
   let data;
   try {
@@ -307,6 +327,22 @@ function handleAutomationMessage(raw, clientId, socket, state) {
   const action = data.action || data.type;
   const requestId = data.requestId;
   const target = data.target || null;
+  const conn = state.automationClients.get(clientId);
+
+  if (state.audit && action) {
+    state.audit.write(SENSITIVE_AUTOMATION_ACTIONS.has(action)
+      ? 'automation.sensitive'
+      : 'automation.invoke', {
+      clientId,
+      action,
+      target,
+      anonymous: Boolean(conn?.anonymous),
+      hasCode: Boolean(data.code),
+      hasCss: Boolean(data.css),
+      domain: data.domain || null,
+      tabId: data.tabId ?? null,
+    });
+  }
 
   switch (action) {
     case 'get_tabs': {
@@ -478,6 +514,9 @@ function createState() {
     automationClients: new Map(),
     pendingResponses: new Map(),
     callbackResponses: new Map(),
+    audit: null,
+    serverToken: null,
+    security: null,
   };
 }
 
