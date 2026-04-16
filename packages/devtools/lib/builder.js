@@ -813,4 +813,6 @@ module.exports = {
   bump,
   getVersion,
   parseSkillFrontmatter,
+  MAIN_SKILL_STAGE_DIR,
+  prepareMainSkillBundleStage,
 };
