@@ -135,22 +135,41 @@ function generateCommitMessage(files) {
   return `update ${areaList.join(', ')}`;
 }
 
-function ghRelease(tag, title, notes, assets = []) {
-  const args = ['gh', 'release', 'create', tag, '--title', title, '--notes', notes];
+function ghRelease(tag, title, notes, assets = [], options = {}) {
+  const args = ['release', 'create', tag, '--title', title];
+  if (options.notesFile) {
+    args.push('--notes-file', options.notesFile);
+  } else {
+    args.push('--notes', notes || `Release ${tag}`);
+  }
+  if (options.repo) {
+    args.push('--repo', options.repo);
+  }
   for (const asset of assets) {
     args.push(asset);
   }
+
+  const env = { ...process.env };
+  if (!env.GH_TOKEN && env.GITHUB_TOKEN) {
+    env.GH_TOKEN = env.GITHUB_TOKEN;
+  }
+
   try {
-    const output = execFileSync(args[0], args.slice(1), {
+    const output = execFileSync('gh', args, {
       cwd: ROOT,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      env,
     }).trim();
     return { tag, url: output };
   } catch (err) {
     const stderr = err.stderr?.trim() || err.message;
     throw new Error(`gh release failed: ${stderr}`);
   }
+}
+
+function gitPushTag(remote, tag) {
+  git(['push', remote, tag]);
 }
 
 function ghAvailable() {
@@ -168,6 +187,7 @@ module.exports = {
   gitAddAll,
   gitCommit,
   gitPush,
+  gitPushTag,
   gitDiffStat,
   gitTag,
   gitTagExists,

@@ -8,11 +8,29 @@
 
 const i18n = require('../i18n');
 const { buildSite, buildSkillZip, buildChrome, buildFirefox, bump, getVersion } = require('../lib/builder');
-const { gitStatus, gitAddAll, gitCommit, gitPush, gitDiffStat, gitTagExists, generateCommitMessage, ghRelease, ghAvailable } = require('../lib/git');
+const {
+  gitStatus,
+  gitAddAll,
+  gitCommit,
+  gitPush,
+  gitPushTag,
+  gitDiffStat,
+  gitTag,
+  gitTagExists,
+  generateCommitMessage,
+  ghRelease,
+  ghAvailable,
+} = require('../lib/git');
 const { setupGitHubPages } = require('../lib/github-pages');
 const { setupCloudflare } = require('../lib/cloudflare');
+const { bundle: bundlePublish, DIST_ROOT } = require('../lib/publish-bundle');
+const npmPublish = require('../lib/npm-publish');
+const dotenv = require('../lib/dotenv');
 const fs = require('fs');
 const path = require('path');
+
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
+dotenv.load(REPO_ROOT);
 
 i18n.init(process.argv.slice(2));
 const t = i18n.t;
@@ -189,43 +207,166 @@ async function cmdSetupCloudflare(flags) {
   }
 }
 
-function cmdRelease(flags) {
+function extractReleaseNotes(version) {
+  const file = path.join(REPO_ROOT, 'RELEASE_NOTES.md');
+  if (!fs.existsSync(file)) return null;
+  const content = fs.readFileSync(file, 'utf8');
+  const lines = content.split(/\r?\n/);
+  const header = `## v${version}`;
+  const start = lines.indexOf(header);
+  if (start < 0) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^## v\d/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n').trimEnd() + '\n';
+}
+
+function writeTempFile(prefix, content) {
+  const os = require('os');
+  const filePath = path.join(os.tmpdir(), `${prefix}-${process.pid}-${Date.now()}.md`);
+  fs.writeFileSync(filePath, content);
+  return filePath;
+}
+
+async function cmdBundle() {
   try {
-    if (!ghAvailable()) {
-      log(`  ✗ ${t('release.ghMissing')}`);
-      log(`  ${t('release.ghInstall')}`);
-      process.exit(1);
+    await bundlePublish();
+  } catch (error) {
+    log(`  ✗ ${error.message}`);
+    process.exit(1);
+  }
+}
+
+async function cmdRelease(flags) {
+  const skipBundle = !!flags['skip-bundle'];
+  const skipNpm = !!flags['skip-npm'];
+  const skipGithub = !!flags['skip-github'];
+  const skipTag = !!flags['skip-tag'];
+  const dryRun = !!flags['dry-run'];
+
+  const version = getVersion();
+  const tag = `v${version}`;
+  const repo = flags.repo || 'imjszhang/js-eyes';
+
+  log(`── release ${tag} ──`);
+  if (dryRun) log('  (dry-run mode — no side effects)');
+
+  const status = gitStatus();
+  if (!status.clean) {
+    log(`  ⚠ working tree not clean on branch ${status.branch}`);
+    log(`    staged=${status.staged.length} unstaged=${status.unstaged.length} untracked=${status.untracked.length}`);
+  }
+
+  try {
+    // [1/4] bundle
+    if (!skipBundle) {
+      log('');
+      log('[1/4] bundle');
+      const { distDir } = await bundlePublish();
+      log(`  ✓ bundled → ${path.relative(REPO_ROOT, distDir)}`);
+    } else {
+      log('[1/4] bundle — skipped');
     }
 
-    const version = getVersion();
-    const tag = `v${version}`;
-
-    if (gitTagExists(tag)) {
-      log(`  ⚠ ${t('release.tagExists').replace('{tag}', tag)}`);
-    }
-
-    log(`${t('release.creating')} ${tag} ...`);
-
-    const distDir = path.join(__dirname, '..', '..', '..', 'dist');
-    const assets = [];
-    if (fs.existsSync(distDir)) {
-      const distFiles = fs.readdirSync(distDir).filter((file) => file.includes(version));
-      for (const file of distFiles) {
-        assets.push(path.join(distDir, file));
+    // [2/4] npm publish
+    if (!skipNpm) {
+      log('');
+      log('[2/4] npm publish');
+      const who = npmPublish.whoami();
+      if (who) log(`  as: ${who}`);
+      if (dryRun) {
+        log(`  (would publish js-eyes@${version} from ${path.relative(REPO_ROOT, DIST_ROOT)})`);
+      } else {
+        npmPublish.publish(DIST_ROOT);
+        log(`  ✓ published js-eyes@${version}`);
       }
+    } else {
+      log('[2/4] npm publish — skipped');
     }
 
-    if (assets.length > 0) {
-      log(`  ${t('release.assets')}:`);
-      assets.forEach((asset) => log(`    - ${path.basename(asset)}`));
+    // [3/4] git tag + push
+    if (!skipTag) {
+      log('');
+      log('[3/4] git tag');
+      if (gitTagExists(tag)) {
+        log(`  ⚠ tag ${tag} already exists locally, skipping tag creation`);
+      } else if (dryRun) {
+        log(`  (would create tag ${tag})`);
+      } else {
+        gitTag(tag, `Release ${tag}`);
+        log(`  ✓ created tag ${tag}`);
+      }
+      if (!dryRun) {
+        try {
+          gitPushTag('origin', tag);
+          log(`  ✓ pushed ${tag} → origin`);
+        } catch (err) {
+          if (/already exists|rejected/i.test(err.message)) {
+            log(`  ⚠ remote already has ${tag}, continuing`);
+          } else {
+            throw err;
+          }
+        }
+      }
+    } else {
+      log('[3/4] git tag — skipped');
     }
 
-    const title = `JS Eyes ${tag}`;
-    const notes = `Release ${tag}`;
-    const { url } = ghRelease(tag, title, notes, assets);
+    // [4/4] GitHub release
+    if (!skipGithub) {
+      log('');
+      log('[4/4] github release');
+      if (!ghAvailable()) {
+        log(`  ✗ ${t('release.ghMissing') || 'gh CLI not found'}`);
+        log('  (install: brew install gh)');
+        process.exit(1);
+      }
 
-    log(`  ✓ ${t('release.done')}`);
-    log(`  ${t('release.url')}: ${url}`);
+      const assets = [];
+      const distRoot = path.join(REPO_ROOT, 'dist');
+      if (fs.existsSync(distRoot)) {
+        const files = fs.readdirSync(distRoot).filter((f) => f.includes(version) && /\.(zip|xpi|tgz)$/.test(f));
+        for (const f of files) assets.push(path.join(distRoot, f));
+      }
+      if (assets.length) {
+        log('  assets:');
+        assets.forEach((a) => log(`    - ${path.basename(a)}`));
+      } else {
+        log('  (no assets matched — release will be notes-only)');
+      }
+
+      const notes = extractReleaseNotes(version);
+      const title = flags.title || `JS Eyes ${tag}`;
+      let notesFile = null;
+      if (notes) {
+        notesFile = writeTempFile('js-eyes-release', notes);
+        log(`  notes: RELEASE_NOTES.md § v${version} (${notes.length} bytes)`);
+      } else {
+        log('  notes: (generic fallback)');
+      }
+
+      if (dryRun) {
+        log(`  (would create release ${tag} on ${repo})`);
+      } else {
+        try {
+          const { url } = ghRelease(tag, title, notes, assets, { repo, notesFile });
+          log(`  ✓ ${url}`);
+        } finally {
+          if (notesFile) {
+            try { fs.unlinkSync(notesFile); } catch { /* ignore */ }
+          }
+        }
+      }
+    } else {
+      log('[4/4] github release — skipped');
+    }
+
+    log('');
+    log(`✓ release ${tag} complete`);
   } catch (error) {
     log(`  ✗ ${error.message}`);
     process.exit(1);
@@ -280,7 +421,10 @@ async function main() {
       await cmdSync(flags);
       break;
     case 'release':
-      cmdRelease(flags);
+      await cmdRelease(flags);
+      break;
+    case 'bundle':
+      await cmdBundle();
       break;
     case 'setup-github-pages':
     case 'setup-gh-pages':
