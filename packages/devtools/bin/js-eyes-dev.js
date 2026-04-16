@@ -272,6 +272,8 @@ async function cmdBundle() {
 
 async function cmdRelease(flags) {
   const skipBundle = !!flags['skip-bundle'];
+  const skipExtensions = !!flags['skip-extensions'];
+  const skipFirefox = !!flags['skip-firefox'];
   const skipNpm = !!flags['skip-npm'];
   const skipGithub = !!flags['skip-github'];
   const skipTag = !!flags['skip-tag'];
@@ -292,20 +294,59 @@ async function cmdRelease(flags) {
   }
 
   try {
-    // [1/5] bundle
+    // [1/6] bundle
     if (!skipBundle) {
       log('');
-      log('[1/5] bundle');
+      log('[1/6] bundle');
       const { distDir } = await bundlePublish();
       log(`  ✓ bundled → ${path.relative(REPO_ROOT, distDir)}`);
     } else {
-      log('[1/5] bundle — skipped');
+      log('[1/6] bundle — skipped');
     }
 
-    // [2/5] npm publish
+    // [2/6] browser extensions (chrome zip + firefox signed xpi)
+    if (!skipExtensions) {
+      log('');
+      log('[2/6] extensions');
+      const chromeZip = path.join(REPO_ROOT, 'dist', `js-eyes-chrome-v${version}.zip`);
+      const firefoxXpi = path.join(REPO_ROOT, 'dist', `js-eyes-firefox-v${version}.xpi`);
+
+      if (fs.existsSync(chromeZip)) {
+        log(`  ✓ chrome already built (${path.relative(REPO_ROOT, chromeZip)})`);
+      } else if (dryRun) {
+        log('  (would build chrome extension)');
+      } else {
+        await buildChrome(t);
+      }
+
+      if (skipFirefox) {
+        log('  firefox — skipped (--skip-firefox)');
+      } else if (fs.existsSync(firefoxXpi)) {
+        log(`  ✓ firefox already built (${path.relative(REPO_ROOT, firefoxXpi)})`);
+      } else if (dryRun) {
+        log('  (would build + sign firefox extension)');
+      } else if (!process.env.AMO_API_KEY || !process.env.AMO_API_SECRET) {
+        log('  ⚠ AMO_API_KEY/AMO_API_SECRET not set — skipping firefox (set them in .env to auto-sign)');
+      } else {
+        try {
+          await buildFirefox(t, true);
+        } catch (err) {
+          const msg = err.message || String(err);
+          if (/already exists/i.test(msg)) {
+            log(`  ⚠ firefox ${version} already signed on AMO; fetch the signed xpi manually if needed`);
+          } else {
+            log(`  ⚠ firefox build failed: ${msg}`);
+          }
+        }
+      }
+    } else {
+      log('[2/6] extensions — skipped');
+    }
+
+    // [3/6] npm publish
     if (!skipNpm) {
       log('');
-      log('[2/5] npm publish');
+      log('[3/6] npm publish');
       const who = npmPublish.whoami();
       if (who) log(`  as: ${who}`);
       if (dryRun) {
@@ -315,13 +356,13 @@ async function cmdRelease(flags) {
         log(`  ✓ published js-eyes@${version}`);
       }
     } else {
-      log('[2/5] npm publish — skipped');
+      log('[3/6] npm publish — skipped');
     }
 
-    // [3/5] git tag + push
+    // [4/6] git tag + push
     if (!skipTag) {
       log('');
-      log('[3/5] git tag');
+      log('[4/6] git tag');
       if (gitTagExists(tag)) {
         log(`  ⚠ tag ${tag} already exists locally, skipping tag creation`);
       } else if (dryRun) {
@@ -343,13 +384,13 @@ async function cmdRelease(flags) {
         }
       }
     } else {
-      log('[3/5] git tag — skipped');
+      log('[4/6] git tag — skipped');
     }
 
-    // [4/5] GitHub release
+    // [5/6] GitHub release
     if (!skipGithub) {
       log('');
-      log('[4/5] github release');
+      log('[5/6] github release');
       if (!ghAvailable()) {
         log(`  ✗ ${t('release.ghMissing') || 'gh CLI not found'}`);
         log('  (install: brew install gh)');
@@ -392,13 +433,13 @@ async function cmdRelease(flags) {
         }
       }
     } else {
-      log('[4/5] github release — skipped');
+      log('[5/6] github release — skipped');
     }
 
-    // [5/5] ClawHub publish
+    // [6/6] ClawHub publish
     if (!skipClawhub) {
       log('');
-      log('[5/5] clawhub publish');
+      log('[6/6] clawhub publish');
 
       if (!clawhubPublish.available()) {
         log('  ⚠ clawhub CLI not installed (npm install -g clawhub) — skipping');
@@ -436,7 +477,7 @@ async function cmdRelease(flags) {
         }
       }
     } else {
-      log('[5/5] clawhub publish — skipped');
+      log('[6/6] clawhub publish — skipped');
     }
 
     log('');
