@@ -98,6 +98,7 @@ function createServer(options = {}) {
   state.serverToken = serverToken;
   state.security = security;
   state.audit = audit;
+  state.pendingEgressDir = options.pendingEgressDir || null;
 
   let cleanupTimer = null;
 
@@ -106,12 +107,21 @@ function createServer(options = {}) {
     return raw || null;
   }
 
+  function applySecurityHeaders(headers) {
+    headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'";
+    headers['X-Content-Type-Options'] = 'nosniff';
+    headers['X-Frame-Options'] = 'DENY';
+    headers['Referrer-Policy'] = 'no-referrer';
+    headers['Permissions-Policy'] = 'interest-cohort=()';
+    return headers;
+  }
+
   function jsonResponse(res, statusCode, data, req) {
     const body = JSON.stringify(data, null, 2);
-    const baseHeaders = {
+    const baseHeaders = applySecurityHeaders({
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
-    };
+    });
     const origin = req ? originFromHeaders(req) : null;
     if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
       baseHeaders['Access-Control-Allow-Origin'] = origin;
@@ -127,7 +137,7 @@ function createServer(options = {}) {
     const origin = originFromHeaders(req);
 
     if (req.method === 'OPTIONS') {
-      const headers = { 'Cache-Control': 'no-store' };
+      const headers = applySecurityHeaders({ 'Cache-Control': 'no-store' });
       if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
         headers['Access-Control-Allow-Origin'] = origin;
         headers['Vary'] = 'Origin';

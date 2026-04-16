@@ -22,6 +22,7 @@ const {
   COMPATIBILITY_MATRIX,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
+  POLICY_ENFORCEMENT_LEVELS,
   PROTOCOL_VERSION,
   RELEASE_BASE_URL,
   isLoopbackHost,
@@ -294,6 +295,90 @@ async function commandDoctor(flags) {
   print(`  registry url: ${config.skillsRegistryUrl}${config.skillsRegistryUrl?.includes('js-eyes.com') ? '' : ' (custom — please verify)'}`);
 
   print('');
+  print('Policy engine (2.3):');
+  print(`  enforcement: ${security.enforcement}${security.enforcement === 'off' ? ' (audit only)' : ''}`);
+  print(`  taskOrigin.enabled: ${security.taskOrigin?.enabled ? 'yes' : 'no'}`);
+  print(`  taskOrigin.sources: ${(security.taskOrigin?.sources || []).join(', ') || '(none)'}`);
+  print(`  taint.enabled: ${security.taint?.enabled ? 'yes' : 'no'} (mode=${security.taint?.mode || 'n/a'})`);
+  print(`  egressAllowlist: ${(security.egressAllowlist || []).join(', ') || '(empty)'}`);
+
+  const pendingDir = paths.pendingEgressDir;
+  let pendingCount = 0;
+  if (fs.existsSync(pendingDir)) {
+    pendingCount = fs.readdirSync(pendingDir).filter((n) => n.endsWith('.json')).length;
+  }
+  const backlogTag = pendingCount >= 10 ? ' WARN (backlog)' : '';
+  print(`  pending-egress: ${pendingCount} at ${pendingDir}${backlogTag}`);
+
+  try {
+    if (!fs.existsSync(paths.auditLogFile)) {
+      print('  soft-block last: (audit log not yet created)');
+    } else {
+      const raw = fs.readFileSync(paths.auditLogFile, 'utf8').split('\n').filter(Boolean);
+      const recent = raw.slice(-500).map((line) => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(Boolean);
+      const softBlocks = recent.filter((r) => r && (r.event === 'policy.soft-block' || r.event === 'automation.soft-block' || r.rule_decision === 'soft-block'));
+      if (softBlocks.length > 0) {
+        const latest = softBlocks[softBlocks.length - 1];
+        print(`  soft-block last: ${latest.ts} tool=${latest.tool || latest.action || 'n/a'} rule=${latest.rule || 'n/a'}`);
+        const counts = new Map();
+        for (const r of softBlocks) {
+          const k = `${r.tool || r.action || 'n/a'}::${r.rule || (Array.isArray(r.reasons) ? r.reasons[0]?.rule : 'n/a')}`;
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+        const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        print(`  soft-block top3: ${top.map(([k, v]) => `${k} x${v}`).join(' | ') || '(none)'}`);
+      } else {
+        print('  soft-block last: (none recently)');
+      }
+    }
+  } catch (error) {
+    print(`  soft-block stats: error (${error.message})`);
+  }
+
+  try {
+    const wildcardSkills = [];
+    const unknownSkills = [];
+    if (fs.existsSync(skillsDir)) {
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const skillId = entry.name;
+        const skillDir = path.join(skillsDir, skillId);
+        const contractPath = path.join(skillDir, 'skill.contract.js');
+        if (!fs.existsSync(contractPath)) continue;
+        try {
+          const raw = fs.readFileSync(contractPath, 'utf8');
+          const platformsMatch = raw.match(/platforms\s*:\s*\[([^\]]*)\]/);
+          if (!platformsMatch) {
+            unknownSkills.push(skillId);
+            continue;
+          }
+          const items = platformsMatch[1]
+            .split(',')
+            .map((s) => s.trim().replace(/^['"`]|['"`]$/g, ''))
+            .filter(Boolean);
+          if (items.length === 0 || items.includes('*')) {
+            wildcardSkills.push(skillId);
+          }
+        } catch {
+          unknownSkills.push(skillId);
+        }
+      }
+    }
+    if (wildcardSkills.length > 0) {
+      print(`  skills with platforms=['*']: ${wildcardSkills.join(', ')} (weakest protection)`);
+    } else {
+      print('  skills with platforms=[\'*\']: (none)');
+    }
+    if (unknownSkills.length > 0) {
+      print(`  skills platforms unknown: ${unknownSkills.join(', ')}`);
+    }
+  } catch (error) {
+    print(`  skill platforms check: skipped (${error.message})`);
+  }
+
+  print('');
   print('File permissions (POSIX only, target = 600):');
   for (const target of [paths.configFile, paths.tokenFile, paths.auditLogFile]) {
     const status = checkFilePermissions(target);
@@ -404,6 +489,7 @@ async function runForegroundServer(flags) {
     config,
     security,
     auditLogFile: paths.auditLogFile,
+    pendingEgressDir: paths.pendingEgressDir,
   });
 
   const cleanup = async (exitCode = 0) => {
@@ -619,6 +705,125 @@ async function commandConsent(positionals) {
     }
     default:
       throw new Error('用法: `js-eyes consent list|approve <id>|deny <id>`');
+  }
+}
+
+async function commandEgress(positionals, flags) {
+  const action = positionals[1];
+  const paths = ensureRuntimePaths();
+  const dir = paths.pendingEgressDir;
+
+  function listPending() {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => {
+        const file = path.join(dir, name);
+        try {
+          const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return { id: name.replace(/\.json$/, ''), file, data };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  switch (action) {
+    case 'list': {
+      const items = listPending();
+      if (items.length === 0) {
+        print(`No pending egress at ${dir}`);
+        return;
+      }
+      print(`Pending egress (${items.length}) at ${dir}`);
+      for (const item of items) {
+        const host = item.data.host || item.data.params?.url || 'unknown';
+        print(`- ${item.id} host=${host} tool=${item.data.tool || 'n/a'} ts=${item.data.ts || 'n/a'}`);
+        if (item.data.reason) print(`    reason: ${item.data.reason}`);
+      }
+      return;
+    }
+    case 'approve': {
+      const id = positionals[2];
+      if (!id) throw new Error('用法: `js-eyes egress approve <id>`');
+      const file = path.join(dir, `${id}.json`);
+      if (!fs.existsSync(file)) throw new Error(`Egress request ${id} not found.`);
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const host = data.host;
+      if (!host) throw new Error(`Egress request ${id} has no host field.`);
+      const sessionFile = path.join(dir, '.session-allowlist.json');
+      let session = [];
+      if (fs.existsSync(sessionFile)) {
+        try { session = JSON.parse(fs.readFileSync(sessionFile, 'utf8')); } catch {}
+      }
+      if (!Array.isArray(session)) session = [];
+      if (!session.includes(host)) session.push(host);
+      fs.writeFileSync(sessionFile, JSON.stringify(session, null, 2) + '\n');
+      chmodBestEffort(sessionFile, 0o600);
+      fs.rmSync(file, { force: true });
+      print(`Approved egress ${id} -> ${host} (session allowlist).`);
+      print('Note: session-level approvals do not auto-execute the original call; agent needs to re-invoke it.');
+      return;
+    }
+    case 'allow': {
+      const domain = positionals[2];
+      if (!domain) throw new Error('用法: `js-eyes egress allow <domain>`');
+      const config = loadConfig();
+      const security = config.security || {};
+      const current = Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [];
+      if (!current.includes(domain)) current.push(domain);
+      const nextConfig = setConfigValue('security.egressAllowlist', current);
+      print(`Added ${domain} to security.egressAllowlist.`);
+      print(`Current allowlist: ${(nextConfig.security?.egressAllowlist || []).join(', ') || '(empty)'}`);
+      return;
+    }
+    case 'clear': {
+      const items = listPending();
+      let removed = 0;
+      for (const item of items) {
+        try { fs.rmSync(item.file, { force: true }); removed++; } catch {}
+      }
+      print(`Cleared ${removed} pending egress record(s).`);
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes egress list` / `approve <id>` / `allow <domain>` / `clear`');
+  }
+}
+
+async function commandSecurity(positionals, flags) {
+  const action = positionals[1];
+
+  switch (action) {
+    case 'show': {
+      const config = loadConfig();
+      const security = resolveSecurityConfig(config);
+      print(JSON.stringify({
+        enforcement: security.enforcement,
+        taskOrigin: security.taskOrigin,
+        egressAllowlist: security.egressAllowlist,
+        taint: security.taint,
+        profile: security.profile,
+        allowAnonymous: security.allowAnonymous,
+        allowRawEval: security.allowRawEval,
+        requireLockfile: security.requireLockfile,
+      }, null, 2));
+      return;
+    }
+    case 'enforce': {
+      const level = positionals[2];
+      if (!level || !POLICY_ENFORCEMENT_LEVELS.includes(level)) {
+        throw new Error(`用法: \`js-eyes security enforce <${POLICY_ENFORCEMENT_LEVELS.join('|')}>\``);
+      }
+      const nextConfig = setConfigValue('security.enforcement', level);
+      print(`security.enforcement = ${nextConfig.security?.enforcement}`);
+      if (level === 'off') print('!! Policy rules will only audit, not block.');
+      if (level === 'strict') print('!! Policy rules will reject violating calls (breaks existing workflows if task origin is not declared).');
+      return;
+    }
+    default:
+      throw new Error('支持的命令: `js-eyes security show` / `enforce <off|soft|strict>`');
   }
 }
 
@@ -896,6 +1101,8 @@ function printHelp() {
   print('  js-eyes doctor');
   print('  js-eyes audit tail [--lines 100] [--since <iso>]');
   print('  js-eyes consent list|approve <id>|deny <id>');
+  print('  js-eyes egress list|approve <id>|allow <domain>|clear');
+  print('  js-eyes security show|enforce <off|soft|strict>');
   print('  js-eyes config get [key]');
   print('  js-eyes config set <key> <value>');
   print('  js-eyes skills list [--registry https://js-eyes.com/skills.json]');
@@ -944,6 +1151,12 @@ async function main(argv = process.argv.slice(2)) {
     case 'consent':
       await commandConsent(positionals, flags);
       return;
+    case 'egress':
+      await commandEgress(positionals, flags);
+      return;
+    case 'security':
+      await commandSecurity(positionals, flags);
+      return;
     case '--help':
     case '-h':
     case 'help':
@@ -957,7 +1170,9 @@ async function main(argv = process.argv.slice(2)) {
 
 module.exports = {
   commandDoctor,
+  commandEgress,
   commandExtension,
+  commandSecurity,
   commandSkill,
   commandSkills,
   commandStatus,

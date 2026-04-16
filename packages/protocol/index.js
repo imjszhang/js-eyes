@@ -46,12 +46,34 @@ const DEFAULT_ALLOWED_ORIGINS = Object.freeze([
   'https://[::1]',
 ]);
 
+const DEFAULT_TASK_ORIGIN_CONFIG = Object.freeze({
+  enabled: true,
+  sources: ['user-message', 'skill-platforms', 'active-tab', 'fetched-links'],
+});
+
+const DEFAULT_TAINT_CONFIG = Object.freeze({
+  enabled: true,
+  mode: 'canary+substring',
+  minValueLength: 6,
+});
+
+const DEFAULT_PROFILE_CONFIG = Object.freeze({
+  default: 'full',
+});
+
+const POLICY_ENFORCEMENT_LEVELS = Object.freeze(['off', 'soft', 'strict']);
+
 const DEFAULT_SECURITY_CONFIG = Object.freeze({
   allowAnonymous: false,
   allowedOrigins: DEFAULT_ALLOWED_ORIGINS.slice(),
   allowRemoteBind: false,
   allowRawEval: false,
   requireLockfile: true,
+  enforcement: 'soft',
+  taskOrigin: { ...DEFAULT_TASK_ORIGIN_CONFIG, sources: DEFAULT_TASK_ORIGIN_CONFIG.sources.slice() },
+  egressAllowlist: [],
+  taint: { ...DEFAULT_TAINT_CONFIG },
+  profile: { ...DEFAULT_PROFILE_CONFIG },
   toolPolicies: {
     js_eyes_execute_script: 'confirm',
     js_eyes_get_cookies: 'confirm',
@@ -159,6 +181,15 @@ function resolveSecurityConfig(config = {}) {
     sensitiveCookieDomains: Array.isArray(raw.sensitiveCookieDomains)
       ? raw.sensitiveCookieDomains.slice()
       : DEFAULT_SECURITY_CONFIG.sensitiveCookieDomains.slice(),
+    enforcement: POLICY_ENFORCEMENT_LEVELS.includes(raw.enforcement)
+      ? raw.enforcement
+      : DEFAULT_SECURITY_CONFIG.enforcement,
+    taskOrigin: mergeTaskOriginConfig(raw.taskOrigin),
+    egressAllowlist: Array.isArray(raw.egressAllowlist)
+      ? raw.egressAllowlist.slice()
+      : DEFAULT_SECURITY_CONFIG.egressAllowlist.slice(),
+    taint: mergeTaintConfig(raw.taint),
+    profile: mergeProfileConfig(raw.profile),
   };
   if (process.env.JS_EYES_INSECURE === '1') {
     merged.allowAnonymous = true;
@@ -166,12 +197,55 @@ function resolveSecurityConfig(config = {}) {
   if (process.env.JS_EYES_ALLOW_REMOTE_BIND === '1') {
     merged.allowRemoteBind = true;
   }
+  if (process.env.JS_EYES_POLICY_ENFORCEMENT && POLICY_ENFORCEMENT_LEVELS.includes(process.env.JS_EYES_POLICY_ENFORCEMENT)) {
+    merged.enforcement = process.env.JS_EYES_POLICY_ENFORCEMENT;
+  }
   return merged;
+}
+
+function mergeTaskOriginConfig(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_TASK_ORIGIN_CONFIG, sources: DEFAULT_TASK_ORIGIN_CONFIG.sources.slice() };
+  }
+  return {
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_TASK_ORIGIN_CONFIG.enabled,
+    sources: Array.isArray(raw.sources) && raw.sources.length
+      ? raw.sources.slice()
+      : DEFAULT_TASK_ORIGIN_CONFIG.sources.slice(),
+  };
+}
+
+function mergeTaintConfig(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_TAINT_CONFIG };
+  }
+  return {
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_TAINT_CONFIG.enabled,
+    mode: typeof raw.mode === 'string' && raw.mode ? raw.mode : DEFAULT_TAINT_CONFIG.mode,
+    minValueLength: Number.isFinite(raw.minValueLength) && raw.minValueLength > 0
+      ? Math.floor(raw.minValueLength)
+      : DEFAULT_TAINT_CONFIG.minValueLength,
+  };
+}
+
+function mergeProfileConfig(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_PROFILE_CONFIG };
+  }
+  return {
+    default: typeof raw.default === 'string' && raw.default
+      ? raw.default
+      : DEFAULT_PROFILE_CONFIG.default,
+  };
 }
 
 module.exports = {
   DEFAULT_ALLOWED_ORIGINS,
   DEFAULT_SECURITY_CONFIG,
+  DEFAULT_TASK_ORIGIN_CONFIG,
+  DEFAULT_TAINT_CONFIG,
+  DEFAULT_PROFILE_CONFIG,
+  POLICY_ENFORCEMENT_LEVELS,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   DEFAULT_REQUEST_TIMEOUT_SECONDS,

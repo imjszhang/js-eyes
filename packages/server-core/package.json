@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/server-core",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "JS Eyes HTTP + WebSocket server core",
   "main": "index.js",
   "files": [
@@ -14,8 +14,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/protocol": "2.2.0",
-    "@js-eyes/runtime-paths": "2.2.0",
+    "@js-eyes/client-sdk": "2.3.0",
+    "@js-eyes/protocol": "2.3.0",
+    "@js-eyes/runtime-paths": "2.3.0",
     "ws": "^8.19.0"
   }
 }

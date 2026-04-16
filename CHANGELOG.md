@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-04-17
+
+> Security Policy Engine release. Adds a declarative, non-interactive rules layer that sits between tool callers and the browser (task origin + canary taint + egress allowlist + pending-egress). Default `enforcement=soft` → audit + plan-only behavior; existing workflows keep working. See [RELEASE.md](RELEASE.md#230-migration-guide-policy-engine) for the migration guide.
+
+### Added
+
+- **Policy Engine (`packages/client-sdk/policy/`)**: New `PolicyContext` composes `TaskOriginTracker` (L4a same-origin task), `TaintRegistry` (L4b canary + substring), and `EgressGate` (L5 allowlist + pending-egress). `BrowserAutomation.attachPolicy(ctx)` injects the engine into `openUrl`, `executeScript`, `injectCss`, `getCookies`, `getCookiesByDomain`, and `uploadFileToTab`. When no context is attached, all sinks pass through unchanged.
+- **Pending Egress Queue**: Non-allowlisted `openUrl` calls write a plan to `~/.js-eyes/runtime/pending-egress/<id>.json` (`0600`) and return `status: 'pending-egress'` instead of executing. CLI: `js-eyes egress list|approve <id>|allow <domain>|clear`.
+- **Security Enforcement CLI**: `js-eyes security show` prints the resolved policy; `js-eyes security enforce <off|soft|strict>` writes `security.enforcement` to `config.json`. `off` = audit only; `soft` = plan-only on violation (default); `strict` = hard reject.
+- **Server-Side Policy Fallback**: `packages/server-core/ws-handler.js` runs the same rule engine on the WebSocket dispatch path. External automation clients that bypass `client-sdk` still hit the server-side gate. Decisions emit `automation.soft-block` / `automation.pending-egress` / `automation.policy-error` audit events with `task_origin`, `taint_hit`, `egress_matched`, `rule_decision`, and `enforcement` fields.
+- **Cookie Canaries**: `getCookies` / `getCookiesByDomain` attach an `__canary: "jse-c-<hex>"` marker to each returned cookie. Any sink tool whose serialized parameters contain a registered cookie value, a cookie canary, or common encoded variants (`encodeURIComponent`, `base64`, `hex`) is soft-blocked as `taint-hit`.
+- **HTTP Security Headers**: `packages/server-core/index.js` now sends `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response, closing the `externally_connectable` surface even if a future handler returns HTML.
+- **Extension Defensive Guard**: Chrome and Firefox background scripts drop incoming messages whose status/code is `pending-egress`, `POLICY_SOFT_BLOCK`, or `POLICY_PENDING_EGRESS`, ensuring a soft-blocked response cannot be re-interpreted as an instruction.
+- **Doctor Policy Report**: `js-eyes doctor` now reports `enforcement` mode, task-origin / taint / egress config, pending-egress backlog count, last `soft-block` timestamp, top-3 blocked tool/rule pairs, and skills whose `runtime.platforms` is empty or `['*']`.
+
+### Changed
+
+- **`DEFAULT_SECURITY_CONFIG`**: Adds `enforcement: 'soft'`, `taskOrigin: { enabled: true, sources: [...] }`, `egressAllowlist: []`, `taint: { enabled: true, mode: 'canary+substring', minValueLength: 6 }`, and `profile: { default: 'full' }`. All new fields default-merge in `packages/config/index.js`; loading a 2.2.x `config.json` produces no errors.
+- **Runtime Paths**: `~/.js-eyes/runtime/pending-egress/` is created on first server start or CLI invocation, alongside the existing `pending-consents/` directory.
+
+### Compatibility
+
+- **Default `enforcement=soft`**: Existing agents, skills, and tools keep working. Violating calls are routed to plan-only or pending-egress records, not rejected. Set `JS_EYES_POLICY_ENFORCEMENT=off` or `js-eyes security enforce off` to fall back to audit-only behavior.
+- **`skill.contract.runtime.platforms` reused**: A skill whose `platforms` is missing or `['*']` receives the weakest protection (scope defaults to callers' user messages + active tab + fetched links). Skills that already declare explicit platforms automatically opt into strict scope.
+- **No Protocol Frame Changes**: WS frames keep the same shape; policy decisions are folded into the existing `*_response` / `error` frames with extra `code`, `rule`, `reasons`, `pendingId` fields. Older extensions that do not understand these fields gracefully fall through (handled at `handleMessage`'s defensive guard).
+
 ## [2.2.0] - 2026-04-17
 
 > Security hardening release. Default behavior is now token-authenticated, Origin-checked, loopback-bound, with SHA-256-pinned supply chain and sensitive-tool consent gateway. See [RELEASE.md](RELEASE.md#220-migration-guide-security-hardening) for the full migration guide.

@@ -4,6 +4,75 @@ const crypto = require('crypto');
 const { URL } = require('url');
 const { REQUEST_TIMEOUT_MS } = require('@js-eyes/protocol');
 
+let PolicyContextCtor = null;
+function loadPolicyContext() {
+  if (PolicyContextCtor !== null) return PolicyContextCtor;
+  try {
+    PolicyContextCtor = require('@js-eyes/client-sdk/policy').PolicyContext;
+  } catch {
+    PolicyContextCtor = false;
+  }
+  return PolicyContextCtor;
+}
+
+const ACTION_TOOL_MAP = {
+  execute_script: 'executeScript',
+  inject_script: 'executeScript',
+  inject_css: 'injectCss',
+  get_cookies: 'getCookies',
+  get_cookies_by_domain: 'getCookiesByDomain',
+  upload_file_to_tab: 'uploadFileToTab',
+  open_url: 'openUrl',
+};
+
+function lookupTabUrlInState(state, tabId) {
+  if (tabId == null) return null;
+  const numeric = Number(tabId);
+  for (const conn of state.extensionClients.values()) {
+    if (!Array.isArray(conn.tabs)) continue;
+    for (const tab of conn.tabs) {
+      if (!tab) continue;
+      const candidate = tab.id ?? tab.tabId;
+      if (candidate != null && Number(candidate) === numeric) {
+        return tab.url || tab.pendingUrl || null;
+      }
+    }
+  }
+  return null;
+}
+
+function getOrCreatePolicyForClient(state, clientId) {
+  if (!state.security || state.security.enforcement === 'off') {
+    return null;
+  }
+  const conn = state.automationClients.get(clientId);
+  if (!conn) return null;
+  if (conn.policy) return conn.policy;
+  const Ctor = loadPolicyContext();
+  if (!Ctor) return null;
+  conn.policy = new Ctor({
+    security: state.security,
+    pendingEgressDir: state.pendingEgressDir || null,
+    audit: state.audit || null,
+    tabLookup: (tabId) => lookupTabUrlInState(state, tabId),
+  });
+  return conn.policy;
+}
+
+function feedPolicyFromResponse(state, clientId, action, data) {
+  const conn = state.automationClients.get(clientId);
+  const policy = conn && conn.policy;
+  if (!policy) return;
+  try {
+    if (action === 'get_tabs' && data && Array.isArray(data.tabs)) {
+      policy.recordTabs(data.tabs, data.activeTabId);
+    } else if ((action === 'get_html' || action === 'get_plain_text') && data) {
+      const html = typeof data === 'string' ? data : (data.html || data.content || '');
+      if (html) policy.recordFetchedHtml(html);
+    }
+  } catch {}
+}
+
 function generateId() {
   return crypto.randomUUID();
 }
@@ -127,7 +196,9 @@ function setupAutomationClient(socket, clientAddress, state, options = {}) {
   socket.on('message', (raw) => {
     const conn = state.automationClients.get(clientId);
     if (conn) conn.lastActivity = Date.now();
-    handleAutomationMessage(raw, clientId, socket, state);
+    Promise.resolve(handleAutomationMessage(raw, clientId, socket, state)).catch((err) => {
+      console.error(`[Automation] handler error ${clientId}: ${err.message}`);
+    });
   });
 
   socket.on('close', () => {
@@ -315,7 +386,7 @@ const SENSITIVE_AUTOMATION_ACTIONS = new Set([
   'upload_file_to_tab',
 ]);
 
-function handleAutomationMessage(raw, clientId, socket, state) {
+async function handleAutomationMessage(raw, clientId, socket, state) {
   let data;
   try {
     data = JSON.parse(raw);
@@ -341,7 +412,56 @@ function handleAutomationMessage(raw, clientId, socket, state) {
       hasCss: Boolean(data.css),
       domain: data.domain || null,
       tabId: data.tabId ?? null,
+      enforcement: state.security?.enforcement || 'off',
     });
+  }
+
+  const toolName = ACTION_TOOL_MAP[action];
+  if (toolName && state.security && state.security.enforcement !== 'off') {
+    const policy = getOrCreatePolicyForClient(state, clientId);
+    if (policy) {
+      const params = {};
+      if (data.url !== undefined) params.url = data.url;
+      if (data.tabId !== undefined) params.tabId = data.tabId;
+      if (data.code !== undefined) params.code = data.code;
+      if (data.css !== undefined) params.css = data.css;
+      if (data.domain !== undefined) params.domain = data.domain;
+      if (data.files !== undefined) params.files = data.files;
+      try {
+        const decision = await policy.evaluate(toolName, params);
+        if (decision.decision === 'soft-block' || decision.decision === 'deny') {
+          state.audit?.write?.('automation.soft-block', {
+            clientId, action, tool: toolName, rule: decision.rule,
+            reasons: decision.reasons, rule_decision: 'soft-block',
+            enforcement: state.security.enforcement,
+          });
+          send(socket, {
+            type: `${action}_response`, requestId, status: 'error',
+            code: 'POLICY_SOFT_BLOCK', message: '规则引擎拒绝此操作（soft-block）',
+            rule: decision.rule, reasons: decision.reasons,
+          });
+          return;
+        }
+        if (decision.decision === 'pending-egress') {
+          state.audit?.write?.('automation.pending-egress', {
+            clientId, action, tool: toolName, rule: decision.rule,
+            pendingId: decision.pendingId, rule_decision: 'pending-egress',
+            enforcement: state.security.enforcement,
+          });
+          send(socket, {
+            type: `${action}_response`, requestId, status: 'pending-egress',
+            code: 'POLICY_PENDING_EGRESS',
+            message: `出口未在允许列表中，已转为 pending-egress（id=${decision.pendingId}）`,
+            pendingId: decision.pendingId, rule: decision.rule, reasons: decision.reasons,
+          });
+          return;
+        }
+      } catch (err) {
+        state.audit?.write?.('automation.policy-error', {
+          clientId, action, tool: toolName, error: err.message,
+        });
+      }
+    }
   }
 
   switch (action) {
@@ -349,15 +469,17 @@ function handleAutomationMessage(raw, clientId, socket, state) {
       const browsers = getExtensionSummaries(state);
       const allTabs = browsers.flatMap((browser) => browser.tabs);
       const lastBrowser = browsers[browsers.length - 1];
+      const responseData = {
+        browsers,
+        tabs: allTabs,
+        activeTabId: lastBrowser ? lastBrowser.activeTabId : null,
+      };
+      feedPolicyFromResponse(state, clientId, 'get_tabs', responseData);
       send(socket, {
         type: 'get_tabs_response',
         requestId,
         status: 'success',
-        data: {
-          browsers,
-          tabs: allTabs,
-          activeTabId: lastBrowser ? lastBrowser.activeTabId : null,
-        },
+        data: responseData,
       });
       break;
     }
@@ -372,31 +494,31 @@ function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     }
     case 'open_url':
-      forwardToExtension('open_url', data, socket, state, ['url', 'tabId', 'windowId'], target);
+      forwardToExtension('open_url', data, socket, state, ['url', 'tabId', 'windowId'], target, clientId);
       break;
     case 'close_tab':
-      forwardToExtension('close_tab', data, socket, state, ['tabId'], target);
+      forwardToExtension('close_tab', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'get_html':
-      forwardToExtension('get_html', data, socket, state, ['tabId'], target);
+      forwardToExtension('get_html', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'execute_script':
-      forwardToExtension('execute_script', data, socket, state, ['tabId', 'code'], target);
+      forwardToExtension('execute_script', data, socket, state, ['tabId', 'code'], target, clientId);
       break;
     case 'inject_css':
-      forwardToExtension('inject_css', data, socket, state, ['tabId', 'css'], target);
+      forwardToExtension('inject_css', data, socket, state, ['tabId', 'css'], target, clientId);
       break;
     case 'get_cookies':
-      forwardToExtension('get_cookies', data, socket, state, ['tabId'], target);
+      forwardToExtension('get_cookies', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'get_cookies_by_domain':
-      forwardToExtension('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target);
+      forwardToExtension('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target, clientId);
       break;
     case 'get_page_info':
-      forwardToExtension('get_page_info', data, socket, state, ['tabId'], target);
+      forwardToExtension('get_page_info', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'upload_file_to_tab':
-      forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target);
+      forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);
       break;
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });
@@ -404,7 +526,7 @@ function handleAutomationMessage(raw, clientId, socket, state) {
   }
 }
 
-function forwardToExtension(type, data, automationSocket, state, fields, target) {
+function forwardToExtension(type, data, automationSocket, state, fields, target, clientId = null) {
   const requestId = data.requestId || generateId();
 
   const ext = pickExtension(state, target);
@@ -427,7 +549,7 @@ function forwardToExtension(type, data, automationSocket, state, fields, target)
   }
 
   send(ext.socket, msg);
-  registerPending(requestId, automationSocket, type, state);
+  registerPending(requestId, automationSocket, type, state, clientId);
 }
 
 function pickExtension(state, target) {
@@ -448,7 +570,7 @@ function pickExtension(state, target) {
   return null;
 }
 
-function registerPending(requestId, automationSocket, operationType, state) {
+function registerPending(requestId, automationSocket, operationType, state, clientId = null) {
   const timeoutId = setTimeout(() => {
     const info = state.pendingResponses.get(requestId);
     if (!info) return;
@@ -469,6 +591,7 @@ function registerPending(requestId, automationSocket, operationType, state) {
     socket: automationSocket,
     timeoutId,
     operationType,
+    clientId,
     createdAt: Date.now(),
   });
 }
@@ -480,6 +603,17 @@ function resolveRequest(requestId, responseData, state) {
   if (info) {
     clearTimeout(info.timeoutId);
     state.pendingResponses.delete(requestId);
+
+    if (info.clientId && info.operationType && responseData && responseData.status === 'success') {
+      if (info.operationType === 'get_html') {
+        feedPolicyFromResponse(state, info.clientId, 'get_html', responseData);
+      } else if (info.operationType === 'open_url') {
+        feedPolicyFromResponse(state, info.clientId, 'get_tabs', {
+          tabs: [{ id: responseData.tabId, url: responseData.url }],
+          activeTabId: responseData.tabId,
+        });
+      }
+    }
 
     const responseType = info.operationType
       ? `${info.operationType}_response`
@@ -517,6 +651,7 @@ function createState() {
     audit: null,
     serverToken: null,
     security: null,
+    pendingEgressDir: null,
   };
 }
 

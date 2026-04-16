@@ -5,6 +5,10 @@ const path = require('path');
 const {
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
   DEFAULT_SECURITY_CONFIG,
+  DEFAULT_TASK_ORIGIN_CONFIG,
+  DEFAULT_TAINT_CONFIG,
+  DEFAULT_PROFILE_CONFIG,
+  POLICY_ENFORCEMENT_LEVELS,
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   RELEASE_BASE_URL,
@@ -63,6 +67,40 @@ function mergeSecurityConfig(...configs) {
         ...(merged.sensitiveCookieDomains || []),
         ...config.sensitiveCookieDomains,
       ]));
+    }
+    if (Array.isArray(config.egressAllowlist)) {
+      next.egressAllowlist = Array.from(new Set([
+        ...(merged.egressAllowlist || []),
+        ...config.egressAllowlist,
+      ]));
+    }
+    if (typeof config.enforcement === 'string') {
+      next.enforcement = POLICY_ENFORCEMENT_LEVELS.includes(config.enforcement)
+        ? config.enforcement
+        : (merged.enforcement || DEFAULT_SECURITY_CONFIG.enforcement);
+    }
+    if (config.taskOrigin && typeof config.taskOrigin === 'object') {
+      next.taskOrigin = {
+        ...(merged.taskOrigin || clone(DEFAULT_TASK_ORIGIN_CONFIG)),
+        ...config.taskOrigin,
+        sources: Array.isArray(config.taskOrigin.sources)
+          ? config.taskOrigin.sources.slice()
+          : (merged.taskOrigin && Array.isArray(merged.taskOrigin.sources)
+            ? merged.taskOrigin.sources.slice()
+            : DEFAULT_TASK_ORIGIN_CONFIG.sources.slice()),
+      };
+    }
+    if (config.taint && typeof config.taint === 'object') {
+      next.taint = {
+        ...(merged.taint || clone(DEFAULT_TAINT_CONFIG)),
+        ...config.taint,
+      };
+    }
+    if (config.profile && typeof config.profile === 'object') {
+      next.profile = {
+        ...(merged.profile || clone(DEFAULT_PROFILE_CONFIG)),
+        ...config.profile,
+      };
     }
     return next;
   }, base);

@@ -201,6 +201,8 @@ js-eyes doctor
 **Auto-Connect:** the extension reconnects automatically on startup and after disconnections (exponential backoff).
 
 > 2.2.0 is security-hardened by default. Connections without a matching server token are rejected unless you set `security.allowAnonymous=true` in `config.json`. See [SECURITY.md](./SECURITY.md) and the [2.2.0 migration guide](./RELEASE.md#220-migration-guide-security-hardening).
+>
+> 2.3.0 adds a non-interactive policy engine (`task origin` + `taint` + `egress allowlist`) in front of every sink. Default `enforcement=soft` keeps existing workflows working; see the [2.3.0 migration guide](./RELEASE.md#230-migration-guide-policy-engine).
 
 ### 3. Verify Connection
 
@@ -230,7 +232,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### 5. Security Quickstart (2.2.0+)
+### 5. Security Quickstart (2.2.0+ / 2.3.0+)
 
 ```bash
 # Generate / inspect / rotate the local server token
@@ -245,13 +247,20 @@ js-eyes audit tail
 js-eyes consent list
 js-eyes consent approve <consent-id>
 
+# 2.3.0+: Policy engine enforcement and pending-egress
+js-eyes security show
+js-eyes security enforce <off|soft|strict>    # soft is the 2.3.0 default
+js-eyes egress list
+js-eyes egress approve <id>                   # allow this destination for the session
+js-eyes egress allow <domain>                 # permanent allowlist entry
+
 # Two-step skill install with integrity pinning
 js-eyes skills install js-x-ops-skill   # writes a plan; prompts to approve
 js-eyes skills approve js-x-ops-skill
 js-eyes skills enable js-x-ops-skill
 js-eyes skills verify                   # re-check .integrity.json across installed skills
 
-# One-shot posture check
+# One-shot posture check (includes 2.3 policy engine report)
 js-eyes doctor
 ```
 
@@ -262,10 +271,17 @@ Secure defaults in 2.2.0:
 - Raw `eval`-style scripts are refused unless both host (`security.allowRawEval`) and extension (`allowRawEval`) opt in; use `execute_action` for declarative actions instead.
 - `config.json`, `server.token`, `audit.log`, and pending-consents files are written at `0600` on POSIX and locked via `icacls` on Windows.
 
+New in 2.3.0:
+
+- A non-interactive policy engine (`task origin`, `taint`, `egress allowlist`) is wired through `BrowserAutomation` and server-side dispatch. Default `enforcement=soft` means no hard rejects — violating `openUrl` calls become `pending-egress` records, other sinks return `POLICY_SOFT_BLOCK` for the agent to re-plan.
+- Every returned cookie is tagged with a canary (`__canary: "jse-c-..."`); sinks that serialize a canary or a raw cookie value are soft-blocked.
+- HTTP responses from `server-core` now carry `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
+
 Compatibility escape hatches (use sparingly):
 
 - `security.allowAnonymous=true` accepts unauthenticated clients during a migration — every anonymous session is audited and `js-eyes doctor` will flag it.
 - `security.toolPolicies.<tool>=allow` restores pre-2.2.0 behavior for a specific tool.
+- `js-eyes security enforce off` (or `JS_EYES_POLICY_ENFORCEMENT=off`) turns the 2.3 policy engine into audit-only mode.
 
 ### CLI Runtime Directory
 
@@ -361,12 +377,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.2.0` |
-| Browser extension assets | `2.2.0` |
-| `@js-eyes/server-core` | `2.2.0` |
-| `@js-eyes/client-sdk` | `2.2.0` |
-| `openclaw-plugin` | `2.2.0` |
-| Skills using `@js-eyes/client-sdk` | `2.2.0` |
+| CLI | `2.3.0` |
+| Browser extension assets | `2.3.0` |
+| `@js-eyes/server-core` | `2.3.0` |
+| `@js-eyes/client-sdk` | `2.3.0` |
+| `openclaw-plugin` | `2.3.0` |
+| Skills using `@js-eyes/client-sdk` | `2.3.0` |
 
 ## Extension Skills
 
@@ -448,7 +464,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 2.2.0
+npm run bump -- 2.3.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

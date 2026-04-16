@@ -1,5 +1,47 @@
 # Release Notes
 
+## v2.3.0
+
+### Highlights
+- **Policy Engine**: New declarative rules layer in `@js-eyes/client-sdk/policy` (task origin, canary taint, egress allowlist). `BrowserAutomation.attachPolicy(ctx)` wires it into every sink; unattached SDK callers keep passing through.
+- **Pending Egress Queue**: Non-allowlisted `openUrl` calls become `runtime/pending-egress/<id>.json` records instead of executing. `js-eyes egress list|approve|allow|clear` manages the backlog.
+- **Cookie Canaries**: Every returned cookie gets a `jse-c-<hex>` canary; sinks that serialize a tainted value or canary are soft-blocked as `taint-hit`.
+- **Server-Side Fallback**: `packages/server-core/ws-handler.js` runs the same engine against raw automation WebSocket messages, covering external agents that bypass `client-sdk`.
+- **Enforcement Levels**: `off` (audit only), `soft` (default; plan-only + audit), `strict` (hard reject). Controlled via `js-eyes security enforce <level>`, `config.security.enforcement`, or `JS_EYES_POLICY_ENFORCEMENT`.
+- **HTTP Hardening**: server responses now carry `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()`.
+- **Doctor Policy Report**: enforcement level, pending-egress backlog, most-recent soft-block, top-3 blocked tool/rule pairs, and skills with `platforms: ['*']` are all surfaced by `js-eyes doctor`.
+
+### Breaking Changes
+- None by default. `enforcement=soft` means existing workflows continue to work; violations produce plan-only / audit records.
+- `strict` mode rejects tool calls whose tab / domain is outside the task scope; opt in only after reviewing `js-eyes doctor` and `js-eyes egress list`.
+
+### Migration Notes
+1. `js-eyes doctor` — read the new "Policy engine (2.3)" section. If you see a pending-egress backlog, run `js-eyes egress list` and approve or allow what you expect.
+2. Skills that declare explicit `runtime.platforms` automatically get the tightest scope; skills with `['*']` stay on the weakest-protection path (reported by doctor).
+3. If a production agent depends on calling sinks that touch off-scope origins, either declare the origins in `skill.contract.runtime.platforms`, set `config.security.egressAllowlist`, or keep `enforcement=soft`.
+4. External WebSocket clients that bypass `client-sdk` should handle the new `pending-egress` / `POLICY_SOFT_BLOCK` response shapes.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-chrome-v2.3.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-firefox-v2.3.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.3.0/js-eyes-skill-v2.3.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.3.0`
+2. `js-eyes doctor` — review the new `Policy engine (2.3)` block; the default `soft` mode is safe to keep.
+3. Optional: `js-eyes security enforce strict` after you've verified there are no pending-egress items you care about.
+
+#### OpenClaw
+- Upgrade the CLI (`js-eyes`) to 2.3.0; the OpenClaw plugin auto-loads the shared protocol module, so the engine becomes active on the next tool invocation.
+
+#### Browser Extensions
+- Chrome / Edge / Firefox 2.3.0 extensions add a defensive guard so `pending-egress` / `POLICY_SOFT_BLOCK` server responses are never re-interpreted as instructions. No popup UI change.
+
+---
+
 ## v2.2.0
 
 ### Highlights

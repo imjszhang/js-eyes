@@ -110,6 +110,41 @@ Built-in and skill-provided tools that can exfiltrate or mutate browser state ar
 - **Consent log review.** Operators should periodically review `runtime/pending-consents/*.json` and the JSONL entries in `logs/audit.log`. `js-eyes consent list` summarizes recent decisions; `js-eyes consent approve <id>` / `js-eyes consent deny <id>` mark pending entries for audit.
 - **Server-supplied token propagation.** The browser extension popup exposes a "Server Token" field that is persisted in `chrome.storage.local`. The background service worker forwards the token both as `Sec-WebSocket-Protocol: bearer.<token>` and as `?token=<token>` on the WebSocket URL.
 
+## Policy Engine (2.3.0+)
+
+Starting with 2.3.0 JS Eyes ships a declarative, non-interactive policy engine that sits between any tool caller (OpenClaw plugin, CLI, skill code, external agent) and the browser. It is tuned to defuse **prompt-injection-driven misuse** without relying on synchronous `confirm` dialogs.
+
+### Layers
+
+- **L4a — Same-Origin Task (`TaskOriginTracker`).** Merges a scope set from four sources: user messages (URLs / bare domains), `skill.contract.runtime.platforms`, the current active tab URL, and links found on HTML that the agent has already fetched. `getCookies` / `getCookiesByDomain` / `executeScript` / `injectCss` / `uploadFileToTab` are evaluated against this scope.
+- **L4b — Lightweight Taint (`TaintRegistry`).** Every cookie value returned by `getCookies*` is tagged with an 8-byte canary (`__canary: "jse-c-<hex>"`) and registered. Subsequent sink parameters (`openUrl`, `uploadFileToTab`, `executeScript`, `injectCss`) are scanned for the canary or common-encoded cookie-value variants. Hits are soft-blocked and audited as `reason: 'taint-hit'`.
+- **L5 — Egress Allowlist (`EgressGate`).** `openUrl` targets must be in: the task origin scope, `security.egressAllowlist` (static config), or the session allowlist (populated by prior approvals / explicit user-message URLs). Unmatched targets write a `runtime/pending-egress/<uuid>.json` record and return `{ status: 'pending-egress' }`; the browser extension never sees the navigation.
+- **L6 — Rule Engine Location.** The engine lives in `@js-eyes/client-sdk/policy` so that skills and the OpenClaw plugin share one implementation. `@js-eyes/server-core/ws-handler` re-instantiates the same engine to cover raw WebSocket callers (external agents that bypass `client-sdk`).
+
+### Enforcement Levels
+
+- `off` — audit only (no blocking, no pending-egress). Useful for troubleshooting false positives.
+- `soft` (default) — violating calls are not executed; `openUrl` returns `pending-egress`, other sinks return `POLICY_SOFT_BLOCK`. Agents observe the decision and can re-plan.
+- `strict` — same as `soft` but with escalation paths closed (cookie-canary hits never pass, taint values never traverse sinks).
+
+Environment and config overrides: `JS_EYES_POLICY_ENFORCEMENT`, `config.security.enforcement`, `js-eyes security enforce <level>`.
+
+### Operator Tooling
+
+- `js-eyes security show` prints the resolved policy (enforcement level, task-origin sources, egress allowlist, taint mode).
+- `js-eyes egress list|approve <id>|allow <domain>|clear` manages pending-egress plans and session/static allowlists.
+- `js-eyes doctor` reports enforcement mode, pending-egress backlog, last soft-block event, top-3 blocked tool/rule pairs, and skills whose `runtime.platforms` is `['*']`.
+- `logs/audit.log` carries `rule_decision`, `task_origin`, `taint_hit`, `egress_matched`, `enforcement`, `rule`, `reasons`, and `pendingId` for every policy-related event.
+
+### HTTP Response Hardening
+
+`packages/server-core` now emits `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response. This closes the Chrome `externally_connectable` surface against any future accidental HTML response on port 18080.
+
+### Non-Goals (2.3.0)
+
+- Interactive `confirm` dialogs (still excluded by design).
+- Task profiles (L3) and reader sub-agent (L5') — both opt-in additions planned for 2.4 and will remain off by default.
+
 ---
 
-*Last updated: 2026-04-17 — aligned with the 2.2.0 JS Eyes/OpenClaw plugin hardening flow.*
+*Last updated: 2026-04-17 — aligned with the 2.3.0 JS Eyes policy engine release.*

@@ -1793,8 +1793,14 @@ class BrowserControl {
     try {
       const message = JSON.parse(data);
       console.log('收到服务器消息:', message.type, message);
-      
-      // 优先处理认证相关消息和控制消息（不受限制）
+
+      if (message && (message.status === 'pending-egress'
+          || message.code === 'POLICY_SOFT_BLOCK'
+          || message.code === 'POLICY_PENDING_EGRESS')) {
+        console.warn('[Policy] 忽略被规则引擎拦截的消息:', message.code || message.status, message.rule || '');
+        return;
+      }
+
       switch (message.type) {
         case 'auth_challenge':
           await this.handleAuthChallenge(message);

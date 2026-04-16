@@ -2,9 +2,28 @@
 
 const WebSocket = require('ws');
 const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT } = require('@js-eyes/protocol');
+const {
+  PolicyContext,
+  TaskOriginTracker,
+  TaintRegistry,
+  EgressGate,
+} = require('./policy');
 
 const DEFAULT_SERVER_URL = `ws://${DEFAULT_SERVER_HOST}:${DEFAULT_SERVER_PORT}`;
 const WS_SUBPROTOCOL_PREFIX = 'jse-token.';
+
+class PolicyBlockError extends Error {
+  constructor(message, info = {}) {
+    super(message);
+    this.name = 'PolicyBlockError';
+    this.code = info.code || 'POLICY_BLOCK';
+    this.decision = info.decision;
+    this.rule = info.rule;
+    this.reasons = info.reasons || [];
+    this.pendingId = info.pendingId || null;
+    this.tool = info.tool || null;
+  }
+}
 
 function tryReadServerToken() {
   try {
@@ -41,6 +60,11 @@ class BrowserAutomation {
     this._connectPromise = null;
 
     this.pendingRequests = new Map();
+
+    this.policy = options.policy || null;
+    if (this.policy && typeof this.policy.setTabLookup === 'function') {
+      this.policy.setTabLookup((tabId) => this._lookupTabUrl(tabId));
+    }
 
     this._processCleanup = () => {
       try { this.disconnect(); } catch {}
@@ -281,9 +305,56 @@ class BrowserAutomation {
     });
   }
 
+  attachPolicy(policy) {
+    this.policy = policy;
+    if (policy && typeof policy.setTabLookup === 'function') {
+      policy.setTabLookup((tabId) => this._lookupTabUrl(tabId));
+    }
+    return this;
+  }
+
+  async _lookupTabUrl(tabId) {
+    try {
+      const data = await this._sendRequest('get_tabs', {}, { timeout: 5 });
+      const tabs = data?.data?.tabs || [];
+      const target = tabs.find((t) => Number(t.id) === Number(tabId) || Number(t.tabId) === Number(tabId));
+      if (!target) return null;
+      return target.url || target.pendingUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async _evaluatePolicy(toolName, params) {
+    if (!this.policy || typeof this.policy.evaluate !== 'function') {
+      return { decision: 'allow' };
+    }
+    return this.policy.evaluate(toolName, params);
+  }
+
+  _blockFromPolicy(result, toolName) {
+    const err = new PolicyBlockError(
+      result.decision === 'pending-egress'
+        ? `出口未在允许列表中，已转为 pending-egress（id=${result.pendingId}）`
+        : '规则引擎拒绝此操作（soft-block）',
+      {
+        tool: toolName,
+        decision: result.decision,
+        rule: result.rule,
+        reasons: result.reasons,
+        pendingId: result.pendingId,
+      }
+    );
+    throw err;
+  }
+
   async getTabs(options = {}) {
     const response = await this._sendRequest('get_tabs', {}, options);
-    return response.data || { browsers: [], tabs: [], activeTabId: null };
+    const data = response.data || { browsers: [], tabs: [], activeTabId: null };
+    if (this.policy) {
+      this.policy.recordTabs(data.tabs || [], data.activeTabId);
+    }
+    return data;
   }
 
   async listClients(options = {}) {
@@ -292,11 +363,20 @@ class BrowserAutomation {
   }
 
   async openUrl(url, tabId = null, windowId = null, options = {}) {
+    const decision = await this._evaluatePolicy('openUrl', { url, tabId, windowId });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'openUrl');
+    }
+
     const payload = { url };
     if (tabId !== null) payload.tabId = parseInt(tabId, 10);
     if (windowId !== null) payload.windowId = parseInt(windowId, 10);
 
     const response = await this._sendRequest('open_url', payload, options);
+    if (this.policy && response?.tabId && url) {
+      this.policy.recordTabs([{ id: response.tabId, url }]);
+      this.policy.egress.allowSession(url);
+    }
     return response.tabId;
   }
 
@@ -306,11 +386,19 @@ class BrowserAutomation {
 
   async getTabHtml(tabId, options = {}) {
     const response = await this._sendRequest('get_html', { tabId: parseInt(tabId, 10) }, options);
-    return response.html;
+    const html = response.html;
+    if (this.policy && html) {
+      this.policy.recordFetchedHtml(html);
+    }
+    return html;
   }
 
   async executeScript(tabId, code, options = {}) {
     if (typeof options === 'number') options = { timeout: options };
+    const decision = await this._evaluatePolicy('executeScript', { tabId, code });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'executeScript');
+    }
     const response = await this._sendRequest('execute_script', {
       tabId: parseInt(tabId, 10),
       code,
@@ -319,6 +407,10 @@ class BrowserAutomation {
   }
 
   async injectCss(tabId, css, options = {}) {
+    const decision = await this._evaluatePolicy('injectCss', { tabId, css });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'injectCss');
+    }
     await this._sendRequest('inject_css', {
       tabId: parseInt(tabId, 10),
       css,
@@ -326,17 +418,33 @@ class BrowserAutomation {
   }
 
   async getCookies(tabId, options = {}) {
+    const decision = await this._evaluatePolicy('getCookies', { tabId });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'getCookies');
+    }
     const response = await this._sendRequest('get_cookies', { tabId: parseInt(tabId, 10) }, options);
-    return response.cookies || [];
+    const cookies = response.cookies || [];
+    if (this.policy) {
+      return this.policy.tagCookiesReturn(cookies, { source: 'getCookies', tabId });
+    }
+    return cookies;
   }
 
   async getCookiesByDomain(domain, options = {}) {
+    const decision = await this._evaluatePolicy('getCookiesByDomain', { domain });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'getCookiesByDomain');
+    }
     const payload = { domain };
     if (options.includeSubdomains !== undefined) {
       payload.includeSubdomains = options.includeSubdomains;
     }
     const response = await this._sendRequest('get_cookies_by_domain', payload, options);
-    return response.cookies || [];
+    const cookies = response.cookies || [];
+    if (this.policy) {
+      return this.policy.tagCookiesReturn(cookies, { source: 'getCookiesByDomain', domain });
+    }
+    return cookies;
   }
 
   async getPageInfo(tabId, options = {}) {
@@ -345,6 +453,10 @@ class BrowserAutomation {
   }
 
   async uploadFileToTab(tabId, files, options = {}) {
+    const decision = await this._evaluatePolicy('uploadFileToTab', { tabId, files });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'uploadFileToTab');
+    }
     const payload = {
       tabId: parseInt(tabId, 10),
       files,
@@ -357,4 +469,11 @@ class BrowserAutomation {
   }
 }
 
-module.exports = { BrowserAutomation };
+module.exports = {
+  BrowserAutomation,
+  PolicyContext,
+  TaskOriginTracker,
+  TaintRegistry,
+  EgressGate,
+  PolicyBlockError,
+};

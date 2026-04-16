@@ -44,6 +44,7 @@ function getPaths(options = {}) {
     pidFile: path.join(baseDir, 'runtime', 'server.pid'),
     tokenFile: path.join(baseDir, 'runtime', 'server.token'),
     consentsDir: path.join(baseDir, 'runtime', 'pending-consents'),
+    pendingEgressDir: path.join(baseDir, 'runtime', 'pending-egress'),
     logsDir: path.join(baseDir, 'logs'),
     serverLogFile: path.join(baseDir, 'logs', 'server.log'),
     auditLogFile: path.join(baseDir, 'logs', 'audit.log'),
@@ -194,6 +195,7 @@ function ensureRuntimePaths(options = {}) {
   ensureDir(paths.skillRecordsDir);
   ensureDir(paths.runtimeDir);
   ensureDir(paths.consentsDir);
+  ensureDir(paths.pendingEgressDir);
   ensureDir(paths.logsDir);
   ensureDir(paths.cacheDir);
   ensureDir(paths.downloadsDir);

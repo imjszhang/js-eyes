@@ -2,6 +2,62 @@
 
 Last updated: 2026-04-17
 
+## 2.3.0 Migration Guide (Policy Engine)
+
+JS Eyes 2.3.0 adds a non-interactive security policy engine in front of the browser automation sinks. **No breaking changes by default** — `security.enforcement` ships as `soft`, which means violating calls are audited and routed to plan-only / pending-egress records instead of being rejected.
+
+### Default behavior
+
+- `js-eyes server start` creates `~/.js-eyes/runtime/pending-egress/` (POSIX `0600`). No manual setup required.
+- All tool calls keep working. The engine observes, emits audit events, and writes pending-egress records when an `openUrl` target is outside the task scope.
+- `js-eyes doctor` gains a `Policy engine (2.3)` section; review it to see the current enforcement level, pending backlog, and skills whose `runtime.platforms` is `['*']`.
+
+### Enabling strict protection
+
+Once you've verified that no legitimate calls are being flagged (use `js-eyes doctor` and `js-eyes egress list` to audit):
+
+```bash
+js-eyes security enforce strict
+```
+
+At this level:
+- `openUrl` to a host outside the task scope returns `{ status: 'pending-egress' }` without executing; operators approve via `js-eyes egress approve <id>` or permanently via `js-eyes egress allow <domain>`.
+- `getCookies`, `getCookiesByDomain`, `executeScript`, `injectCss`, and `uploadFileToTab` are hard-rejected when the target domain / tab origin is outside the task scope.
+- Cookie-canary taint hits hard-reject the sink.
+
+### Falling back
+
+```bash
+# Audit only: rule engine never blocks (for troubleshooting).
+js-eyes security enforce off
+
+# Default: plan-only + audit (2.3.0 default).
+js-eyes security enforce soft
+```
+
+`JS_EYES_POLICY_ENFORCEMENT=off|soft|strict` also overrides at process start.
+
+### Skill author notes
+
+- `skill.contract.runtime.platforms` is now reused as the skill's declared task origin allowlist. Declaring explicit hosts (e.g., `['github.com', 'api.github.com']`) lets the skill opt into strict scope enforcement automatically.
+- `['*']` or an empty array continues to mean "no declared scope"; the engine falls back to user-message / active-tab origins.
+- No contract schema change is required for 2.3.0 — existing contracts keep working.
+
+### Operator Commands
+
+```bash
+js-eyes egress list                 # show pending egress plans
+js-eyes egress approve <id>         # allow this destination for the current session
+js-eyes egress allow <domain>       # add a host to security.egressAllowlist permanently
+js-eyes egress clear                # drop all pending egress records
+js-eyes security show               # print the resolved policy
+js-eyes security enforce <level>    # off / soft / strict
+```
+
+### Audit Fields
+
+`logs/audit.log` now includes `task_origin`, `taint_hit`, `egress_matched`, `rule_decision`, `enforcement`, `rule`, `reasons`, and `pendingId` on policy-related events (`policy.*`, `automation.soft-block`, `automation.pending-egress`).
+
 ## 2.2.0 Migration Guide (Security Hardening)
 
 JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when upgrading an existing 2.1.x install.
