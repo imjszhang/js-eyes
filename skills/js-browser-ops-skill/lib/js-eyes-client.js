@@ -1,13 +1,36 @@
+/**
+ * JS-Eyes Node.js Client (v1.0.0)
+ *
+ * 通过 WebSocket 与 JS-Eyes Server 通信，控制浏览器扩展执行自动化操作。
+ * 单文件自包含，可直接复制到任意 Node.js 项目中使用。
+ *
+ * 外部依赖：ws (npm install ws)
+ * 兼容服务端：js-eyes/server >= 1.0.0
+ *
+ * 用法：
+ *   const { BrowserAutomation } = require('./js-eyes-client');
+ *   const bot = new BrowserAutomation('ws://localhost:18080');
+ *   await bot.connect();
+ *   const tabs = await bot.getTabs();
+ *
+ * 变更历史：
+ * - v1.0.0：基于 agent-js/browserAutomation.js v3.1.1 改写，适配 JS-Eyes server 协议
+ */
+
 'use strict';
 
 const WebSocket = require('ws');
-const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT } = require('@js-eyes/protocol');
-
-const DEFAULT_SERVER_URL = `ws://${DEFAULT_SERVER_HOST}:${DEFAULT_SERVER_PORT}`;
 
 class BrowserAutomation {
+  /**
+   * @param {string} [serverUrl='ws://localhost:18080'] WebSocket 服务器地址
+   * @param {Object} [options]
+   * @param {number} [options.requestInterval=200] 请求最小间隔（ms）
+   * @param {number} [options.defaultTimeout=60] 默认请求超时（秒）
+   * @param {Object} [options.logger=console] 日志对象，需实现 info/warn/error
+   */
   constructor(serverUrl, options = {}) {
-    this.serverUrl = this._normalizeWsUrl(serverUrl || DEFAULT_SERVER_URL);
+    this.serverUrl = this._normalizeWsUrl(serverUrl || 'ws://localhost:18080');
     this.logger = options.logger || console;
     this.defaultTimeout = options.defaultTimeout || 60;
 
@@ -15,7 +38,7 @@ class BrowserAutomation {
     this._lastRequestTime = 0;
 
     this.ws = null;
-    this._wsState = 'disconnected';
+    this._wsState = 'disconnected'; // disconnected | connecting | connected
     this._clientId = null;
     this._intentionalClose = false;
     this._reconnectAttempts = 0;
@@ -23,7 +46,7 @@ class BrowserAutomation {
     this._maxReconnectDelay = 60000;
     this._connectPromise = null;
 
-    this.pendingRequests = new Map();
+    this.pendingRequests = new Map(); // requestId -> { resolve, reject, timeoutId }
 
     this._processCleanup = () => {
       try { this.disconnect(); } catch {}
@@ -33,6 +56,9 @@ class BrowserAutomation {
     process.on('exit', this._processCleanup);
   }
 
+  /**
+   * 将用户传入的 URL 统一为 ws:// 格式
+   */
   _normalizeWsUrl(url) {
     if (url.startsWith('http://')) return url.replace('http://', 'ws://');
     if (url.startsWith('https://')) return url.replace('https://', 'wss://');
@@ -40,6 +66,11 @@ class BrowserAutomation {
     return url;
   }
 
+  // ─── connection management ──────────────────────────────────────────
+
+  /**
+   * 建立 WebSocket 连接，等待 connection_established 确认
+   */
   async connect() {
     if (this._wsState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
       return;
@@ -90,9 +121,11 @@ class BrowserAutomation {
           this._connectPromise = null;
           this.logger.info(`[JS-Eyes] 连接已建立 (clientId=${msg.clientId})`);
 
+          // 切换到正常消息处理
           this.ws.removeAllListeners('message');
-          this.ws.on('message', (data) => this._handleMessage(data));
+          this.ws.on('message', (d) => this._handleMessage(d));
           resolve();
+          return;
         }
       });
 
@@ -146,6 +179,9 @@ class BrowserAutomation {
     this.logger.info('[JS-Eyes] 已断开连接');
   }
 
+  /**
+   * 懒连接：首次调用时建立连接，后续直接返回
+   */
   async ensureConnected() {
     if (this._wsState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
       return;
@@ -214,15 +250,26 @@ class BrowserAutomation {
     }
   }
 
+  // ─── core request ───────────────────────────────────────────────────
+
   _generateRequestId() {
     return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
 
+  /**
+   * 发送 WS 请求并等待响应
+   * @param {string} action 操作类型
+   * @param {Object} payload 请求负载（不含 type/requestId）
+   * @param {Object} [options]
+   * @param {number} [options.timeout] 超时秒数
+   * @param {string} [options.target] 目标浏览器 clientId 或 browserName
+   * @returns {Promise<Object>} 完整响应消息
+   */
   async _sendRequest(action, payload = {}, options = {}) {
     const now = Date.now();
     const wait = this.requestInterval - (now - this._lastRequestTime);
     if (wait > 0) {
-      await new Promise((resolve) => setTimeout(resolve, wait));
+      await new Promise((r) => setTimeout(r, wait));
     }
     this._lastRequestTime = Date.now();
 
@@ -254,79 +301,107 @@ class BrowserAutomation {
     });
   }
 
+  // ─── tab operations ─────────────────────────────────────────────────
+
+  /**
+   * 获取所有标签页
+   * @param {Object} [options]
+   * @param {string} [options.target] 目标浏览器
+   * @returns {Promise<Object>} { browsers, tabs, activeTabId }
+   */
   async getTabs(options = {}) {
-    const response = await this._sendRequest('get_tabs', {}, options);
-    return response.data || { browsers: [], tabs: [], activeTabId: null };
+    const resp = await this._sendRequest('get_tabs', {}, options);
+    return resp.data || { browsers: [], tabs: [], activeTabId: null };
   }
 
+  /**
+   * 获取所有已连接的浏览器扩展客户端
+   * @returns {Promise<Array>} 客户端列表
+   */
   async listClients(options = {}) {
-    const response = await this._sendRequest('list_clients', {}, options);
-    return response.data?.clients || [];
+    const resp = await this._sendRequest('list_clients', {}, options);
+    return resp.data?.clients || [];
   }
 
+  /**
+   * 打开 URL（新标签页或导航已有标签页）
+   * @param {string} url
+   * @param {number|null} [tabId] 已有标签页 ID（传入则导航，否则新开）
+   * @param {number|null} [windowId] 窗口 ID（新开标签页时可指定窗口）
+   * @param {Object} [options]
+   * @param {string} [options.target] 目标浏览器
+   * @param {number} [options.timeout] 超时秒数
+   * @returns {Promise<number>} 标签页 ID
+   */
   async openUrl(url, tabId = null, windowId = null, options = {}) {
     const payload = { url };
-    if (tabId !== null) payload.tabId = parseInt(tabId, 10);
-    if (windowId !== null) payload.windowId = parseInt(windowId, 10);
+    if (tabId !== null) payload.tabId = parseInt(tabId);
+    if (windowId !== null) payload.windowId = parseInt(windowId);
 
-    const response = await this._sendRequest('open_url', payload, options);
-    return response.tabId;
+    const resp = await this._sendRequest('open_url', payload, options);
+    return resp.tabId;
   }
 
+  /**
+   * 关闭标签页
+   * @param {number} tabId
+   * @param {Object} [options]
+   * @returns {Promise<void>}
+   */
   async closeTab(tabId, options = {}) {
-    await this._sendRequest('close_tab', { tabId: parseInt(tabId, 10) }, options);
+    await this._sendRequest('close_tab', { tabId: parseInt(tabId) }, options);
   }
 
+  /**
+   * 获取标签页 HTML
+   * @param {number} tabId
+   * @param {Object} [options]
+   * @returns {Promise<string>} HTML 内容
+   */
   async getTabHtml(tabId, options = {}) {
-    const response = await this._sendRequest('get_html', { tabId: parseInt(tabId, 10) }, options);
-    return response.html;
+    const resp = await this._sendRequest('get_html', { tabId: parseInt(tabId) }, options);
+    return resp.html;
   }
 
+  /**
+   * 在标签页中执行 JavaScript
+   * @param {number} tabId
+   * @param {string} code
+   * @param {Object} [options]
+   * @returns {Promise<any>} 执行结果
+   */
   async executeScript(tabId, code, options = {}) {
     if (typeof options === 'number') options = { timeout: options };
-    const response = await this._sendRequest('execute_script', {
-      tabId: parseInt(tabId, 10),
+    const resp = await this._sendRequest('execute_script', {
+      tabId: parseInt(tabId),
       code,
     }, options);
-    return response.result;
+    return resp.result;
   }
 
+  /**
+   * 注入 CSS 到标签页
+   * @param {number} tabId
+   * @param {string} css
+   * @param {Object} [options]
+   * @returns {Promise<void>}
+   */
   async injectCss(tabId, css, options = {}) {
     await this._sendRequest('inject_css', {
-      tabId: parseInt(tabId, 10),
+      tabId: parseInt(tabId),
       css,
     }, options);
   }
 
+  /**
+   * 获取标签页 cookies
+   * @param {number} tabId
+   * @param {Object} [options]
+   * @returns {Promise<Array>} cookies 数组
+   */
   async getCookies(tabId, options = {}) {
-    const response = await this._sendRequest('get_cookies', { tabId: parseInt(tabId, 10) }, options);
-    return response.cookies || [];
-  }
-
-  async getCookiesByDomain(domain, options = {}) {
-    const payload = { domain };
-    if (options.includeSubdomains !== undefined) {
-      payload.includeSubdomains = options.includeSubdomains;
-    }
-    const response = await this._sendRequest('get_cookies_by_domain', payload, options);
-    return response.cookies || [];
-  }
-
-  async getPageInfo(tabId, options = {}) {
-    const response = await this._sendRequest('get_page_info', { tabId: parseInt(tabId, 10) }, options);
-    return response.data || {};
-  }
-
-  async uploadFileToTab(tabId, files, options = {}) {
-    const payload = {
-      tabId: parseInt(tabId, 10),
-      files,
-    };
-    if (options.targetSelector) {
-      payload.targetSelector = options.targetSelector;
-    }
-    const response = await this._sendRequest('upload_file_to_tab', payload, options);
-    return response.uploadedFiles || [];
+    const resp = await this._sendRequest('get_cookies', { tabId: parseInt(tabId) }, options);
+    return resp.cookies || [];
   }
 }
 

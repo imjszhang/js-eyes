@@ -91,6 +91,10 @@ const BUILTIN_TOOL_NAMES = [
   "js_eyes_get_html",
   "js_eyes_execute_script",
   "js_eyes_get_cookies",
+  "js_eyes_inject_css",
+  "js_eyes_get_cookies_by_domain",
+  "js_eyes_get_page_info",
+  "js_eyes_upload_file",
   "js_eyes_discover_skills",
   "js_eyes_install_skill",
 ];
@@ -416,6 +420,125 @@ function register(api) {
           return textResult("该标签页没有 Cookie。");
         }
         return textResult(JSON.stringify(cookies, null, 2));
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "js_eyes_inject_css",
+      label: "JS Eyes: Inject CSS",
+      description: "向指定标签页注入自定义 CSS 样式。可用于隐藏页面元素、调整布局等。",
+      parameters: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "标签页 ID" },
+          css: { type: "string", description: "要注入的 CSS 代码" },
+          target: { type: "string", description: "目标浏览器 clientId 或名称" },
+        },
+        required: ["tabId", "css"],
+      },
+      async execute(_toolCallId, params) {
+        const b = ensureBot();
+        await b.injectCss(params.tabId, params.css, { target: params.target });
+        return textResult(`已向标签页 ${params.tabId} 注入 CSS 样式`);
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "js_eyes_get_cookies_by_domain",
+      label: "JS Eyes: Get Cookies By Domain",
+      description: "按域名获取浏览器中的所有 Cookie，无需指定标签页。支持包含子域名。",
+      parameters: {
+        type: "object",
+        properties: {
+          domain: { type: "string", description: "目标域名（如 'example.com'）" },
+          includeSubdomains: {
+            type: "boolean",
+            description: "是否包含子域名的 Cookie（默认 true）",
+          },
+          target: { type: "string", description: "目标浏览器 clientId 或名称" },
+        },
+        required: ["domain"],
+      },
+      async execute(_toolCallId, params) {
+        const b = ensureBot();
+        const cookies = await b.getCookiesByDomain(params.domain, {
+          includeSubdomains: params.includeSubdomains,
+          target: params.target,
+        });
+        if (cookies.length === 0) {
+          return textResult(`域名 ${params.domain} 没有 Cookie。`);
+        }
+        return textResult(JSON.stringify(cookies, null, 2));
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "js_eyes_get_page_info",
+      label: "JS Eyes: Get Page Info",
+      description: "获取指定标签页的页面信息，包括 URL、标题、状态和图标。",
+      parameters: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "标签页 ID" },
+          target: { type: "string", description: "目标浏览器 clientId 或名称" },
+        },
+        required: ["tabId"],
+      },
+      async execute(_toolCallId, params) {
+        const b = ensureBot();
+        const info = await b.getPageInfo(params.tabId, { target: params.target });
+        return textResult(JSON.stringify(info, null, 2));
+      },
+    },
+    { optional: true },
+  );
+
+  api.registerTool(
+    {
+      name: "js_eyes_upload_file",
+      label: "JS Eyes: Upload File",
+      description: "向指定标签页的文件上传控件上传文件。文件以 Base64 编码传入，自动设置到页面的 file input 元素。",
+      parameters: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "标签页 ID" },
+          files: {
+            type: "array",
+            description: "要上传的文件列表",
+            items: {
+              type: "object",
+              properties: {
+                base64: { type: "string", description: "文件内容的 Base64 编码" },
+                name: { type: "string", description: "文件名" },
+                type: { type: "string", description: "MIME 类型（如 'image/png'）" },
+              },
+              required: ["base64", "name", "type"],
+            },
+          },
+          targetSelector: {
+            type: "string",
+            description: "目标 file input 的 CSS 选择器（默认 'input[type=\"file\"]'）",
+          },
+          target: { type: "string", description: "目标浏览器 clientId 或名称" },
+        },
+        required: ["tabId", "files"],
+      },
+      async execute(_toolCallId, params) {
+        const b = ensureBot();
+        const result = await b.uploadFileToTab(params.tabId, params.files, {
+          targetSelector: params.targetSelector,
+          target: params.target,
+        });
+        return textResult(JSON.stringify({ success: true, uploadedFiles: result }, null, 2));
       },
     },
     { optional: true },

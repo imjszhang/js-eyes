@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-14T07:47:42.827Z",
+  "generated": "2026-04-15T19:32:43.392Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.0.1"
+    "version": "2.1.0"
   },
   "skills": [
     {
@@ -33,6 +33,43 @@
         "requiresLocalBrowserCookies": true,
         "platforms": [
           "bilibili.com"
+        ]
+      }
+    },
+    {
+      "id": "js-browser-ops-skill",
+      "name": "JS Browser Ops Skill",
+      "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。",
+      "version": "2.1.0",
+      "emoji": "🌐",
+      "requires": {
+        "skills": [
+          "js-eyes"
+        ],
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
+      "downloadUrlFallback": "https://cdn.jsdelivr.net/gh/imjszhang/js-eyes@main/docs/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "browser_read_page",
+        "browser_click",
+        "browser_fill_form",
+        "browser_wait_for",
+        "browser_scroll",
+        "browser_screenshot"
+      ],
+      "commands": [
+        "read",
+        "interact"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "*"
         ]
       }
     },

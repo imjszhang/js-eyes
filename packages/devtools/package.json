@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/devtools",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Internal build and release tools for JS Eyes monorepo",
   "main": "bin/js-eyes-dev.js",
   "license": "MIT",

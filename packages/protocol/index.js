@@ -18,6 +18,9 @@ const FORWARDABLE_ACTIONS = [
   'execute_script',
   'inject_css',
   'get_cookies',
+  'get_cookies_by_domain',
+  'get_page_info',
+  'upload_file_to_tab',
 ];
 
 const COMPATIBILITY_MATRIX = Object.freeze({

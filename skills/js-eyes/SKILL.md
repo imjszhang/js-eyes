@@ -27,6 +27,7 @@ The runnable OpenClaw plugin lives in the main bundle's `openclaw-plugin` direct
 
 Executable extension logic lives in concrete child skill directories under `<bundle-root>/skills/<child-skill-id>/`, for example:
 
+- `<bundle-root>/skills/js-browser-ops-skill/`
 - `<bundle-root>/skills/js-zhihu-ops-skill/`
 - `<bundle-root>/skills/js-x-ops-skill/`
 - `<bundle-root>/skills/js-wechat-ops-skill/`
