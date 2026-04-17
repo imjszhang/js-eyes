@@ -6,6 +6,12 @@ SKILL_NAME="js-eyes"
 SITE_URL="https://js-eyes.com"
 INSTALL_DIR="${JS_EYES_DIR:-./skills}"
 SUB_SKILL="${JS_EYES_SKILL:-${1:-}}"
+SKIP_NATIVE_HOST="${JS_EYES_SKIP_NATIVE_HOST:-0}"
+for arg in "$@"; do
+  if [ "$arg" = "--skip-native-host" ]; then
+    SKIP_NATIVE_HOST=1
+  fi
+done
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()  { printf "${CYAN}[info]${NC}  %s\n" "$1"; }
@@ -283,6 +289,20 @@ ABSOLUTE_TARGET=$(cd "$TARGET" && pwd)
 PLUGIN_PATH="${ABSOLUTE_TARGET}/openclaw-plugin"
 
 ok "JS Eyes installed to: ${ABSOLUTE_TARGET}"
+
+if [ "${SKIP_NATIVE_HOST}" != "1" ]; then
+  if command -v npx >/dev/null 2>&1; then
+    info "Registering browser native-messaging host (skip with --skip-native-host)..."
+    if npx --yes js-eyes native-host install --browser all >/dev/null 2>&1; then
+      ok "Native messaging host registered (Chrome + Firefox)."
+    else
+      warn "Native messaging host registration failed; run 'npx js-eyes native-host install' later."
+    fi
+  else
+    warn "npx not found; skipping native-messaging host registration."
+  fi
+fi
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Next: register the plugin in ~/.openclaw/openclaw.json"

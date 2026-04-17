@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "icons": {
@@ -42,8 +42,10 @@
     "storage",
     "scripting",
     "contextMenus",
-    "webNavigation"
+    "webNavigation",
+    "nativeMessaging"
   ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvXrO78Sxb/q4d4b+PWcDscCOx9oIbTadQRG2i7B+cs2rUfVkUwYGE2s2EbNuWOQVl22WnqFZUBpwjGImWYYcdo5ptQX3VRcZOosw9eLE+5bLzuruIo3JUrw5GowucaP83mPLhs8DkwFxo+a1BfemKtPA/dw2T72E0hKvMWEhN2IoucpCJKNFwvrJgpXRVY2rvgzGAIxlC97DDXF0mRdWgqFJy9NCTHCYqSntqthM/PNpIZ7L7MY8FQICYJEkYt51I2yf2378I3HWBJNseWWAZGAPvGbPdYIume3lR7EWxiQeJWunzaZlAEw71WQVDzBj1MkvQSJInfcy7F6/YprNgwIDAQAB",
   "host_permissions": [
     "<all_urls>"
   ],

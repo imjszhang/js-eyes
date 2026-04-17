@@ -64,10 +64,13 @@ Ensure the server is listening on `http://localhost:18080` (HTTP + WebSocket).
 
 ### Configure Extension
 
-1. Click the extension icon in the toolbar
-2. Check the server address in the popup (default: `http://localhost:18080`)
-3. If modification is needed, change and save in the settings area
-4. Confirm the connection status shows "Connected"
+1. (Recommended, 2.4.0+) Install the Native Messaging host once so the extension can auto-sync the server token and URL:
+   ```bash
+   npx js-eyes native-host install --browser firefox
+   ```
+2. Click the extension icon in the toolbar
+3. Click **Sync Token From Host** (or wait for auto-sync on startup) — connection status should flip to "Connected"
+4. If Native Messaging is unavailable, expand **Advanced** in the popup to manually enter the server address (default: `http://localhost:18080`) and paste `server.token`
 
 ## Feature Testing
 

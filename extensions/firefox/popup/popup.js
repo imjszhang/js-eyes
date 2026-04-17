@@ -53,9 +53,6 @@ class JSEyesPopup {
     // 更新状态
     this.updateStatus();
     
-    // 检查认证密钥状态
-    this.checkAuthKeyStatus();
-    
     // 开始定期更新
     this.startPeriodicUpdate();
     
@@ -77,8 +74,7 @@ class JSEyesPopup {
         if (message.data.isConnected !== undefined) {
           this.updateConnectionStatus({
             isConnected: message.data.isConnected,
-            serverUrl: message.data.serverUrl,
-            authState: message.data.authState
+            serverUrl: message.data.serverUrl
           });
         }
       }
@@ -138,48 +134,12 @@ class JSEyesPopup {
     document.getElementById('auto-connect').addEventListener('change', (e) => {
       this.toggleAutoConnect(e.target.checked);
     });
-    
-    // 设置项变更
-    document.getElementById('debug-mode').addEventListener('change', (e) => {
-      this.saveSetting('debugMode', e.target.checked);
-    });
-    
+
     // 服务器地址输入框回车
     document.getElementById('server-input').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         this.saveServerUrl();
       }
-    });
-    
-    // 预设按钮点击事件
-    document.querySelectorAll('.btn-preset').forEach(button => {
-      button.addEventListener('click', (e) => {
-        const url = e.target.getAttribute('data-url');
-        this.selectPresetUrl(url);
-      });
-    });
-    
-    // 认证密钥相关事件
-    // 保存认证密钥按钮
-    document.getElementById('save-auth-key').addEventListener('click', () => {
-      this.saveAuthKey();
-    });
-    
-    // 认证密钥输入框回车
-    document.getElementById('auth-key-input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        this.saveAuthKey();
-      }
-    });
-    
-    // 切换密钥可见性按钮
-    document.getElementById('toggle-key-visibility').addEventListener('click', () => {
-      this.toggleKeyVisibility();
-    });
-    
-    // 清除认证密钥按钮
-    document.getElementById('clear-auth-key').addEventListener('click', () => {
-      this.clearAuthKey();
     });
 
     const saveServerTokenBtn = document.getElementById('save-server-token');
@@ -195,6 +155,30 @@ class JSEyesPopup {
     }
     if (clearServerTokenBtn) {
       clearServerTokenBtn.addEventListener('click', () => this.clearServerToken());
+    }
+
+    const syncBtn = document.getElementById('sync-token-from-native');
+    if (syncBtn) {
+      syncBtn.addEventListener('click', () => this.syncTokenFromNativeHost());
+    }
+  }
+
+  async syncTokenFromNativeHost() {
+    const statusEl = document.getElementById('sync-token-status');
+    if (statusEl) statusEl.textContent = 'Syncing...';
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'sync_token_from_native' });
+      if (response && response.success) {
+        if (statusEl) statusEl.textContent = 'Synced';
+        if (this.showStatus) this.showStatus('Token synced from local host', 'success');
+      } else {
+        const reason = (response && response.reason) || 'unknown';
+        if (statusEl) statusEl.textContent = `Failed: ${reason}`;
+        if (this.showStatus) this.showStatus(`Sync failed: ${reason}`, 'error');
+      }
+    } catch (error) {
+      if (statusEl) statusEl.textContent = `Failed: ${error.message}`;
+      if (this.showStatus) this.showStatus(`Sync failed: ${error.message}`, 'error');
     }
   }
 
@@ -236,27 +220,24 @@ class JSEyesPopup {
     try {
       const result = await browser.storage.local.get([
         'serverUrl',
-        'autoConnect',
-        'debugMode'
+        'autoConnect'
       ]);
-      
+
       // 设置服务器地址
       if (result.serverUrl) {
         document.getElementById('server-input').value = result.serverUrl;
       }
-      
+
       // 设置自动连接（默认启用）
       if (result.autoConnect !== undefined) {
         document.getElementById('auto-connect').checked = result.autoConnect;
       } else {
         document.getElementById('auto-connect').checked = true; // 默认启用
       }
-      
-      // 设置调试模式
-      if (result.debugMode !== undefined) {
-        document.getElementById('debug-mode').checked = result.debugMode;
-      }
-      
+
+      // 清理旧版本残留的 debugMode 键
+      try { await browser.storage.local.remove(['debugMode']); } catch (_) {}
+
     } catch (error) {
       console.error('加载设置时出错:', error);
       this.addLog(browser.i18n.getMessage('logFailedLoadSettings', error.message));
@@ -308,22 +289,6 @@ class JSEyesPopup {
       console.error('切换自动连接时出错:', error);
       this.addLog(browser.i18n.getMessage('logFailedToggleAutoConnect', error.message));
     }
-  }
-
-  /**
-   * 选择预设URL
-   */
-  selectPresetUrl(url) {
-    const serverInput = document.getElementById('server-input');
-    serverInput.value = url;
-    
-    // 添加视觉反馈 - 使用 Neo-Brutalism 样式
-    serverInput.classList.add('shadow-brutal-lg');
-    setTimeout(() => {
-      serverInput.classList.remove('shadow-brutal-lg');
-    }, 1000);
-    
-    this.addLog(browser.i18n.getMessage('logPresetSelected', url));
   }
 
   /**
@@ -399,16 +364,6 @@ class JSEyesPopup {
    * 更新扩展状态（健康检查、限流、熔断等）
    */
   updateExtendedStatus(status) {
-    // 更新连接模式
-    const connectionModeElement = document.getElementById('connection-mode');
-    if (connectionModeElement && status.connectionMode) {
-      const modeText = status.connectionMode === 'websocket' ? 'WebSocket' : 'SSE';
-      connectionModeElement.textContent = modeText;
-      connectionModeElement.className = status.connectionMode === 'websocket' 
-        ? 'status-badge connected px-3 py-1 text-xs font-bold'
-        : 'status-badge connecting px-3 py-1 text-xs font-bold';
-    }
-    
     // 更新健康状态
     const healthStatusElement = document.getElementById('health-status');
     if (healthStatusElement && status.healthCheck) {
@@ -464,23 +419,6 @@ class JSEyesPopup {
         ? 'status-badge disconnected px-3 py-1 text-xs font-bold'
         : 'status-badge connected px-3 py-1 text-xs font-bold';
     }
-    
-    // 更新服务器类型
-    const serverTypeElement = document.getElementById('server-type');
-    if (serverTypeElement && status.serverCapabilities) {
-      const caps = status.serverCapabilities;
-      if (caps.serverName || caps.serverVersion) {
-        const parts = [caps.serverName, caps.serverVersion].filter(Boolean);
-        serverTypeElement.textContent = parts.join(' ');
-      } else {
-        const features = [];
-        if (caps.hasSSE) features.push('SSE');
-        if (caps.hasServerRateLimit) features.push('RateLimit');
-        serverTypeElement.textContent = features.length > 0
-          ? `Server (${features.join(', ')})`
-          : 'Server (Basic)';
-      }
-    }
   }
 
   /**
@@ -490,7 +428,6 @@ class JSEyesPopup {
     const statusElement = document.getElementById('connection-status');
     const serverUrlElement = document.getElementById('server-url');
     const reconnectAttemptsElement = document.getElementById('reconnect-attempts');
-    const authStatusElement = document.getElementById('auth-status');
     
     // 更新连接状态 - 使用 Neo-Brutalism 样式类
     const baseClasses = 'status-badge px-3 py-1 text-xs font-bold uppercase';
@@ -512,167 +449,6 @@ class JSEyesPopup {
     
     // 更新重连次数
     reconnectAttemptsElement.textContent = status.reconnectAttempts || 0;
-    
-    // 更新认证状态
-    if (authStatusElement) {
-      this.updateAuthStatusDisplay(status.authState, status.hasAuthKey);
-    }
-  }
-
-  /**
-   * 更新认证状态显示
-   */
-  updateAuthStatusDisplay(authState, hasAuthKey) {
-    const authStatusElement = document.getElementById('auth-status');
-    if (!authStatusElement) return;
-    
-    const baseClasses = 'status-badge px-3 py-1 text-xs font-bold uppercase';
-    
-    if (!hasAuthKey) {
-      authStatusElement.textContent = browser.i18n.getMessage('statusNotConfigured') || 'Not Configured';
-      authStatusElement.className = `${baseClasses} disconnected`;
-    } else {
-      switch (authState) {
-        case 'authenticated':
-          authStatusElement.textContent = browser.i18n.getMessage('statusAuthenticated') || 'Authenticated';
-          authStatusElement.className = `${baseClasses} connected`;
-          break;
-        case 'authenticating':
-          authStatusElement.textContent = browser.i18n.getMessage('statusAuthenticating') || 'Authenticating';
-          authStatusElement.className = `${baseClasses} connecting pulse`;
-          break;
-        case 'failed':
-          authStatusElement.textContent = browser.i18n.getMessage('statusAuthFailed') || 'Auth Failed';
-          authStatusElement.className = `${baseClasses} disconnected`;
-          break;
-        default:
-          authStatusElement.textContent = browser.i18n.getMessage('statusPending') || 'Pending';
-          authStatusElement.className = `${baseClasses} disconnected`;
-      }
-    }
-  }
-
-  /**
-   * 保存认证密钥
-   */
-  async saveAuthKey() {
-    const authKeyInput = document.getElementById('auth-key-input');
-    const authKey = authKeyInput.value.trim();
-    
-    if (!authKey) {
-      this.addLog(browser.i18n.getMessage('logAuthKeyEmpty') || 'Auth key cannot be empty');
-      return;
-    }
-    
-    try {
-      // 通知 background script 保存密钥
-      const response = await browser.runtime.sendMessage({
-        type: 'save_auth_key',
-        authKey: authKey
-      });
-      
-      if (response && response.success) {
-        this.addLog(browser.i18n.getMessage('logAuthKeySaved') || 'Auth key saved');
-        
-        // 清空输入框（安全考虑）
-        authKeyInput.value = '';
-        
-        // 更新状态
-        setTimeout(() => {
-          this.updateStatus();
-        }, 1000);
-        
-        // 如果已连接，提示需要重新连接
-        this.addLog(browser.i18n.getMessage('logReconnectForAuth') || 'Reconnecting for authentication...');
-      } else {
-        this.addLog(browser.i18n.getMessage('logAuthKeySaveFailed') || 'Failed to save auth key');
-      }
-      
-    } catch (error) {
-      console.error('保存认证密钥时出错:', error);
-      this.addLog(browser.i18n.getMessage('logAuthKeySaveError', error.message) || `Error: ${error.message}`);
-    }
-  }
-
-  /**
-   * 切换密钥可见性
-   */
-  toggleKeyVisibility() {
-    const authKeyInput = document.getElementById('auth-key-input');
-    const eyeIcon = document.getElementById('eye-icon');
-    const eyeOffIcon = document.getElementById('eye-off-icon');
-    
-    if (authKeyInput.type === 'password') {
-      authKeyInput.type = 'text';
-      eyeIcon.classList.add('hidden');
-      eyeOffIcon.classList.remove('hidden');
-    } else {
-      authKeyInput.type = 'password';
-      eyeIcon.classList.remove('hidden');
-      eyeOffIcon.classList.add('hidden');
-    }
-  }
-
-  /**
-   * 清除认证密钥
-   */
-  async clearAuthKey() {
-    try {
-      // 确认清除
-      const confirmMessage = browser.i18n.getMessage('confirmClearAuthKey') || 'Are you sure you want to clear the authentication key?';
-      if (!confirm(confirmMessage)) {
-        return;
-      }
-      
-      // 通知 background script 清除密钥
-      const response = await browser.runtime.sendMessage({
-        type: 'clear_auth_key'
-      });
-      
-      if (response && response.success) {
-        this.addLog(browser.i18n.getMessage('logAuthKeyCleared') || 'Auth key cleared');
-        
-        // 清空输入框
-        document.getElementById('auth-key-input').value = '';
-        
-        // 更新状态
-        setTimeout(() => {
-          this.updateStatus();
-        }, 500);
-      } else {
-        this.addLog(browser.i18n.getMessage('logAuthKeyClearFailed') || 'Failed to clear auth key');
-      }
-      
-    } catch (error) {
-      console.error('清除认证密钥时出错:', error);
-      this.addLog(browser.i18n.getMessage('logAuthKeyClearError', error.message) || `Error: ${error.message}`);
-    }
-  }
-
-  /**
-   * 检查是否已配置认证密钥
-   */
-  async checkAuthKeyStatus() {
-    try {
-      const response = await browser.runtime.sendMessage({
-        type: 'get_auth_status'
-      });
-      
-      if (response) {
-        this.updateAuthStatusDisplay(response.authState, response.hasAuthKey);
-        
-        // 如果未配置密钥，显示提示
-        if (!response.hasAuthKey) {
-          const hint = document.getElementById('auth-key-hint');
-          if (hint) {
-            hint.textContent = browser.i18n.getMessage('authKeyNotConfiguredHint') || 'Please configure authentication key to connect';
-            hint.classList.add('text-red-600');
-          }
-        }
-      }
-    } catch (error) {
-      console.error('检查认证密钥状态时出错:', error);
-    }
   }
 
   /**

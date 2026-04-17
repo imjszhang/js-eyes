@@ -32,6 +32,27 @@ Base runtime behavior:
 
 By default this is all local traffic. No browser content is sent to a third-party service unless you explicitly point JS Eyes at a remote server you control.
 
+## Browser Native Messaging Host (Token Auto-Sync)
+
+JS Eyes 2.3+ ships an optional Native Messaging host (`com.js_eyes.native_host`) that lets the browser extension read `~/.js-eyes/runtime/server.token` directly, avoiding manual copy-paste.
+
+**Threat model**: this feature is designed to defend against **external web-page / cross-origin attackers** only. A compromised local device (root, malicious local process, malicious locally-loaded extension) is **explicitly out of scope** — any attacker with local code execution already has direct read access to `server.token`.
+
+Simplifications driven by this scoped threat model:
+
+- No in-extension secondary confirmation prompt.
+- No handshake / nonce / device-fingerprint binding.
+- The host simply returns the token when the browser calls it.
+
+Trust boundaries that remain in place:
+
+- Native messaging manifests whitelist specific extension IDs (Chrome: `allowed_origins`, Firefox: `allowed_extensions`) — unlisted extensions cannot launch the host.
+- The host only reads a fixed path (`~/.js-eyes/runtime/server.token`) and accepts only two messages (`ping`, `get-config`).
+- Extensions never expose the token through `externally_connectable`, so ordinary web pages cannot read it.
+- The Chrome manifest pins a stable extension ID via a `key` field so the allowlist stays authoritative after rebuilds.
+
+See [docs/native-messaging.md](./docs/native-messaging.md) for install/uninstall commands and file-system paths.
+
 ## Explicitly User-Initiated Network Access
 
 Some features intentionally access external URLs, but only when the user or agent explicitly chooses those workflows:

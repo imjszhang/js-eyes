@@ -56,20 +56,11 @@ class BrowserControl {
           rateLimit: {
             maxRequestsPerSecond: 10,
             blockDuration: 5000
-          },
-          auth: {
-            storageKey: 'auth_secret_key',
-            authTimeout: 10000,
-            sessionRefreshBefore: 300
           }
         };
     
-    // 认证相关属性
-    this.sessionId = null;           // 会话ID
+    // 认证相关属性（仅保留内部状态机用于 60s 安全网超时）
     this.authState = 'disconnected'; // disconnected | authenticating | authenticated | failed
-    this.pendingChallenge = null;    // 等待响应的 challenge
-    this.authSecretKey = null;       // 认证密钥（从 storage 加载）
-    this.sessionExpiresAt = null;    // 会话过期时间
     this.authTimeout = null;         // 认证超时定时器
     
     // 应用层心跳相关
@@ -122,9 +113,6 @@ class BrowserControl {
       // 健康检查器
       this.initHealthChecker(Utils);
       
-      // SSE 客户端（作为 WebSocket 降级方案）
-      this.initSSEClient(Utils);
-      
       console.log('[BrowserControl] 稳定性工具已初始化');
     } else {
       console.warn('[BrowserControl] ExtensionUtils 未加载，使用降级模式');
@@ -134,7 +122,6 @@ class BrowserControl {
       this.deduplicator = null;
       this.queueManager = null;
       this.healthChecker = null;
-      this.sseClient = null;
       this.withTimeout = async (promise, ms, errorMessage) => {
         // 简单的超时实现
         let timeoutId;
@@ -168,12 +155,6 @@ class BrowserControl {
     const healthConfig = (typeof EXTENSION_CONFIG !== 'undefined' && EXTENSION_CONFIG.HEALTH_CHECK)
       ? { ...(EXTENSION_CONFIG.HEALTH_CHECK) }
       : { enabled: true, interval: 30000, endpoint: '/api/browser/health' };
-    
-    // 如果能力探测发现服务器无 health 端点，禁用健康检查
-    if (this.serverCapabilities && !this.serverCapabilities.hasHealthEndpoint) {
-      console.log('[BrowserControl] 服务器不支持健康检查端点，禁用健康检查');
-      healthConfig.enabled = false;
-    }
     
     if (!healthConfig.enabled) {
       console.log('[BrowserControl] 健康检查已禁用');
@@ -212,85 +193,6 @@ class BrowserControl {
   }
   
   /**
-   * 初始化 SSE 客户端
-   * @param {Object} Utils - 工具类对象
-   */
-  initSSEClient(Utils) {
-    if (!Utils || !Utils.SSEClient) {
-      console.warn('[BrowserControl] SSEClient 类不可用');
-      this.sseClient = null;
-      return;
-    }
-    
-    // 获取 SSE 配置
-    const sseConfig = (typeof EXTENSION_CONFIG !== 'undefined' && EXTENSION_CONFIG.SSE)
-      ? EXTENSION_CONFIG.SSE
-      : { enabled: true, endpoint: '/api/browser/events' };
-    
-    if (!sseConfig.enabled) {
-      console.log('[BrowserControl] SSE 已在配置中禁用');
-      this.sseClient = null;
-      return;
-    }
-    
-    // 如果能力探测发现服务器不支持 SSE，禁用降级
-    if (this.serverCapabilities && !this.serverCapabilities.hasSSE) {
-      console.log('[BrowserControl] 服务器不支持 SSE，禁用降级');
-      this.sseClient = null;
-      return;
-    }
-    
-    // 使用 discoverServer() 后的 httpBaseUrl
-    const httpServerUrl = this.httpBaseUrl || '';
-    
-    // WebSocket 失败多少次后降级到 SSE
-    this.sseFallbackThreshold = sseConfig.fallbackAfterWsFailures || 5;
-    this.wsConsecutiveFailures = 0;
-    this.connectionMode = 'websocket'; // websocket | sse
-    
-    // 创建 SSE 客户端实例
-    this.sseClient = new Utils.SSEClient({
-      httpServerUrl: httpServerUrl,
-      endpoint: sseConfig.endpoint || '/api/browser/events',
-      reconnectInterval: sseConfig.reconnectInterval || 5000,
-      maxReconnectAttempts: sseConfig.maxReconnectAttempts || 10
-    });
-    
-    // 设置回调
-    this.sseClient.onCallbackResult = (data) => {
-      // 处理通过 SSE 接收到的回调结果
-      this.handleServerResponse({
-        type: 'callback_result',
-        requestId: data.requestId,
-        status: 'completed',
-        data: data.result
-      });
-    };
-    
-    this.sseClient.onRequestTimeout = (data) => {
-      // 处理请求超时通知
-      this.handleServerResponse({
-        type: 'request_timeout',
-        requestId: data.requestId,
-        status: 'timeout',
-        error: '服务端请求超时'
-      });
-    };
-    
-    this.sseClient.onConnect = () => {
-      console.log('[BrowserControl] SSE 连接成功（降级模式）');
-      this.broadcastStatusUpdate();
-    };
-    
-    this.sseClient.onDisconnect = () => {
-      console.log('[BrowserControl] SSE 连接断开');
-      this.broadcastStatusUpdate();
-    };
-    
-    console.log('[BrowserControl] SSE 客户端已初始化');
-  }
-  
-  /**
    * 广播状态更新到 Popup
    */
   broadcastStatusUpdate() {
@@ -313,25 +215,11 @@ class BrowserControl {
     return {
       // 连接状态
       isConnected: this.isConnected,
-      connectionMode: this.connectionMode || 'websocket',
       serverUrl: this.serverUrl,
       httpBaseUrl: this.httpBaseUrl,
-      authState: this.authState,
-      
-      // 服务器能力
-      serverCapabilities: this.serverCapabilities ? {
-        serverName: this.serverCapabilities.serverName,
-        serverVersion: this.serverCapabilities.serverVersion,
-        hasSSE: this.serverCapabilities.hasSSE,
-        hasServerRateLimit: this.serverCapabilities.hasServerRateLimit,
-        hasHealthEndpoint: this.serverCapabilities.hasHealthEndpoint
-      } : null,
       
       // 健康检查状态
       healthCheck: this.healthChecker ? this.healthChecker.getStatus() : null,
-      
-      // SSE 状态
-      sseStatus: this.sseClient ? this.sseClient.getStatus() : null,
       
       // 队列状态
       queueStatus: this.queueManager ? this.queueManager.getStatus() : null,
@@ -399,9 +287,17 @@ class BrowserControl {
   async init() {
     console.log('Browser Control Extension 正在初始化...');
     
+    // 一次性迁移清理：移除历史遗留的 HMAC 认证密钥 storage
+    try {
+      await browser.storage.local.remove(['auth_secret_key']);
+    } catch (_) {}
+    
     // 加载用户设置
     await this.loadSettings();
-    
+
+    // 尝试从本机 Native Messaging host 同步 token / 服务地址
+    await this.trySyncFromNativeHost({ silent: true });
+
     // 能力探测：获取服务器配置，确定 WS 地址和 HTTP 地址
     await this.discoverServer();
     
@@ -479,17 +375,9 @@ class BrowserControl {
       // 从 config 响应中提取 WS 地址
       const wsUrl = config.config?.websocketAddress || config.websocketAddress || config.websocket;
 
-      // 检测服务器能力
       this.serverCapabilities = {
         wsUrl: wsUrl || null,
-        httpBaseUrl: this.httpBaseUrl,
-        serverName: config.name || config.config?.name || null,
-        serverVersion: config.version || config.config?.version || null,
-        hasSSE: !!(config.config?.sse || config.sse || config.endpoints?.includes?.('/api/browser/events')),
-        hasServerRateLimit: !!(config.config?.extensionRateLimit || config.extensionRateLimit),
-        hasServerDedup: !!(config.config?.request?.deduplicationWindow || config.request?.deduplicationWindow),
-        hasHealthEndpoint: true,
-        configData: config
+        httpBaseUrl: this.httpBaseUrl
       };
 
       // 设置 WS 地址
@@ -529,14 +417,7 @@ class BrowserControl {
 
     this.serverCapabilities = {
       wsUrl: this.serverUrl,
-      httpBaseUrl: this.httpBaseUrl,
-      serverName: null,
-      serverVersion: null,
-      hasSSE: false,
-      hasServerRateLimit: false,
-      hasServerDedup: false,
-      hasHealthEndpoint: false,
-      configData: null
+      httpBaseUrl: this.httpBaseUrl
     };
 
     console.log(`[Discovery] Fallback - WS: ${this.serverUrl}, HTTP: ${this.httpBaseUrl}`);
@@ -547,8 +428,7 @@ class BrowserControl {
    */
   async loadSettings() {
     try {
-      const authStorageKey = this.securityConfig.auth?.storageKey || 'auth_secret_key';
-      const result = await browser.storage.local.get(['serverUrl', 'autoConnect', 'serverToken', 'allowRawEval', authStorageKey]);
+      const result = await browser.storage.local.get(['serverUrl', 'autoConnect', 'serverToken', 'allowRawEval']);
       if (typeof result.allowRawEval === 'boolean') {
         this.securityConfig.allowRawEval = result.allowRawEval;
       }
@@ -571,15 +451,6 @@ class BrowserControl {
         this.autoConnect = true; // 默认启用
         console.log('使用默认自动连接设置: 启用');
       }
-      
-      // 加载认证密钥
-      if (result[authStorageKey]) {
-        this.authSecretKey = result[authStorageKey];
-        console.log('已加载认证密钥');
-      } else {
-        this.authSecretKey = null;
-        console.log('未配置认证密钥');
-      }
 
       if (result.serverToken) {
         this.serverToken = String(result.serverToken);
@@ -593,7 +464,6 @@ class BrowserControl {
       // 使用默认设置
       this.serverUrl = this.defaultServerUrl;
       this.autoConnect = true;
-      this.authSecretKey = null;
       this.serverToken = null;
     }
   }
@@ -619,79 +489,71 @@ class BrowserControl {
     }
   }
 
-  /**
-   * 保存认证密钥
-   * @param {string} authKey - 认证密钥
-   */
-  async saveAuthKey(authKey) {
-    try {
-      const authStorageKey = this.securityConfig.auth?.storageKey || 'auth_secret_key';
-      await browser.storage.local.set({ [authStorageKey]: authKey });
-      this.authSecretKey = authKey;
-      console.log('认证密钥已保存');
-      
-      // 如果当前已连接但未认证，尝试重新连接以进行认证
-      if (this.isConnected && this.authState !== 'authenticated') {
-        console.log('检测到新密钥，正在重新连接...');
-        this.reconnectWithNewSettings();
+  nativeMessagingRequest(payload, { timeoutMs = 3000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const runtimeApi = (typeof browser !== 'undefined' && browser.runtime)
+        || (typeof chrome !== 'undefined' ? chrome.runtime : null);
+      if (!runtimeApi || typeof runtimeApi.connectNative !== 'function') {
+        reject(new Error('native-messaging-unavailable'));
+        return;
       }
-    } catch (error) {
-      console.error('保存认证密钥失败:', error);
-      throw error;
-    }
+
+      let port;
+      try {
+        port = runtimeApi.connectNative('com.js_eyes.native_host');
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      let settled = false;
+      const finalize = (kind, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { port.disconnect(); } catch {}
+        if (kind === 'ok') resolve(value); else reject(value);
+      };
+
+      const timer = setTimeout(() => finalize('err', new Error('native-messaging-timeout')), timeoutMs);
+
+      port.onMessage.addListener((message) => finalize('ok', message));
+      port.onDisconnect.addListener(() => {
+        const err = runtimeApi.lastError?.message || 'native-messaging-disconnected';
+        finalize('err', new Error(err));
+      });
+
+      try {
+        port.postMessage(payload);
+      } catch (error) {
+        finalize('err', error);
+      }
+    });
   }
 
-  /**
-   * 清除认证密钥
-   */
-  async clearAuthKey() {
+  async trySyncFromNativeHost({ silent = false } = {}) {
     try {
-      const authStorageKey = this.securityConfig.auth?.storageKey || 'auth_secret_key';
-      await browser.storage.local.remove(authStorageKey);
-      this.authSecretKey = null;
-      this.sessionId = null;
-      this.authState = 'disconnected';
-      console.log('认证密钥已清除');
+      const response = await this.nativeMessagingRequest({ type: 'get-config' }, { timeoutMs: 3000 });
+      if (!response || response.ok !== true) {
+        if (!silent) console.warn('[native-host] get-config 未返回 token:', response?.error || 'unknown');
+        return { ok: false, reason: response?.error || 'no-token' };
+      }
+      if (response.serverToken) {
+        await this.saveServerToken(response.serverToken);
+      }
+      if (response.httpUrl) {
+        if (!this.serverUrl || this.serverUrl === this.defaultServerUrl) {
+          this.serverUrl = response.httpUrl;
+          try {
+            await browser.storage.local.set({ serverUrl: response.httpUrl });
+          } catch {}
+        }
+      }
+      if (!silent) console.log('[native-host] 同步完成');
+      return { ok: true };
     } catch (error) {
-      console.error('清除认证密钥失败:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 计算 HMAC-SHA256
-   * 使用 Web Crypto API 实现
-   * 
-   * @param {string} secretKey - 密钥
-   * @param {string} message - 要签名的消息
-   * @returns {Promise<string>} - 64位十六进制字符串（小写）
-   */
-  async computeHMAC(secretKey, message) {
-    try {
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(secretKey);
-      
-      // 导入密钥
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      
-      // 计算 HMAC
-      const messageData = encoder.encode(message);
-      const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-      
-      // 转为十六进制字符串
-      const hashArray = Array.from(new Uint8Array(signature));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      return hashHex;
-    } catch (error) {
-      console.error('计算 HMAC 失败:', error);
-      throw error;
+      if (!silent) console.warn('[native-host] 同步失败:', error?.message || error);
+      return { ok: false, reason: error?.message || 'error' };
     }
   }
 
@@ -758,9 +620,6 @@ class BrowserControl {
       
       // 重置认证状态
       this.authState = 'disconnected';
-      this.sessionId = null;
-      this.pendingChallenge = null;
-      this.sessionExpiresAt = null;
 
       let wsUrl = this.serverUrl;
       let wsProtocols = undefined;
@@ -784,11 +643,10 @@ class BrowserControl {
           return;
         }
         
-        console.log(`[Connect#${connectionId}] WebSocket连接已建立，等待服务器认证挑战...`);
+        console.log(`[Connect#${connectionId}] WebSocket连接已建立，等待服务器认证结果...`);
         this.isConnected = true;
         this.isReconnecting = false;
         this.authState = 'authenticating';
-        this.connectionMode = 'websocket';
         this.connectStartTime = Date.now();
         
         // 重置重连计数器
@@ -805,25 +663,17 @@ class BrowserControl {
           this.healthChecker.start();
         }
         
-        // 如果之前使用 SSE 降级模式，断开 SSE
-        if (this.sseClient && this.sseClient.isConnected) {
-          console.log('[BrowserControl] WebSocket 恢复，断开 SSE 降级连接');
-          this.sseClient.disconnect();
-        }
-        
         // 广播状态更新
         this.broadcastStatusUpdate();
         
-        // 安全网超时：60s 后若仍无任何认证消息（auth_challenge 或 auth_result），
-        // 说明服务器未响应，关闭连接。
-        // 正常场景下两种服务器都会在连接后立即发送第一条消息，不会触发此超时。
+        // 安全网超时：60s 后若仍无 auth_result，关闭连接
         this.authTimeout = setTimeout(() => {
           if (connectionId !== this._currentConnectionId) return;
           
           if (this.authState === 'authenticating') {
-            console.error('[Auth] 服务器连接后 60 秒无任何认证消息，关闭连接');
+            console.error('[Auth] 服务器连接后 60 秒无认证结果，关闭连接');
             if (this.ws) {
-              this.ws.close(1000, 'No auth message received');
+              this.ws.close(1000, 'No auth result received');
             }
           }
         }, 60000);
@@ -863,18 +713,16 @@ class BrowserControl {
         // 广播状态更新
         this.broadcastStatusUpdate();
         
-        // 如果是认证失败导致的关闭（4001-4004 是自定义认证错误码），不自动重连
+        // 如果是认证失败导致的关闭（4001-4010 是自定义认证错误码），不自动重连
         const isAuthError = event.code >= 4001 && event.code <= 4010;
         if (isAuthError || this.authState === 'failed') {
           console.log('认证失败，不自动重连。错误码:', event.code, event.reason);
           this.authState = 'failed';
-          this.sessionId = null;
           return;
         }
         
         // 重置认证状态
         this.authState = 'disconnected';
-        this.sessionId = null;
         
         // 如果启用自动连接，则尝试重连
         if (this.autoConnect && !this.isReconnecting) {
@@ -899,16 +747,6 @@ class BrowserControl {
           this.healthChecker.stop();
         }
         
-        this.wsConsecutiveFailures = (this.wsConsecutiveFailures || 0) + 1;
-        
-        console.log(`[WebSocket] 连续失败次数: ${this.wsConsecutiveFailures}/${this.sseFallbackThreshold || 5}`);
-        
-        // 检查是否需要降级到 SSE
-        if (this.shouldFallbackToSSE()) {
-          this.fallbackToSSE();
-          return;
-        }
-        
         // 如果启用自动连接，则尝试重连
         if (this.autoConnect && !this.isReconnecting) {
           this.attemptReconnect();
@@ -927,75 +765,6 @@ class BrowserControl {
   }
 
   /**
-   * 处理服务器认证挑战
-   * @param {Object} message - 认证挑战消息
-   */
-  async handleAuthChallenge(message) {
-    try {
-      const { challenge, timestamp, serverVersion } = message;
-      
-      console.log('收到服务器认证挑战:', { 
-        challengeLength: challenge?.length,
-        serverVersion,
-        timestamp 
-      });
-      
-      // 清除认证超时（收到 challenge 说明是新版服务器）
-      if (this.authTimeout) {
-        clearTimeout(this.authTimeout);
-        this.authTimeout = null;
-      }
-      
-      // 检查是否配置了密钥
-      if (!this.authSecretKey) {
-        console.error('未配置认证密钥，无法完成认证');
-        this.authState = 'failed';
-        // 关闭连接
-        if (this.ws) {
-          this.ws.close(4001, '未配置认证密钥');
-        }
-        return;
-      }
-      
-      // 保存 challenge 用于验证
-      this.pendingChallenge = challenge;
-      
-      // 计算 HMAC 响应
-      const response = await this.computeHMAC(this.authSecretKey, challenge);
-      
-      // 发送认证响应
-      this.sendRawMessage({
-        type: 'auth_response',
-        clientId: browser.runtime.id,
-        clientType: 'extension',
-        response: response,
-        timestamp: new Date().toISOString()
-      });
-      
-      console.log('已发送认证响应');
-      
-      // 设置认证结果超时
-      const authResultTimeout = this.securityConfig.auth?.authTimeout || 10000;
-      this.authTimeout = setTimeout(() => {
-        if (this.authState === 'authenticating') {
-          console.error('等待认证结果超时');
-          this.authState = 'failed';
-          if (this.ws) {
-            this.ws.close(4002, '认证超时');
-          }
-        }
-      }, authResultTimeout);
-      
-    } catch (error) {
-      console.error('处理认证挑战时出错:', error);
-      this.authState = 'failed';
-      if (this.ws) {
-        this.ws.close(4003, '认证处理错误');
-      }
-    }
-  }
-
-  /**
    * 处理服务器认证结果
    * @param {Object} message - 认证结果消息
    */
@@ -1007,43 +776,16 @@ class BrowserControl {
     }
     
     if (message.success) {
-      console.log('认证成功!', {
-        sessionId: message.sessionId,
-        expiresIn: message.expiresIn,
-        permissions: message.permissions
-      });
+      console.log('认证成功!', { permissions: message.permissions });
       
       this.authState = 'authenticated';
-      this.sessionId = message.sessionId || null;
-      
-      // 仅在有 sessionId 时设置会话刷新（完整版服务器）
-      if (message.sessionId && message.expiresIn) {
-        this.sessionExpiresAt = Date.now() + (message.expiresIn * 1000);
-        
-        const refreshBefore = (this.securityConfig.auth?.sessionRefreshBefore || 300) * 1000;
-        const refreshDelay = Math.max((message.expiresIn * 1000) - refreshBefore, 60000);
-        setTimeout(() => {
-          this.refreshSession();
-        }, refreshDelay);
-      }
       
       // 发送初始化消息
-      // 轻量版服务器无 session，使用 sendRawMessage；完整版使用 sendNotification
-      if (this.sessionId) {
-        this.sendNotification({
-          type: 'init',
-          payload: {
-            userAgent: navigator.userAgent
-          },
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        this.sendRawMessage({
-          type: 'init',
-          timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent
-        });
-      }
+      this.sendRawMessage({
+        type: 'init',
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
+      });
       
       // 立即发送一次标签页数据
       this.sendTabsData();
@@ -1051,12 +793,9 @@ class BrowserControl {
       // 启动应用层心跳
       this.startHeartbeat();
       
-      // syncServerConfig: 优先使用 discoverServer() 已缓存的数据
-      // 仅在 init_ack 未携带 serverConfig 时作为后备
+      // 从 HTTP 配置端点同步限流等参数（后备）
       setTimeout(() => {
-        if (!this.serverConfig && this.serverCapabilities?.configData) {
-          this.applyServerConfig(this.serverCapabilities.configData);
-        } else if (!this.serverConfig) {
+        if (!this.serverConfig) {
           this.syncServerConfig();
         }
       }, 3000);
@@ -1064,7 +803,6 @@ class BrowserControl {
     } else {
       console.error('认证失败:', message.error);
       this.authState = 'failed';
-      this.sessionId = null;
       
       // 记录重试时间
       if (message.retryAfter) {
@@ -1178,20 +916,6 @@ class BrowserControl {
   }
 
   /**
-   * 刷新会话（重新认证）
-   */
-  async refreshSession() {
-    if (this.authState !== 'authenticated' || !this.isConnected) {
-      return;
-    }
-    
-    console.log('会话即将过期，正在刷新...');
-    
-    // 重新连接以刷新会话
-    this.reconnectWithNewSettings();
-  }
-
-  /**
    * 启动应用层心跳
    * 定期发送 ping 消息，检测连接是否存活
    */
@@ -1221,7 +945,6 @@ class BrowserControl {
       // 发送 ping
       this.sendRawMessage({
         type: 'ping',
-        sessionId: this.sessionId,
         timestamp: new Date().toISOString()
       });
     }, this.heartbeatIntervalMs);
@@ -1240,7 +963,7 @@ class BrowserControl {
   }
 
   /**
-   * 发送原始消息到服务器（不添加 sessionId，用于认证流程）
+   * 发送原始消息到服务器
    */
   sendRawMessage(message) {
     if (this.isConnected && this.ws.readyState === WebSocket.OPEN) {
@@ -1253,69 +976,17 @@ class BrowserControl {
   }
 
   /**
-   * 发送通知型消息到服务器（不需要响应，不附加 requestId）
-   * 用于 init、data 等信息性消息
+   * 发送通知型消息到服务器
    */
   sendNotification(message) {
-    if (this.isConnected && this.ws.readyState === WebSocket.OPEN) {
-      if (this.authState === 'authenticated' && this.sessionId) {
-        // 通知型协议格式：不带 requestId
-        const wrappedMessage = {
-          type: 'notification',
-          sessionId: this.sessionId,
-          action: message.type,
-          payload: message.payload || {},
-          timestamp: message.timestamp || new Date().toISOString()
-        };
-        this.ws.send(JSON.stringify(wrappedMessage));
-      } else {
-        // 旧协议格式或未认证时直接发送
-        this.ws.send(JSON.stringify(message));
-      }
-      return true;
-    } else {
-      console.warn('WebSocket未连接，无法发送通知:', message);
-      return false;
-    }
+    return this.sendRawMessage(message);
   }
 
   /**
-   * 发送消息到服务器（请求型，需要响应）
-   * 如果已认证，自动添加 sessionId 和 requestId
+   * 发送消息到服务器
    */
   sendMessage(message) {
-    if (this.isConnected && this.ws.readyState === WebSocket.OPEN) {
-      // 如果已认证且有 sessionId，使用新协议格式
-      if (this.authState === 'authenticated' && this.sessionId) {
-        // 提取有效载荷：如果 message 有 payload 属性则直接使用，否则提取除元数据外的属性
-        let payload;
-        if (message.payload !== undefined) {
-          payload = message.payload;
-        } else {
-          // 从 message 中提取除 type/timestamp/requestId 外的属性作为 payload
-          const { type, timestamp, requestId, ...rest } = message;
-          payload = rest;
-        }
-        
-        const wrappedMessage = {
-          type: 'request',
-          sessionId: this.sessionId,
-          requestId: message.requestId || this.generateRequestId(),
-          action: message.type,
-          payload: payload,
-          timestamp: message.timestamp || new Date().toISOString()
-        };
-        
-        this.ws.send(JSON.stringify(wrappedMessage));
-      } else {
-        // 旧协议格式或未认证时直接发送
-        this.ws.send(JSON.stringify(message));
-      }
-      return true;
-    } else {
-      console.warn('WebSocket未连接，无法发送消息:', message);
-      return false;
-    }
+    return this.sendRawMessage(message);
   }
 
   /**
@@ -1342,10 +1013,6 @@ class BrowserControl {
       }
 
       switch (message.type) {
-        case 'auth_challenge':
-          await this.handleAuthChallenge(message);
-          return;
-          
         case 'auth_result':
           this.handleAuthResult(message);
           return;
@@ -1370,36 +1037,8 @@ class BrowserControl {
           this.lastPongTime = Date.now();
           return;
           
-        case 'session_expired':
-          // 服务端通知会话已过期，需要重新认证
-          console.warn('[Auth] 收到服务端会话过期通知:', message.reason);
-          this.authState = 'disconnected';
-          this.sessionId = null;
-          this.sessionExpiresAt = null;
-          // 广播状态更新让 Popup 知道
-          this.broadcastStatusUpdate();
-          // 重新连接以进行认证
-          this.reconnectWithNewSettings();
-          return;
-          
-        case 'session_expiring':
-          // 服务端通知会话即将过期，提前刷新
-          console.warn(`[Auth] 会话即将过期（${message.expiresIn}秒后），提前刷新`);
-          this.refreshSession();
-          return;
-          
         case 'error':
           // 处理服务端错误消息
-          if (message.code === 'SESSION_EXPIRED') {
-            console.warn('[Auth] 请求被拒绝：会话已过期，准备重新连接');
-            this.authState = 'disconnected';
-            this.sessionId = null;
-            this.sessionExpiresAt = null;
-            this.broadcastStatusUpdate();
-            this.reconnectWithNewSettings();
-            return;
-          }
-          // 其他错误类型走默认处理
           console.warn('[ServerError]', message.code, message.message);
           break;
       }
@@ -1598,10 +1237,8 @@ class BrowserControl {
         
         // 检查是否是认证错误
         if (error === 'AUTH_REQUIRED' || error === 'AUTH_FAILED') {
-          console.log('会话已过期，需要重新认证');
+          console.log('认证失效，需要重新连接');
           this.authState = 'disconnected';
-          this.sessionId = null;
-          // 重新连接以进行认证
           this.reconnectWithNewSettings();
         }
         
@@ -2741,25 +2378,9 @@ class BrowserControl {
         sendResponse({
           isConnected: this.isConnected,
           serverUrl: this.serverUrl,
-          reconnectAttempts: this.reconnectAttempts,
-          // 新增认证状态
-          authState: this.authState,
-          hasAuthKey: !!this.authSecretKey,
-          sessionId: this.sessionId ? '***' : null, // 隐藏实际值
-          sessionExpiresAt: this.sessionExpiresAt
+          reconnectAttempts: this.reconnectAttempts
         });
         return true; // 保持消息通道开放
-      }
-      
-      // 获取认证状态
-      if (message.type === 'get_auth_status') {
-        sendResponse({
-          authState: this.authState,
-          hasAuthKey: !!this.authSecretKey,
-          isAuthenticated: this.authState === 'authenticated',
-          sessionExpiresAt: this.sessionExpiresAt
-        });
-        return true;
       }
       
       // 获取扩展状态（包含健康检查、限流等新信息）
@@ -2768,29 +2389,6 @@ class BrowserControl {
         return true;
       }
       
-      // 保存认证密钥
-      if (message.type === 'save_auth_key') {
-        this.saveAuthKey(message.authKey)
-          .then(() => {
-            sendResponse({ success: true });
-          })
-          .catch(error => {
-            sendResponse({ success: false, error: error.message });
-          });
-        return true;
-      }
-      
-      // 清除认证密钥
-      if (message.type === 'clear_auth_key') {
-        this.clearAuthKey()
-          .then(() => {
-            sendResponse({ success: true });
-          })
-          .catch(error => {
-            sendResponse({ success: false, error: error.message });
-          });
-        return true;
-      }
       if (message.type === 'get_server_token') {
         sendResponse({ hasServerToken: !!this.serverToken });
         return true;
@@ -2805,6 +2403,12 @@ class BrowserControl {
         this.saveServerToken(null)
           .then(() => sendResponse({ success: true }))
           .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+      }
+      if (message.type === 'sync_token_from_native') {
+        this.trySyncFromNativeHost({ silent: false })
+          .then((result) => sendResponse({ success: !!result.ok, reason: result.reason || null }))
+          .catch((error) => sendResponse({ success: false, reason: error.message }));
         return true;
       }
       if (message.type === 'send_tabs_data') {
@@ -3303,7 +2907,6 @@ class BrowserControl {
    */
   resetReconnectCounter() {
     this.reconnectAttempts = 0;
-    this.wsConsecutiveFailures = 0;
     console.log('[Reconnect] 重连计数器已重置');
   }
 
@@ -3317,99 +2920,6 @@ class BrowserControl {
     }
     this.isReconnecting = false;
     console.log('已停止自动重连');
-  }
-  
-  /**
-   * 检查是否应该降级到 SSE
-   * @returns {boolean}
-   */
-  shouldFallbackToSSE() {
-    // 如果服务器不支持 SSE 或客户端不可用，不降级
-    if (!this.serverCapabilities?.hasSSE || !this.sseClient) {
-      return false;
-    }
-    
-    // 如果已经在 SSE 模式，不需要再降级
-    if (this.connectionMode === 'sse') {
-      return false;
-    }
-    
-    // 连续失败次数达到阈值
-    const threshold = this.sseFallbackThreshold || 5;
-    return (this.wsConsecutiveFailures || 0) >= threshold;
-  }
-  
-  /**
-   * 降级到 SSE 模式
-   */
-  fallbackToSSE() {
-    console.log('[BrowserControl] WebSocket 连续失败，降级到 SSE 模式');
-    
-    // 停止 WebSocket 重连
-    this.stopAutoReconnect();
-    
-    // 切换到 SSE 模式
-    this.connectionMode = 'sse';
-    
-    // 连接 SSE
-    if (this.sseClient) {
-      this.sseClient.connect();
-    }
-    
-    // 启动健康检查（如果还没启动）
-    if (this.healthChecker && !this.healthChecker.checkTimer) {
-      this.healthChecker.start();
-    }
-    
-    // 广播状态更新
-    this.broadcastStatusUpdate();
-    
-    // 定期尝试恢复 WebSocket 连接
-    this.scheduleWSRecovery();
-  }
-  
-  /**
-   * 安排 WebSocket 恢复尝试
-   */
-  scheduleWSRecovery() {
-    // 每 60 秒尝试恢复 WebSocket
-    const recoveryInterval = 60000;
-    
-    if (this.wsRecoveryTimer) {
-      clearInterval(this.wsRecoveryTimer);
-    }
-    
-    this.wsRecoveryTimer = setInterval(() => {
-      if (this.connectionMode === 'sse' && !this.isConnected) {
-        console.log('[BrowserControl] 尝试恢复 WebSocket 连接...');
-        this.wsConsecutiveFailures = 0; // 重置失败计数
-        this.connectionMode = 'websocket';
-        this.connect();
-      } else if (this.isConnected && this.connectionMode === 'websocket') {
-        // WebSocket 已恢复，停止恢复尝试
-        clearInterval(this.wsRecoveryTimer);
-        this.wsRecoveryTimer = null;
-      }
-    }, recoveryInterval);
-  }
-  
-  /**
-   * 停止 SSE 降级模式，恢复 WebSocket
-   */
-  stopSSEFallback() {
-    if (this.wsRecoveryTimer) {
-      clearInterval(this.wsRecoveryTimer);
-      this.wsRecoveryTimer = null;
-    }
-    
-    if (this.sseClient) {
-      this.sseClient.disconnect();
-    }
-    
-    this.connectionMode = 'websocket';
-    this.wsConsecutiveFailures = 0;
-    
-    console.log('[BrowserControl] 已停止 SSE 降级模式');
   }
 
   /**
@@ -3453,12 +2963,9 @@ class BrowserControl {
       // 重新进行能力探测
       await this.discoverServer();
       
-      // 更新健康检查器和 SSE 客户端的地址
+      // 更新健康检查器的地址
       if (this.healthChecker && this.httpBaseUrl) {
         this.healthChecker.updateConfig({ httpServerUrl: this.httpBaseUrl });
-      }
-      if (this.sseClient && this.httpBaseUrl) {
-        this.sseClient.httpServerUrl = this.httpBaseUrl;
       }
       
       // 重新连接（不受自动连接设置影响，这是手动触发）

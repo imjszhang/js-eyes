@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.3.0
+version: 2.4.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -70,7 +70,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
      - `autoStartServer: true`
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
-8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`, then `js-eyes server token show --reveal` to copy it into the browser extension popup **Server Token** field.
+8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run `npx js-eyes native-host install --browser all` so the extension auto-syncs the token, or run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
 9. If the server is healthy but no browser is connected, guide the user through browser extension installation, server-token entry, and connection.
 10. After the base setup works, prefer `js_eyes_discover_skills` and `js_eyes_install_skill` for extension skills — 2.2.0 writes a plan under `runtime/pending-skills/<id>.json`; finalize with `js-eyes skills approve <id>` then `js-eyes skills enable <id>`.
 11. Run `js-eyes doctor` to confirm the hardened defaults (token present, `allowAnonymous=false`, loopback-bound, skill integrity OK) before handing off.
@@ -147,11 +147,9 @@ Expected status checks:
 If the plugin is enabled but no browser is connected:
 
 1. Install the JS Eyes browser extension separately from GitHub Releases or the website.
-2. Open the extension popup.
-3. Set the server address to `http://<serverHost>:<serverPort>`.
-4. Paste the server token from `js-eyes server token show --reveal` into the **Server Token (2.2.0+)** field.
-5. Click `Connect`.
-6. Re-run `openclaw js-eyes status`.
+2. (Preferred, 2.4.0+) Run `npx js-eyes native-host install --browser all` once so the extension auto-syncs `server.token` and the HTTP URL via Native Messaging; then open the popup and click **Sync Token From Host**.
+3. Manual fallback: open the extension popup, expand **Advanced**, set the server address to `http://<serverHost>:<serverPort>`, paste the output of `js-eyes server token show --reveal` into the **Server Token (2.2.0+)** field, and click `Connect`.
+4. Re-run `openclaw js-eyes status`.
 
 The browser extension is not bundled inside the main ClawHub skill. It must be installed separately. Connections without a matching server token are rejected unless the operator has set `security.allowAnonymous=true`.
 
@@ -195,7 +193,7 @@ Check:
 2. `serverHost` / `serverPort` in plugin config
 3. The extension popup server URL
 4. Whether `autoStartServer` is `true`
-5. (2.2.0+) The popup **Server Token** field matches `js-eyes server token show --reveal`. Tail `logs/audit.log` via `js-eyes audit tail` — `conn.reject` with `reason: token` or `reason: origin` points to token/Origin mismatches.
+5. (2.2.0+) The popup **Server Token** field matches `js-eyes server token show --reveal`. On 2.4.0+ installs, prefer re-running the popup's **Sync Token From Host** button (powered by the Native Messaging host — see `docs/native-messaging.md`). Tail `logs/audit.log` via `js-eyes audit tail` — `conn.reject` with `reason: token` or `reason: origin` points to token/Origin mismatches.
 
 ### Sensitive Tool Calls Hang Without Output (2.2.0+)
 

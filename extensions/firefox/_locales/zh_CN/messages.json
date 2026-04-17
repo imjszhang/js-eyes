@@ -76,17 +76,17 @@
     "message": "服务器地址：",
     "description": "Server address input label"
   },
-  "presetAddresses": {
-    "message": "预设地址：",
-    "description": "Preset addresses label"
-  },
   "autoConnect": {
     "message": "自动连接",
     "description": "Auto connect checkbox label"
   },
-  "debugMode": {
-    "message": "调试模式",
-    "description": "Debug mode checkbox label"
+  "advancedSettings": {
+    "message": "高级设置",
+    "description": "Advanced settings disclosure summary"
+  },
+  "syncTokenDescription": {
+    "message": "默认通过本机 Native Messaging 自动获取 token 与服务器地址。",
+    "description": "Sync token section description"
   },
   "help": {
     "message": "帮助",
@@ -113,6 +113,26 @@
     "message": "连接",
     "description": "Connect button text"
   },
+  "btnSave": {
+    "message": "保存",
+    "description": "Save button text"
+  },
+  "btnClearToken": {
+    "message": "清除 Token",
+    "description": "Clear server token button text"
+  },
+  "serverTokenLabel": {
+    "message": "Server Token（2.2.0+）：",
+    "description": "Server token input label"
+  },
+  "serverTokenHint": {
+    "message": "当 server.allowAnonymous=false 时必须配置（参考 runtime/server.token）",
+    "description": "Server token hint"
+  },
+  "btnSyncTokenFromNative": {
+    "message": "从本机同步 Token",
+    "description": "Sync token via native messaging host"
+  },
 
   "statusConnected": {
     "message": "已连接",
@@ -125,31 +145,6 @@
   "statusConnecting": {
     "message": "连接中",
     "description": "Connecting status text"
-  },
-
-  "presetLocal": {
-    "message": "本地:18080",
-    "description": "Local preset button"
-  },
-  "presetFullServer": {
-    "message": "本地完整版:3000",
-    "description": "Full server preset button"
-  },
-  "presetDockerLocal": {
-    "message": "Docker:18080",
-    "description": "Docker local preset button"
-  },
-  "presetDockerLocalSSL": {
-    "message": "Docker:18080 (SSL)",
-    "description": "Docker local SSL preset button"
-  },
-  "presetDockerWS": {
-    "message": "Docker WS子域名",
-    "description": "Docker WS subdomain preset button"
-  },
-  "presetDockerWSS": {
-    "message": "Docker WSS子域名",
-    "description": "Docker WSS subdomain preset button"
   },
 
   "logPopupInit": {
@@ -166,7 +161,7 @@
     "placeholders": {
       "key": {
         "content": "$1",
-        "example": "debugMode"
+        "example": "autoConnect"
       },
       "value": {
         "content": "$2",
@@ -213,16 +208,6 @@
       "error": {
         "content": "$1",
         "example": "Error message"
-      }
-    }
-  },
-  "logPresetSelected": {
-    "message": "已选择预设地址：$URL$",
-    "description": "Log: preset address selected",
-    "placeholders": {
-      "url": {
-        "content": "$1",
-        "example": "http://localhost:18080"
       }
     }
   },
@@ -339,17 +324,13 @@
     "message": "连接设置：",
     "description": "Help: connection settings title"
   },
+  "helpNativeSync": {
+    "message": "默认情况下通过本机 Native Messaging 自动同步 token 与服务器地址，无需手动配置。",
+    "description": "Help: native messaging auto sync"
+  },
   "helpConnection1": {
-    "message": "手动输入服务器地址，支持 ws:// 和 wss:// 协议",
+    "message": "输入服务器地址（http:// 或 ws://），自动发现 WebSocket 端点",
     "description": "Help: connection item 1"
-  },
-  "helpConnection2": {
-    "message": "点击预设地址快速选择预设服务器",
-    "description": "Help: connection item 2"
-  },
-  "helpConnection3": {
-    "message": "点击「连接」按钮保存地址并连接服务器",
-    "description": "Help: connection item 3"
   },
   "helpConnection4": {
     "message": "启用「自动连接」后，扩展启动时自动连接，断开后自动重连",
@@ -358,10 +339,6 @@
   "helpConnection5": {
     "message": "断开连接后自动重连（使用指数退避策略，无限重试）",
     "description": "Help: connection item 5"
-  },
-  "helpConnection6": {
-    "message": "支持调试模式查看详细日志",
-    "description": "Help: connection item 6"
   },
 
   "helpFeaturesTitle": {
@@ -389,52 +366,6 @@
     "description": "Help: feature 5"
   },
 
-  "helpAddressTitle": {
-    "message": "常用地址格式：",
-    "description": "Help: address formats title"
-  },
-  "helpAddress1": {
-    "message": "本地轻量版：http://localhost:18080",
-    "description": "Help: address 1"
-  },
-  "helpAddress2": {
-    "message": "本地完整版：http://localhost:3000",
-    "description": "Help: address 2"
-  },
-  "helpAddress3": {
-    "message": "Docker：http://js.local:18080 或 https://js.local:18080",
-    "description": "Help: address 3"
-  },
-  "helpAddress4": {
-    "message": "局域网：http://192.168.1.100:18080",
-    "description": "Help: address 4"
-  },
-  "helpAddress5": {
-    "message": "生产环境：https://your-domain.com",
-    "description": "Help: address 5"
-  },
-
-  "helpDockerTitle": {
-    "message": "Docker 部署说明：",
-    "description": "Help: docker notes title"
-  },
-  "helpDocker1": {
-    "message": "确保在 hosts 文件中添加：127.0.0.1 js.local ws.js.local",
-    "description": "Help: docker note 1"
-  },
-  "helpDocker2": {
-    "message": "Docker 配置同时支持 :18080 直连和 HTTPS 本地域名访问",
-    "description": "Help: docker note 2"
-  },
-  "helpDocker3": {
-    "message": "生产环境建议使用 SSL (https://) 连接",
-    "description": "Help: docker note 3"
-  },
-  "helpDocker4": {
-    "message": "扩展会自动尝试多个地址直到连接成功",
-    "description": "Help: docker note 4"
-  },
-
   "helpLinksTitle": {
     "message": "相关链接：",
     "description": "Help: links title"
@@ -442,100 +373,5 @@
   "helpGithub": {
     "message": "GitHub",
     "description": "Help: GitHub link text"
-  },
-
-  "authStatus": {
-    "message": "认证状态",
-    "description": "Auth status label"
-  },
-  "authKeyLabel": {
-    "message": "认证密钥：",
-    "description": "Auth key input label"
-  },
-  "authKeyHint": {
-    "message": "密钥仅存储在本地，不会传输",
-    "description": "Auth key hint text"
-  },
-  "authKeyNotConfiguredHint": {
-    "message": "请配置认证密钥以连接服务器",
-    "description": "Auth key not configured hint"
-  },
-  "btnSave": {
-    "message": "保存",
-    "description": "Save button text"
-  },
-  "btnClearKey": {
-    "message": "清除密钥",
-    "description": "Clear key button text"
-  },
-
-  "statusNotConfigured": {
-    "message": "未配置",
-    "description": "Not configured status text"
-  },
-  "statusAuthenticating": {
-    "message": "认证中",
-    "description": "Authenticating status text"
-  },
-  "statusAuthenticated": {
-    "message": "已认证",
-    "description": "Authenticated status text"
-  },
-  "statusAuthFailed": {
-    "message": "认证失败",
-    "description": "Auth failed status text"
-  },
-  "statusPending": {
-    "message": "待认证",
-    "description": "Pending status text"
-  },
-
-  "logAuthKeyEmpty": {
-    "message": "认证密钥不能为空",
-    "description": "Log: auth key empty"
-  },
-  "logAuthKeySaved": {
-    "message": "认证密钥已保存",
-    "description": "Log: auth key saved"
-  },
-  "logAuthKeySaveFailed": {
-    "message": "保存认证密钥失败",
-    "description": "Log: auth key save failed"
-  },
-  "logAuthKeySaveError": {
-    "message": "保存认证密钥出错：$ERROR$",
-    "description": "Log: auth key save error",
-    "placeholders": {
-      "error": {
-        "content": "$1",
-        "example": "Error message"
-      }
-    }
-  },
-  "logReconnectForAuth": {
-    "message": "正在重新连接以进行认证...",
-    "description": "Log: reconnecting for authentication"
-  },
-  "logAuthKeyCleared": {
-    "message": "认证密钥已清除",
-    "description": "Log: auth key cleared"
-  },
-  "logAuthKeyClearFailed": {
-    "message": "清除认证密钥失败",
-    "description": "Log: auth key clear failed"
-  },
-  "logAuthKeyClearError": {
-    "message": "清除认证密钥出错：$ERROR$",
-    "description": "Log: auth key clear error",
-    "placeholders": {
-      "error": {
-        "content": "$1",
-        "example": "Error message"
-      }
-    }
-  },
-  "confirmClearAuthKey": {
-    "message": "确定要清除认证密钥吗？",
-    "description": "Confirm clear auth key dialog"
   }
 }

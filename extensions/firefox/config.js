@@ -52,15 +52,6 @@ const DEFAULT_CONFIG = {
     }
   },
   
-  // SSE 降级配置
-  SSE: {
-    enabled: true,
-    endpoint: '/api/browser/events',
-    reconnectInterval: 5000,      // 重连间隔（毫秒）
-    maxReconnectAttempts: 10,     // 最大重连次数
-    fallbackAfterWsFailures: 5    // WebSocket 失败多少次后降级到 SSE
-  },
-  
   // 安全配置（用于扩展中转通信模式）
   SECURITY: {
     // 允许的操作白名单
@@ -96,23 +87,7 @@ const DEFAULT_CONFIG = {
     
     // 请求超时时间（毫秒）
     // 与服务器端保持一致（服务器默认 60 秒）
-    requestTimeout: 60000,
-    
-    // 认证配置（与服务器安全握手）
-    // 密钥从 browser.storage.local 读取，通过 Popup 界面设置
-    // 不要在此硬编码密钥！
-    auth: {
-      // 密钥存储键名
-      storageKey: 'auth_secret_key',
-      
-      // 认证超时时间（毫秒）
-      // 与服务器端保持一致（服务器默认 30 秒）
-      authTimeout: 30000,
-      
-      // 会话有效期提前刷新时间（秒）
-      // 在会话过期前这么多秒开始尝试重新认证
-      sessionRefreshBefore: 300
-    }
+    requestTimeout: 60000
   }
 };
 

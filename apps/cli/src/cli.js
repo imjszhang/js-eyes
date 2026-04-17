@@ -29,6 +29,14 @@ const {
   resolveSecurityConfig,
 } = require('@js-eyes/protocol');
 const {
+  ALL_BROWSERS: NATIVE_HOST_ALL_BROWSERS,
+  NATIVE_HOST_NAME,
+  installBrowsers: installNativeHostBrowsers,
+  resolveHostScriptPath: resolveNativeHostScript,
+  statusBrowsers: statusNativeHostBrowsers,
+  uninstallBrowsers: uninstallNativeHostBrowsers,
+} = require('@js-eyes/native-host');
+const {
   applySkillInstall,
   discoverLocalSkills,
   fetchSkillsRegistry,
@@ -451,6 +459,20 @@ async function commandDoctor(flags) {
   print(`  client-sdk=${COMPATIBILITY_MATRIX.clientSdkVersion}`);
   print(`  openclaw-plugin=${COMPATIBILITY_MATRIX.openclawPluginVersion}`);
   print(`  skills(client-sdk)=${COMPATIBILITY_MATRIX.skillClientSdkVersion}`);
+
+  print('');
+  print('Native messaging host:');
+  try {
+    const nmResults = statusNativeHostBrowsers('all');
+    print(`  host script: ${resolveNativeHostScript()}`);
+    for (const item of nmResults) {
+      const flag = item.installed ? 'installed' : 'missing';
+      const launcher = item.launcherExists ? 'ok' : 'missing';
+      print(`  ${item.browser}: ${flag} (launcher ${launcher})`);
+    }
+  } catch (error) {
+    print(`  status error: ${error.message}`);
+  }
 
   try {
     const payload = await fetchJson(endpoint, { token, host });
@@ -1106,6 +1128,68 @@ async function commandSkill(positionals, flags) {
   }
 }
 
+async function commandNativeHost(positionals, flags) {
+  const action = positionals[1] || 'status';
+  const selector = flags.browser || 'all';
+
+  switch (action) {
+    case 'install': {
+      const results = installNativeHostBrowsers(selector);
+      print(`Native messaging host: ${NATIVE_HOST_NAME}`);
+      print(`Launcher points to: ${resolveNativeHostScript()}`);
+      for (const item of results) {
+        if (item.status === 'installed') {
+          print(`- ${item.browser}: installed`);
+          print(`    manifest: ${item.manifestPath}`);
+          print(`    launcher: ${item.launcherPath}`);
+          if (item.registryKey) {
+            print(`    registry: ${item.registryKey}`);
+          }
+        } else {
+          print(`- ${item.browser}: FAILED (${item.error})`);
+          process.exitCode = 1;
+        }
+      }
+      return;
+    }
+    case 'uninstall': {
+      const results = uninstallNativeHostBrowsers(selector);
+      for (const item of results) {
+        if (item.status === 'uninstalled') {
+          print(`- ${item.browser}: removed`);
+          print(`    manifest: ${item.manifestPath}`);
+          if (item.registryKey) {
+            print(`    registry: ${item.registryKey}`);
+          }
+        } else {
+          print(`- ${item.browser}: FAILED (${item.error})`);
+          process.exitCode = 1;
+        }
+      }
+      return;
+    }
+    case 'status': {
+      const results = statusNativeHostBrowsers(selector);
+      print(`Native messaging host: ${NATIVE_HOST_NAME}`);
+      print(`Host script: ${resolveNativeHostScript()}`);
+      for (const item of results) {
+        const flag = item.installed ? 'installed' : 'missing';
+        print(`- ${item.browser}: ${flag}`);
+        print(`    manifest: ${item.manifestPath}`);
+        if (item.manifest) {
+          const allowed = item.manifest.allowed_extensions
+            || (item.manifest.allowed_origins || []).map((o) => o.replace(/^chrome-extension:\/\//, '').replace(/\/$/, ''));
+          print(`    allowed: ${(allowed || []).join(', ') || '(none)'}`);
+        }
+        print(`    launcher: ${item.launcherPath}${item.launcherExists ? '' : ' (missing)'}`);
+      }
+      return;
+    }
+    default:
+      throw new Error('\u7528\u6cd5: `js-eyes native-host install|uninstall|status [--browser all|chrome|firefox|chromium|edge|brave|chromium|chrome-canary]`');
+  }
+}
+
 function printHelp() {
   print('JS Eyes CLI');
   print('');
@@ -1130,6 +1214,7 @@ function printHelp() {
   print('  js-eyes skill run <skillId> <command> [args...]');
   print('  js-eyes openclaw plugin-path');
   print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');
+  print('  js-eyes native-host install|uninstall|status [--browser all|chrome|firefox|chromium|edge|brave]');
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -1173,6 +1258,9 @@ async function main(argv = process.argv.slice(2)) {
     case 'security':
       await commandSecurity(positionals, flags);
       return;
+    case 'native-host':
+      await commandNativeHost(positionals, flags);
+      return;
     case '--help':
     case '-h':
     case 'help':
@@ -1188,6 +1276,7 @@ module.exports = {
   commandDoctor,
   commandEgress,
   commandExtension,
+  commandNativeHost,
   commandSecurity,
   commandSkill,
   commandSkills,

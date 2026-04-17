@@ -5,6 +5,11 @@ $Repo       = "imjszhang/js-eyes"
 $SkillName  = "js-eyes"
 $SiteUrl    = "https://js-eyes.com"
 $InstallDir = if ($env:JS_EYES_DIR) { $env:JS_EYES_DIR } else { ".\skills" }
+$SkipNativeHost = $false
+if ($env:JS_EYES_SKIP_NATIVE_HOST -eq '1') { $SkipNativeHost = $true }
+foreach ($argv in $args) {
+    if ($argv -eq '--skip-native-host') { $SkipNativeHost = $true }
+}
 
 function Write-Info  ($msg) { Write-Host "[info]  $msg" -ForegroundColor Cyan }
 function Write-Ok    ($msg) { Write-Host "[ok]    $msg" -ForegroundColor Green }
@@ -272,6 +277,27 @@ $AbsTarget  = (Resolve-Path $Target).Path
 $PluginPath = (Join-Path $AbsTarget "openclaw-plugin") -replace '\\', '/'
 
 Write-Ok "JS Eyes installed to: $AbsTarget"
+
+if (-not $SkipNativeHost) {
+    $HasNpx = $false
+    try { $null = Get-Command npx -ErrorAction Stop; $HasNpx = $true } catch {}
+    if ($HasNpx) {
+        Write-Info "Registering browser native-messaging host (skip with --skip-native-host)..."
+        try {
+            & npx --yes js-eyes native-host install --browser all | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Ok "Native messaging host registered (Chrome + Firefox)."
+            } else {
+                Write-Warn "Native messaging host registration failed; run 'npx js-eyes native-host install' later."
+            }
+        } catch {
+            Write-Warn "Native messaging host registration failed; run 'npx js-eyes native-host install' later."
+        }
+    } else {
+        Write-Warn "npx not found; skipping native-messaging host registration."
+    }
+}
+
 Write-Host ""
 Write-Host ([string]::new([char]0x2501, 57))
 Write-Host "  Next: register the plugin in ~/.openclaw/openclaw.json"

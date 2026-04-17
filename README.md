@@ -35,6 +35,16 @@ irm https://js-eyes.com/install.ps1 | iex
 
 This downloads the skill bundle, installs dependencies, and prints the OpenClaw registration path. The standard ClawHub/OpenClaw path expects Node.js 22+ for plugin mode. See [Manual Installation](#manual-installation) for other options.
 
+### Optional: Auto-sync token to browser extensions
+
+After installing the CLI (`npm i -g js-eyes` or as part of the skill install flow), register a Native Messaging host so the extension can read `server.token` locally without manual copy-paste:
+
+```bash
+npx js-eyes native-host install --browser all
+```
+
+See [docs/native-messaging.md](./docs/native-messaging.md) for details and the [threat model](#security) — the NM path defends against external web-page attacks only; a compromised local device is out of scope.
+
 ---
 
 ## Introduction
@@ -53,6 +63,7 @@ JS Eyes now uses a publish-oriented monorepo layout:
 | Path | Purpose |
 |------|---------|
 | `apps/cli` | Public `js-eyes` npm CLI |
+| `apps/native-host` | Browser Native Messaging host for auto-injecting `server.token` |
 | `packages/protocol` | Shared protocol constants and compatibility matrix |
 | `packages/runtime-paths` | Runtime directories and filesystem layout |
 | `packages/config` | CLI config loading and persistence |
@@ -83,9 +94,9 @@ The source repository no longer keeps root-level compatibility trees like `serve
 - **Cookie Management** — Auto-retrieve and sync page cookies
 - **Code Injection** — JavaScript execution and CSS injection
 - **Health Check & Circuit Breaker** — Service health monitoring with automatic circuit breaker protection
-- **SSE Fallback** — Auto-fallback to SSE when WebSocket connection fails
 - **Rate Limiting & Deduplication** — Request rate limiting and deduplication for stability
-- **Adaptive Authentication** — Auto-detects server auth requirements (HMAC-SHA256 or no-auth)
+- **Native Messaging Token Sync (2.4.0+)** — Browser extensions auto-fetch `server.token` and HTTP URL from the local CLI via Native Messaging; no manual copy-paste in the default flow
+- **Bearer Token Authentication** — WebSocket upgrades authenticated via `Sec-WebSocket-Protocol: bearer.<token>` and `?token=<token>` (loopback only). Anonymous mode gated by `security.allowAnonymous`
 - **Extension Skills** — Discover and install higher-level skills (e.g. X.com search) on top of base automation
 
 ## Supported Browsers
@@ -192,13 +203,20 @@ js-eyes doctor
 
 ### 2. Configure Connection
 
-1. Click the extension icon in the browser toolbar
-2. Enter the server HTTP address (e.g. `http://localhost:18080`)
-3. Paste the local server token into **Server Token (2.2.0+)** (run `js-eyes server token show --reveal` to retrieve it)
-4. Click "Connect" — the extension automatically discovers the WebSocket endpoint and server capabilities
-5. For servers with additional HMAC authentication, configure the auth key in security settings
+**Default flow (2.4.0+, recommended)** — install the Native Messaging host once and the extension auto-syncs both the server URL and `server.token`:
 
-**Auto-Connect:** the extension reconnects automatically on startup and after disconnections (exponential backoff).
+```bash
+npx js-eyes native-host install --browser all
+```
+
+Open the popup and click **Sync Token From Host** (or simply wait for the auto-sync on startup) — the connection status should flip to "Connected" without any manual input.
+
+**Manual fallback** — if Native Messaging is unavailable, expand **Advanced** in the popup and:
+
+1. Enter the server HTTP address (e.g. `http://localhost:18080`) and click **Connect**
+2. Paste `server.token` contents into **Server Token (2.2.0+)** (run `js-eyes server token show --reveal` to retrieve it) and click **Save**
+
+**Auto-Connect:** the extension reconnects automatically on startup and after disconnections (exponential backoff); toggle it off under **Advanced** if you need manual control.
 
 > 2.2.0 is security-hardened by default. Connections without a matching server token are rejected unless you set `security.allowAnonymous=true` in `config.json`. See [SECURITY.md](./SECURITY.md) and the [2.2.0 migration guide](./RELEASE.md#220-migration-guide-security-hardening).
 >
@@ -377,12 +395,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.3.0` |
-| Browser extension assets | `2.3.0` |
-| `@js-eyes/server-core` | `2.3.0` |
-| `@js-eyes/client-sdk` | `2.3.0` |
-| `openclaw-plugin` | `2.3.0` |
-| Skills using `@js-eyes/client-sdk` | `2.3.0` |
+| CLI | `2.4.0` |
+| Browser extension assets | `2.4.0` |
+| `@js-eyes/server-core` | `2.4.0` |
+| `@js-eyes/client-sdk` | `2.4.0` |
+| `openclaw-plugin` | `2.4.0` |
+| Skills using `@js-eyes/client-sdk` | `2.4.0` |
 
 ## Extension Skills
 

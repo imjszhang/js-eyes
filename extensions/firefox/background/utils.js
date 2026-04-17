@@ -608,184 +608,6 @@ class HealthChecker {
   }
 }
 
-/**
- * SSE 客户端
- * 用于接收服务端推送事件，作为 WebSocket 的降级方案
- */
-class SSEClient {
-  /**
-   * @param {Object} config - 配置对象
-   * @param {string} config.httpServerUrl - HTTP 服务器地址
-   * @param {string} config.endpoint - SSE 端点
-   * @param {number} config.reconnectInterval - 重连间隔（毫秒）
-   * @param {number} config.maxReconnectAttempts - 最大重连次数
-   */
-  constructor(config = {}) {
-    this.httpServerUrl = config.httpServerUrl || '';
-    this.endpoint = config.endpoint || '/api/browser/events';
-    this.reconnectInterval = config.reconnectInterval || 5000;
-    this.maxReconnectAttempts = config.maxReconnectAttempts || 10;
-    
-    this.eventSource = null;
-    this.isConnected = false;
-    this.reconnectAttempts = 0;
-    this.reconnectTimer = null;
-    this.currentRequestId = null;
-    
-    // 事件回调
-    this.onMessage = null;
-    this.onCallbackResult = null;
-    this.onRequestTimeout = null;
-    this.onError = null;
-    this.onConnect = null;
-    this.onDisconnect = null;
-  }
-
-  /**
-   * 连接到 SSE 端点
-   * @param {string} requestId - 可选，订阅特定请求的事件
-   */
-  connect(requestId = null) {
-    if (this.eventSource) {
-      this.disconnect();
-    }
-    
-    this.currentRequestId = requestId;
-    let url = `${this.httpServerUrl}${this.endpoint}`;
-    if (requestId) {
-      url += `?requestId=${encodeURIComponent(requestId)}`;
-    }
-    
-    console.log('[SSEClient] 连接到:', url);
-    
-    try {
-      this.eventSource = new EventSource(url);
-      
-      this.eventSource.onopen = () => {
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        console.log('[SSEClient] 连接已建立');
-        if (this.onConnect) {
-          this.onConnect();
-        }
-      };
-      
-      this.eventSource.onerror = (error) => {
-        console.error('[SSEClient] 连接错误:', error);
-        this.isConnected = false;
-        
-        if (this.onError) {
-          this.onError(error);
-        }
-        
-        // 尝试重连
-        this.scheduleReconnect();
-      };
-      
-      // 监听通用消息
-      this.eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSEClient] 收到消息:', data);
-          if (this.onMessage) {
-            this.onMessage(data);
-          }
-        } catch (e) {
-          console.error('[SSEClient] 解析消息失败:', e);
-        }
-      };
-      
-      // 监听回调结果事件
-      this.eventSource.addEventListener('callback_result', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSEClient] 收到回调结果:', data);
-          if (this.onCallbackResult) {
-            this.onCallbackResult(data);
-          }
-        } catch (e) {
-          console.error('[SSEClient] 解析回调结果失败:', e);
-        }
-      });
-      
-      // 监听请求超时事件
-      this.eventSource.addEventListener('request_timeout', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSEClient] 收到超时通知:', data);
-          if (this.onRequestTimeout) {
-            this.onRequestTimeout(data);
-          }
-        } catch (e) {
-          console.error('[SSEClient] 解析超时通知失败:', e);
-        }
-      });
-      
-    } catch (error) {
-      console.error('[SSEClient] 创建连接失败:', error);
-      this.scheduleReconnect();
-    }
-  }
-
-  /**
-   * 断开连接
-   */
-  disconnect() {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-    
-    this.isConnected = false;
-    this.currentRequestId = null;
-    
-    console.log('[SSEClient] 已断开连接');
-    if (this.onDisconnect) {
-      this.onDisconnect();
-    }
-  }
-
-  /**
-   * 安排重连
-   */
-  scheduleReconnect() {
-    if (this.reconnectTimer) {
-      return;
-    }
-    
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[SSEClient] 达到最大重连次数，停止重连');
-      return;
-    }
-    
-    this.reconnectAttempts++;
-    const delay = this.reconnectInterval * Math.pow(1.5, this.reconnectAttempts - 1);
-    
-    console.log(`[SSEClient] 将在 ${delay}ms 后重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect(this.currentRequestId);
-    }, delay);
-  }
-
-  /**
-   * 获取连接状态
-   */
-  getStatus() {
-    return {
-      isConnected: this.isConnected,
-      reconnectAttempts: this.reconnectAttempts,
-      currentRequestId: this.currentRequestId
-    };
-  }
-}
-
 // 导出工具类和函数
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -793,8 +615,7 @@ if (typeof module !== 'undefined' && module.exports) {
     RateLimiter,
     RequestDeduplicator,
     RequestQueueManager,
-    HealthChecker,
-    SSEClient
+    HealthChecker
   };
 } else {
   // 浏览器环境，挂载到 window
@@ -803,7 +624,6 @@ if (typeof module !== 'undefined' && module.exports) {
     RateLimiter,
     RequestDeduplicator,
     RequestQueueManager,
-    HealthChecker,
-    SSEClient
+    HealthChecker
   };
 }

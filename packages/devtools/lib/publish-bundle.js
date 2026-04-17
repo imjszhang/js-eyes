@@ -15,10 +15,20 @@ const path = require('path');
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CLI_ROOT = path.join(REPO_ROOT, 'apps', 'cli');
 const PACKAGES_ROOT = path.join(REPO_ROOT, 'packages');
+const APPS_ROOT = path.join(REPO_ROOT, 'apps');
 const DIST_ROOT = path.join(REPO_ROOT, 'dist', 'js-eyes');
 
 // 传递闭包：CLI 运行时会实际加载的子包（skill-recording 未被 CLI 使用，忽略）
-const BUNDLED_PACKAGES = ['protocol', 'runtime-paths', 'config', 'client-sdk', 'server-core'];
+// native-host 来自 apps/，其余来自 packages/
+const BUNDLED_PACKAGES = ['protocol', 'runtime-paths', 'config', 'client-sdk', 'server-core', 'native-host'];
+
+function resolveSourcePackageDir(name) {
+  const inPackages = path.join(PACKAGES_ROOT, name);
+  if (fs.existsSync(path.join(inPackages, 'package.json'))) return inPackages;
+  const inApps = path.join(APPS_ROOT, name);
+  if (fs.existsSync(path.join(inApps, 'package.json'))) return inApps;
+  throw new Error(`bundled package source not found: ${name}`);
+}
 
 function rmrf(target) {
   if (fs.existsSync(target)) {
@@ -151,7 +161,7 @@ async function bundle() {
   mkdirp(vendorDir);
 
   for (const name of BUNDLED_PACKAGES) {
-    const srcPkgDir = path.join(PACKAGES_ROOT, name);
+    const srcPkgDir = resolveSourcePackageDir(name);
     const manifest = JSON.parse(
       fs.readFileSync(path.join(srcPkgDir, 'package.json'), 'utf8')
     );
@@ -209,6 +219,12 @@ async function bundle() {
   // 确保 CLI 入口可执行
   try {
     fs.chmodSync(path.join(DIST_ROOT, 'bin', 'js-eyes.js'), 0o755);
+  } catch {
+    // ignore on platforms without chmod
+  }
+  try {
+    const nativeHostBin = path.join(DIST_ROOT, 'src', 'vendor', 'native-host', 'bin', 'js-eyes-native-host.js');
+    if (fs.existsSync(nativeHostBin)) fs.chmodSync(nativeHostBin, 0o755);
   } catch {
     // ignore on platforms without chmod
   }

@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2026-04-17
+
+> Extension usability release. Adds a Native Messaging host that auto-syncs `server.token` and the HTTP URL into browser extensions, and removes a large amount of legacy authentication / fallback code from the Chrome and Firefox extensions. **No breaking changes for automation clients** — the wire protocol and CLI remain backward compatible.
+
+### Added
+
+- **Native Messaging Token Injection (`apps/native-host`)**: New `js-eyes native-host <install|uninstall|status>` command registers a Native Messaging host for Chrome, Edge, and Firefox on macOS, Linux, and Windows. The host returns `server.token` and `httpUrl` from the local CLI config, so newly installed extensions no longer need manual copy-paste.
+- **Popup "Sync Token From Host" Button**: Chrome and Firefox popups expose a primary `sync-token-from-native` button that triggers the Native Messaging round-trip on demand; background scripts also attempt a silent sync on startup.
+- **Popup Advanced Fold**: Server address, manual token paste, and Auto Connect are grouped under an `<details>` "Advanced" section so the default surface area is just the connection status and the sync button.
+
+### Changed
+
+- **Default Extension Surface**: The popup no longer shows Preset Addresses, Debug Mode, Connection Mode, Server Type, or the legacy Auth Status line. Help copy references Native Messaging as the default path.
+- **Reconnect Recovery**: `background.js` simplifies its reconnect loop now that SSE / HMAC / session timers are gone — `reconnectWithNewSettings` only re-runs discovery and re-opens the WebSocket.
+
+### Removed
+
+- **Deprecated HMAC Auth Path**: The `auth_challenge` / `auth_result` message handlers, `computeHMAC`, `authSecretKey` field, legacy `save_auth_key` / `clear_auth_key` / `get_auth_status` popup messages, and the corresponding "Authentication Key" UI are gone. `init()` also clears the old `auth_secret_key` storage key on upgrade.
+- **Session Management Stubs**: `sessionId`, `sessionExpiresAt`, `refreshSession`, `session_expired` / `session_expiring` / `SESSION_EXPIRED` code paths, and timed session refresh logic are removed. Bearer tokens introduced in 2.2.0 are now the sole authentication path.
+- **SSE Fallback Code**: The inline `SSEClient` class, `fallbackToSSE`, `scheduleWSRecovery`, `stopSSEFallback`, `connectionMode`, and `sseClient` fields are removed from both extensions. `serverCapabilities` is slimmed down to `{ wsUrl, httpBaseUrl }`.
+- **Config Block Cleanup**: `EXTENSION_CONFIG.SSE` and `SECURITY.auth.*` blocks removed from `extensions/chrome/config.js` and `extensions/firefox/config.js`.
+- **Dead Popup Settings**: Removed the Debug Mode checkbox and preset-address buttons, related event listeners in `popup.js`, `selectPresetUrl`, `.btn-preset` CSS, and deprecated i18n keys (`presetAddresses`, `preset*`, `debugMode`, `helpConnection2/3/6`, `helpAddress*`, `helpDocker*`, `logPresetSelected`).
+
+### Compatibility
+
+- **Wire Protocol Unchanged**: Existing servers and automation clients keep working. The extension still speaks the same WebSocket frames and honors `security.allowAnonymous`.
+- **Upgrade Path**: After installing the 2.4.0 extension, run `npx js-eyes native-host install --browser all` once. Users on restricted environments where Native Messaging is blocked can still paste the token under **Advanced**.
+- **Popup Migration**: Storage keys like `auth_secret_key` and `debugMode` are cleared silently on first launch; no user action required.
+
 ## [2.3.0] - 2026-04-17
 
 > Security Policy Engine release. Adds a declarative, non-interactive rules layer that sits between tool callers and the browser (task origin + canary taint + egress allowlist + pending-egress). Default `enforcement=soft` → audit + plan-only behavior; existing workflows keep working. See [RELEASE.md](RELEASE.md#230-migration-guide-policy-engine) for the migration guide.
