@@ -18,7 +18,14 @@ const { createRunContext } = require('../skills/js-reddit-ops-skill/lib/runConte
 const { appendHistory } = require('../skills/js-reddit-ops-skill/lib/history');
 const { readCacheEntry, writeCacheEntry } = require('../skills/js-reddit-ops-skill/lib/cache');
 const { writeDebugBundle } = require('../skills/js-reddit-ops-skill/lib/debug');
-const { parseArgs, resolveExtensionAsset, getServerOptions, flagsToArgv, resolvePluginPath } = require('../apps/cli/src/cli');
+const {
+  parseArgs,
+  resolveExtensionAsset,
+  getServerOptions,
+  flagsToArgv,
+  getLoopbackOrigin,
+  resolvePluginPath,
+} = require('../apps/cli/src/cli');
 
 describe('runtime paths', () => {
   const originalHome = process.env.JS_EYES_HOME;
@@ -217,6 +224,13 @@ describe('cli helpers', () => {
 
     assert.equal(options.host, '127.0.0.1');
     assert.equal(options.port, 19090);
+  });
+
+  it('derives a browser-like Origin for loopback hosts', () => {
+    assert.equal(getLoopbackOrigin('localhost'), 'http://localhost');
+    assert.equal(getLoopbackOrigin('127.0.0.1'), 'http://127.0.0.1');
+    assert.equal(getLoopbackOrigin('::1'), 'http://[::1]');
+    assert.equal(getLoopbackOrigin('example.com'), null);
   });
 
   it('reconstructs argv from parsed flags', () => {

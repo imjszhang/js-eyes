@@ -79,6 +79,16 @@ function getServerOptions(flags, config) {
   };
 }
 
+function getLoopbackOrigin(host) {
+  if (!isLoopbackHost(host)) {
+    return null;
+  }
+  if (host === '::1' || host === '[::1]') {
+    return 'http://[::1]';
+  }
+  return `http://${host}`;
+}
+
 function isProcessAlive(pid) {
   if (!pid || Number.isNaN(Number(pid))) {
     return false;
@@ -106,6 +116,12 @@ async function fetchJson(url, options = {}) {
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
   if (options.token) {
     headers.Authorization = `Bearer ${options.token}`;
+  }
+  if (!headers.Origin && options.host) {
+    const origin = getLoopbackOrigin(options.host);
+    if (origin) {
+      headers.Origin = origin;
+    }
   }
   const response = await fetch(url, { headers });
 
@@ -225,7 +241,7 @@ async function commandStatus(flags) {
   const token = readServerToken();
 
   try {
-    const payload = await fetchJson(endpoint, { token });
+    const payload = await fetchJson(endpoint, { token, host });
     const data = payload.data || {};
     print(`Server: reachable (${endpoint})`);
     print(`PID file: ${pid || 'none'}`);
@@ -437,7 +453,7 @@ async function commandDoctor(flags) {
   print(`  skills(client-sdk)=${COMPATIBILITY_MATRIX.skillClientSdkVersion}`);
 
   try {
-    const payload = await fetchJson(endpoint, { token });
+    const payload = await fetchJson(endpoint, { token, host });
     print(`Server health: ok (${payload.status || 'success'})`);
     const compatibility = getCompatibilityReport(payload);
     print(`Server protocol: ${compatibility.serverProtocolVersion || 'unknown'}`);
@@ -1178,6 +1194,7 @@ module.exports = {
   commandStatus,
   flagsToArgv,
   getServerOptions,
+  getLoopbackOrigin,
   isProcessAlive,
   main,
   parseArgs,

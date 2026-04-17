@@ -44,7 +44,7 @@ const manifest = require("./openclaw.plugin.json");
 const { BrowserAutomation } = require("../packages/client-sdk");
 const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
-const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
+const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecurityConfig } = require("../packages/protocol");
 const {
   applySkillInstall,
   discoverLocalSkills,
@@ -221,6 +221,20 @@ function register(api) {
   function getServerToken() {
     if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
     return readToken();
+  }
+
+  function getLocalRequestHeaders() {
+    const headers = {};
+    const token = getServerToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    if (isLoopbackHost(serverHost)) {
+      headers.Origin = serverHost === "::1" || serverHost === "[::1]"
+        ? "http://[::1]"
+        : `http://${serverHost}`;
+    }
+    return headers;
   }
 
   function ensureBot() {
@@ -790,7 +804,7 @@ function register(api) {
         .action(async () => {
           try {
             const url = `http://${serverHost}:${serverPort}/api/browser/status`;
-            const resp = await fetch(url);
+            const resp = await fetch(url, { headers: getLocalRequestHeaders() });
             const data = await resp.json();
             const d = data.data;
             console.log("\n=== JS-Eyes Server Status ===");
@@ -813,7 +827,7 @@ function register(api) {
         .action(async () => {
           try {
             const url = `http://${serverHost}:${serverPort}/api/browser/tabs`;
-            const resp = await fetch(url);
+            const resp = await fetch(url, { headers: getLocalRequestHeaders() });
             const data = await resp.json();
             if (!data.browsers || data.browsers.length === 0) {
               console.log("\n当前没有浏览器扩展连接。\n");
