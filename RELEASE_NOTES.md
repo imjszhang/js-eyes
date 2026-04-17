@@ -1,5 +1,53 @@
 # Release Notes
 
+## v2.4.0
+
+### Highlights
+- **Native Messaging Token Injection**: New `apps/native-host` package and `js-eyes native-host <install|uninstall|status>` command register a Native Messaging host for Chrome, Edge, and Firefox on macOS, Linux, and Windows. The host returns `server.token` + `httpUrl` from the local CLI config so freshly installed extensions no longer need manual copy-paste.
+- **Popup "Sync Token From Host" Button**: Chrome and Firefox popups expose a primary `sync-token-from-native` button that triggers the Native Messaging round-trip on demand; background scripts also attempt a silent sync on startup.
+- **Streamlined Popup Surface**: The default extension popup now shows only connection status and the sync button. Server address, manual token paste, and Auto Connect are folded under an `<details>` "Advanced" section.
+- **Legacy Auth Cleanup**: HMAC `auth_challenge` / `auth_result`, `computeHMAC`, `authSecretKey`, session-refresh timers, and the inline SSE fallback client are removed from both Chrome and Firefox extensions. Bearer tokens (2.2.0+) are now the sole authentication path.
+- **Wire Protocol Unchanged**: No server / CLI breaking changes — existing automation clients keep working against a 2.4.0 server.
+
+### Breaking Changes
+- **Extension-only**: The "Authentication Key", "Debug Mode", "Connection Mode", "Server Type", "Preset Addresses", and legacy "Auth Status" controls are gone from the popup. Anything automation still expecting those extension messages (`save_auth_key`, `get_auth_status`, `session_expired`, etc.) must be updated.
+- `EXTENSION_CONFIG.SSE` and `SECURITY.auth.*` blocks are removed from `extensions/chrome/config.js` and `extensions/firefox/config.js`.
+- Storage keys `auth_secret_key` and `debugMode` are cleared silently on first launch of the 2.4.0 extension.
+
+### Migration Notes
+1. Upgrade the CLI: `npm install -g js-eyes@2.4.0`.
+2. Install the Native Messaging host once per machine: `npx js-eyes native-host install --browser all` (or `--browser chrome|edge|firefox`).
+3. Install the 2.4.0 browser extension (Chrome ZIP or Firefox XPI from this release, or from AMO when the public listing is live).
+4. Open the extension popup and click **Sync Token From Host** — the popup will fill `wsUrl` / `httpBaseUrl` / bearer token automatically.
+5. On restricted environments where Native Messaging is blocked, expand **Advanced** and paste the token manually; nothing else about the 2.2.0+ bearer flow has changed.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-chrome-v2.4.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-firefox-v2.4.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-skill-v2.4.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.4.0`
+2. `js-eyes doctor` — confirm `server.token` / policy-engine output is unchanged from 2.3.x.
+3. `js-eyes native-host install --browser all` to register the Native Messaging host used by the new extension popup.
+
+#### OpenClaw
+- Upgrade the CLI (`js-eyes`) to 2.4.0; the OpenClaw plugin keeps loading the shared protocol module unchanged. No config change required.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.4.0.zip`, extract, load unpacked (or wait for the Chrome Web Store listing).
+2. Open the popup → click **Sync Token From Host** — the popup auto-fills once `native-host install` has been run.
+3. If Native Messaging is blocked by policy, expand **Advanced** and paste the token manually as in 2.3.x.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.4.0.xpi` (or update from AMO once the public listing is live).
+2. Same popup flow: click **Sync Token From Host**, or fall back to the **Advanced** panel.
+
+---
+
 ## v2.3.0
 
 ### Highlights
