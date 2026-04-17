@@ -2,7 +2,21 @@
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const { handleConnection, createState, startCleanup, getExtensionSummaries } = require('./ws-handler');
+const {
+  handleConnection,
+  createState,
+  startCleanup,
+  getExtensionSummaries,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} = require('./ws-handler');
+
+function normalizeRequestTimeoutMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+  return Math.floor(numeric);
+}
 
 // ── server factory ──────────────────────────────────────────────────
 
@@ -10,8 +24,9 @@ function createServer(options = {}) {
   const port = options.port || 18080;
   const host = options.host || 'localhost';
   const logger = options.logger || console;
+  const requestTimeoutMs = normalizeRequestTimeoutMs(options.requestTimeoutMs);
 
-  const state = createState();
+  const state = createState({ requestTimeoutMs });
   let cleanupTimer = null;
 
   function jsonResponse(res, statusCode, data) {
@@ -50,6 +65,7 @@ function createServer(options = {}) {
           name: 'js-eyes-server',
           version: '1.0.0',
           websocket: `ws://${host}:${port}`,
+          requestTimeoutMs,
           endpoints: ['/api/browser/status', '/api/browser/tabs', '/api/browser/clients', '/api/browser/health'],
         });
         break;
@@ -111,6 +127,7 @@ function createServer(options = {}) {
             websocketAddress: `ws://${host}:${port}`,
             host,
             extensionPort: port,
+            requestTimeoutMs,
           },
         });
         break;
@@ -145,6 +162,7 @@ function createServer(options = {}) {
       httpServer.listen(port, host, () => {
         logger.info(`[js-eyes-server] WebSocket: ws://${host}:${port}`);
         logger.info(`[js-eyes-server] HTTP API:  http://${host}:${port}`);
+        logger.info(`[js-eyes-server] Request timeout: ${requestTimeoutMs}ms`);
         resolve();
       });
     });
@@ -197,7 +215,10 @@ if (require.main === module) {
 
   const port = parseInt(getArg('port', '18080'), 10);
   const host = getArg('host', 'localhost');
-  const server = createServer({ port, host });
+  const requestTimeoutMs = normalizeRequestTimeoutMs(
+    getArg('request-timeout-ms', process.env.JS_EYES_REQUEST_TIMEOUT_MS || DEFAULT_REQUEST_TIMEOUT_MS)
+  );
+  const server = createServer({ port, host, requestTimeoutMs });
 
   server.start().then(() => {
     console.log('');
@@ -206,6 +227,7 @@ if (require.main === module) {
     console.log(`HTTP API:  http://${host}:${port}`);
     console.log(`Status:    http://${host}:${port}/api/browser/status`);
     console.log(`Tabs:      http://${host}:${port}/api/browser/tabs`);
+    console.log(`Timeout:   ${requestTimeoutMs}ms`);
     console.log('');
     console.log(`请在扩展 Popup 中将服务器地址设置为: ws://${host}:${port}`);
     console.log('');

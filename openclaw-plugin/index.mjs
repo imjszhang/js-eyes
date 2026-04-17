@@ -109,6 +109,7 @@ export default function register(api) {
         server = createServer({
           port: serverPort,
           host: serverHost,
+          requestTimeoutMs: requestTimeout * 1000,
           logger: {
             info: (msg) => ctx.logger.info(msg),
             warn: (msg) => ctx.logger.warn(msg),
@@ -674,6 +675,7 @@ export default function register(api) {
             server = createServer({
               port: serverPort,
               host: serverHost,
+              requestTimeoutMs: requestTimeout * 1000,
               logger: console,
             });
             await server.start();

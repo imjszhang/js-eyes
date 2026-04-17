@@ -3,7 +3,16 @@
 const crypto = require('crypto');
 const { URL } = require('url');
 
-const REQUEST_TIMEOUT_MS = 60000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+const REQUEST_TIMEOUT_MS = DEFAULT_REQUEST_TIMEOUT_MS;
+
+function normalizeRequestTimeoutMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+  return Math.floor(numeric);
+}
 
 function generateId() {
   return crypto.randomUUID();
@@ -177,7 +186,7 @@ function handleExtensionMessage(raw, clientId, state) {
           clientId,
           browserName: conn.browserName,
           serverConfig: {
-            request: { defaultTimeout: REQUEST_TIMEOUT_MS },
+            request: { defaultTimeout: state.requestTimeoutMs },
           },
           timestamp: new Date().toISOString(),
         });
@@ -425,6 +434,7 @@ function pickExtension(state, target) {
 // ── pending response management ─────────────────────────────────────
 
 function registerPending(requestId, automationSocket, operationType, state) {
+  const requestTimeoutMs = state.requestTimeoutMs;
   const timeoutId = setTimeout(() => {
     const info = state.pendingResponses.get(requestId);
     if (!info) return;
@@ -434,12 +444,12 @@ function registerPending(requestId, automationSocket, operationType, state) {
       status: 'error',
       type: `${operationType}_timeout`,
       requestId,
-      message: `Request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      message: `Request timed out after ${requestTimeoutMs}ms`,
     };
 
     send(info.socket, { type: `${operationType}_response`, requestId, ...timeoutResponse });
     state.callbackResponses.set(requestId, timeoutResponse);
-  }, REQUEST_TIMEOUT_MS);
+  }, requestTimeoutMs);
 
   state.pendingResponses.set(requestId, {
     socket: automationSocket,
@@ -490,12 +500,13 @@ function startCleanup(state) {
 
 // ── state factory ───────────────────────────────────────────────────
 
-function createState() {
+function createState(options = {}) {
   return {
     extensionClients: new Map(),
     automationClients: new Map(),
     pendingResponses: new Map(),
     callbackResponses: new Map(),
+    requestTimeoutMs: normalizeRequestTimeoutMs(options.requestTimeoutMs),
   };
 }
 
@@ -504,8 +515,10 @@ module.exports = {
   createState,
   startCleanup,
   getExtensionSummaries,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   REQUEST_TIMEOUT_MS,
   _internal: {
+    normalizeRequestTimeoutMs,
     parseBrowserName,
     pickExtension,
     send,

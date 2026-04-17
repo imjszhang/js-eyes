@@ -2,6 +2,7 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const {
   createState,
@@ -13,6 +14,7 @@ const {
     pickExtension,
     send,
     generateId,
+    registerPending,
     handleExtensionMessage,
     handleAutomationMessage,
     setupExtensionClient,
@@ -125,6 +127,16 @@ describe('createState', () => {
     assert.equal(state.automationClients.size, 0);
     assert.equal(state.pendingResponses.size, 0);
     assert.equal(state.callbackResponses.size, 0);
+  });
+
+  it('stores the default request timeout', () => {
+    const state = createState();
+    assert.equal(state.requestTimeoutMs, REQUEST_TIMEOUT_MS);
+  });
+
+  it('stores a custom request timeout', () => {
+    const state = createState({ requestTimeoutMs: 12345 });
+    assert.equal(state.requestTimeoutMs, 12345);
   });
 
   it('does not have global tabs or activeTabId', () => {
@@ -396,6 +408,19 @@ describe('handleExtensionMessage', () => {
     assert.equal(ack.status, 'ok');
     assert.equal(ack.clientId, clientId);
     assert.equal(ack.browserName, 'chrome');
+    assert.equal(ack.serverConfig.request.defaultTimeout, REQUEST_TIMEOUT_MS);
+  });
+
+  it('handles init — returns custom request timeout in server config', () => {
+    state = createState({ requestTimeoutMs: 150000 });
+    const ext = addExtension(state);
+    socket = ext.socket;
+    clientId = ext.id;
+
+    handleExtensionMessage(JSON.stringify({ type: 'init', userAgent: 'Mozilla/5.0 Firefox/120.0' }), clientId, state);
+
+    const ack = socket._messages[0];
+    assert.equal(ack.serverConfig.request.defaultTimeout, 150000);
   });
 
   it('handles init with notification envelope', () => {
@@ -685,6 +710,27 @@ describe('resolveRequest', () => {
   it('stores in callbackResponses even without pending request', () => {
     resolveRequest('orphan', { status: 'success' }, state);
     assert.ok(state.callbackResponses.has('orphan'));
+  });
+});
+
+// ── registerPending ──────────────────────────────────────────────────
+
+describe('registerPending', () => {
+  let state;
+  beforeEach(() => { state = createState({ requestTimeoutMs: 20 }); });
+  afterEach(() => clearPendingTimers(state));
+
+  it('uses the configured timeout in timeout responses', async () => {
+    const socket = createMockSocket();
+    registerPending('timeout-1', socket, 'execute_script', state);
+
+    await delay(40);
+
+    assert.equal(state.pendingResponses.has('timeout-1'), false);
+    assert.equal(socket._messages.length, 1);
+    assert.equal(socket._messages[0].type, 'execute_script_timeout');
+    assert.equal(socket._messages[0].status, 'error');
+    assert.equal(socket._messages[0].message, 'Request timed out after 20ms');
   });
 });
 
