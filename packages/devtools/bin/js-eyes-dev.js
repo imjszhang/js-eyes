@@ -287,6 +287,14 @@ async function cmdRelease(flags) {
   log(`── release ${tag} ──`);
   if (dryRun) log('  (dry-run mode — no side effects)');
 
+  // Preflight: fail fast if RELEASE_NOTES.md is missing the version section,
+  // so we don't ship a "generic fallback" GitHub release body half-way through.
+  if (!skipGithub && !extractReleaseNotes(version)) {
+    log(`  ✗ RELEASE_NOTES.md is missing "## v${version}" section`);
+    log('    add it before running release, or pass --skip-github');
+    process.exit(1);
+  }
+
   const status = gitStatus();
   if (!status.clean) {
     log(`  ⚠ working tree not clean on branch ${status.branch}`);
@@ -304,12 +312,13 @@ async function cmdRelease(flags) {
       log('[1/6] bundle — skipped');
     }
 
-    // [2/6] browser extensions (chrome zip + firefox signed xpi)
+    // [2/6] browser extensions (chrome zip + firefox signed xpi + skill zip)
     if (!skipExtensions) {
       log('');
       log('[2/6] extensions');
       const chromeZip = path.join(REPO_ROOT, 'dist', `js-eyes-chrome-v${version}.zip`);
       const firefoxXpi = path.join(REPO_ROOT, 'dist', `js-eyes-firefox-v${version}.xpi`);
+      const skillZip = path.join(REPO_ROOT, 'dist', `js-eyes-skill-v${version}.zip`);
 
       if (fs.existsSync(chromeZip)) {
         log(`  ✓ chrome already built (${path.relative(REPO_ROOT, chromeZip)})`);
@@ -317,6 +326,14 @@ async function cmdRelease(flags) {
         log('  (would build chrome extension)');
       } else {
         await buildChrome(t);
+      }
+
+      if (fs.existsSync(skillZip)) {
+        log(`  ✓ skill already built (${path.relative(REPO_ROOT, skillZip)})`);
+      } else if (dryRun) {
+        log('  (would build skill bundle)');
+      } else {
+        await buildSkillZip();
       }
 
       if (skipFirefox) {
@@ -444,7 +461,8 @@ async function cmdRelease(flags) {
       if (!clawhubPublish.available()) {
         log('  ⚠ clawhub CLI not installed (npm install -g clawhub) — skipping');
       } else if (!fs.existsSync(path.join(MAIN_SKILL_STAGE_DIR, 'SKILL.md'))) {
-        log('  ⚠ skill stage missing, running buildSkillZip ...');
+        // Should only happen when [2/6] was skipped; ensure stage exists for clawhub publish.
+        log('  ⚠ skill stage missing (extensions step was skipped?), running buildSkillZip ...');
         await buildSkillZip();
       }
 
