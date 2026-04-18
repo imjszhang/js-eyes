@@ -122,8 +122,9 @@ This checklist is for shipping a formal `vX.Y.Z` release from `develop` to `main
 - `npm install` completed in the repository root
 - `gh auth status` works
 - `npm whoami` works for the npm account that owns `js-eyes`
+- `npm org ls js-eyes` shows the publisher as `owner` or `admin` (scope `@js-eyes/*` is managed by the `js-eyes` npm organization)
 - `.env` or shell environment contains:
-  - `npm_key` (preferred npm publish token)
+  - `npm_key` (preferred npm publish token; Automation Token recommended when the account has 2FA enabled)
   - `AMO_API_KEY`
   - `AMO_API_SECRET`
 - Firefox signing binary is available through the repo install:
@@ -163,6 +164,44 @@ Recommended flow:
 4. Update local `main` and verify it matches the merged head
 
 If you must merge locally, do it from a clean `main` and avoid tagging from `develop`.
+
+## 2.5 Publish `@js-eyes/*` Workspace Packages (first-time or version bump)
+
+The seven scoped runtime packages are published directly from the workspace (without vendoring):
+
+- `@js-eyes/protocol`
+- `@js-eyes/runtime-paths`
+- `@js-eyes/config`
+- `@js-eyes/skill-recording`
+- `@js-eyes/client-sdk`
+- `@js-eyes/server-core`
+- `@js-eyes/native-host`
+
+They belong to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization.
+
+First dry-run:
+
+```bash
+npm run publish:workspaces:dry-run
+```
+
+Then publish for real:
+
+```bash
+npm run publish:workspaces
+```
+
+The command is idempotent — packages whose `<name>@<version>` already exist on the registry are skipped. Dependency topological order (protocol → runtime-paths → config → skill-recording → client-sdk → server-core → native-host) is hard-coded in [packages/devtools/bin/js-eyes-dev.js](packages/devtools/bin/js-eyes-dev.js).
+
+Verify:
+
+```bash
+for p in protocol runtime-paths config skill-recording client-sdk server-core native-host; do
+  printf "%-32s %s\n" "@js-eyes/$p" "$(npm view @js-eyes/$p version)"
+done
+```
+
+Note: brand-new scopes may need up to a few minutes for the public `npm view` metadata endpoint to catch up after the first publish — `npm access list packages js-eyes` reflects ownership immediately.
 
 ## 3. Publish The npm CLI
 

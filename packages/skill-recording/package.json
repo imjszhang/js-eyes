@@ -7,6 +7,22 @@
     "index.js"
   ],
   "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/JS-Eyes.git",
+    "directory": "packages/skill-recording"
+  },
+  "bugs": {
+    "url": "https://github.com/imjszhang/JS-Eyes/issues"
+  },
+  "keywords": [
+    "js-eyes",
+    "js-eyes-skills",
+    "recording",
+    "browser-automation"
+  ],
   "publishConfig": {
     "access": "public"
   },

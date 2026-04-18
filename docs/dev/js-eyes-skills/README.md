@@ -22,6 +22,7 @@
 | `skill.contract.js` | JS Eyes Skills 契约入口（必需） | 代码层（不改名） |
 | `js-eyes skills <cmd>` CLI | JS Eyes Skills 管理命令（install / enable / approve / verify） | 代码层（不改名） |
 | `@js-eyes/skill-recording` npm 包 | JS Eyes Skills 运行录制底座 | 代码层（不改名） |
+| `@js-eyes/*`（npm scope） | 对应 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)，仅官方运行时包 + 官方 JS Eyes Skills 使用 | npm 层（不改名） |
 | `SKILLS_REGISTRY_URL`、`skills.json` | JS Eyes Skills 官方注册表 | 代码层（不改名） |
 | 根目录 [`SKILL.md`](../../../SKILL.md) | **OpenClaw Skill**（运维手册，**不是** JS Eyes Skills 规范） | OpenClaw 生态 |
 | `docs/dev/js-eyes-skills/` | 本仓库 JS Eyes Skills 的开发者文档 | 文档层（新增） |
@@ -45,6 +46,19 @@
 | 更多进阶样例 | — | 规划中（多工具、录制、consent、GraphQL fallback） |
 
 拷贝样例、改名字、`npm install`，然后按 [部署与启用](deployment.zh.md) 把 `skillsDir` 指过去即可。
+
+## npm scope 治理
+
+`@js-eyes/*` 对应 npm 组织 [`js-eyes`](https://www.npmjs.com/org/js-eyes)，**仅**收录官方运行时包和官方 JS Eyes Skills。第三方 JS Eyes Skills 开发者请使用自己的 scope，例如：
+
+- `@acme/js-eyes-skill-shopify-ops`
+- `@yourname/js-eyes-skill-mastodon-ops`
+
+第三方 skills 通过向 [`docs/skills.json`](../../skills.json) 提 PR 注册进官方 registry，**不会**被接纳进 `@js-eyes/*` scope。这样可以保证：
+
+1. `@js-eyes/*` 的安全边界清晰——`npm i @js-eyes/...` 拿到的一定是官方代码。
+2. 第三方 skill 作者保留自己的发布权与版本节奏，不依赖本仓库 maintainer。
+3. `js-eyes skills install <id>` 的 registry 机制与 scope 归属互相解耦。
 
 ## 相关文件引用（便于跳转阅读源码）
 

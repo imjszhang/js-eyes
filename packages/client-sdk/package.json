@@ -8,6 +8,23 @@
     "policy/"
   ],
   "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/JS-Eyes.git",
+    "directory": "packages/client-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/imjszhang/JS-Eyes/issues"
+  },
+  "keywords": [
+    "js-eyes",
+    "sdk",
+    "browser-automation",
+    "websocket",
+    "openclaw"
+  ],
   "publishConfig": {
     "access": "public"
   },

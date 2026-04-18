@@ -270,6 +270,71 @@ async function cmdBundle() {
   }
 }
 
+const WORKSPACE_PUBLISH_ORDER = [
+  { name: '@js-eyes/protocol', dir: 'packages/protocol' },
+  { name: '@js-eyes/runtime-paths', dir: 'packages/runtime-paths' },
+  { name: '@js-eyes/config', dir: 'packages/config' },
+  { name: '@js-eyes/skill-recording', dir: 'packages/skill-recording' },
+  { name: '@js-eyes/client-sdk', dir: 'packages/client-sdk' },
+  { name: '@js-eyes/server-core', dir: 'packages/server-core' },
+  { name: '@js-eyes/native-host', dir: 'apps/native-host' },
+];
+
+async function cmdPublish(sub, flags) {
+  if (sub !== 'workspaces') {
+    log(`unknown publish target: ${sub || '(none)'}`);
+    log('usage: js-eyes-dev publish workspaces [--dry-run]');
+    process.exit(1);
+  }
+
+  const dryRun = !!flags['dry-run'];
+  const pkgs = WORKSPACE_PUBLISH_ORDER;
+  const total = pkgs.length;
+
+  log(`── publish workspaces ──`);
+  if (dryRun) log('  (dry-run mode — npm publish --dry-run)');
+
+  const who = npmPublish.whoami();
+  if (who) log(`  as: ${who}`);
+  else log('  ⚠ could not resolve npm whoami (NPM_TOKEN missing or invalid)');
+
+  let published = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < total; i++) {
+    const { name, dir } = pkgs[i];
+    const pkgDir = path.join(REPO_ROOT, dir);
+    const manifest = require(path.join(pkgDir, 'package.json'));
+    const version = manifest.version;
+    const header = `[${i + 1}/${total}] ${name}@${version}`;
+
+    if (!dryRun && npmPublish.versionExists(name, version)) {
+      log(`${header} — already on registry, skipping`);
+      skipped++;
+      continue;
+    }
+
+    log(header);
+    try {
+      const { stdout } = npmPublish.publishFromSource(pkgDir, { dryRun });
+      const notice = (stdout || '')
+        .split('\n')
+        .filter((line) => /\+\s+@js-eyes\//.test(line) || /npm notice total files/.test(line))
+        .join(' ')
+        .trim();
+      if (notice) log(`  ${notice}`);
+      log(dryRun ? `  ✓ dry-run ok` : `  ✓ published`);
+      published++;
+    } catch (error) {
+      log(`  ✗ ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  log('');
+  log(`✓ publish workspaces complete (published: ${published}, skipped: ${skipped}, dry-run: ${dryRun})`);
+}
+
 async function cmdRelease(flags) {
   const skipBundle = !!flags['skip-bundle'];
   const skipExtensions = !!flags['skip-extensions'];
@@ -521,6 +586,7 @@ function showHelp() {
   console.log(t('help.cmdCommit'));
   console.log(t('help.cmdSync'));
   console.log(t('help.cmdRelease'));
+  console.log(t('help.cmdPublishWs'));
   console.log(t('help.cmdSetupGhPages'));
   console.log(t('help.cmdSetupCloudflare'));
   console.log('');
@@ -558,6 +624,9 @@ async function main() {
       break;
     case 'bundle':
       await cmdBundle();
+      break;
+    case 'publish':
+      await cmdPublish(sub, flags);
       break;
     case 'setup-github-pages':
     case 'setup-gh-pages':

@@ -58,6 +58,14 @@ cd ~/my-skills/js-foo-ops-skill
 npm install
 ```
 
+> **关于 `@js-eyes/*` 运行时依赖**：JS Eyes 的运行时包已经独立发布在 npm 组织 [`js-eyes`](https://www.npmjs.com/org/js-eyes) 下，在仓库外部写 skill 时可以直接：
+>
+> ```bash
+> npm install @js-eyes/config @js-eyes/client-sdk @js-eyes/skill-recording
+> ```
+>
+> 但样例 `js-hello-ops-skill` 为了**零外部依赖、开箱即跑**，选择自包含 `lib/js-eyes-client.js`（从 `@js-eyes/client-sdk` 复制来的），只依赖 `ws`。两种方式都行，官方 `skills/js-*-ops-skill/` 也沿用自包含策略。
+
 ## 4. 写 skill.contract.js
 
 完整字段规范见 [contract.zh.md](contract.zh.md)，这里给出最简模板：
@@ -231,7 +239,7 @@ Agent 侧调 `foo_get_title` 即可验证工具可用。
 1. **不要把样例放 `skills/`**。放样例会被当真技能扫到、默认禁用、产生 warn。样例统一放 [`examples/js-eyes-skills/`](../../../examples/js-eyes-skills/)。
 2. **工具名冲突**。内置 [`js_eyes_*`](../../../openclaw-plugin/index.mjs) 先占位，其他本地 skill 的工具也算在内——起名带技能前缀最稳。
 3. **工具的 `execute` 必须返回 `{ content: [...] }`**。直接 `return data` 会被 OpenClaw 当成非法响应。用 `runtime.textResult` / `jsonResult` 最稳。
-4. **`require('../../packages/...')` 不要用**。skill 要能独立分发，全部走 `@js-eyes/*` npm 包 + 自包含 `lib/js-eyes-client.js` 的老约定。
+4. **`require('../../packages/...')` 不要用**。skill 要能独立分发，全部走 `@js-eyes/*` npm 包（已发布到 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)）或自包含 `lib/js-eyes-client.js` 的约定。
 5. **`@js-eyes/skill-recording` 可按需引入**。简单 skill 不用；要做跨会话缓存 / debug bundle 再加。
 6. **改完 `skill.contract.js` 必须重启 OpenClaw**。插件代码被 Node require cache 持有，改文件不会热更新。
 7. **新版本的 `version` 字段**要同步改 `package.json.version`、`SKILL.md` frontmatter `version`、`skill.contract.js` 导出的 `version`（后者其实读的是 `pkg.version`，省心做法就是只改 `package.json`）。

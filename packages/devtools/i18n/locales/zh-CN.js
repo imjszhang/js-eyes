@@ -131,6 +131,7 @@ module.exports = {
     cmdCommit: '  commit                 暂存所有变更并提交',
     cmdSync: '  sync                   构建 + 提交 + 推送',
     cmdRelease: '  release                创建 GitHub Release（需要 gh）',
+    cmdPublishWs: '  publish workspaces     发布 @js-eyes/* scope 包（支持 --dry-run）',
     cmdSetupGhPages: '  setup-github-pages    配置 GitHub Pages 自定义域名（需 GITHUB_TOKEN）',
     cmdSetupCloudflare: '  setup-cloudflare       配置 Cloudflare DNS 指向 GitHub Pages',
     options: '选项:',

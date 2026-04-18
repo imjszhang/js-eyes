@@ -10,6 +10,23 @@
     "auth.js"
   ],
   "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/JS-Eyes.git",
+    "directory": "packages/server-core"
+  },
+  "bugs": {
+    "url": "https://github.com/imjszhang/JS-Eyes/issues"
+  },
+  "keywords": [
+    "js-eyes",
+    "server",
+    "websocket",
+    "http",
+    "browser-automation"
+  ],
   "publishConfig": {
     "access": "public"
   },

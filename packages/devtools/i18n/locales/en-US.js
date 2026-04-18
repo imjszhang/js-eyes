@@ -131,6 +131,7 @@ module.exports = {
     cmdCommit: '  commit                 Stage all changes and commit',
     cmdSync: '  sync                   Build + commit + push',
     cmdRelease: '  release                Create GitHub release (requires gh)',
+    cmdPublishWs: '  publish workspaces     Publish @js-eyes/* scope packages (supports --dry-run)',
     cmdSetupGhPages: '  setup-github-pages    Configure GitHub Pages custom domain (needs GITHUB_TOKEN)',
     cmdSetupCloudflare: '  setup-cloudflare     Configure Cloudflare DNS to point to GitHub Pages',
     options: 'Options:',

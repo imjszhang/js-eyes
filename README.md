@@ -462,6 +462,12 @@ Custom skills don't have to live inside this repository — drop them anywhere a
 - [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring guide, `skill.contract.js` reference, deployment modes (Chinese first).
 - [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).
 
+The runtime packages are published to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization under the `@js-eyes/*` scope, so external skills can depend on them directly:
+
+```bash
+npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
+```
+
 > Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map.
 
 ## Building

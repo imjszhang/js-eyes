@@ -11,6 +11,25 @@
     "js-eyes-native-host": "bin/js-eyes-native-host.js"
   },
   "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/JS-Eyes.git",
+    "directory": "apps/native-host"
+  },
+  "bugs": {
+    "url": "https://github.com/imjszhang/JS-Eyes/issues"
+  },
+  "keywords": [
+    "js-eyes",
+    "native-messaging",
+    "chrome-extension",
+    "firefox-extension"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@js-eyes/config": "2.4.0",
     "@js-eyes/protocol": "2.4.0",
