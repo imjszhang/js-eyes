@@ -415,6 +415,8 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 ```
 
+> **`@js-eyes/*` scope 仅供本仓库官方维护者发布**。第三方 JS Eyes Skills 与集成必须使用自己的 npm scope（如 `@acme/js-my-cool-skill`）或无 scope 名称，不得占用 `@js-eyes/*`。完整治理规则见 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md#npm-scope-治理)。
+
 > 命名约定：**JS Eyes Skills** 专指本仓库 `skill.contract.js` 契约下的扩展技能；[docs/dev/](dev/) 与 [examples/](../examples/) 下的 `skills/` 命名空间留给未来兼容外部通用 Skills 规范（Anthropic Agent Skills / Cursor Skills 等）。完整术语对照见 [docs/README.md](README.md) 与 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md)。
 
 ## 构建与发布
@@ -444,7 +446,7 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步版本号到所有 manifest
-npm run bump -- 2.3.0
+npm run bump -- 2.4.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

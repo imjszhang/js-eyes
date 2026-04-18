@@ -1,7 +1,7 @@
 ---
 name: js-reddit-ops-skill
 description: Reddit 内容读取 skill，提供帖子详情、图片和评论树读取能力。
-version: 1.0.0
+version: 2.0.0
 metadata:
   openclaw:
     emoji: "\U0001F9F5"

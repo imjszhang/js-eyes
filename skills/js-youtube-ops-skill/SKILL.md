@@ -1,7 +1,7 @@
 ---
 name: js-youtube-ops-skill
 description: YouTube 视频读取 skill，提供视频元数据与字幕读取能力。
-version: 1.0.0
+version: 2.0.0
 metadata:
   openclaw:
     emoji: "\U0001F4FA"

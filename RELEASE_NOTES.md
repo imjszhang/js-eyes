@@ -16,6 +16,7 @@
 - **Popup "Sync Token From Host" Button**: Chrome and Firefox popups expose a primary `sync-token-from-native` button that triggers the Native Messaging round-trip on demand; background scripts also attempt a silent sync on startup.
 - **Streamlined Popup Surface**: The default extension popup now shows only connection status and the sync button. Server address, manual token paste, and Auto Connect are folded under an `<details>` "Advanced" section.
 - **Legacy Auth Cleanup**: HMAC `auth_challenge` / `auth_result`, `computeHMAC`, `authSecretKey`, session-refresh timers, and the inline SSE fallback client are removed from both Chrome and Firefox extensions. Bearer tokens (2.2.0+) are now the sole authentication path.
+- **`@js-eyes/*` Published to npm**: Seven scoped runtime packages (`@js-eyes/protocol`, `@js-eyes/runtime-paths`, `@js-eyes/config`, `@js-eyes/skill-recording`, `@js-eyes/client-sdk`, `@js-eyes/server-core`, `@js-eyes/native-host`) are now published to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization at `2.4.0`. Custom JS Eyes Skills and external Node integrations can now `npm install` the pieces they need instead of vendoring from the repo.
 - **Wire Protocol Unchanged**: No server / CLI breaking changes — existing automation clients keep working against a 2.4.0 server.
 
 ### Breaking Changes
@@ -32,6 +33,7 @@
 
 ### Downloads
 - [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
 - [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-chrome-v2.4.0.zip)
 - [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-firefox-v2.4.0.xpi)
 - [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.4.0/js-eyes-skill-v2.4.0.zip)

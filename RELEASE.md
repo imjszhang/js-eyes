@@ -1,6 +1,6 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-04-17
+Last updated: 2026-04-19
 
 ## 2.3.0 Migration Guide (Policy Engine)
 
@@ -103,9 +103,7 @@ If you must keep anonymous clients working during a transition window:
 js-eyes config set security.allowAnonymous true
 ```
 
-Every anonymous request is logged to `audit.log` and reported by `js-eyes doctor`. Plan to remove the toggle before the 2.3.0 release.
-
-## Scope
+Every anonymous request is logged to `audit.log` and reported by `js-eyes doctor`. Treat this as a transition-only escape hatch; the 2.3.0 and 2.4.0 policy-engine / Native-Messaging paths expect authenticated bearer tokens by default.
 
 ## Release Scope
 

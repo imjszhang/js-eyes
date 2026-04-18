@@ -34,7 +34,7 @@ By default this is all local traffic. No browser content is sent to a third-part
 
 ## Browser Native Messaging Host (Token Auto-Sync)
 
-JS Eyes 2.3+ ships an optional Native Messaging host (`com.js_eyes.native_host`) that lets the browser extension read `~/.js-eyes/runtime/server.token` directly, avoiding manual copy-paste.
+JS Eyes 2.4+ ships an optional Native Messaging host (`com.js_eyes.native_host`) that lets the browser extension read `~/.js-eyes/runtime/server.token` directly, avoiding manual copy-paste.
 
 **Threat model**: this feature is designed to defend against **external web-page / cross-origin attackers** only. A compromised local device (root, malicious local process, malicious locally-loaded extension) is **explicitly out of scope** — any attacker with local code execution already has direct read access to `server.token`.
 
@@ -161,11 +161,11 @@ Environment and config overrides: `JS_EYES_POLICY_ENFORCEMENT`, `config.security
 
 `packages/server-core` now emits `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response. This closes the Chrome `externally_connectable` surface against any future accidental HTML response on port 18080.
 
-### Non-Goals (2.3.0)
+### Non-Goals (2.4.0)
 
 - Interactive `confirm` dialogs (still excluded by design).
-- Task profiles (L3) and reader sub-agent (L5') — both opt-in additions planned for 2.4 and will remain off by default.
+- Task profiles (L3) and reader sub-agent (L5') — remain opt-in additions on the roadmap and stay off by default.
 
 ---
 
-*Last updated: 2026-04-17 — aligned with the 2.3.0 JS Eyes policy engine release.*
+*Last updated: 2026-04-19 — covers the 2.3.0 policy engine and the 2.4.0 Native Messaging host.*

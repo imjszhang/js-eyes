@@ -1,8 +1,8 @@
 # Native Messaging Token 自动注入
 
-> 最后更新: 2026-04-17
+> 最后更新: 2026-04-19
 
-JS Eyes 2.3+ 通过浏览器 Native Messaging 协议，让扩展自动从本机读取 `server.token`
+JS Eyes 2.4+ 通过浏览器 Native Messaging 协议，让扩展自动从本机读取 `server.token`
 并注入到扩展存储，消除用户手工复制 token 的环节。
 
 ## 工作原理
@@ -27,6 +27,24 @@ npx js-eyes native-host install --browser all
 ```
 
 可选目标: `chrome` / `chrome-canary` / `chromium` / `edge` / `brave` / `firefox` / `chromium` / `all`。
+
+### 作为独立 npm 包使用（可选）
+
+自 2.4.0 起，native host 代码也以独立 scope 包的形式发布到 npm：
+[`@js-eyes/native-host`](https://www.npmjs.com/package/@js-eyes/native-host)。该包主要用于
+自定义集成场景——例如你自己的部署脚本想编程式地注册/卸载浏览器 manifest，或在不引入完整
+`js-eyes` CLI 的容器里运行 host 进程。
+
+```js
+// 编程式调用 installer / manifest / paths
+const { installBrowsers, uninstallBrowsers, statusBrowsers } = require('@js-eyes/native-host');
+
+installBrowsers('all');
+```
+
+包内 `js-eyes-native-host` 可执行文件对应浏览器连接时拉起的 host 进程本身（stdio 4-byte-length
+帧协议），而非安装命令。对普通用户来说，一次性 `npx js-eyes native-host install --browser all`
+仍然是推荐路径；只有当你明确希望把 native host 与 CLI 发行节奏解耦时才用这个独立包。
 
 ### 安装物路径
 

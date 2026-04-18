@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 1.0.0
+version: 2.1.0
 metadata:
   openclaw:
     emoji: "\U0001F310"

@@ -1,7 +1,7 @@
 ---
 name: js-wechat-ops-skill
 description: 微信公众号内容读取 skill，基于 JS-Eyes 浏览器自动化获取文章标题、作者、正文、封面和图片列表。
-version: 1.0.0
+version: 2.0.0
 metadata:
   openclaw:
     emoji: "\U0001F4F0"

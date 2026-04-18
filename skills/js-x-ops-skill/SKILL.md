@@ -1,7 +1,7 @@
 ---
 name: js-x-ops-skill
 description: X.com (Twitter) content operations skill — search content, browse timelines and home feed, read post details, and handle posting workflows via browser automation.
-version: 1.1.0
+version: 2.0.0
 metadata:
   openclaw:
     emoji: "\U0001F50D"

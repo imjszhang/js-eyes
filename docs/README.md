@@ -1,5 +1,7 @@
 # docs/ 目录说明
 
+> Last updated: 2026-04-19
+
 本目录是 **GitHub Pages 站点根**（CNAME → [js-eyes.com](https://js-eyes.com)），混合承载四类内容：
 
 | 类别 | 代表文件 | 说明 |

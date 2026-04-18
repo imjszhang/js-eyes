@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) or the versioned `js-eyes-skill-v1.5.1.zip` asset from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.4.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -468,6 +468,8 @@ The runtime packages are published to the [`js-eyes`](https://www.npmjs.com/org/
 npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 ```
 
+> **`@js-eyes/*` scope is reserved for official packages** published by this repository's maintainers. Third-party JS Eyes Skills and integrations must publish under their own npm scope (e.g. `@acme/js-my-cool-skill`) or an unscoped name, never under `@js-eyes/*`. See [docs/dev/js-eyes-skills/README.md](./docs/dev/js-eyes-skills/README.md#npm-scope-治理) for the full governance rule.
+
 > Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map.
 
 ## Building
@@ -497,7 +499,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 2.3.0
+npm run bump -- 2.4.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
