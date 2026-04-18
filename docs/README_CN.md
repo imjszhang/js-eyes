@@ -402,6 +402,15 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 **手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`。随后确保该技能在 `js-eyes` 宿主配置中处于启用状态，重启 OpenClaw 或开启新会话即可。
 
+### 开发自定义 JS Eyes Skills
+
+自定义技能**不必放在本仓库**里 — 放到任意目录，把 `skillsDir` 指过去即可（升级 js-eyes 也不会覆盖）。开发者文档与样例：
+
+- [docs/dev/js-eyes-skills/](dev/js-eyes-skills/) — 开发指南、`skill.contract.js` 契约规范、三种部署模式。
+- [examples/js-eyes-skills/js-hello-ops-skill/](../examples/js-eyes-skills/js-hello-ops-skill/) — 最小可运行样例（一个工具、零副作用、自包含依赖）。
+
+> 命名约定：**JS Eyes Skills** 专指本仓库 `skill.contract.js` 契约下的扩展技能；[docs/dev/](dev/) 与 [examples/](../examples/) 下的 `skills/` 命名空间留给未来兼容外部通用 Skills 规范（Anthropic Agent Skills / Cursor Skills 等）。完整术语对照见 [docs/README.md](README.md) 与 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md)。
+
 ## 构建与发布
 
 ### 前置条件

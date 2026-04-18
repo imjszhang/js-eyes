@@ -455,6 +455,15 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 **Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, ensure the skill is enabled in the JS Eyes host config, then restart OpenClaw or open a new session.
 
+### Authoring your own JS Eyes Skill
+
+Custom skills don't have to live inside this repository — drop them anywhere and point `skillsDir` at their parent folder. See:
+
+- [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring guide, `skill.contract.js` reference, deployment modes (Chinese first).
+- [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).
+
+> Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map.
+
 ## Building
 
 ### Prerequisites

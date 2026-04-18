@@ -1,0 +1,17 @@
+{
+  "name": "js-hello-ops-skill",
+  "version": "1.0.0",
+  "description": "JS Eyes Skills 最小样例：一个 hello_get_title 工具，读取标签页标题。",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "title": "node index.js title"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
