@@ -60,7 +60,7 @@ const EXTENSION_CONFIG = {
       'subscribe_events', 'unsubscribe_events'
     ],
     sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
-    requestTimeout: 60000,
+    requestTimeout: 1800000,
     allowRawEval: false,
     rateLimit: {
       maxRequestsPerSecond: 10,
@@ -543,7 +543,7 @@ class BrowserControl {
         'get_page_info', 'upload_file_to_tab'
       ],
       sensitiveActions: ['execute_script', 'get_cookies'],
-      requestTimeout: 30000
+      requestTimeout: 1800000
     };
     
     // 认证相关属性
@@ -637,7 +637,7 @@ class BrowserControl {
     );
     
     // 请求去重器
-    const requestTimeout = EXTENSION_CONFIG.SECURITY?.requestTimeout || 60000;
+    const requestTimeout = EXTENSION_CONFIG.SECURITY?.requestTimeout || 1800000;
     this.deduplicator = new RequestDeduplicator(requestTimeout);
     
     // 请求队列管理器

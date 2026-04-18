@@ -32,7 +32,7 @@ class BrowserAutomation {
   constructor(serverUrl, options = {}) {
     this.serverUrl = this._normalizeWsUrl(serverUrl || 'ws://localhost:18080');
     this.logger = options.logger || console;
-    this.defaultTimeout = options.defaultTimeout || 60;
+    this.defaultTimeout = options.defaultTimeout || 1800;
 
     this.requestInterval = options.requestInterval || 200;
     this._lastRequestTime = 0;

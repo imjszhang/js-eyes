@@ -86,8 +86,9 @@ const DEFAULT_CONFIG = {
     },
     
     // 请求超时时间（毫秒）
-    // 与服务器端保持一致（服务器默认 60 秒）
-    requestTimeout: 60000
+    // 与服务器端保持一致（服务器默认 1800 秒 / 30 分钟）
+    // 握手完成后会被服务器 init_ack 推送的 defaultTimeout 覆盖
+    requestTimeout: 1800000
   }
 };
 

@@ -249,7 +249,7 @@ function handleExtensionMessage(raw, clientId, state) {
           clientId,
           browserName: conn.browserName,
           serverConfig: {
-            request: { defaultTimeout: REQUEST_TIMEOUT_MS },
+            request: { defaultTimeout: state.requestTimeoutMs || REQUEST_TIMEOUT_MS },
           },
           timestamp: new Date().toISOString(),
         });
@@ -571,6 +571,7 @@ function pickExtension(state, target) {
 }
 
 function registerPending(requestId, automationSocket, operationType, state, clientId = null) {
+  const timeoutMs = state.requestTimeoutMs || REQUEST_TIMEOUT_MS;
   const timeoutId = setTimeout(() => {
     const info = state.pendingResponses.get(requestId);
     if (!info) return;
@@ -580,12 +581,12 @@ function registerPending(requestId, automationSocket, operationType, state, clie
       status: 'error',
       type: `${operationType}_timeout`,
       requestId,
-      message: `Request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      message: `Request timed out after ${timeoutMs}ms`,
     };
 
     send(info.socket, { type: `${operationType}_response`, requestId, ...timeoutResponse });
     state.callbackResponses.set(requestId, timeoutResponse);
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
 
   state.pendingResponses.set(requestId, {
     socket: automationSocket,
@@ -652,6 +653,7 @@ function createState() {
     serverToken: null,
     security: null,
     pendingEgressDir: null,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
   };
 }
 

@@ -52,7 +52,7 @@ class BrowserControl {
           ],
           sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
           allowRawEval: false,
-          requestTimeout: 30000,
+          requestTimeout: 1800000,
           rateLimit: {
             maxRequestsPerSecond: 10,
             blockDuration: 5000
@@ -1172,7 +1172,7 @@ class BrowserControl {
    * - pending: 请求已注册，等待处理
    * - processing: 请求正在处理中
    * - completed: 请求成功完成
-   * - timeout: 请求超时（服务端 60 秒超时）
+   * - timeout: 请求超时（服务端默认 30 分钟，可配置）
    * - error: 请求发生错误
    * - rate_limited: 触发服务端限流
    */
@@ -1217,7 +1217,7 @@ class BrowserControl {
         console.warn(`[ServerResponse] 请求 ${requestId} 服务端超时`);
         this.resolveRequest(requestId, { 
           status: 'timeout', 
-          error: error || '服务端请求超时（60秒）'
+          error: error || '服务端请求超时'
         });
         break;
         

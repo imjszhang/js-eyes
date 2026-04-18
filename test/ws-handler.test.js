@@ -397,6 +397,21 @@ describe('handleExtensionMessage', () => {
     assert.equal(ack.browserName, 'chrome');
   });
 
+  it('init_ack defaults defaultTimeout to protocol REQUEST_TIMEOUT_MS', () => {
+    handleExtensionMessage(JSON.stringify({ type: 'init', userAgent: 'Mozilla/5.0 Chrome/120' }), clientId, state);
+    const ack = socket._messages[0];
+    assert.equal(ack.type, 'init_ack');
+    assert.equal(ack.serverConfig?.request?.defaultTimeout, REQUEST_TIMEOUT_MS);
+  });
+
+  it('init_ack reflects state.requestTimeoutMs when configured', () => {
+    state.requestTimeoutMs = 5000;
+    handleExtensionMessage(JSON.stringify({ type: 'init', userAgent: 'Mozilla/5.0 Chrome/120' }), clientId, state);
+    const ack = socket._messages[0];
+    assert.equal(ack.type, 'init_ack');
+    assert.equal(ack.serverConfig?.request?.defaultTimeout, 5000);
+  });
+
   it('handles init with notification envelope', () => {
     const msg = {
       type: 'notification',

@@ -11,6 +11,7 @@ const {
 const {
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
+  DEFAULT_REQUEST_TIMEOUT_SECONDS,
   PROTOCOL_VERSION,
   WS_CLOSE_CODE_AUTH_REQUIRED,
   isLoopbackHost,
@@ -94,11 +95,20 @@ function createServer(options = {}) {
     logger.info?.(`[js-eyes-server] Generated new server token at ${tokenFilePath} (chmod 600)`);
   }
 
+  const requestTimeoutSeconds = Number(
+    options.requestTimeout ?? config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_SECONDS,
+  );
+  const resolvedRequestTimeoutSeconds = Number.isFinite(requestTimeoutSeconds) && requestTimeoutSeconds > 0
+    ? requestTimeoutSeconds
+    : DEFAULT_REQUEST_TIMEOUT_SECONDS;
+  const requestTimeoutMs = Math.round(resolvedRequestTimeoutSeconds * 1000);
+
   const state = createState();
   state.serverToken = serverToken;
   state.security = security;
   state.audit = audit;
   state.pendingEgressDir = options.pendingEgressDir || null;
+  state.requestTimeoutMs = requestTimeoutMs;
 
   let cleanupTimer = null;
 

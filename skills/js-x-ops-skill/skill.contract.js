@@ -26,7 +26,7 @@ function createRuntime(config = {}, logger) {
   const runtimeConfig = {
     serverUrl: resolvedConfig.serverUrl,
     recording: resolvedConfig.recording,
-    requestTimeout: Number(config.requestTimeout || 60),
+    requestTimeout: Number(config.requestTimeout || 1800),
     defaultMaxPages: Number(config.defaultMaxPages || 3),
   };
 

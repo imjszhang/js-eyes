@@ -1,7 +1,11 @@
 'use strict';
 
 const WebSocket = require('ws');
-const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT } = require('@js-eyes/protocol');
+const {
+  DEFAULT_SERVER_HOST,
+  DEFAULT_SERVER_PORT,
+  DEFAULT_REQUEST_TIMEOUT_SECONDS,
+} = require('@js-eyes/protocol');
 const {
   PolicyContext,
   TaskOriginTracker,
@@ -38,7 +42,7 @@ class BrowserAutomation {
   constructor(serverUrl, options = {}) {
     this.serverUrl = this._normalizeWsUrl(serverUrl || DEFAULT_SERVER_URL);
     this.logger = options.logger || console;
-    this.defaultTimeout = options.defaultTimeout || 60;
+    this.defaultTimeout = options.defaultTimeout || DEFAULT_REQUEST_TIMEOUT_SECONDS;
     if (Object.prototype.hasOwnProperty.call(options, 'token')) {
       this.token = options.token || null;
     } else if (process.env.JS_EYES_SERVER_TOKEN) {

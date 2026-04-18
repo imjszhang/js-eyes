@@ -384,7 +384,7 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | `serverHost` | string | `"localhost"` | Server listen address |
 | `serverPort` | number | `18080` | Server port |
 | `autoStartServer` | boolean | `true` | Auto-start server when plugin loads |
-| `requestTimeout` | number | `60` | Request timeout in seconds |
+| `requestTimeout` | number | `1800` | Request timeout in seconds (default 30 minutes; server reads this value on startup) |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | URL of the extension skill registry |
 | `skillsDir` | string | `""` | Skill install directory (empty = auto-detect `skills/` under skill root) |
 

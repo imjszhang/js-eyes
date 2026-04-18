@@ -205,7 +205,7 @@ function register(api) {
   const serverHost = pluginCfg.serverHost || "localhost";
   const serverPort = pluginCfg.serverPort || 18080;
   const autoStart = pluginCfg.autoStartServer ?? true;
-  const requestTimeout = pluginCfg.requestTimeout || 60;
+  const requestTimeout = pluginCfg.requestTimeout || 1800;
   const skillsRegistryUrl = pluginCfg.skillsRegistryUrl || DEFAULT_REGISTRY;
   const skillsDir = pluginCfg.skillsDir
     ? nodePath.resolve(pluginCfg.skillsDir)
@@ -335,6 +335,7 @@ function register(api) {
           token: tokenInfo?.token || undefined,
           security,
           config: hostConfig,
+          requestTimeout,
           auditLogFile: runtimePaths.auditLogFile,
           logger: {
             info: (msg) => ctx.logger.info(msg),

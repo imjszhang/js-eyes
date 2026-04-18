@@ -1,5 +1,14 @@
 # Release Notes
 
+## Unreleased
+
+### Highlights
+- **Default request timeout raised to 30 minutes**: The default `requestTimeout` now is 1800 seconds (previously 60). Long automation flows (captchas, slow SPA loads, file uploads) no longer hit a surprise 60s ceiling. The per-handler 30s safety net inside the browser extension is kept as a last-resort guard when the server `init_ack` never arrives.
+- **Server-side `requestTimeout` is now truly configurable**: `createServer()` reads `options.requestTimeout` (seconds), falling back to `@js-eyes/config` `config.requestTimeout` and finally to the protocol default. The resolved value is what the server pushes to extensions via `init_ack.serverConfig.request.defaultTimeout` and what the server uses for pending-response timeouts. Set it in `openclaw.json` → `plugins.entries["js-eyes"].config.requestTimeout`, or via `js-eyes config set requestTimeout <seconds>` for the CLI server.
+
+### Migration Notes
+- No breaking changes. If you were relying on the 60s default for fast failure, explicitly set `requestTimeout: 60` in the plugin config (or `js-eyes config set requestTimeout 60`).
+
 ## v2.4.0
 
 ### Highlights

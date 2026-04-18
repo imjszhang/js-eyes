@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Default Request Timeout**: Default browser-operation request timeout raised from 60 seconds to 1800 seconds (30 minutes) across the protocol, server core, client SDK, plugin config, browser-extension defaults, and all built-in skill clients. Long-running automation flows (captchas, file uploads, slow SPA loads) no longer time out at 60s by default. The per-handler `|| 30000` safety net inside the browser extension is preserved so that lost `init_ack` handshakes still fail fast.
+
+### Added
+
+- **Configurable Server-Side `requestTimeout`**: `createServer()` now honors `options.requestTimeout` (seconds) and falls back to `config.requestTimeout` loaded via `@js-eyes/config`. The value flows into both the `init_ack.serverConfig.request.defaultTimeout` pushed to extensions and the pending-response `setTimeout` on the server. Set it via `plugins.entries["js-eyes"].config.requestTimeout` in `openclaw.json`, or via `js-eyes config set requestTimeout <seconds>` for CLI-launched servers.
+
 ## [2.4.0] - 2026-04-17
 
 > Extension usability release. Adds a Native Messaging host that auto-syncs `server.token` and the HTTP URL into browser extensions, and removes a large amount of legacy authentication / fallback code from the Chrome and Firefox extensions. **No breaking changes for automation clients** — the wire protocol and CLI remain backward compatible.

@@ -24,8 +24,8 @@
       },
       "requestTimeout": {
         "type": "number",
-        "default": 60,
-        "description": "浏览器操作请求超时（秒）"
+        "default": 1800,
+        "description": "浏览器操作请求超时（秒），默认 1800（30 分钟）"
       },
       "skillsRegistryUrl": {
         "type": "string",
@@ -56,7 +56,7 @@
     },
     "requestTimeout": {
       "label": "请求超时（秒）",
-      "help": "单次浏览器操作的最大等待时间",
+      "help": "单次浏览器操作的最大等待时间，默认 1800 秒（30 分钟）",
       "advanced": true
     },
     "skillsRegistryUrl": {

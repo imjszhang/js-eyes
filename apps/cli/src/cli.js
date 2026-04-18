@@ -526,6 +526,7 @@ async function runForegroundServer(flags) {
     logger: console,
     config,
     security,
+    requestTimeout: config.requestTimeout,
     auditLogFile: paths.auditLogFile,
     pendingEgressDir: paths.pendingEgressDir,
   });
