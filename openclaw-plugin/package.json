@@ -12,6 +12,9 @@
     "openclaw.plugin.json"
   ],
   "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.6.0"
+  },
   "peerDependencies": {
     "openclaw": ">=0.0.0"
   },

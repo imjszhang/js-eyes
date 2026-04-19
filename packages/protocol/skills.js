@@ -383,21 +383,40 @@ function isSkillEnabled(config = {}, skillId, legacyState = {}) {
   return false;
 }
 
-function registerOpenClawTools(api, adapter, options = {}) {
-  const logger = options.logger || api.logger || console;
-  const registeredNames = options.registeredNames || null;
+/**
+ * 从 adapter.tools 构建 OpenClaw 工具定义列表（不执行 api.registerTool）。
+ *
+ * 用于 SkillRegistry 等需要"先收集再统一注册"的场景；registerOpenClawTools
+ * 的注册循环基于此函数的输出。
+ *
+ * 返回：
+ *   {
+ *     toolDefs: [{ definition, optional, toolName }],  // 通过过滤的工具
+ *     summary: { registered: [], skipped: [{ name, reason }], failed: [] },
+ *   }
+ *
+ * 注意：本函数不会写入 registeredNames；由调用方在成功注册后维护。
+ */
+function buildAdapterTools(adapter, options = {}) {
+  const logger = options.logger || console;
   const sourceName = options.sourceName || adapter?.id || 'js-eyes-skill';
   const declaredTools = Array.isArray(options.declaredTools) && options.declaredTools.length > 0
     ? new Set(options.declaredTools)
     : null;
+  const registeredNames = options.registeredNames || null;
   const wrapTool = typeof options.wrapTool === 'function' ? options.wrapTool : null;
+
+  const toolDefs = [];
   const summary = {
     registered: [],
     skipped: [],
     failed: [],
   };
+  // Track names we've already emitted in this batch so intra-batch duplicates
+  // are rejected even when registeredNames is not mutated here.
+  const localSeen = new Set();
 
-  for (const tool of adapter.tools || []) {
+  for (const tool of (adapter && adapter.tools) || []) {
     if (!tool || !tool.name) {
       summary.skipped.push({ name: '(anonymous)', reason: 'missing-name' });
       logger.warn(`[js-eyes] Skipping tool with missing name from ${sourceName}`);
@@ -408,29 +427,55 @@ function registerOpenClawTools(api, adapter, options = {}) {
       logger.warn(`[js-eyes] Skipping undeclared tool "${tool.name}" from ${sourceName}`);
       continue;
     }
-    if (registeredNames && registeredNames.has(tool.name)) {
+    if ((registeredNames && registeredNames.has(tool.name)) || localSeen.has(tool.name)) {
       summary.skipped.push({ name: tool.name, reason: 'duplicate-name' });
       logger.warn(`[js-eyes] Skipping duplicate tool "${tool.name}" from ${sourceName}`);
       continue;
     }
+    localSeen.add(tool.name);
 
+    const definition = {
+      name: tool.name,
+      label: tool.label,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: tool.execute,
+    };
+    const wrapped = wrapTool ? wrapTool(definition, { source: sourceName }) : definition;
+
+    toolDefs.push({
+      toolName: tool.name,
+      definition: wrapped,
+      optional: Boolean(tool.optional),
+    });
+  }
+
+  return { toolDefs, summary };
+}
+
+function registerOpenClawTools(api, adapter, options = {}) {
+  const logger = options.logger || api.logger || console;
+  const registeredNames = options.registeredNames || null;
+  const sourceName = options.sourceName || adapter?.id || 'js-eyes-skill';
+
+  const { toolDefs, summary } = buildAdapterTools(adapter, {
+    logger,
+    sourceName,
+    declaredTools: options.declaredTools,
+    registeredNames,
+    wrapTool: options.wrapTool,
+  });
+
+  for (const entry of toolDefs) {
     try {
-      const definition = {
-        name: tool.name,
-        label: tool.label,
-        description: tool.description,
-        parameters: tool.parameters,
-        execute: tool.execute,
-      };
-      const wrapped = wrapTool ? wrapTool(definition, { source: sourceName }) : definition;
-      api.registerTool(wrapped, tool.optional ? { optional: true } : undefined);
+      api.registerTool(entry.definition, entry.optional ? { optional: true } : undefined);
       if (registeredNames) {
-        registeredNames.add(tool.name);
+        registeredNames.add(entry.toolName);
       }
-      summary.registered.push(tool.name);
+      summary.registered.push(entry.toolName);
     } catch (error) {
-      summary.failed.push({ name: tool.name, reason: error.message });
-      logger.warn(`[js-eyes] Failed to register tool "${tool.name}" from ${sourceName}: ${error.message}`);
+      summary.failed.push({ name: entry.toolName, reason: error.message });
+      logger.warn(`[js-eyes] Failed to register tool "${entry.toolName}" from ${sourceName}: ${error.message}`);
     }
   }
 
@@ -749,11 +794,15 @@ function runSkillCli(options) {
   });
 }
 
-module.exports = {
+// Assign to (rather than replace) module.exports so that modules which have
+// already captured a reference during circular require — notably
+// ./skill-registry — observe the final API once this module finishes loading.
+Object.assign(module.exports, {
   INSTALL_MANIFEST_FILE,
   INTEGRITY_FILE,
   SKILL_CONTRACT_FILE,
   applySkillInstall,
+  buildAdapterTools,
   cleanupStaging,
   discoverLocalSkills,
   discoverSkillsFromSources,
@@ -777,4 +826,10 @@ module.exports = {
   runSkillCli,
   verifySkillIntegrity,
   writeIntegrityManifest,
-};
+});
+
+// After our own exports are populated, pull in the registry factory. This must
+// happen last so skill-registry.js sees a fully-populated skills API.
+const skillRegistry = require('./skill-registry');
+module.exports.createSkillRegistry = skillRegistry.createSkillRegistry;
+module.exports.purgeRequireCacheFor = skillRegistry.purgeRequireCacheFor;

@@ -39,9 +39,9 @@ js-eyes/
 1. 把新 skill 放进 `skills/js-foo-ops-skill/`。
 2. 在**仓库根** `npm install`（保证 `@js-eyes/*` 依赖可解析；skill 自身若有独立依赖也需要 `cd skills/js-foo-ops-skill && npm install`）。
 3. `js-eyes skills enable js-foo-ops-skill`。
-4. 重启 OpenClaw（或开新会话）。
+4. 主插件运行中的话会**自动热加载**（见 [5.3 零重启部署](#53-零重启部署skills-linkunlinkreload推荐)）；首次把主插件自身纳入 OpenClaw（或改了 `openclaw-plugin/` 内部代码）则仍需重启/开新会话一次。
 
-优点：修改 `skill.contract.js` 后重启 OpenClaw 即生效；可以复用仓库内的 `packages/*` 源码（不过官方约定是**只依赖已发布的 `@js-eyes/*` npm 包**，便于未来分发）。
+优点：启用/禁用 / 改 `skill.contract.js` 代码都可以走零重启流程（`js-eyes skills reload` 或 Agent 调 `js_eyes_reload_skills`）；可以复用仓库内的 `packages/*` 源码（不过官方约定是**只依赖已发布的 `@js-eyes/*` npm 包**，便于未来分发）。
 
 缺点：skill 绑定在仓库里，升级 js-eyes 容易把本地改动覆盖。
 
@@ -82,7 +82,7 @@ js-eyes/
    }
    ```
 4. `js-eyes skills enable js-foo-ops-skill`。
-5. 重启 OpenClaw。
+5. 更推荐的零重启路径：直接 `js-eyes skills link /Users/you/my-skills/js-foo-ops-skill`——运行中的主插件会在 ~300 ms 内热加载；详见 [5.3 零重启部署](#53-零重启部署skills-linkunlinkreload推荐)。首次把 `openclaw-plugin` 本身纳入 OpenClaw 或改动插件自身代码时才需要重启 OpenClaw 一次。
 
 优点：
 
@@ -101,8 +101,7 @@ js-eyes/
 ```bash
 js-eyes skills install js-x-ops-skill  # 下载 + sha256 校验 + 解压到 stage
 js-eyes skills approve js-x-ops-skill  # 人工确认后正式落地并生成 .integrity.json
-js-eyes skills enable  js-x-ops-skill
-# 重启 OpenClaw
+js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载；见 §5.3
 ```
 
 或 Agent 侧调 `js_eyes_install_skill` 走同样流程。
@@ -175,7 +174,41 @@ js-eyes skills enable  js-x-ops-skill
 
 上例第一条是单个 skill 目录，第二条是父目录。
 
-### 5.3 启动与 CLI 行为
+### 5.3 零重启部署（`skills link/unlink/reload`，推荐）
+
+从 2026-04-19 起，OpenClaw 运行中也可以**零重启**挂/卸外部 skill。底层由 [`packages/protocol/skill-registry.js`](../../../packages/protocol/skill-registry.js) 提供的 `SkillRegistry`（工具级 dispatcher 间接层）+ chokidar 监听 `~/.js-eyes/config/config.json` 实现。
+
+```bash
+# 把一个外部 skill 目录接入当前主机
+js-eyes skills link /Volumes/home_x/github/my/js-mastodon-ops-skill
+
+# 解除接入
+js-eyes skills unlink /Volumes/home_x/github/my/js-mastodon-ops-skill
+
+# 显式触发 reload（touch configFile；通常不需要）
+js-eyes skills reload
+```
+
+`link` 会把路径去重追加到 `extraSkillDirs`；如果 OpenClaw 插件已在运行，300ms 内会触发 `skillRegistry.reload()`：
+
+- 发现新增 skill → 懒加载 contract、构建 adapter、写入 toolBindings。
+- 对**首次发现的 extras** 会自动 `skillsEnabled.<id> = true`（primary 仍保持"显式 opt-in"）。
+- 对移除的 skill 调 `runtime.dispose()` 后清理 binding。
+- 重名冲突：primary 优先，extras 被跳过并 log warn。
+
+另外可在 Agent 侧调用 `js_eyes_reload_skills` 工具强制 reload 并拿到 diff 摘要；这对"我刚 link 了一个目录，帮我看一下加载情况"这类对话尤其方便。
+
+#### 零重启的**前置条件**与边界
+
+- skill contract 的 **tool name 集合**稳定时零重启；如果新 skill 带来了一个**从未见过的 tool name**，少数 OpenClaw 宿主可能拒绝运行时新增 tool。此时：
+  - 其它变更（替换实现、禁用旧 skill、hot-dispose）仍 0 重启；
+  - `js_eyes_reload_skills` 返回值里会列 `dispatcher-failures: { skillId, toolNames }`；
+  - 届时需要**一次性**重启 OpenClaw 以暴露该新工具。
+- 写 `skill.contract.js`/`package.json` 时的深清：`SkillRegistry` 会递归删除 `skillDir` 下（排除 `node_modules`）的 `require.cache`，保证修改后的代码会被重新 `require`。
+- `pluginCfg.watchConfig = false` 可关闭 host config 监听；`pluginCfg.devWatchSkills = false` 可关闭"改 skill 目录自动 reload"（默认都启用）。
+- 建议在 skill 的 `createRuntime()` 里实现 `async dispose()` 以清理 WebSocket / 定时器：参见 [`examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js`](../../../examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js)。
+
+### 5.4 启动与 CLI 行为
 
 启动时 `openclaw-plugin` 会打印类似：
 
@@ -193,7 +226,7 @@ CLI 侧新增能力：
 - `js-eyes skills verify <id>`：extra 源 skill 输出 `SKIPPED (extra source, no integrity check)`，不判失败。
 - `js-eyes skills enable <id>` / `disable <id>` / `js-eyes skill run <id>`：都按 primary → extras 顺序查找。
 
-### 5.4 注意事项
+### 5.5 注意事项
 
 - extras 里的 skill 必须**自己 `npm install`** 把依赖装好（同部署模式 B）。
 - `skillsEnabled.<id>` 仍然是单键的开关，没有按源维度的独立开关——同 id 只可能对应一个被选中的 skill（primary 优先）。
@@ -250,7 +283,13 @@ js-eyes skills approve js-foo-ops-skill
 
 ### 外部 skillsDir 的 skill
 
-由你自己管理（git / 手动 cp）。没有 `.integrity.json` 就不会有完整性检查，改文件即生效（改完需重启 OpenClaw）。
+由你自己管理（git / 手动 cp）。没有 `.integrity.json` 就不会有完整性检查。改文件后：
+
+- 若 `pluginCfg.devWatchSkills` 为默认 `true`，运行中的主插件会通过 chokidar 自动 `reload()`；
+- 或手动 `js-eyes skills reload`（等价于 `touch config.json`）；
+- 或在 Agent 里调用 `js_eyes_reload_skills` 工具。
+
+三条路径都不需要重启 OpenClaw——除非新增一个**从未注册过的 tool name**（见 §5.3 的"前置条件与边界"）。
 
 ### 仓库内 skill
 

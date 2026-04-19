@@ -120,8 +120,9 @@ describe('skill host state compatibility', () => {
 
     assert.equal(isSkillEnabled({}, 'js-x-ops-skill', legacyState), false);
     assert.equal(isSkillEnabled({}, 'js-youtube-ops-skill', legacyState), true);
-    assert.equal(isSkillEnabled({}, 'js-wechat-ops-skill', legacyState), true);
+    assert.equal(isSkillEnabled({}, 'js-wechat-ops-skill', legacyState), false);
     assert.equal(isSkillEnabled({ skillsEnabled: { 'js-x-ops-skill': true } }, 'js-x-ops-skill', legacyState), true);
+    assert.equal(isSkillEnabled({ skillsEnabled: { 'js-wechat-ops-skill': true } }, 'js-wechat-ops-skill', legacyState), true);
   });
 
   it('discovers local skills and registers tools with duplicate protection', () => {

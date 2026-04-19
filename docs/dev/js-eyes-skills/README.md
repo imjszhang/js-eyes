@@ -36,8 +36,9 @@
 ## 章节索引
 
 1. **[开发指南（authoring.zh.md）](authoring.zh.md)** — 从零建一个 `js-hello-ops-skill`：目录布局、最小契约、对接 `BrowserAutomation`、加 CLI、启用与调试。
-2. **[契约规范（contract.zh.md）](contract.zh.md)** — `skill.contract.js` 顶层字段、`TOOL_DEFINITIONS` schema、`execute` 返回形态、敏感工具与 consent、`.integrity.json` 与完整性校验。
+2. **[契约规范（contract.zh.md）](contract.zh.md)** — `skill.contract.js` 顶层字段、`TOOL_DEFINITIONS` schema、`execute` 返回形态、敏感工具与 consent、`.integrity.json` 与完整性校验、`runtime.dispose()` 钩子。
 3. **[部署与启用（deployment.zh.md）](deployment.zh.md)** — 四种部署模式（仓库内 / 外部 `skillsDir` / ClawHub 注册表 / primary + `extraSkillDirs` 混合），`js-eyes skills enable <id>` 流程，配置优先级。
+4. **[零重启部署（deployment.zh.md §5.3）](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)** — `js-eyes skills link / unlink / reload`、`js_eyes_reload_skills` 工具、`SkillRegistry` + chokidar 的工作原理、边界条件（新 tool name 需要一次重启）。
 
 ## 可运行样例
 

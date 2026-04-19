@@ -1234,12 +1234,72 @@ async function commandSkills(positionals, flags) {
       if (skill.source === 'extra') {
         print(`Source: extra (${skill.sourcePath})`);
       }
-      print('OpenClaw child plugin config updated: no (main js-eyes plugin reads JS Eyes host config)');
-      print('Restart OpenClaw or start a new session for the change to take effect.');
+      print('If the OpenClaw plugin is running, it will hot-reload this change within ~300ms via the config watcher.');
+      print('Otherwise, restart OpenClaw or start a new session for the change to take effect.');
+      return;
+    }
+    case 'link': {
+      const target = positionals[2] || flags.path;
+      if (!target) {
+        throw new Error('用法: `js-eyes skills link <path>`（path 可以指向单个 skill 目录或包含多个 skill 的父目录）');
+      }
+      const absTarget = path.resolve(String(target));
+      if (!fs.existsSync(absTarget)) {
+        throw new Error(`路径不存在: ${absTarget}`);
+      }
+      const stat = fs.statSync(absTarget);
+      if (!stat.isDirectory()) {
+        throw new Error(`路径不是目录: ${absTarget}`);
+      }
+      const existing = Array.isArray(config.extraSkillDirs) ? config.extraSkillDirs.slice() : [];
+      const normalized = existing.map((entry) => path.resolve(String(entry)));
+      if (normalized.includes(absTarget)) {
+        print(`Already linked: ${absTarget}`);
+        return;
+      }
+      existing.push(absTarget);
+      setConfigValue('extraSkillDirs', existing);
+      print(`Linked ${absTarget}`);
+      print('If the OpenClaw plugin is running, it will hot-load new skills within ~300ms via the config watcher.');
+      return;
+    }
+    case 'unlink': {
+      const target = positionals[2] || flags.path;
+      if (!target) {
+        throw new Error('用法: `js-eyes skills unlink <path>`');
+      }
+      const absTarget = path.resolve(String(target));
+      const existing = Array.isArray(config.extraSkillDirs) ? config.extraSkillDirs.slice() : [];
+      const remaining = existing.filter((entry) => path.resolve(String(entry)) !== absTarget);
+      if (remaining.length === existing.length) {
+        print(`Not linked: ${absTarget}`);
+        return;
+      }
+      setConfigValue('extraSkillDirs', remaining);
+      print(`Unlinked ${absTarget}`);
+      print('If the OpenClaw plugin is running, the affected skills will be disposed within ~300ms via the config watcher.');
+      return;
+    }
+    case 'reload': {
+      const configFile = ensureRuntimePaths().configFile;
+      if (!fs.existsSync(configFile)) {
+        // Create an empty (valid) config so the watcher has something to notice.
+        setConfigValue('skillsEnabled', (config && config.skillsEnabled) || {});
+      } else {
+        // Touch mtime to trigger the chokidar watcher without changing content.
+        const now = new Date();
+        try {
+          fs.utimesSync(configFile, now, now);
+        } catch (error) {
+          throw new Error(`无法更新 ${configFile}: ${error.message}`);
+        }
+      }
+      print(`Touched ${configFile}`);
+      print('If the OpenClaw plugin is running, it will reload skills within ~300ms.');
       return;
     }
     default:
-      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>`');
+      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `reload`');
   }
 }
 
@@ -1364,6 +1424,9 @@ function printHelp() {
   print('  js-eyes skills verify [skillId]');
   print('  js-eyes skills enable <skillId>');
   print('  js-eyes skills disable <skillId>');
+  print('  js-eyes skills link <path>        # add an external skill directory (zero-restart)');
+  print('  js-eyes skills unlink <path>      # remove an external skill directory');
+  print('  js-eyes skills reload             # ask the running plugin to reload skills');
   print('  js-eyes skill run <skillId> <command> [args...]');
   print('  js-eyes openclaw plugin-path');
   print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');

@@ -214,20 +214,22 @@ js-eyes skills enable js-foo-ops-skill
 js-eyes config set skillsEnabled.js-foo-ops-skill true
 ```
 
-启用后**重启 OpenClaw 或开新会话**，然后：
+启用后**主插件会自动热加载这个 skill**（[零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）——无需重启 OpenClaw。外部目录的 skill 走 `js-eyes skills link <path>` 一条命令就行（300 ms 内通过 config watcher 触发 `registry.reload()`）。需要重启的只有两种情况：首次把 `openclaw-plugin` 纳入 OpenClaw，或者该 skill 带来了一个从未注册过的 tool name（`js_eyes_reload_skills` 返回里会看到 `failedDispatchers`）。
+
+然后：
 
 ```bash
 openclaw plugins inspect js-eyes   # 看 foo_* 工具是否注册
 openclaw js-eyes status            # 确认服务器与浏览器连接
 ```
 
-Agent 侧调 `foo_get_title` 即可验证工具可用。
+Agent 侧调 `foo_get_title` 即可验证工具可用；也可以先调 `js_eyes_reload_skills`，返回的 `added` / `reloaded` 摘要里应该包含你的 skill id。
 
 ## 8. 调试技巧
 
 | 现象 | 排查 |
 |------|------|
-| `js_eyes_*` 能用，但 `foo_*` 不出现 | 1) `js-eyes skills list` 是否包含 skill；2) 是否 `enable`；3) 是否重启 OpenClaw；4) `tools.alsoAllow` 是否含 `js-eyes`。 |
+| `js_eyes_*` 能用，但 `foo_*` 不出现 | 1) `js-eyes skills list` 是否包含 skill；2) 是否 `enable`；3) `js-eyes skills reload`（或 Agent 调 `js_eyes_reload_skills`）看日志是否 `Hot-loaded skill "..."`、以及返回里 `failedDispatchers` 是否为空；4) `tools.alsoAllow` 是否含 `js-eyes`。若 `failedDispatchers` 非空，是插件启动后 OpenClaw 不接受新 tool name，需要重启一次 OpenClaw 让新工具名登记进去。 |
 | 启动日志 `Refusing to load tampered skill` | 本地开发 **不要**手写 `.integrity.json`。若是从 zip 安装的 skill 想改动，删掉 `.integrity.json` 或重装（见 [contract.zh.md — 完整性校验](contract.zh.md#integrity-与完整性校验)）。 |
 | 工具名冲突，日志 `Skipping tool ... already registered` | 改工具名（建议带技能前缀，如 `foo_`）。 |
 | 调用超时 | 默认 1800 秒；`new BrowserAutomation(url, { defaultTimeout: 秒 })` 或 contract 中调大 `requestTimeout`。 |
@@ -241,7 +243,7 @@ Agent 侧调 `foo_get_title` 即可验证工具可用。
 3. **工具的 `execute` 必须返回 `{ content: [...] }`**。直接 `return data` 会被 OpenClaw 当成非法响应。用 `runtime.textResult` / `jsonResult` 最稳。
 4. **`require('../../packages/...')` 不要用**。skill 要能独立分发，全部走 `@js-eyes/*` npm 包（已发布到 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)）或自包含 `lib/js-eyes-client.js` 的约定。
 5. **`@js-eyes/skill-recording` 可按需引入**。简单 skill 不用；要做跨会话缓存 / debug bundle 再加。
-6. **改完 `skill.contract.js` 必须重启 OpenClaw**。插件代码被 Node require cache 持有，改文件不会热更新。
+6. **改完 `skill.contract.js` 可以零重启生效**。`SkillRegistry` 会在 reload 时递归清理该 skill 目录下的 `require.cache`（排除 `node_modules`）并重新 `require` contract；触发方式见 [deployment.zh.md §5.3](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)。只有改到 `openclaw-plugin/` 自身的代码才需要重启 OpenClaw。
 7. **新版本的 `version` 字段**要同步改 `package.json.version`、`SKILL.md` frontmatter `version`、`skill.contract.js` 导出的 `version`（后者其实读的是 `pkg.version`，省心做法就是只改 `package.json`）。
 
 ## 10. 让别人通过 `extraSkillDirs` 纳入你的外部 skill

@@ -163,7 +163,8 @@ After the base plugin works:
 - Use `js_eyes_install_skill` to stage a **plan** — 2.2.0+ downloads the bundle, verifies its `sha256` against `skills.json`, and writes `runtime/pending-skills/<id>.json` without installing.
 - Finalize the plan with `js-eyes skills approve <id>`, then enable it with `js-eyes skills enable <id>`.
 - Use `js-eyes skills verify` (or `js-eyes doctor`) to confirm `.integrity.json` still matches the on-disk skill files.
-- Tell the user that newly installed/approved extension skills usually require an OpenClaw restart or a new session before their tools appear because the main `js-eyes` plugin discovers them on startup.
+- Since 2026-04-19 the main plugin **hot-loads** newly enabled or linked skills (and hot-disposes disabled ones) via `SkillRegistry` + a chokidar watcher on the host config — no OpenClaw restart needed. For external custom skills, prefer `js-eyes skills link <abs-path>` / `js-eyes skills unlink <abs-path>`; to force a refresh, call `js-eyes skills reload` or have the agent invoke the `js_eyes_reload_skills` tool (it returns an `added` / `removed` / `reloaded` / `toggledOff` / `conflicts` / `failedDispatchers` diff).
+- Recommend an OpenClaw restart only when `js_eyes_reload_skills` reports non-empty `failedDispatchers` — that means the host refused to register a brand-new tool name at runtime, which a restart will resolve. Everything else (install, enable, disable, replace, unlink) is zero-restart.
 
 Do not instruct the user to register child-skill plugin paths manually. Child skills no longer ship their own `openclaw-plugin` wrappers.
 

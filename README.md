@@ -444,7 +444,7 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
-**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID. It downloads, extracts, installs dependencies, enables the skill in the JS Eyes host config, and the main plugin loads it after an OpenClaw restart or a new session.
+**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID. It downloads, extracts, installs dependencies, and enables the skill in the JS Eyes host config. Since 2026-04-19 the main plugin **hot-loads** the skill via `SkillRegistry` + chokidar within ~300 ms — no OpenClaw restart needed unless the skill introduces a brand-new tool name (see [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)).
 
 **Via the js-eyes CLI:**
 
@@ -454,7 +454,7 @@ js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
-**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, ensure the skill is enabled in the JS Eyes host config, then restart OpenClaw or open a new session.
+**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, then `js-eyes skills enable js-x-ops-skill`. A running OpenClaw + `js-eyes` plugin will hot-load the skill via the config watcher; call `js-eyes skills reload` (or Agent tool `js_eyes_reload_skills`) to force a reload. An OpenClaw restart is only required for brand-new tool names the host has never registered before.
 
 ### Authoring your own JS Eyes Skill
 
@@ -462,6 +462,8 @@ Custom skills don't have to live inside this repository. Two ways to hook them i
 
 - Point `skillsDir` at the parent folder that contains your skills (js-eyes takes full lifecycle ownership — `install` / `approve` / `verify` all act on this dir).
 - Keep the default `skillsDir` and add individual skill folders (or parent folders) to `extraSkillDirs`. Extras are **read-only**: they're discovered and their tools are registered, but js-eyes never mutates them.
+
+The fastest path for an external custom skill is **zero-restart**: `js-eyes skills link /abs/path/to/my-skill` appends the directory to `extraSkillDirs` and triggers an in-memory `registry.reload()` on the running plugin. `js-eyes skills unlink <path>` / `js-eyes skills reload` (and the `js_eyes_reload_skills` Agent tool) cover the rest of the lifecycle. See [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐).
 
 See:
 
@@ -527,7 +529,7 @@ Use this checklist after a fresh ClawHub install:
 5. Install the browser extension, connect it to `http://localhost:18080`, then run `openclaw js-eyes tabs`
 6. Ask the agent to call `js_eyes_get_tabs`
 7. Ask the agent to call `js_eyes_discover_skills`
-8. Install one child skill with `js_eyes_install_skill`, restart OpenClaw or open a new session, and confirm the new tools are auto-loaded by the main plugin
+8. Install one child skill with `js_eyes_install_skill` (or `js-eyes skills link <path>` for external skills). The main plugin hot-reloads within ~300 ms via the config watcher; confirm via `js_eyes_reload_skills` or the `Hot-loaded skill` / `added` entries in the gateway logs. Restart OpenClaw only if `failedDispatchers` reports a brand-new tool name the host refused to register at runtime.
 
 ## Troubleshooting
 

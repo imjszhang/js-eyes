@@ -391,7 +391,7 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
 
-**通过 AI Agent：** Agent 调用 `js_eyes_install_skill`，传入技能 ID — 自动下载、解压、安装依赖，并在 `js-eyes` 宿主配置中启用该技能。重启 OpenClaw 或开启新会话后，主插件会自动加载它。
+**通过 AI Agent：** Agent 调用 `js_eyes_install_skill`，传入技能 ID — 自动下载、解压、安装依赖，并在 `js-eyes` 宿主配置中启用该技能。自 2026-04-19 起，运行中的主插件会通过 `SkillRegistry` + chokidar 在 ~300 ms 内**零重启热加载**该技能，无需重启 OpenClaw；仅当技能带来了一个从未注册过的 tool name 时才需要重启一次（详见 [deployment.zh.md §5.3](dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）。
 
 **通过 js-eyes CLI：**
 
@@ -401,7 +401,7 @@ js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
-**手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`。随后确保该技能在 `js-eyes` 宿主配置中处于启用状态，重启 OpenClaw 或开启新会话即可。
+**手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`，随后 `js-eyes skills enable js-x-ops-skill`。运行中的主插件会通过 config watcher 自动热加载；也可显式 `js-eyes skills reload` 或让 Agent 调 `js_eyes_reload_skills`。仅在宿主拒绝注册新 tool name（少见）时才需要重启 OpenClaw 一次。
 
 ### 开发自定义 JS Eyes Skills
 
@@ -409,6 +409,8 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 - 把 `skillsDir` 指到你存放技能的父目录（js-eyes 完全接管生命周期，`install` / `approve` / `verify` 都作用于它）。
 - 保留默认 `skillsDir`，把额外的技能目录（或父目录）加进 `extraSkillDirs`。extras 是**只读**的：被发现并注册工具，但 js-eyes 不改动它下面的文件、也不跑完整性校验。
+
+对外部 extras 推荐**零重启**路径：`js-eyes skills link /abs/path/to/my-skill` 会去重追加到 `extraSkillDirs` 并在 ~300 ms 内触发运行中插件的 `registry.reload()`；解除用 `js-eyes skills unlink <path>`，强制触发用 `js-eyes skills reload`；Agent 侧还可以调 `js_eyes_reload_skills` 工具拿到 diff 摘要（added / removed / reloaded / toggledOff / conflicts / failedDispatchers）。
 
 开发者文档与样例：
 
@@ -474,7 +476,7 @@ npm run bump -- 2.4.0
 5. 安装浏览器扩展，连接到 `http://localhost:18080`，然后执行 `openclaw js-eyes tabs`
 6. 让 Agent 调用 `js_eyes_get_tabs`
 7. 让 Agent 调用 `js_eyes_discover_skills`
-8. 用 `js_eyes_install_skill` 安装一个子技能，重启 OpenClaw 或开启新会话，并确认该子技能工具已由主插件自动加载
+8. 用 `js_eyes_install_skill` 安装一个子技能（或用 `js-eyes skills link <path>` 接入外部技能）。主插件会在 ~300 ms 内通过 config watcher 热加载；可用 `js_eyes_reload_skills` 确认（或在 gateway 日志里找 `Hot-loaded skill` / `added` 记录）。仅当 `failedDispatchers` 提示宿主拒绝注册新 tool name 时才需要重启 OpenClaw。
 
 ## 故障排除
 

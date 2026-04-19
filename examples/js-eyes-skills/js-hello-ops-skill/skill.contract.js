@@ -37,6 +37,14 @@ function createRuntime(config = {}, logger) {
     jsonResult(value) {
       return this.textResult(JSON.stringify(value, null, 2));
     },
+    // Invoked by SkillRegistry when this skill is hot-unloaded (dir unlinked,
+    // toggled off, or reloaded). Keep it idempotent and fast.
+    async dispose() {
+      if (bot) {
+        try { bot.disconnect(); } catch (_) {}
+        bot = null;
+      }
+    },
   };
 }
 

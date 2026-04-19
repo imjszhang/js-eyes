@@ -225,17 +225,26 @@ js-eyes doctor                     # 安全 + 完整性体检一次出
 - 启动时会在日志里看到 `[js-eyes] Skipping integrity check for extra skill "<id>" at <path>`；
 - `js-eyes skills verify <id>` 对 extra 源输出 `SKIPPED (extra source, no integrity check)`；
 - `js-eyes skills install / approve <id>` 会直接拒绝并报错——生命周期由外部来源自己负责。
-- 改动文件即生效（重启 OpenClaw 后）。需要强完整性约束的 skill 请放回 primary `skillsDir` 下。
+- 改动文件即生效：`SkillRegistry` 会通过 chokidar 监听（或 `js-eyes skills reload` / `js_eyes_reload_skills`）热重载 contract，`require.cache` 会被深清，**不需要重启 OpenClaw**。详见 [deployment.zh.md §5.3 零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)。需要强完整性约束的 skill 请放回 primary `skillsDir` 下。
 
 ## 6. 工具执行时的上下文
 
-`createOpenClawAdapter` 返回的 `runtime` 是**共享状态**：主插件在整个进程生命周期里只实例化一次，随后每次工具调用复用同一份 `runtime`。意味着：
+`createOpenClawAdapter` 返回的 `runtime` 是**共享状态**：每个 skill 在单次加载生命周期内只实例化一次，随后同一 skill 的所有工具调用复用同一份 `runtime`。意味着：
 
 - `BrowserAutomation` 连接是长连接，首次 `ensureBot()` 建立 WS，之后复用。
 - 如果要持久化跨调用的状态（缓存、cookie jar、访问计数），挂到 `runtime` 上即可。
 - 注意并发：工具调用可能并行到来，写入 runtime 时要考虑并发安全。
 
-`dispose()` 方法不是必需的，但推荐实现——便于未来主插件 stop 时清理连接。
+### `runtime.dispose()`（零重启生命周期钩子）
+
+从零重启部署开始（见 [deployment.zh.md §5.3](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)），`dispose()` 不再只是 "主插件 stop 时收尾"，而是 `SkillRegistry` 在**以下场景**会调用的主动清理钩子：
+
+- `js-eyes skills unlink <path>` / 从 `extraSkillDirs` 移除该 skill；
+- `js-eyes skills disable <id>`；
+- 代码热替换（hot reload）前的旧实例；
+- 主插件 stop / 进程退出。
+
+因此强烈建议：凡是持有 WebSocket / HTTP agent / 文件句柄 / 定时器的 skill，都实现 `async dispose()` 关闭这些资源。推荐样板见 [`examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js`](../../../examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js)。实现得好，热替换期间不会出现"旧 runtime 还在偷偷发请求"的泄漏现象；抛错也只会被 warn 记录，不会阻塞 reload。
 
 ## 7. 从 `package.json` 映射的字段
 

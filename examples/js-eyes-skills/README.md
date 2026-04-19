@@ -62,19 +62,49 @@ npm install
 }
 ```
 
-> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并注册工具；改文件后重启 OpenClaw 即生效。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
+> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并注册工具。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
 
-### 4. 启用与调用
+### 4. 启用与调用（零重启路径推荐）
 
 ```bash
-# 首次发现默认禁用
-js-eyes skills enable js-hello-ops-skill
+# 零重启：把外部目录接入当前主机并自动启用
+js-eyes skills link ~/my-skills/js-hello-ops-skill
 
-# 重启 OpenClaw（或开新会话）后，Agent 应能看到 hello_get_title 工具
+# 已在运行的 OpenClaw 会在 ~300ms 内通过 config 监听器热加载这个技能
+# 对应的 js_eyes_reload_skills 工具也能主动驱动 reload 并拿到 diff 摘要
 
 # 也可以直接用 CLI 跑
 node ~/my-skills/js-hello-ops-skill/index.js title 123
+
+# 如果未来要临时停掉该 skill
+js-eyes skills disable js-hello-ops-skill   # 立即热卸载
+js-eyes skills unlink ~/my-skills/js-hello-ops-skill  # 从 extraSkillDirs 移除
 ```
+
+### 4.1 在你的 skill 里实现 `runtime.dispose()`
+
+热卸载/热替换时，`SkillRegistry` 会调用 `runtime.dispose()` 清理长连接。建议模板：
+
+```js
+function createRuntime(config = {}, logger) {
+  let bot = null;
+  return {
+    ensureBot() {
+      if (!bot) bot = new BrowserAutomation(serverUrl, { logger });
+      return bot;
+    },
+    async dispose() {
+      if (bot) {
+        try { bot.disconnect(); } catch {}
+        bot = null;
+      }
+    },
+  };
+}
+```
+
+参考 [`js-hello-ops-skill/skill.contract.js`](js-hello-ops-skill/skill.contract.js)。
+
 
 完整指南见 [docs/dev/js-eyes-skills/authoring.zh.md](../../docs/dev/js-eyes-skills/authoring.zh.md)。
 
