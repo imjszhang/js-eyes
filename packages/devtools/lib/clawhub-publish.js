@@ -11,7 +11,7 @@
  * 临时登录；都不具备时抛错由上层决定是否跳过。
  */
 
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -39,23 +39,23 @@ function runClawhub(args, { allowFailure = false } = {}) {
 }
 
 function whoami() {
-  try {
-    const output = execFileSync('clawhub', ['whoami'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    // clawhub v0.9.0+: "✔ imjszhang" (no @, optional spinner prefix).
-    // clawhub legacy:  "✔ OK. Logged in as @imjszhang."
-    // Strip ANSI so spinner libs don't confuse the regex.
-    const clean = output.replace(/\u001b\[[0-9;]*m/g, '');
-    const match =
-      clean.match(/✔\s+OK\.\s+Logged in as @([\w-]+)/) ||
-      clean.match(/@([\w-]+)/) ||
-      clean.match(/✔\s+([\w-]+)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
+  // clawhub CLI writes the spinner and the "✔ <handle>" result line to STDERR,
+  // not stdout. We must inspect both streams to detect a logged-in session.
+  const result = spawnSync('clawhub', ['whoami'], {
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0) return null;
+  const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
+  // Strip ANSI so spinner libs don't confuse the regex.
+  const clean = combined.replace(/\u001b\[[0-9;]*m/g, '');
+  // clawhub v0.9.0+: "✔ imjszhang" (no @, optional spinner prefix).
+  // clawhub legacy:  "✔ OK. Logged in as @imjszhang."
+  const match =
+    clean.match(/✔\s+OK\.\s+Logged in as @([\w-]+)/) ||
+    clean.match(/@([\w-]+)/) ||
+    clean.match(/✔\s+([\w-]+)/);
+  return match ? match[1] : null;
 }
 
 function ensureLoggedIn() {
