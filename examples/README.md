@@ -16,7 +16,7 @@
 - 被 `js-eyes skills list` 列出来、默认禁用、触发"first-run disable"警告；
 - 被打包脚本误带进发布 artifact。
 
-因此样例一律放 `examples/`，拷贝到自己的工作目录（或外部 `skillsDir`）后再启用。
+因此样例一律放 `examples/`，拷贝到自己的工作目录后再通过 `skillsDir`（primary）或 `extraSkillDirs`（只读 extras）接入 js-eyes。
 
 ## 快速开始（以 `js-hello-ops-skill` 为例）
 
@@ -24,13 +24,40 @@
 cp -R examples/js-eyes-skills/js-hello-ops-skill ~/my-skills/
 cd ~/my-skills/js-hello-ops-skill
 npm install
+```
 
-# 在 OpenClaw 配置里把 js-eyes 插件的 skillsDir 指向 ~/my-skills/
-# ~/.openclaw/openclaw.json:
-#   plugins.entries["js-eyes"].config.skillsDir = "/Users/you/my-skills"
+两种接入方式任选：
 
+### A. 把它作为 primary `skillsDir`
+
+```jsonc
+// ~/.openclaw/openclaw.json
+"plugins": { "entries": { "js-eyes": { "enabled": true, "config": {
+  "skillsDir": "/Users/you/my-skills"
+} } } }
+```
+
+`js-eyes skills install/approve/verify` 都会作用在这里。
+
+### B. 保留默认 `skills/`，用 `extraSkillDirs` 加挂
+
+```jsonc
+// ~/.openclaw/openclaw.json
+"plugins": { "entries": { "js-eyes": { "enabled": true, "config": {
+  "extraSkillDirs": [
+    "/Users/you/my-skills/js-hello-ops-skill"
+    // 父目录写法（会扫 1 层子目录）：
+    // "/Users/you/my-skills"
+  ]
+} } } }
+```
+
+`extraSkillDirs` 里的 skill 只被发现、不被 js-eyes 接管生命周期（`install` / `approve` / `verify` 对它们是拒绝的）。
+
+两种方式都需要最后一步：
+
+```bash
 js-eyes skills enable js-hello-ops-skill
-
 # 重启 OpenClaw 或开新会话后，hello_get_title 工具可见
 ```
 

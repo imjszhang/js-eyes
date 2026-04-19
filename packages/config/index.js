@@ -31,6 +31,7 @@ const DEFAULT_CONFIG = {
   autoStartServer: true,
   skillsRegistryUrl: SKILLS_REGISTRY_URL,
   skillsDir: '',
+  extraSkillDirs: [],
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
@@ -106,12 +107,39 @@ function mergeSecurityConfig(...configs) {
   }, base);
 }
 
+function normalizeExtraSkillDirs(value) {
+  if (value == null) return [];
+  let list;
+  if (typeof value === 'string') {
+    list = value.trim() ? [value] : [];
+  } else if (Array.isArray(value)) {
+    list = value;
+  } else {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('[js-eyes/config] extraSkillDirs 必须是字符串数组，已忽略：', value);
+    }
+    return [];
+  }
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 function normalizeConfig(config = {}) {
   return {
     ...clone(DEFAULT_CONFIG),
     ...(config || {}),
     recording: mergeRecordingConfig(config.recording),
     security: mergeSecurityConfig(config.security),
+    extraSkillDirs: normalizeExtraSkillDirs(config ? config.extraSkillDirs : undefined),
   };
 }
 

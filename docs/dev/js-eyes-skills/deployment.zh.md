@@ -1,6 +1,6 @@
 # JS Eyes Skills 部署与启用（中文）
 
-> 写完一个 skill 后，三种部署模式任选；启用流程统一走 `js-eyes skills enable`。
+> 写完一个 skill 后，四种部署模式任选（A 仓库内 / B 外部 `skillsDir` / C ClawHub 注册表 / D primary + `extraSkillDirs` 混合）；启用流程统一走 `js-eyes skills enable`。
 > 编写 skill 看 [authoring.zh.md](authoring.zh.md)；契约细节看 [contract.zh.md](contract.zh.md)。
 
 ## 1. skillsDir 解析优先级
@@ -18,7 +18,8 @@ const skillsDir = pluginCfg.skillsDir
 1. OpenClaw `plugins.entries["js-eyes"].config.skillsDir`（绝对路径，推荐）；
 2. `SKILL_ROOT/skills`（`SKILL_ROOT` = 插件目录上溯能找到 `skills/` 的位置，即 ClawHub bundle 根 / git 仓库根）。
 
-**只接受单个目录**。要集中管理多个来源的 skill，请把它们统一挪进同一个目录，或用软链。
+`skillsDir` 只指向**一个 primary 目录**（所有 `install` / `approve` / `uninstall` / 完整性校验都作用在它上面）。
+如果还想把**其他目录**下的 skill 一起纳入（不让 js-eyes 接管其生命周期、只做发现），用 `extraSkillDirs`：见下面[部署模式 D：primary + extraSkillDirs](#5-部署模式-dprimary--extraskilldirs)。
 
 ## 2. 部署模式 A：仓库内开发
 
@@ -134,7 +135,71 @@ js-eyes skills enable  js-x-ops-skill
 
 官方注册表格式看 [`docs/skills.json`](../../skills.json)；完整打包/发布细节后续会有专门文档（`distribution.zh.md`，待编写）。
 
-## 5. 启用流程（共同部分）
+## 5. 部署模式 D：primary + extraSkillDirs
+
+> 适合：保留默认 `skills/` 不动，同时把若干外部私有 skill 目录纳入发现范围。
+
+### 5.1 语义
+
+- `skillsDir` 仍然是 **primary**：`install` / `approve` / `uninstall` / `.integrity.json` 校验只作用于它。
+- `extraSkillDirs` 是 **extras**：js-eyes 只负责发现和注册，不接管生命周期（不做完整性校验、不改它目录下的文件）。
+- 每个 extra 条目自动判定：
+  - 自身含 `skill.contract.js` → 视作**单个 skill 目录**；
+  - 否则 → 视作**父目录**，只扫 1 层子目录（与 primary 相同规则）。
+- 同 id 多源命中时 **primary 优先**；extras 里的重名 skill 会被跳过并在启动日志打 warn。
+- 忽略不存在 / 非目录条目，启动日志会列出被忽略的路径。
+- 支持 symlink-to-directory（用软链把分散的 skill 聚合到一个目录也行）。
+
+### 5.2 配置示例
+
+```jsonc
+// ~/.openclaw/openclaw.json
+{
+  "plugins": {
+    "entries": {
+      "js-eyes": {
+        "enabled": true,
+        "config": {
+          // primary 保持默认（SKILL_ROOT/skills），不用写；如需显式覆盖再填
+          // "skillsDir": "/abs/primary",
+          "extraSkillDirs": [
+            "/Volumes/home_x/github/my/js-mastodon-ops-skill",
+            "/Users/you/work/company-private-skills"
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+上例第一条是单个 skill 目录，第二条是父目录。
+
+### 5.3 启动与 CLI 行为
+
+启动时 `openclaw-plugin` 会打印类似：
+
+```
+[js-eyes] Skill sources: primary=/abs/primary extras=2
+[js-eyes] Discovered 5 skill(s): 3 from primary, 2 from extras
+[js-eyes] Skipping integrity check for extra skill "js-foo-ops-skill" at /Users/you/work/company-private-skills/js-foo-ops-skill
+```
+
+CLI 侧新增能力：
+
+- `js-eyes status` 分别列 primary 与 extras 的路径、kind、skill 数量。
+- `js-eyes skills list` 每个 skill 末尾追加 `Source: primary` 或 `Source: extra (<path>)`；加 `--json` 输出结构化 payload（含 `primary` / `extras` / `skills[].source` / `skills[].sourcePath` / `conflicts`）。
+- `js-eyes skills install <id>` / `approve <id>`：如果该 id 来自 extra 源，直接报错退出——extras 只读。
+- `js-eyes skills verify <id>`：extra 源 skill 输出 `SKIPPED (extra source, no integrity check)`，不判失败。
+- `js-eyes skills enable <id>` / `disable <id>` / `js-eyes skill run <id>`：都按 primary → extras 顺序查找。
+
+### 5.4 注意事项
+
+- extras 里的 skill 必须**自己 `npm install`** 把依赖装好（同部署模式 B）。
+- `skillsEnabled.<id>` 仍然是单键的开关，没有按源维度的独立开关——同 id 只可能对应一个被选中的 skill（primary 优先）。
+- 生产环境如果需要强制校验外部 skill，可以自行把它们挪进 primary 并跑一遍 `install`。
+
+## 6. 启用流程（共同部分）
 
 无论哪种部署模式，skill 第一次被主插件扫到时：
 
@@ -159,7 +224,7 @@ js-eyes skills verify            # 校验完整性
 }
 ```
 
-## 6. OpenClaw 工具暴露
+## 7. OpenClaw 工具暴露
 
 启用只是第一步，工具真正被模型看到还需要：
 
@@ -171,7 +236,7 @@ js-eyes skills verify            # 校验完整性
 
 少一项都会出现 "工具没出现" 的症状。排查顺序参考 [authoring.zh.md — 调试技巧](authoring.zh.md#8-调试技巧)。
 
-## 7. 升级与回滚
+## 8. 升级与回滚
 
 ### 通过 CLI 安装的 skill（有 `.integrity.json`）
 
@@ -191,7 +256,7 @@ js-eyes skills approve js-foo-ops-skill
 
 走 git 版本管理。
 
-## 8. 故障排除
+## 9. 故障排除
 
 | 现象 | 最可能的原因 | 处理 |
 |------|------------|------|
@@ -203,7 +268,7 @@ js-eyes skills approve js-foo-ops-skill
 | 工具出现但一调就超时 | 浏览器扩展未连接 / token 不匹配 | `openclaw js-eyes status`、`js-eyes audit tail` 看 `conn.reject` |
 | 并发调用之间互相影响 | skill 的 `runtime` 被多个工具共享 | 把并发敏感状态搬到 `execute` 局部 |
 
-## 9. 快速决策表
+## 10. 快速决策表
 
 | 场景 | 建议模式 |
 |------|---------|
@@ -212,7 +277,9 @@ js-eyes skills approve js-foo-ops-skill
 | 团队内部共享、闭源 | B（外部 skillsDir，放私有 git） |
 | 面向公众发布、想进注册表 | C（ClawHub 注册表） |
 | 紧急线上修一个 bug | B（改外部 skill，不动 js-eyes 仓库） |
+| 默认 `skills/` 不动，又想加一两个外部 skill | D（primary + extraSkillDirs） |
+| 同时维护多个分散目录 / 需要软链聚合 | D（primary + extraSkillDirs） |
 
 ---
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19

@@ -29,7 +29,7 @@ A successful setup has all of the following:
 4. `tools.alsoAllow` (preferred) or `tools.allow` includes `js-eyes`, so the plugin's optional tools are actually exposed to the model.
 5. The user can run `openclaw js-eyes status`.
 6. The browser extension is connected to `http://<serverHost>:<serverPort>`, the popup **Server Token** field is populated (2.2.0+), and `js_eyes_get_tabs` returns real tabs.
-7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir`.
+7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir` (primary), plus any read-only directories listed in `extraSkillDirs` (extras).
 8. `js-eyes doctor` reports a clean security posture (token present, `allowAnonymous=false`, `allowRawEval=false`, host bound to loopback, skill integrity OK).
 
 ## Deployment Modes

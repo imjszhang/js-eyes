@@ -386,7 +386,8 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | `autoStartServer` | boolean | `true` | Auto-start server when plugin loads |
 | `requestTimeout` | number | `1800` | Request timeout in seconds (default 30 minutes; server reads this value on startup) |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | URL of the extension skill registry |
-| `skillsDir` | string | `""` | Skill install directory (empty = auto-detect `skills/` under skill root) |
+| `skillsDir` | string | `""` | Primary skill install directory — empty = auto-detect `skills/` under skill root. All `install` / `approve` / `uninstall` / integrity checks target this directory only. |
+| `extraSkillDirs` | string[] | `[]` | Additional read-only skill sources. Each entry can be a single skill directory (contains `skill.contract.js`) or a parent directory (scanned 1 level deep). Primary wins on id conflicts; extras skip integrity checks. See [deployment mode D](./docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs). |
 
 ## Compatibility Matrix
 
@@ -457,7 +458,12 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 
 ### Authoring your own JS Eyes Skill
 
-Custom skills don't have to live inside this repository — drop them anywhere and point `skillsDir` at their parent folder. See:
+Custom skills don't have to live inside this repository. Two ways to hook them in:
+
+- Point `skillsDir` at the parent folder that contains your skills (js-eyes takes full lifecycle ownership — `install` / `approve` / `verify` all act on this dir).
+- Keep the default `skillsDir` and add individual skill folders (or parent folders) to `extraSkillDirs`. Extras are **read-only**: they're discovered and their tools are registered, but js-eyes never mutates them.
+
+See:
 
 - [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring guide, `skill.contract.js` reference, deployment modes (Chinese first).
 - [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).

@@ -48,6 +48,7 @@ const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecuri
 const {
   applySkillInstall,
   discoverLocalSkills,
+  discoverSkillsFromSources,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
   isSkillEnabled,
@@ -55,6 +56,7 @@ const {
   planSkillInstall,
   readSkillIntegrity,
   registerOpenClawTools,
+  resolveSkillSources,
   verifySkillIntegrity,
 } = require("../packages/protocol/skills");
 const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
@@ -117,10 +119,34 @@ function resolvePluginEntry(definition) {
   return definition.register;
 }
 
-function registerLocalSkills(api, skillsDir, pluginConfig, helpers = {}) {
-  const localSkills = discoverLocalSkills(skillsDir);
+function registerLocalSkills(api, sources, pluginConfig, helpers = {}) {
+  const primary = sources && sources.primary ? sources.primary : '';
+  const extras = sources && Array.isArray(sources.extras) ? sources.extras : [];
+
+  api.logger.info(
+    `[js-eyes] Skill sources: primary=${primary || '(none)'} extras=${extras.length}`,
+  );
+  for (const invalid of (sources && sources.invalid) || []) {
+    api.logger.warn(`[js-eyes] Ignoring extra skill dir "${invalid.path}" (${invalid.reason})`);
+  }
+
+  const { skills: localSkills, conflicts } = discoverSkillsFromSources(sources, {
+    onConflict: ({ id, winner, loser }) => {
+      api.logger.warn(
+        `[js-eyes] Skipped extra skill "${id}" at ${loser.path} (conflicts with ${winner.source} at ${winner.path})`,
+      );
+    },
+  });
+
+  const primaryCount = localSkills.filter((s) => s.source === 'primary').length;
+  const extraCount = localSkills.length - primaryCount;
+  api.logger.info(
+    `[js-eyes] Discovered ${localSkills.length} skill(s): ${primaryCount} from primary, ${extraCount} from extras`
+    + (conflicts.length > 0 ? `, ${conflicts.length} conflict(s) resolved` : ''),
+  );
+
   if (localSkills.length === 0) {
-    api.logger.info(`[js-eyes] No local skills found in ${skillsDir}`);
+    api.logger.info(`[js-eyes] No local skills found in primary or extras`);
     return;
   }
 
@@ -155,17 +181,23 @@ function registerLocalSkills(api, skillsDir, pluginConfig, helpers = {}) {
       continue;
     }
 
-    const integrity = verifySkillIntegrity(skill.skillDir);
-    if (integrity.hasIntegrity && !integrity.ok) {
-      api.logger.warn(
-        `[js-eyes] Refusing to load tampered skill "${skill.id}": ${integrity.mismatches.length} mismatched, ${integrity.missing.length} missing`,
+    if (skill.source === 'extra') {
+      api.logger.info(
+        `[js-eyes] Skipping integrity check for extra skill "${skill.id}" at ${skill.skillDir}`,
       );
-      continue;
-    }
-    if (!integrity.hasIntegrity) {
-      api.logger.warn(
-        `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy install); load allowed but consider reinstalling`,
-      );
+    } else {
+      const integrity = verifySkillIntegrity(skill.skillDir);
+      if (integrity.hasIntegrity && !integrity.ok) {
+        api.logger.warn(
+          `[js-eyes] Refusing to load tampered skill "${skill.id}": ${integrity.mismatches.length} mismatched, ${integrity.missing.length} missing`,
+        );
+        continue;
+      }
+      if (!integrity.hasIntegrity) {
+        api.logger.warn(
+          `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy install); load allowed but consider reinstalling`,
+        );
+      }
     }
 
     try {
@@ -210,6 +242,10 @@ function register(api) {
   const skillsDir = pluginCfg.skillsDir
     ? nodePath.resolve(pluginCfg.skillsDir)
     : nodePath.join(SKILL_ROOT, "skills");
+  const skillSources = resolveSkillSources({
+    primary: skillsDir,
+    extras: Array.isArray(pluginCfg.extraSkillDirs) ? pluginCfg.extraSkillDirs : [],
+  });
 
   const runtimePaths = ensureRuntimePaths();
   const hostConfig = loadConfig();
@@ -690,7 +726,9 @@ function register(api) {
         const url = params.registryUrl || skillsRegistryUrl;
         try {
           const registry = await fetchSkillsRegistry(url);
-          const installedSkills = new Set(discoverLocalSkills(skillsDir).map((skill) => skill.id));
+          const installedSkills = new Set(
+            discoverSkillsFromSources(skillSources).skills.map((skill) => skill.id),
+          );
 
           if (!registry.skills || registry.skills.length === 0) {
             return textResult("当前没有可用的扩展技能。");
@@ -791,7 +829,7 @@ function register(api) {
     { optional: true },
   );
 
-  registerLocalSkills(api, skillsDir, pluginCfg, { wrapSensitiveTool });
+  registerLocalSkills(api, skillSources, pluginCfg, { wrapSensitiveTool });
 
   api.registerCli(
     ({ program }) => {

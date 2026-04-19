@@ -32,9 +32,9 @@ my-skill/
     └── api.js                # 你的业务函数（纯函数、不做 I/O）
 ```
 
-识别判据（见 [`packages/protocol/skills.js`](../../../packages/protocol/skills.js) `discoverLocalSkills`）：
+识别判据（见 [`packages/protocol/skills.js`](../../../packages/protocol/skills.js) `discoverLocalSkills` / `discoverSkillsFromSources`）：
 
-1. 目录是 `skillsDir` 的直接子目录；
+1. 目录是 `skillsDir`（primary）或 `extraSkillDirs`（extras）下的直接子目录；或者是 `extraSkillDirs` 里**自身就是 skill 目录**的条目（含 `skill.contract.js`）；
 2. 目录里有 `skill.contract.js`。
 
 没有 `skill.contract.js` 的目录会被忽略（例如 `skills/js-eyes/` 就是这种"纯文档 skill"，仅给 ClawHub 展示用）。
@@ -244,7 +244,35 @@ Agent 侧调 `foo_get_title` 即可验证工具可用。
 6. **改完 `skill.contract.js` 必须重启 OpenClaw**。插件代码被 Node require cache 持有，改文件不会热更新。
 7. **新版本的 `version` 字段**要同步改 `package.json.version`、`SKILL.md` frontmatter `version`、`skill.contract.js` 导出的 `version`（后者其实读的是 `pkg.version`，省心做法就是只改 `package.json`）。
 
-## 10. 接下来
+## 10. 让别人通过 `extraSkillDirs` 纳入你的外部 skill
+
+如果你把 skill 维护在仓库外（单独的 git repo / 本地目录），用户不想动 `skillsDir` 就能接入，只要在 OpenClaw 配置里加：
+
+```jsonc
+"plugins": {
+  "entries": {
+    "js-eyes": {
+      "enabled": true,
+      "config": {
+        "extraSkillDirs": [
+          "/abs/path/to/your-skill-dir"   // 可以是单个 skill 根，也可以是父目录
+        ]
+      }
+    }
+  }
+}
+```
+
+作为 skill 作者，只需要保证：
+
+1. 目录根含 `skill.contract.js` + `package.json`（单 skill 模式），或者是一个父目录、里面每个子目录自成一个 skill（父目录模式）；哪种由 js-eyes 自动识别。
+2. README 写清楚用户要 `cd <your-skill-dir> && npm install`。
+3. 和 primary 里的 skill `id` 不要撞名——撞名时 primary 优先，你的 skill 会在启动日志里被跳过。
+4. extras 不受 `.integrity.json` 完整性校验约束（js-eyes 只读不接管），因此**你自己要对源码可信度负责**。
+
+详细语义看 [deployment.zh.md — 部署模式 D：primary + extraSkillDirs](deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
+
+## 11. 接下来
 
 - 看 [contract.zh.md](contract.zh.md) 学清楚每个契约字段能做什么。
 - 看 [deployment.zh.md](deployment.zh.md) 决定用哪种部署模式、准备发布到 ClawHub 注册表。
@@ -252,4 +280,4 @@ Agent 侧调 `foo_get_title` 即可验证工具可用。
 
 ---
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19

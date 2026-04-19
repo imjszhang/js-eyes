@@ -5,7 +5,7 @@
 
 契约的加载位点：
 
-- 发现：[`packages/protocol/skills.js`](../../../packages/protocol/skills.js) 的 `discoverLocalSkills(skillsDir)` 扫描子目录；
+- 发现：[`packages/protocol/skills.js`](../../../packages/protocol/skills.js) 的 `discoverLocalSkills(skillsDir)` 扫描 primary 子目录；若 openclaw-plugin 配了 `extraSkillDirs`，由 `discoverSkillsFromSources()` 统一合并 primary + extras（primary 优先，extras 只读，不做完整性校验）；
 - 载入：同文件 `loadSkillContract(skillDir)` 通过 `require` 加载；
 - 注册：[`openclaw-plugin/index.mjs`](../../../openclaw-plugin/index.mjs) 的 `registerLocalSkills` 调 `contract.createOpenClawAdapter(config, logger)` 拿到 `{ tools[] }` 注册到 OpenClaw。
 
@@ -213,10 +213,19 @@ async execute(toolCallId, params) {
 ### 5.3 校验工具
 
 ```bash
-js-eyes skills verify              # 全量
+js-eyes skills verify              # 全量（仅作用于 primary skillsDir）
 js-eyes skills verify js-x-ops-skill  # 单个
 js-eyes doctor                     # 安全 + 完整性体检一次出
 ```
+
+### 5.4 `extraSkillDirs` 不做完整性校验
+
+通过 [`extraSkillDirs`](deployment.zh.md#5-部署模式-dprimary--extraskilldirs) 挂接的 skill 是**只读**来源：
+
+- 启动时会在日志里看到 `[js-eyes] Skipping integrity check for extra skill "<id>" at <path>`；
+- `js-eyes skills verify <id>` 对 extra 源输出 `SKIPPED (extra source, no integrity check)`；
+- `js-eyes skills install / approve <id>` 会直接拒绝并报错——生命周期由外部来源自己负责。
+- 改动文件即生效（重启 OpenClaw 后）。需要强完整性约束的 skill 请放回 primary `skillsDir` 下。
 
 ## 6. 工具执行时的上下文
 
@@ -251,4 +260,4 @@ module.exports = {
 
 ---
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19

@@ -39,17 +39,27 @@ const {
 const {
   applySkillInstall,
   discoverLocalSkills,
+  discoverSkillsFromSources,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
   installSkillFromRegistry,
   isSkillEnabled,
   planSkillInstall,
   readSkillById,
+  readSkillByIdFromSources,
   readSkillIntegrity,
+  resolveSkillSources,
   resolveSkillsDir,
   runSkillCli,
   verifySkillIntegrity,
 } = require('@js-eyes/protocol/skills');
+
+function resolveSources(paths, config) {
+  return resolveSkillSources({
+    primary: resolveSkillsDir(paths, config),
+    extras: Array.isArray(config && config.extraSkillDirs) ? config.extraSkillDirs : [],
+  });
+}
 const pkg = require('../package.json');
 
 function print(message = '') {
@@ -288,7 +298,8 @@ async function commandDoctor(flags) {
   const endpoint = `http://${host}:${port}/api/browser/status`;
   const pid = readPid(paths);
   const token = readServerToken();
-  const skillsDir = resolveSkillsDir(paths, config);
+  const sources = resolveSources(paths, config);
+  const skillsDir = sources.primary;
 
   print(`JS Eyes CLI ${pkg.version}`);
   print(`Config file: ${paths.configFile}`);
@@ -297,7 +308,17 @@ async function commandDoctor(flags) {
   print(`Audit log: ${paths.auditLogFile}`);
   print(`Log file: ${paths.serverLogFile}`);
   print(`Downloads dir: ${paths.downloadsDir}`);
-  print(`Skills dir: ${skillsDir}`);
+  print(`Primary skills dir: ${skillsDir}`);
+  if (sources.extras.length > 0) {
+    print(`Extra skill dirs:`);
+    for (const extra of sources.extras) {
+      const extraSkills = discoverSkillsFromSources({ primary: '', extras: [extra] }).skills;
+      print(`  - ${extra.path} (${extra.kind}, ${extraSkills.length} skill${extraSkills.length === 1 ? '' : 's'})`);
+    }
+  }
+  for (const invalid of sources.invalid || []) {
+    print(`Extra skill dir IGNORED: ${invalid.path} (${invalid.reason})`);
+  }
   print(`Skill records dir: ${resolveSkillRecordsDir({ recordingBaseDir: config.recording?.baseDir })}`);
   try {
     print(`OpenClaw plugin: ${resolvePluginPath()}`);
@@ -909,24 +930,77 @@ async function commandSkills(positionals, flags) {
   const skillId = positionals[2];
   const paths = ensureRuntimePaths();
   const config = loadConfig();
-  const skillsDir = resolveSkillsDir(paths, config);
+  const sources = resolveSources(paths, config);
+  const skillsDir = sources.primary;
 
   switch (action) {
     case 'list': {
-      const installed = discoverLocalSkills(skillsDir);
+      const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
       const installedMap = new Map(installed.map((skill) => [skill.id, skill]));
       const legacyState = getLegacyOpenClawSkillState({
         skillIds: installed.map((skill) => skill.id),
       });
       const registryUrl = flags.registry || config.skillsRegistryUrl;
 
+      const wantJson = Boolean(flags.json);
+      let registry = null;
+      let registryError = null;
       try {
-        const registry = await fetchSkillsRegistry(registryUrl);
+        registry = await fetchSkillsRegistry(registryUrl);
+      } catch (error) {
+        registryError = error;
+        if (!wantJson && installed.length === 0) {
+          throw new Error(`无法读取技能注册表: ${error.message}`);
+        }
+      }
+
+      if (wantJson) {
+        const extrasSummary = sources.extras.map((extra) => ({
+          path: extra.path,
+          kind: extra.kind,
+          count: installed.filter((s) => s.source === 'extra' && s.sourcePath === extra.path).length,
+        }));
+        const payload = {
+          primary: sources.primary,
+          extras: extrasSummary,
+          invalid: sources.invalid || [],
+          registry: registry ? { url: registryUrl, skills: registry.skills || [] } : null,
+          registryError: registryError ? registryError.message : null,
+          conflicts,
+          skills: installed.map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            version: skill.version,
+            description: skill.description,
+            source: skill.source,
+            sourcePath: skill.sourcePath,
+            skillDir: skill.skillDir,
+            tools: skill.tools,
+            commands: skill.commands,
+            enabled: isSkillEnabled(config, skill.id, legacyState),
+          })),
+        };
+        print(JSON.stringify(payload, null, 2));
+        return;
+      }
+
+      const renderSourceLine = (skill) =>
+        skill.source === 'primary'
+          ? '  Source: primary'
+          : `  Source: extra (${skill.sourcePath})`;
+
+      if (registry) {
         const lines = [
           `Registry: ${registryUrl}`,
-          `Skills dir: ${skillsDir}`,
-          '',
+          `Primary skills dir: ${skillsDir}`,
         ];
+        if (sources.extras.length > 0) {
+          lines.push(`Extra skill dirs: ${sources.extras.length}`);
+          for (const extra of sources.extras) {
+            lines.push(`  - ${extra.path} (${extra.kind})`);
+          }
+        }
+        lines.push('');
 
         for (const skill of registry.skills || []) {
           const local = installedMap.get(skill.id);
@@ -941,42 +1015,85 @@ async function commandSkills(positionals, flags) {
           if (local) {
             lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${local.skillDir}`);
+            lines.push(renderSourceLine(local));
           }
           lines.push('');
         }
 
-        print(lines.join('\n').trimEnd());
-        return;
-      } catch (error) {
-        if (installed.length === 0) {
-          throw new Error(`无法读取技能注册表: ${error.message}`);
+        const extraOnly = installed.filter((s) => s.source === 'extra' && !(registry.skills || []).some((rs) => rs.id === s.id));
+        if (extraOnly.length > 0) {
+          lines.push(`Extra-only skills (not in registry):`);
+          for (const skill of extraOnly) {
+            lines.push(`- ${skill.id} [installed]`);
+            lines.push(`  ${skill.description || ''}`);
+            if (skill.commands.length > 0) lines.push(`  Commands: ${skill.commands.join(', ')}`);
+            if (skill.tools.length > 0) lines.push(`  Tools: ${skill.tools.join(', ')}`);
+            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
+            lines.push(`  Installed at: ${skill.skillDir}`);
+            lines.push(renderSourceLine(skill));
+            lines.push('');
+          }
         }
 
-        const lines = [
-          `Registry unavailable: ${error.message}`,
-          `Skills dir: ${skillsDir}`,
-          '',
-        ];
-        for (const skill of installed) {
-          lines.push(`- ${skill.id} [installed]`);
-          lines.push(`  ${skill.description || ''}`);
-          if (skill.commands.length > 0) {
-            lines.push(`  Commands: ${skill.commands.join(', ')}`);
+        if (conflicts.length > 0) {
+          lines.push(`Conflicts (primary-wins):`);
+          for (const c of conflicts) {
+            lines.push(`  - ${c.id}: kept ${c.winner.source} ${c.winner.path}, skipped ${c.loser.source} ${c.loser.path}`);
           }
-          if (skill.tools.length > 0) {
-            lines.push(`  Tools: ${skill.tools.join(', ')}`);
-          }
-          lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
-          lines.push(`  Installed at: ${skill.skillDir}`);
-          lines.push('');
         }
+
         print(lines.join('\n').trimEnd());
         return;
       }
+
+      const lines = [
+        `Registry unavailable: ${registryError ? registryError.message : 'unknown error'}`,
+        `Primary skills dir: ${skillsDir}`,
+      ];
+      if (sources.extras.length > 0) {
+        lines.push(`Extra skill dirs: ${sources.extras.length}`);
+        for (const extra of sources.extras) {
+          lines.push(`  - ${extra.path} (${extra.kind})`);
+        }
+      }
+      lines.push('');
+      for (const skill of installed) {
+        lines.push(`- ${skill.id} [installed]`);
+        lines.push(`  ${skill.description || ''}`);
+        if (skill.commands.length > 0) {
+          lines.push(`  Commands: ${skill.commands.join(', ')}`);
+        }
+        if (skill.tools.length > 0) {
+          lines.push(`  Tools: ${skill.tools.join(', ')}`);
+        }
+        lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
+        lines.push(`  Installed at: ${skill.skillDir}`);
+        lines.push(renderSourceLine(skill));
+        lines.push('');
+      }
+      if (conflicts.length > 0) {
+        lines.push(`Conflicts (primary-wins):`);
+        for (const c of conflicts) {
+          lines.push(`  - ${c.id}: kept ${c.winner.source} ${c.winner.path}, skipped ${c.loser.source} ${c.loser.path}`);
+        }
+      }
+      print(lines.join('\n').trimEnd());
+      return;
     }
     case 'install': {
       if (!skillId) {
         throw new Error('用法: `js-eyes skills install <skillId> [--force] [--plan] [--allow-postinstall]`');
+      }
+
+      const existing = readSkillByIdFromSources({
+        id: skillId,
+        primary: skillsDir,
+        extras: sources.extras,
+      });
+      if (existing && existing.source === 'extra') {
+        throw new Error(
+          `技能 "${skillId}" 来自外部源 ${existing.sourcePath}，js-eyes 不接管其生命周期（install/uninstall 仅作用于 primary）。请直接维护该目录下的项目。`,
+        );
       }
 
       const security = resolveSecurityConfig(config);
@@ -1030,6 +1147,16 @@ async function commandSkills(positionals, flags) {
       if (!skillId) {
         throw new Error('用法: `js-eyes skills approve <skillId>`');
       }
+      const existingApprove = readSkillByIdFromSources({
+        id: skillId,
+        primary: skillsDir,
+        extras: sources.extras,
+      });
+      if (existingApprove && existingApprove.source === 'extra') {
+        throw new Error(
+          `技能 "${skillId}" 来自外部源 ${existingApprove.sourcePath}，js-eyes 不接管其生命周期（install/approve/uninstall 仅作用于 primary）。`,
+        );
+      }
       const planFile = path.join(paths.runtimeDir, 'pending-skills', `${skillId}.json`);
       if (!fs.existsSync(planFile)) {
         throw new Error(`No pending plan for ${skillId}. Run \`js-eyes skills install ${skillId} --plan\` first.`);
@@ -1051,6 +1178,15 @@ async function commandSkills(positionals, flags) {
       for (const id of targets) {
         const skill = readSkillById(skillsDir, id);
         if (!skill) {
+          const external = readSkillByIdFromSources({
+            id,
+            primary: skillsDir,
+            extras: sources.extras,
+          });
+          if (external && external.source === 'extra') {
+            print(`- ${id}: SKIPPED (extra source ${external.sourcePath}, no integrity check)`);
+            continue;
+          }
           print(`- ${id}: NOT INSTALLED`);
           failed++;
           continue;
@@ -1080,15 +1216,24 @@ async function commandSkills(positionals, flags) {
       if (!skillId) {
         throw new Error(`用法: \`js-eyes skills ${action} <skillId>\``);
       }
-      const skill = readSkillById(skillsDir, skillId);
+      const skill = readSkillByIdFromSources({
+        id: skillId,
+        primary: skillsDir,
+        extras: sources.extras,
+      });
       if (!skill) {
-        throw new Error(`技能未安装: ${skillId}`);
+        throw new Error(
+          `技能未找到: ${skillId}（已在 primary 和 ${sources.extras.length} 个 extra 源中搜索）`,
+        );
       }
 
       const enabledValue = action === 'enable';
       setConfigValue(`skillsEnabled.${skillId}`, enabledValue);
 
       print(`${enabledValue ? 'Enabled' : 'Disabled'} skill: ${skillId}`);
+      if (skill.source === 'extra') {
+        print(`Source: extra (${skill.sourcePath})`);
+      }
       print('OpenClaw child plugin config updated: no (main js-eyes plugin reads JS Eyes host config)');
       print('Restart OpenClaw or start a new session for the change to take effect.');
       return;
@@ -1107,10 +1252,17 @@ async function commandSkill(positionals, flags) {
 
   const paths = ensureRuntimePaths();
   const config = loadConfig();
-  const skillsDir = resolveSkillsDir(paths, config);
-  const skill = readSkillById(skillsDir, skillId);
+  const sources = resolveSources(paths, config);
+  const skillsDir = sources.primary;
+  const skill = readSkillByIdFromSources({
+    id: skillId,
+    primary: skillsDir,
+    extras: sources.extras,
+  });
   if (!skill) {
-    throw new Error(`技能未安装: ${skillId}`);
+    throw new Error(
+      `技能未找到: ${skillId}（已在 primary 和 ${sources.extras.length} 个 extra 源中搜索）`,
+    );
   }
   const legacyState = getLegacyOpenClawSkillState({ skillIds: [skillId] });
   if (!isSkillEnabled(config, skillId, legacyState)) {

@@ -18,28 +18,61 @@ cd ~/my-skills/js-hello-ops-skill
 
 # 2. 安装依赖
 npm install
+```
 
-# 3. 在 OpenClaw 配置里把 js-eyes 的 skillsDir 指向父目录
-#    ~/.openclaw/openclaw.json:
-#    {
-#      "tools": { "alsoAllow": ["js-eyes"] },
-#      "plugins": {
-#        "entries": {
-#          "js-eyes": {
-#            "enabled": true,
-#            "config": { "skillsDir": "/Users/you/my-skills" }
-#          }
-#        }
-#      }
-#    }
+### 3. 在 OpenClaw 配置里接入（二选一）
 
-# 4. 启用（首次发现默认禁用）
+**A. 把 `skillsDir` 指向父目录（primary 模式，js-eyes 接管生命周期）**
+
+```jsonc
+// ~/.openclaw/openclaw.json
+{
+  "tools": { "alsoAllow": ["js-eyes"] },
+  "plugins": {
+    "entries": {
+      "js-eyes": {
+        "enabled": true,
+        "config": { "skillsDir": "/Users/you/my-skills" }
+      }
+    }
+  }
+}
+```
+
+**B. 保留默认 `skills/`，用 `extraSkillDirs` 挂接（extra 模式，只读）**
+
+```jsonc
+// ~/.openclaw/openclaw.json
+{
+  "tools": { "alsoAllow": ["js-eyes"] },
+  "plugins": {
+    "entries": {
+      "js-eyes": {
+        "enabled": true,
+        "config": {
+          "extraSkillDirs": [
+            "/Users/you/my-skills/js-hello-ops-skill"
+            // 父目录写法（扫 1 层子目录）：
+            // "/Users/you/my-skills"
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并注册工具；改文件后重启 OpenClaw 即生效。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
+
+### 4. 启用与调用
+
+```bash
+# 首次发现默认禁用
 js-eyes skills enable js-hello-ops-skill
 
-# 5. 重启 OpenClaw（或开新会话）
-#    随后 Agent 应该能看到 hello_get_title 工具
+# 重启 OpenClaw（或开新会话）后，Agent 应能看到 hello_get_title 工具
 
-# 6. 也可以直接用 CLI 跑
+# 也可以直接用 CLI 跑
 node ~/my-skills/js-hello-ops-skill/index.js title 123
 ```
 
