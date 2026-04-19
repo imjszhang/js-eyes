@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.5.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.5.1.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -286,7 +286,7 @@ Secure defaults in 2.2.0:
 
 - WebSocket/HTTP require a bearer token and an allow-listed `Origin`; non-loopback host binds require `security.allowRemoteHost=true`.
 - `execute_script`, `get_cookies*`, `upload_file*`, `inject_css`, and `install_skill` default to the `confirm` policy and require a consent approval.
-- Raw `eval`-style scripts are refused unless both host (`security.allowRawEval`) and extension (`allowRawEval`) opt in; use `execute_action` for declarative actions instead.
+- Raw `eval`-style scripts are refused unless `security.allowRawEval=true`. The host pushes this value to the extension at `init_ack` handshake, so a single toggle in `~/.js-eyes/config/config.json` is enough; the `chrome.storage.local.allowRawEval` key is retained only as an explicit opt-out override for hardened deployments. Prefer `execute_action` for declarative actions when possible.
 - `config.json`, `server.token`, `audit.log`, and pending-consents files are written at `0600` on POSIX and locked via `icacls` on Windows.
 
 New in 2.3.0:
@@ -396,12 +396,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.5.0` |
-| Browser extension assets | `2.5.0` |
-| `@js-eyes/server-core` | `2.5.0` |
-| `@js-eyes/client-sdk` | `2.5.0` |
-| `openclaw-plugin` | `2.5.0` |
-| Skills using `@js-eyes/client-sdk` | `2.5.0` |
+| CLI | `2.5.1` |
+| Browser extension assets | `2.5.1` |
+| `@js-eyes/server-core` | `2.5.1` |
+| `@js-eyes/client-sdk` | `2.5.1` |
+| `openclaw-plugin` | `2.5.1` |
+| Skills using `@js-eyes/client-sdk` | `2.5.1` |
 
 ## Extension Skills
 
@@ -507,7 +507,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 2.5.0
+npm run bump -- 2.5.1
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

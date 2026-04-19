@@ -127,7 +127,7 @@ Built-in and skill-provided tools that can exfiltrate or mutate browser state ar
 
 - **Sensitive tool set.** `protocol.SENSITIVE_TOOL_NAMES` currently contains `execute_script`, `execute_script_action`, `get_cookies`, `get_cookies_by_domain`, `upload_file`, `upload_file_to_tab`, `inject_css`, and `js_eyes_install_skill`. Additional tools can be added via `security.toolPolicies`.
 - **Policy modes.** Each sensitive tool resolves to one of `allow`, `confirm`, or `deny`. The OpenClaw plugin's `wrapSensitiveTool` records every decision to `runtime/pending-consents/<id>.json` (JSONL-friendly) and logs a structured warning. `deny` short-circuits execution and returns a rejection payload to the calling agent. `confirm` currently emits an auto-confirmation log entry and records the decision so operators can review it; future versions will block until an operator runs `js-eyes consent approve <id>`.
-- **Extension-side eval lockdown.** `handleExecuteScript` / `handleExecuteScriptRequest` (Chrome MV3 + Firefox MV2) reject raw JavaScript payloads unless the extension's `securityConfig.allowRawEval=true` or the storage key `allowRawEval=true` has been set explicitly by the operator. The error `RAW_EVAL_DISABLED` is returned over the same response channel so the calling agent can degrade gracefully.
+- **Extension-side eval lockdown.** `handleExecuteScript` / `handleExecuteScriptRequest` (Chrome MV3 + Firefox MV2) reject raw JavaScript payloads unless `securityConfig.allowRawEval=true`. Starting with v2.5+, the extension no longer requires an independent toggle: the host's `security.allowRawEval` is pushed down at WebSocket handshake (`init_ack.serverConfig.security.allowRawEval`) and applied automatically. The extension storage key `allowRawEval` is retained as an explicit **opt-out override** for security-hardened deployments: if an operator sets it explicitly via `chrome.storage.local.set({allowRawEval:false})` (or `true`), that value wins over the host-synced value. The error `RAW_EVAL_DISABLED` is returned over the same response channel so the calling agent can degrade gracefully.
 - **Consent log review.** Operators should periodically review `runtime/pending-consents/*.json` and the JSONL entries in `logs/audit.log`. `js-eyes consent list` summarizes recent decisions; `js-eyes consent approve <id>` / `js-eyes consent deny <id>` mark pending entries for audit.
 - **Server-supplied token propagation.** The browser extension popup exposes a "Server Token" field that is persisted in `chrome.storage.local`. The background service worker forwards the token both as `Sec-WebSocket-Protocol: bearer.<token>` and as `?token=<token>` on the WebSocket URL.
 
@@ -161,7 +161,7 @@ Environment and config overrides: `JS_EYES_POLICY_ENFORCEMENT`, `config.security
 
 `packages/server-core` now emits `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response. This closes the Chrome `externally_connectable` surface against any future accidental HTML response on port 18080.
 
-### Non-Goals (2.5.0)
+### Non-Goals (2.5.1)
 
 - Interactive `confirm` dialogs (still excluded by design).
 - Task profiles (L3) and reader sub-agent (L5') — remain opt-in additions on the roadmap and stay off by default.

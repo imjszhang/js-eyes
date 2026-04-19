@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-04-20
+
+> Security UX patch release. Fixes a long-standing gap where the host's `security.allowRawEval` flag was effectively inert because the extension never synced it. No breaking changes.
+
+### Changed
+- **`allowRawEval`: single-toggle from the host** _(2026-04-20)_: Before v2.5.1, enabling raw `execute_script` required flipping `security.allowRawEval=true` on the host **and** manually seeding `chrome.storage.local.allowRawEval=true` on the extension (no popup UI was ever exposed for it), so the host-side toggle was effectively a no-op in practice. The host now pushes `security.allowRawEval` to the extension via `init_ack.serverConfig.security.allowRawEval` at WebSocket handshake; the extension applies the value automatically. The `chrome.storage.local` / `browser.storage.local` key is preserved as an explicit **opt-out override** (set it to `true` or `false` to pin the extension regardless of the host). Everyday users only need to touch `~/.js-eyes/config/config.json`. Files: [packages/server-core/ws-handler.js](packages/server-core/ws-handler.js), [extensions/chrome/background/background.js](extensions/chrome/background/background.js), [extensions/firefox/background/background.js](extensions/firefox/background/background.js).
+
+### Compatibility
+- **Wire Protocol Extended, Backward Compatible**: `init_ack.serverConfig` gains a new optional `security.allowRawEval` field. Older extensions simply ignore it; newer extensions connected to older servers fall back to their previous behavior (storage key or default `false`).
+- **Upgrade Path**: Restart the js-eyes server, then reload the browser extension (`chrome://extensions` → reload) so the new background script picks up the sync logic. The extension will log `[ConfigSync] allowRawEval synced from host: <value>` on the next handshake.
+
 ## [2.5.0] - 2026-04-19
 
 > Extensibility & hot-reload release. Promotes JS Eyes Skills to a first-class runtime surface with zero-restart `link` / `unlink` / `reload` semantics, multi-source discovery via `extraSkillDirs`, and a 30-minute default request timeout. **No breaking changes** — wire protocol, CLI contract, and public APIs are all backward compatible.
