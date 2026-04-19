@@ -233,9 +233,10 @@
                         <span data-i18n="hero.deployLabel">DEPLOY IN SECONDS</span>
                     </div>
                     <div class="p-4">
-                        <div class="flex gap-1 mb-2">
+                        <div class="flex gap-1 mb-2 flex-wrap">
                             <button id="os-tab-unix" onclick="switchOS('unix')" class="bg-[#FCD228] text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all">Linux / macOS</button>
                             <button id="os-tab-win" onclick="switchOS('win')" class="bg-gray-800 text-gray-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all hover:text-gray-200">Windows</button>
+                            <button id="os-tab-clawhub" onclick="switchOS('clawhub')" class="bg-gray-800 text-gray-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all hover:text-gray-200">ClawHub</button>
                         </div>
                         <div class="relative group">
                             <div id="deploy-cmd" class="bg-gray-900 border border-gray-700 rounded px-3 py-2.5 text-brand-yellow text-xs leading-relaxed select-all cursor-pointer group-hover:border-[#FCD228] transition-colors">curl -fsSL https://js-eyes.com/install.sh | bash</div>
@@ -740,16 +741,19 @@
     initThreeJS();
 
     var FALLBACK_CMDS = {
-        unix: 'curl -fsSL https://js-eyes.com/install.sh | bash',
-        win:  'irm https://js-eyes.com/install.ps1 | iex'
+        unix:    'curl -fsSL https://js-eyes.com/install.sh | bash',
+        win:     'irm https://js-eyes.com/install.ps1 | iex',
+        clawhub: 'openclaw skills install js-eyes'
     };
+    var OS_KEYS = ['unix', 'win', 'clawhub'];
     var currentOS = 'unix';
 
     function getDeployCmds() {
         if (typeof I18nManager !== 'undefined') {
             return {
-                unix: I18nManager.t('hero.deployCmdUnix') || FALLBACK_CMDS.unix,
-                win:  I18nManager.t('hero.deployCmdWin')  || FALLBACK_CMDS.win
+                unix:    I18nManager.t('hero.deployCmdUnix')    || FALLBACK_CMDS.unix,
+                win:     I18nManager.t('hero.deployCmdWin')     || FALLBACK_CMDS.win,
+                clawhub: I18nManager.t('hero.deployCmdClawhub') || FALLBACK_CMDS.clawhub
             };
         }
         return FALLBACK_CMDS;
@@ -759,15 +763,15 @@
         currentOS = os;
         var cmds = getDeployCmds();
         document.getElementById('deploy-cmd').textContent = cmds[os];
-        var unixTab = document.getElementById('os-tab-unix');
-        var winTab = document.getElementById('os-tab-win');
-        if (os === 'unix') {
-            unixTab.className = unixTab.className.replace(/bg-gray-800 text-gray-400/g, 'bg-[#FCD228] text-black');
-            winTab.className = winTab.className.replace(/bg-\[#FCD228\] text-black/g, 'bg-gray-800 text-gray-400');
-        } else {
-            winTab.className = winTab.className.replace(/bg-gray-800 text-gray-400/g, 'bg-[#FCD228] text-black');
-            unixTab.className = unixTab.className.replace(/bg-\[#FCD228\] text-black/g, 'bg-gray-800 text-gray-400');
-        }
+        OS_KEYS.forEach(function (key) {
+            var tab = document.getElementById('os-tab-' + key);
+            if (!tab) return;
+            if (key === os) {
+                tab.className = tab.className.replace(/bg-gray-800 text-gray-400/g, 'bg-[#FCD228] text-black');
+            } else {
+                tab.className = tab.className.replace(/bg-\[#FCD228\] text-black/g, 'bg-gray-800 text-gray-400');
+            }
+        });
     }
     window.switchOS = switchOS;
 

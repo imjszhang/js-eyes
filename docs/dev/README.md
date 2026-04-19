@@ -12,7 +12,7 @@
 - [什么是 JS Eyes Skills](js-eyes-skills/README.md) — 概念、生命周期、命名澄清
 - [开发指南（中文）](js-eyes-skills/authoring.zh.md) — 从零写一个自定义技能
 - [skill.contract.js 契约规范（中文）](js-eyes-skills/contract.zh.md) — 顶层字段、工具 schema、完整性校验
-- [部署与启用（中文）](js-eyes-skills/deployment.zh.md) — 三种部署模式 + `js-eyes skills enable` 流程
+- [部署与启用（中文）](js-eyes-skills/deployment.zh.md) — 四种部署模式（含 `extraSkillDirs` 混合）+ `js-eyes skills enable` 流程
 - 可运行样例：[`examples/js-eyes-skills/`](../../examples/js-eyes-skills/)
 
 ## Skills 通用兼容（Roadmap）

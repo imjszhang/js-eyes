@@ -2,12 +2,50 @@
 
 ## Unreleased
 
+## v2.5.0
+
+> Extensibility & hot-reload release. Makes JS Eyes Skills a first-class runtime surface: new `SkillRegistry` delivers zero-restart `link` / `unlink` / `reload` semantics on a running OpenClaw plugin, and a new `extraSkillDirs` multi-source layer lets users mount external skill directories without touching the primary `skillsDir`. Wire protocol and CLI contract unchanged.
+
 ### Highlights
+- **Skill Hot Reload — zero-restart deployment** _(2026-04-19)_: A new `SkillRegistry` (`@js-eyes/protocol/skill-registry`) adds a tool-level dispatcher indirection layer to the OpenClaw plugin. Each tool name is registered once with OpenClaw as a stable closure; hot-loading / hot-unloading skills only updates the internal `toolBindings` map. `js-eyes skills link <path>` / `unlink <path>` / `reload`, plus a chokidar watcher on `~/.js-eyes/config/config.json` (debounced 300 ms), now apply skill changes to the running plugin **without restarting OpenClaw**. Agents can drive the flow via the new `js_eyes_reload_skills` built-in tool, which returns a diff summary (`added` / `removed` / `reloaded` / `toggledOff` / `conflicts` / `failedDispatchers`). Skills can opt into an `async runtime.dispose()` hook (see `examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js`) to release WebSocket connections and timers on hot-unload; `require.cache` under the skill dir is deep-purged (preserving `node_modules`) before the next `require`. Extras discovered for the first time are auto-enabled (primary keeps its "opt-in by default" posture). Fallback: if the host refuses to register a brand-new tool name post-boot, the dispatcher registration failure is surfaced as `failedDispatchers` in the reload summary — a one-time OpenClaw restart is the fix for that narrow case; everything else is 0-restart. Full guide in [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐).
+- **Multi-Source Skill Discovery (`extraSkillDirs`)** _(2026-04-19)_: New plugin config `extraSkillDirs: string[]` lets users mount read-only external skill directories without touching the primary `skillsDir`. Each entry auto-detects as a single skill (contains `skill.contract.js`) or a parent directory (scanned 1 level deep); primary wins on id conflicts; extras skip `.integrity.json` checks; `symlink`-to-directory entries are honored. CLI updates: `js-eyes doctor` lists primary + extras with kind/count; `js-eyes skills list` annotates each skill with `Source: primary | extra (<path>)` and ships a structured `--json` output (`primary` / `extras` / `skills[].source` / `skills[].sourcePath` / `conflicts`); `install` / `approve` reject ids that resolve to an extra source; `verify` prints `SKIPPED (extra source, no integrity check)` for extras; `enable` / `disable` / `skill run` all search primary → extras. New APIs in `@js-eyes/protocol/skills`: `resolveSkillSources`, `discoverSkillsFromSources`, `readSkillByIdFromSources`, `listSkillDirectories`. See [deployment mode D](./docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs).
 - **Default request timeout raised to 30 minutes**: The default `requestTimeout` now is 1800 seconds (previously 60). Long automation flows (captchas, slow SPA loads, file uploads) no longer hit a surprise 60s ceiling. The per-handler 30s safety net inside the browser extension is kept as a last-resort guard when the server `init_ack` never arrives.
 - **Server-side `requestTimeout` is now truly configurable**: `createServer()` reads `options.requestTimeout` (seconds), falling back to `@js-eyes/config` `config.requestTimeout` and finally to the protocol default. The resolved value is what the server pushes to extensions via `init_ack.serverConfig.request.defaultTimeout` and what the server uses for pending-response timeouts. Set it in `openclaw.json` → `plugins.entries["js-eyes"].config.requestTimeout`, or via `js-eyes config set requestTimeout <seconds>` for the CLI server.
+- **Removed vestigial `skills/js-eyes/` parent-skill marker** _(2026-04-19)_: The in-repo `skills/js-eyes/` directory (a single `SKILL.md` with no `skill.contract.js`) has been deleted. Under the v2.0 "single main plugin scans `skillsDir`" model it had zero consumers — the main bundle packer (`SKILL_BUNDLE_FILES` in `packages/devtools/lib/builder.js`) only copies the repo-root `SKILL.md`, `discoverSubSkills()` skips directories without a `skill.contract.js`, and `discoverLocalSkills()` / `discoverSkillsFromSources()` gate on `hasSkillContract()`. The existing test `test/skill-bundle.test.js` → "ignores parent skill docs without a child skill contract" already asserts this directory shape must be skipped, so behavior is unchanged. Alongside the deletion, the soft-semantic `requires.skills: [js-eyes]` frontmatter field (only ever rendered as display text by `js_eyes_discover_skills`, never validated) was removed from `skills/js-x-ops-skill/SKILL.md` and `skills/js-browser-ops-skill/SKILL.md` so the remaining 10 child skills are consistent (the other 8 never declared it). No user-facing or packaging impact; the root `SKILL.md` remains the single source of truth for the `js-eyes` OpenClaw skill definition.
 
 ### Migration Notes
-- No breaking changes. If you were relying on the 60s default for fast failure, explicitly set `requestTimeout: 60` in the plugin config (or `js-eyes config set requestTimeout 60`).
+- **No breaking changes.** Wire protocol and public CLI surface are unchanged.
+- If you were relying on the 60s default `requestTimeout` for fast failure, explicitly set `requestTimeout: 60` in the plugin config (or `js-eyes config set requestTimeout 60`).
+- `openclaw-plugin` now depends on `chokidar` (already added to `package.json`). Run `npm install` in the repo root / bundle root after pulling so the new dependency is available before the first plugin load.
+- **Upgrading from 2.4.x requires one OpenClaw restart** so the new plugin code — `SkillRegistry` + chokidar watcher — is picked up. After that initial restart, further skill changes (link / unlink / enable / disable / edit / reload) stay zero-restart.
+- Nothing to do for custom skills that previously declared `requires.skills: [js-eyes]` in frontmatter — the field was never validated and was removed from the two first-party skills still using it. Leave it or drop it, either is fine.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.0/js-eyes-chrome-v2.5.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.0/js-eyes-firefox-v2.5.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.5.0/js-eyes-skill-v2.5.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.5.0`
+2. `js-eyes doctor` — confirm `server.token` / policy-engine output is unchanged from 2.4.x.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.5.0 and run `npm install` in the bundle root so `chokidar` resolves.
+2. Restart OpenClaw **once** so it picks up the new plugin code (`SkillRegistry` + watcher).
+3. From now on, `js-eyes skills link <path>` / `unlink <path>` / `enable <id>` / `disable <id>` / `reload`, or the agent-side `js_eyes_reload_skills` tool, all apply without a restart.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.5.0.zip`, extract, load unpacked (or wait for the Chrome Web Store listing).
+2. No popup changes vs 2.4.x — the **Sync Token From Host** flow keeps working once `native-host install` has been run.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.5.0.xpi` (or update from AMO once the public listing is live).
+
+---
 
 ## v2.4.0
 

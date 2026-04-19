@@ -4,7 +4,7 @@
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.4.0"
+    "version": "2.5.0"
   },
   "skills": [
     {

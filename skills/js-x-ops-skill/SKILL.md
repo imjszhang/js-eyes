@@ -7,8 +7,6 @@ metadata:
     emoji: "\U0001F50D"
     homepage: https://github.com/imjszhang/js-eyes
     requires:
-      skills:
-        - js-eyes
       bins:
         - node
 ---

@@ -19,6 +19,7 @@ window.I18nLocales['en-US'] = {
         deployHint: 'Run in your terminal',
         deployCmdUnix: 'curl -fsSL https://js-eyes.com/install.sh | bash',
         deployCmdWin: 'irm https://js-eyes.com/install.ps1 | iex',
+        deployCmdClawhub: 'openclaw skills install js-eyes',
         deployCopy: 'Copy',
         deployResult1: '\u2713 js-eyes installed',
         deployResult2: '\u2713 Plugin registered in resolved openclaw.json',

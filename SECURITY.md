@@ -161,7 +161,7 @@ Environment and config overrides: `JS_EYES_POLICY_ENFORCEMENT`, `config.security
 
 `packages/server-core` now emits `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response. This closes the Chrome `externally_connectable` surface against any future accidental HTML response on port 18080.
 
-### Non-Goals (2.4.0)
+### Non-Goals (2.5.0)
 
 - Interactive `confirm` dialogs (still excluded by design).
 - Task profiles (L3) and reader sub-agent (L5') — remain opt-in additions on the roadmap and stay off by default.

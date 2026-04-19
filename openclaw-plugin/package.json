@@ -1,6 +1,6 @@
 {
   "name": "js-eyes",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Optional OpenClaw plugin component for JS Eyes",
   "type": "module",
   "main": "index.mjs",
@@ -12,6 +12,9 @@
     "openclaw.plugin.json"
   ],
   "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.6.0"
+  },
   "peerDependencies": {
     "openclaw": ">=0.0.0"
   },

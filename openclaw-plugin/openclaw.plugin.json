@@ -2,7 +2,7 @@
   "id": "js-eyes",
   "name": "JS Eyes",
   "description": "浏览器自动化工具 — 通过 WebSocket 为 AI Agent 提供远程浏览器控制能力（标签页管理、内容获取、脚本执行等）",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -36,6 +36,24 @@
         "type": "string",
         "default": "",
         "description": "扩展技能安装目录（空值则使用技能包内的 skills/ 目录）"
+      },
+      "extraSkillDirs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "description": "额外只读技能来源（绝对路径列表）。每条可以是单个技能目录（含 skill.contract.js）或父目录（扫描 1 层子目录）。同 id 冲突时 primary 优先；extras 不做完整性校验，js-eyes 不接管其生命周期。"
+      },
+      "watchConfig": {
+        "type": "boolean",
+        "default": true,
+        "description": "通过 chokidar 监听 ~/.js-eyes/config/config.json，配置变更时（含 js-eyes skills link/unlink/enable/disable）零重启热加载技能。"
+      },
+      "devWatchSkills": {
+        "type": "boolean",
+        "default": true,
+        "description": "开发模式：监听已发现技能目录的文件变更（默认 ~300ms 防抖），改完 skill.contract.js 自动 reload。仅推荐在本地开发用；生产可关闭以减少 fs 监听负载。"
       }
     }
   },
@@ -68,7 +86,23 @@
     "skillsDir": {
       "label": "技能安装目录",
       "placeholder": "",
-      "help": "扩展技能的安装目录。留空则自动使用技能包根目录下的 skills/ 子目录",
+      "help": "扩展技能的安装目录（primary）。留空则自动使用技能包根目录下的 skills/ 子目录。js-eyes skills install/approve/verify 都作用在此目录。",
+      "advanced": true
+    },
+    "extraSkillDirs": {
+      "label": "额外只读技能目录",
+      "placeholder": "[\"/Users/you/my-skills\"]",
+      "help": "在 primary 之外再纳入若干外部技能目录（只读：发现并注册工具，但不接管 install/approve/verify/完整性校验）。每条可为单个技能目录或父目录。运行中可用 js-eyes skills link/unlink 零重启增删。",
+      "advanced": true
+    },
+    "watchConfig": {
+      "label": "监听宿主配置",
+      "help": "默认开启。关闭后 js-eyes skills link/unlink/enable/disable 等会写 ~/.js-eyes/config/config.json 的命令将不再触发自动热加载，需要手动调用 js-eyes skills reload 或 js_eyes_reload_skills 工具。",
+      "advanced": true
+    },
+    "devWatchSkills": {
+      "label": "监听技能目录（开发模式）",
+      "help": "默认开启。监听已发现技能目录里的文件变更，改完 skill.contract.js 自动 reload。生产环境可关闭。",
       "advanced": true
     }
   }

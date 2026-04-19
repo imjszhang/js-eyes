@@ -46,19 +46,22 @@ const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
 const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecurityConfig } = require("../packages/protocol");
 const {
-  applySkillInstall,
-  discoverLocalSkills,
+  createSkillRegistry,
+  discoverSkillsFromSources,
   fetchSkillsRegistry,
-  getLegacyOpenClawSkillState,
-  isSkillEnabled,
-  loadSkillContract,
   planSkillInstall,
-  readSkillIntegrity,
-  registerOpenClawTools,
-  verifySkillIntegrity,
+  resolveSkillSources,
 } = require("../packages/protocol/skills");
 const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
 const { ensureToken, readToken } = require("../packages/runtime-paths/token.js");
+
+function tryLoadChokidar() {
+  try {
+    return require("chokidar");
+  } catch {
+    return null;
+  }
+}
 
 const nodeCrypto = require("node:crypto");
 const nodeFs = require("node:fs");
@@ -103,6 +106,7 @@ const BUILTIN_TOOL_NAMES = [
   "js_eyes_upload_file",
   "js_eyes_discover_skills",
   "js_eyes_install_skill",
+  "js_eyes_reload_skills",
 ];
 
 function resolvePluginEntry(definition) {
@@ -117,88 +121,6 @@ function resolvePluginEntry(definition) {
   return definition.register;
 }
 
-function registerLocalSkills(api, skillsDir, pluginConfig, helpers = {}) {
-  const localSkills = discoverLocalSkills(skillsDir);
-  if (localSkills.length === 0) {
-    api.logger.info(`[js-eyes] No local skills found in ${skillsDir}`);
-    return;
-  }
-
-  const hostConfig = loadConfig();
-  const legacyState = getLegacyOpenClawSkillState({
-    skillIds: localSkills.map((skill) => skill.id),
-  });
-  let firstRunMigrations = 0;
-  for (const skill of localSkills) {
-    if (!Object.prototype.hasOwnProperty.call(hostConfig.skillsEnabled || {}, skill.id)) {
-      const legacyValue = Object.prototype.hasOwnProperty.call(legacyState, skill.id)
-        ? legacyState[skill.id]
-        : false;
-      setConfigValue(`skillsEnabled.${skill.id}`, legacyValue === true);
-      firstRunMigrations++;
-      if (legacyValue !== true) {
-        api.logger.warn(
-          `[js-eyes] Skill "${skill.id}" left disabled by default; run \`js-eyes skills enable ${skill.id}\` to opt-in`,
-        );
-      }
-    }
-  }
-  let effectiveConfig = hostConfig;
-  if (firstRunMigrations > 0) {
-    effectiveConfig = loadConfig();
-  }
-
-  const registeredNames = new Set(BUILTIN_TOOL_NAMES);
-  for (const skill of localSkills) {
-    if (!isSkillEnabled(effectiveConfig, skill.id, legacyState)) {
-      api.logger.info(`[js-eyes] Skipping disabled local skill "${skill.id}"`);
-      continue;
-    }
-
-    const integrity = verifySkillIntegrity(skill.skillDir);
-    if (integrity.hasIntegrity && !integrity.ok) {
-      api.logger.warn(
-        `[js-eyes] Refusing to load tampered skill "${skill.id}": ${integrity.mismatches.length} mismatched, ${integrity.missing.length} missing`,
-      );
-      continue;
-    }
-    if (!integrity.hasIntegrity) {
-      api.logger.warn(
-        `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy install); load allowed but consider reinstalling`,
-      );
-    }
-
-    try {
-      const contract = skill.contract || loadSkillContract(skill.skillDir);
-      if (!contract || typeof contract.createOpenClawAdapter !== "function") {
-        api.logger.warn(`[js-eyes] Skipping local skill "${skill.id}" because createOpenClawAdapter() is missing`);
-        continue;
-      }
-
-      const adapter = contract.createOpenClawAdapter(pluginConfig, api.logger);
-      const installManifest = readSkillIntegrity(skill.skillDir);
-      const declaredTools = installManifest?.declaredTools || skill.tools || [];
-
-      const summary = registerOpenClawTools(api, adapter, {
-        logger: api.logger,
-        registeredNames,
-        sourceName: skill.id,
-        declaredTools,
-        wrapTool: helpers.wrapSensitiveTool || null,
-      });
-
-      if (summary.registered.length > 0) {
-        api.logger.info(`[js-eyes] Loaded local skill "${skill.id}" with ${summary.registered.length} tool(s)`);
-      }
-      if (summary.skipped.length > 0 || summary.failed.length > 0) {
-        api.logger.warn(`[js-eyes] Local skill "${skill.id}" completed with ${summary.skipped.length} skipped and ${summary.failed.length} failed tool registration(s)`);
-      }
-    } catch (error) {
-      api.logger.warn(`[js-eyes] Failed to load local skill "${skill.id}": ${error.message}`);
-    }
-  }
-}
-
 function register(api) {
   const pluginCfg = api.pluginConfig ?? {};
 
@@ -210,6 +132,10 @@ function register(api) {
   const skillsDir = pluginCfg.skillsDir
     ? nodePath.resolve(pluginCfg.skillsDir)
     : nodePath.join(SKILL_ROOT, "skills");
+  const skillSources = resolveSkillSources({
+    primary: skillsDir,
+    extras: Array.isArray(pluginCfg.extraSkillDirs) ? pluginCfg.extraSkillDirs : [],
+  });
 
   const runtimePaths = ensureRuntimePaths();
   const hostConfig = loadConfig();
@@ -354,6 +280,19 @@ function register(api) {
       }
     },
     async stop(ctx) {
+      if (reloadTimer) {
+        try { clearTimeout(reloadTimer); } catch {}
+        reloadTimer = null;
+      }
+      if (configWatcher) {
+        try { await configWatcher.close(); } catch {}
+        configWatcher = null;
+      }
+      if (skillDirWatcher) {
+        try { await skillDirWatcher.close(); } catch {}
+        skillDirWatcher = null;
+      }
+      try { await skillRegistry.disposeAll(); } catch {}
       if (bot) {
         try { bot.disconnect(); } catch {}
         bot = null;
@@ -690,7 +629,15 @@ function register(api) {
         const url = params.registryUrl || skillsRegistryUrl;
         try {
           const registry = await fetchSkillsRegistry(url);
-          const installedSkills = new Set(discoverLocalSkills(skillsDir).map((skill) => skill.id));
+          // Re-resolve sources at call time so freshly linked extras are reflected.
+          const freshConfig = loadConfig();
+          const freshSources = resolveSkillSources({
+            primary: skillsDir,
+            extras: Array.isArray(freshConfig.extraSkillDirs) ? freshConfig.extraSkillDirs : [],
+          });
+          const installedSkills = new Set(
+            discoverSkillsFromSources(freshSources).skills.map((skill) => skill.id),
+          );
 
           if (!registry.skills || registry.skills.length === 0) {
             return textResult("当前没有可用的扩展技能。");
@@ -791,7 +738,142 @@ function register(api) {
     { optional: true },
   );
 
-  registerLocalSkills(api, skillsDir, pluginCfg, { wrapSensitiveTool });
+  const skillRegistry = createSkillRegistry({
+    api,
+    pluginConfig: pluginCfg,
+    wrapSensitiveTool,
+    builtinToolNames: BUILTIN_TOOL_NAMES,
+    skillsDir,
+    extrasProvider: () => {
+      const cfg = loadConfig();
+      return Array.isArray(cfg.extraSkillDirs) ? cfg.extraSkillDirs : [];
+    },
+    configLoader: () => loadConfig(),
+    setConfigValue: (key, value) => setConfigValue(key, value),
+    logger: api.logger,
+  });
+
+  const initPromise = skillRegistry.init().catch((error) => {
+    api.logger.warn(`[js-eyes] SkillRegistry init failed: ${error.message}`);
+  });
+  void initPromise;
+
+  api.registerTool(
+    wrapSensitiveTool({
+      name: "js_eyes_reload_skills",
+      label: "JS Eyes: Reload Skills",
+      description: "重新扫描 primary + extraSkillDirs，应用 skillsEnabled 与配置变更（热加载/卸载技能），无需重启 OpenClaw。",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: {
+            type: "string",
+            description: "触发原因，仅用于日志（如 'agent-call', 'user-link'）",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
+        try {
+          const summary = await skillRegistry.reload(reason);
+          const lines = [
+            `[js-eyes] reload 完成 (reason=${summary.reason || reason})`,
+            `  added:    ${summary.added.join(', ') || '(none)'}`,
+            `  removed:  ${summary.removed.join(', ') || '(none)'}`,
+            `  reloaded: ${summary.reloaded.join(', ') || '(none)'}`,
+            `  toggled-off: ${summary.toggledOff.join(', ') || '(none)'}`,
+          ];
+          if (Array.isArray(summary.conflicts) && summary.conflicts.length > 0) {
+            lines.push(`  conflicts:`);
+            for (const c of summary.conflicts) {
+              lines.push(`    - ${c.id}: kept ${c.winner.source} ${c.winner.path}, skipped ${c.loser.source} ${c.loser.path}`);
+            }
+          }
+          if (Array.isArray(summary.failedDispatchers) && summary.failedDispatchers.length > 0) {
+            lines.push(`  dispatcher-failures (restart OpenClaw once to expose these):`);
+            for (const f of summary.failedDispatchers) {
+              lines.push(`    - ${f.skillId}: ${f.toolNames.join(', ')}`);
+            }
+          }
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        } catch (error) {
+          return { content: [{ type: 'text', text: `reload 失败: ${error.message}` }] };
+        }
+      },
+    }),
+    { optional: true },
+  );
+
+  // Host-config chokidar watcher: triggers a debounced registry.reload() whenever
+  // ~/.js-eyes/config/config.json is written (by `js-eyes skills link`, toggles, etc.).
+  const watchConfig = pluginCfg.watchConfig !== false;
+  const devWatchSkills = pluginCfg.devWatchSkills !== false;
+  const chokidar = watchConfig || devWatchSkills ? tryLoadChokidar() : null;
+  let configWatcher = null;
+  let skillDirWatcher = null;
+  let reloadTimer = null;
+
+  function scheduleReload(reason) {
+    if (reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      skillRegistry.reload(reason).catch((error) => {
+        api.logger.warn(`[js-eyes] Hot reload failed: ${error.message}`);
+      });
+    }, 300);
+  }
+
+  if (watchConfig && chokidar) {
+    try {
+      configWatcher = chokidar.watch(runtimePaths.configFile, {
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
+      });
+      configWatcher.on('all', () => scheduleReload('config-watch'));
+      configWatcher.on('error', (error) => {
+        api.logger.warn(`[js-eyes] config watcher error: ${error.message}`);
+      });
+      api.logger.info(`[js-eyes] Watching host config: ${runtimePaths.configFile}`);
+    } catch (error) {
+      api.logger.warn(`[js-eyes] Failed to start config watcher: ${error.message}`);
+    }
+  } else if (watchConfig && !chokidar) {
+    api.logger.warn(`[js-eyes] chokidar not installed; host-config hot reload disabled. Install chokidar to enable.`);
+  }
+
+  if (devWatchSkills && chokidar) {
+    try {
+      const watchGlobs = [];
+      if (skillSources && skillSources.primary && nodeFs.existsSync(skillSources.primary)) {
+        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'skill.contract.js'));
+        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'package.json'));
+      }
+      for (const extra of (skillSources && skillSources.extras) || []) {
+        if (extra.kind === 'skill') {
+          watchGlobs.push(nodePath.join(extra.path, 'skill.contract.js'));
+          watchGlobs.push(nodePath.join(extra.path, 'package.json'));
+        } else {
+          watchGlobs.push(nodePath.join(extra.path, '*', 'skill.contract.js'));
+          watchGlobs.push(nodePath.join(extra.path, '*', 'package.json'));
+        }
+      }
+      if (watchGlobs.length > 0) {
+        skillDirWatcher = chokidar.watch(watchGlobs, {
+          persistent: true,
+          ignoreInitial: true,
+          awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
+        });
+        skillDirWatcher.on('all', () => scheduleReload('skill-dir-watch'));
+        skillDirWatcher.on('error', (error) => {
+          api.logger.warn(`[js-eyes] skill dir watcher error: ${error.message}`);
+        });
+        api.logger.info(`[js-eyes] Watching ${watchGlobs.length} skill path(s) for hot reload`);
+      }
+    } catch (error) {
+      api.logger.warn(`[js-eyes] Failed to start skill-dir watcher: ${error.message}`);
+    }
+  }
 
   api.registerCli(
     ({ program }) => {

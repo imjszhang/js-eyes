@@ -32,6 +32,46 @@ function hasSkillContract(skillDir) {
   return fs.existsSync(path.join(skillDir, SKILL_CONTRACT_FILE));
 }
 
+function safeStat(target) {
+  try {
+    return fs.statSync(target);
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 列出某个目录下被视为「候选 skill 目录」的直接子项绝对路径。
+ *
+ * 与裸 readdirSync 相比多做两件事：
+ *   1. 把 symlink-to-directory 也视为目录（Dirent.isDirectory() 对 symlink 为 false）。
+ *   2. 对于不存在 / 不可读的目录，返回空数组而不是抛错。
+ *
+ * 只扫 1 层，不递归。
+ */
+function listSkillDirectories(dir) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (_) {
+    return [];
+  }
+  const results = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(full);
+      continue;
+    }
+    if (entry.isSymbolicLink()) {
+      const stat = safeStat(full);
+      if (stat && stat.isDirectory()) results.push(full);
+    }
+  }
+  return results;
+}
+
 function resolveSkillsDir(paths, config = {}) {
   if (config.skillsDir) {
     return path.resolve(config.skillsDir);
@@ -43,6 +83,67 @@ function resolveSkillsDir(paths, config = {}) {
     return path.join(paths.baseDir, 'skills');
   }
   return path.resolve('skills');
+}
+
+/**
+ * 归一化多源配置：primary + extras。
+ *
+ * 入参：
+ *   - { primary, extras }：primary 是单个目录字符串；extras 是字符串数组或 undefined。
+ *   - 或 { paths, config }：会自动走 resolveSkillsDir 推导 primary，并读 config.extraSkillDirs。
+ *
+ * 出参：
+ *   {
+ *     primary: '/abs/primary',
+ *     extras: [{ path: '/abs/x', kind: 'skill' | 'dir' }, ...],
+ *     invalid: [{ path, reason }]  // 不存在或读不到的 extra 条目
+ *   }
+ *
+ * kind 判定：自身含 skill.contract.js => 'skill'；否则当作父目录 'dir'。
+ * 对重复路径做去重（primary 自己也不会出现在 extras 里）。
+ */
+function resolveSkillSources(input = {}) {
+  let primary = input.primary;
+  let extrasInput = input.extras;
+
+  if (!primary) {
+    primary = resolveSkillsDir(input.paths, input.config || {});
+  }
+  primary = primary ? path.resolve(primary) : '';
+
+  if (!extrasInput && input.config && Array.isArray(input.config.extraSkillDirs)) {
+    extrasInput = input.config.extraSkillDirs;
+  }
+
+  const rawExtras = Array.isArray(extrasInput) ? extrasInput : [];
+  const seen = new Set();
+  if (primary) seen.add(primary);
+
+  const extras = [];
+  const invalid = [];
+  for (const raw of rawExtras) {
+    if (typeof raw !== 'string' || !raw.trim()) {
+      invalid.push({ path: String(raw), reason: 'invalid-type' });
+      continue;
+    }
+    const abs = path.resolve(raw);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+
+    if (!fs.existsSync(abs)) {
+      invalid.push({ path: abs, reason: 'not-found' });
+      continue;
+    }
+    const stat = safeStat(abs);
+    if (!stat || !stat.isDirectory()) {
+      invalid.push({ path: abs, reason: 'not-a-directory' });
+      continue;
+    }
+    const kind = hasSkillContract(abs) ? 'skill' : 'dir';
+    extras.push({ path: abs, kind });
+  }
+
+  return { primary, extras, invalid };
 }
 
 function getOpenClawConfigPath(options = {}) {
@@ -88,11 +189,7 @@ function normalizeSkillMetadata(skillDir) {
 }
 
 function discoverLocalSkills(skillsDir) {
-  if (!fs.existsSync(skillsDir)) return [];
-  const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(skillsDir, entry.name))
+  return listSkillDirectories(skillsDir)
     .filter((skillDir) => hasSkillContract(skillDir))
     .map((skillDir) => normalizeSkillMetadata(skillDir))
     .filter((skill) => skill && skill.id);
@@ -102,6 +199,104 @@ function readSkillById(skillsDir, skillId) {
   const skillDir = path.join(skillsDir, skillId);
   if (!fs.existsSync(skillDir) || !hasSkillContract(skillDir)) return null;
   return normalizeSkillMetadata(skillDir);
+}
+
+/**
+ * 按 sources 发现所有可用 skill，返回带 source / sourcePath 注解的统一列表。
+ *
+ * sources 由 resolveSkillSources() 生成；也接受简化形态 { primary, extras: [string] }
+ * （会内部再跑一遍 resolveSkillSources 归一化）。
+ *
+ * 冲突策略：同 id 多源命中时 primary 优先；后续 extras 里的同 id 被跳过。
+ * 每次跳过会回调 onConflict({ id, winner, loser })，调用方自行决定是否打日志。
+ *
+ * 返回值：
+ *   {
+ *     skills: [{ ...normalizeSkillMetadata, source: 'primary'|'extra', sourcePath }],
+ *     conflicts: [{ id, winner: { source, path }, loser: { source, path } }],
+ *     invalid: sources.invalid  // 透传，便于 CLI 展示
+ *   }
+ */
+function discoverSkillsFromSources(sources, options = {}) {
+  const normalized = sources && Array.isArray(sources.extras) && sources.extras.every((e) => e && typeof e === 'object')
+    ? sources
+    : resolveSkillSources(sources || {});
+
+  const { primary, extras, invalid = [] } = normalized;
+  const { onConflict } = options;
+
+  const byId = new Map();
+  const conflicts = [];
+
+  const register = (skill, source, sourcePath) => {
+    if (!skill || !skill.id) return;
+    if (byId.has(skill.id)) {
+      const existing = byId.get(skill.id);
+      const conflict = {
+        id: skill.id,
+        winner: { source: existing.source, path: existing.sourcePath },
+        loser: { source, path: sourcePath },
+      };
+      conflicts.push(conflict);
+      if (typeof onConflict === 'function') {
+        try { onConflict(conflict); } catch (_) { /* noop */ }
+      }
+      return;
+    }
+    byId.set(skill.id, { ...skill, source, sourcePath });
+  };
+
+  if (primary) {
+    for (const skill of discoverLocalSkills(primary)) {
+      register(skill, 'primary', primary);
+    }
+  }
+
+  for (const extra of extras) {
+    if (extra.kind === 'skill') {
+      if (!hasSkillContract(extra.path)) continue;
+      const meta = normalizeSkillMetadata(extra.path);
+      if (meta && meta.id) register(meta, 'extra', extra.path);
+      continue;
+    }
+    for (const skill of discoverLocalSkills(extra.path)) {
+      register(skill, 'extra', extra.path);
+    }
+  }
+
+  return {
+    skills: Array.from(byId.values()),
+    conflicts,
+    invalid,
+  };
+}
+
+/**
+ * 在 primary + extras 的联合范围内按 id 找 skill。
+ * primary 优先；extras 按传入顺序其次。命中返回带 source / sourcePath 的对象，未命中返回 null。
+ */
+function readSkillByIdFromSources(input = {}) {
+  const { id } = input;
+  if (!id) return null;
+  const { primary, extras } = Array.isArray(input.extras) && input.extras.every((e) => e && typeof e === 'object')
+    ? input
+    : resolveSkillSources(input);
+
+  if (primary) {
+    const hit = readSkillById(primary, id);
+    if (hit) return { ...hit, source: 'primary', sourcePath: primary };
+  }
+  for (const extra of extras) {
+    if (extra.kind === 'skill') {
+      if (!hasSkillContract(extra.path)) continue;
+      const meta = normalizeSkillMetadata(extra.path);
+      if (meta && meta.id === id) return { ...meta, source: 'extra', sourcePath: extra.path };
+      continue;
+    }
+    const hit = readSkillById(extra.path, id);
+    if (hit) return { ...hit, source: 'extra', sourcePath: extra.path };
+  }
+  return null;
 }
 
 async function fetchSkillsRegistry(registryUrl) {
@@ -188,21 +383,40 @@ function isSkillEnabled(config = {}, skillId, legacyState = {}) {
   return false;
 }
 
-function registerOpenClawTools(api, adapter, options = {}) {
-  const logger = options.logger || api.logger || console;
-  const registeredNames = options.registeredNames || null;
+/**
+ * 从 adapter.tools 构建 OpenClaw 工具定义列表（不执行 api.registerTool）。
+ *
+ * 用于 SkillRegistry 等需要"先收集再统一注册"的场景；registerOpenClawTools
+ * 的注册循环基于此函数的输出。
+ *
+ * 返回：
+ *   {
+ *     toolDefs: [{ definition, optional, toolName }],  // 通过过滤的工具
+ *     summary: { registered: [], skipped: [{ name, reason }], failed: [] },
+ *   }
+ *
+ * 注意：本函数不会写入 registeredNames；由调用方在成功注册后维护。
+ */
+function buildAdapterTools(adapter, options = {}) {
+  const logger = options.logger || console;
   const sourceName = options.sourceName || adapter?.id || 'js-eyes-skill';
   const declaredTools = Array.isArray(options.declaredTools) && options.declaredTools.length > 0
     ? new Set(options.declaredTools)
     : null;
+  const registeredNames = options.registeredNames || null;
   const wrapTool = typeof options.wrapTool === 'function' ? options.wrapTool : null;
+
+  const toolDefs = [];
   const summary = {
     registered: [],
     skipped: [],
     failed: [],
   };
+  // Track names we've already emitted in this batch so intra-batch duplicates
+  // are rejected even when registeredNames is not mutated here.
+  const localSeen = new Set();
 
-  for (const tool of adapter.tools || []) {
+  for (const tool of (adapter && adapter.tools) || []) {
     if (!tool || !tool.name) {
       summary.skipped.push({ name: '(anonymous)', reason: 'missing-name' });
       logger.warn(`[js-eyes] Skipping tool with missing name from ${sourceName}`);
@@ -213,29 +427,55 @@ function registerOpenClawTools(api, adapter, options = {}) {
       logger.warn(`[js-eyes] Skipping undeclared tool "${tool.name}" from ${sourceName}`);
       continue;
     }
-    if (registeredNames && registeredNames.has(tool.name)) {
+    if ((registeredNames && registeredNames.has(tool.name)) || localSeen.has(tool.name)) {
       summary.skipped.push({ name: tool.name, reason: 'duplicate-name' });
       logger.warn(`[js-eyes] Skipping duplicate tool "${tool.name}" from ${sourceName}`);
       continue;
     }
+    localSeen.add(tool.name);
 
+    const definition = {
+      name: tool.name,
+      label: tool.label,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: tool.execute,
+    };
+    const wrapped = wrapTool ? wrapTool(definition, { source: sourceName }) : definition;
+
+    toolDefs.push({
+      toolName: tool.name,
+      definition: wrapped,
+      optional: Boolean(tool.optional),
+    });
+  }
+
+  return { toolDefs, summary };
+}
+
+function registerOpenClawTools(api, adapter, options = {}) {
+  const logger = options.logger || api.logger || console;
+  const registeredNames = options.registeredNames || null;
+  const sourceName = options.sourceName || adapter?.id || 'js-eyes-skill';
+
+  const { toolDefs, summary } = buildAdapterTools(adapter, {
+    logger,
+    sourceName,
+    declaredTools: options.declaredTools,
+    registeredNames,
+    wrapTool: options.wrapTool,
+  });
+
+  for (const entry of toolDefs) {
     try {
-      const definition = {
-        name: tool.name,
-        label: tool.label,
-        description: tool.description,
-        parameters: tool.parameters,
-        execute: tool.execute,
-      };
-      const wrapped = wrapTool ? wrapTool(definition, { source: sourceName }) : definition;
-      api.registerTool(wrapped, tool.optional ? { optional: true } : undefined);
+      api.registerTool(entry.definition, entry.optional ? { optional: true } : undefined);
       if (registeredNames) {
-        registeredNames.add(tool.name);
+        registeredNames.add(entry.toolName);
       }
-      summary.registered.push(tool.name);
+      summary.registered.push(entry.toolName);
     } catch (error) {
-      summary.failed.push({ name: tool.name, reason: error.message });
-      logger.warn(`[js-eyes] Failed to register tool "${tool.name}" from ${sourceName}: ${error.message}`);
+      summary.failed.push({ name: entry.toolName, reason: error.message });
+      logger.warn(`[js-eyes] Failed to register tool "${entry.toolName}" from ${sourceName}: ${error.message}`);
     }
   }
 
@@ -554,28 +794,42 @@ function runSkillCli(options) {
   });
 }
 
-module.exports = {
+// Assign to (rather than replace) module.exports so that modules which have
+// already captured a reference during circular require — notably
+// ./skill-registry — observe the final API once this module finishes loading.
+Object.assign(module.exports, {
   INSTALL_MANIFEST_FILE,
   INTEGRITY_FILE,
   SKILL_CONTRACT_FILE,
   applySkillInstall,
+  buildAdapterTools,
   cleanupStaging,
   discoverLocalSkills,
+  discoverSkillsFromSources,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
   getOpenClawConfigPath,
   getSkillsState,
   installSkillFromRegistry,
   isSkillEnabled,
+  listSkillDirectories,
   loadSkillContract,
   normalizeSkillMetadata,
   planSkillInstall,
   readSkillById,
+  readSkillByIdFromSources,
   readSkillIntegrity,
   registerOpenClawTools,
+  resolveSkillSources,
   resolveSkillsDir,
   resolveOpenClawPluginEntry,
   runSkillCli,
   verifySkillIntegrity,
   writeIntegrityManifest,
-};
+});
+
+// After our own exports are populated, pull in the registry factory. This must
+// happen last so skill-registry.js sees a fully-populated skills API.
+const skillRegistry = require('./skill-registry');
+module.exports.createSkillRegistry = skillRegistry.createSkillRegistry;
+module.exports.purgeRequireCacheFor = skillRegistry.purgeRequireCacheFor;

@@ -125,8 +125,12 @@ This checklist is for shipping a formal `vX.Y.Z` release from `develop` to `main
   - `npm_key` (preferred npm publish token; Automation Token recommended when the account has 2FA enabled)
   - `AMO_API_KEY`
   - `AMO_API_SECRET`
+  - `CLAWHUB_TOKEN` (optional — required only if `clawhub login` has not been run on this host)
 - Firefox signing binary is available through the repo install:
   - `node_modules/.bin/web-ext`
+- ClawHub CLI is installed globally:
+  - `npm install -g clawhub`
+  - `clawhub whoami` returns your handle (or set `CLAWHUB_TOKEN` above)
 
 ## 1. Freeze The Release Candidate On `develop`
 
@@ -299,7 +303,77 @@ The repository does not automate AMO public submission. Use the Mozilla Develope
 
 Keep the GitHub Release and AMO version numbers identical.
 
-## 7. Post-Release Checks
+## 7. ClawHub Publish
+
+`npm run release` already runs ClawHub publish as its final `[6/6]` step. Skip this section only if you explicitly passed `--skip-clawhub` (or used `npm run publish:npm`, which does).
+
+### 7.1 Prerequisites
+
+- `clawhub` CLI installed globally:
+
+  ```bash
+  npm install -g clawhub
+  ```
+
+- Authentication — either of:
+  - Persistent login: run `clawhub login` once on the release host, or
+  - `.env` in the repo root contains `CLAWHUB_TOKEN=<token>` (the release script will call `clawhub login --no-browser --token "$CLAWHUB_TOKEN"` on demand).
+- `dist/skill-bundle/js-eyes/SKILL.md` exists. The `[2/6] build` step produces it. If you ran `publish:clawhub` with `--skip-bundle` and the stage is empty, the release script will rebuild the skill zip automatically.
+- `RELEASE_NOTES.md` has a `## v<version>` section — it is the source of the `--changelog` string pushed to ClawHub.
+
+### 7.2 Commands
+
+Full release (recommended):
+
+```bash
+npm run release
+```
+
+ClawHub-only (when npm / GitHub Release were published separately, or you just want to re-push the registry entry):
+
+```bash
+npm run publish:clawhub
+```
+
+Dry run (prints what would be published without touching ClawHub):
+
+```bash
+npm run release:dry-run
+```
+
+### 7.3 What The Step Actually Does
+
+Implementation: [packages/devtools/lib/clawhub-publish.js](packages/devtools/lib/clawhub-publish.js) and the `[6/6] clawhub publish` block in [packages/devtools/bin/js-eyes-dev.js](packages/devtools/bin/js-eyes-dev.js).
+
+- Publishes from `dist/skill-bundle/js-eyes/` (the staged main skill bundle), **not** the repo root.
+- Excludes files listed in `.clawhubignore` (by default: `extensions/`, `docs/`, `src/`, `test/`, `apps/`, `skills/`, `dist/`, `node_modules/`, `README.md`, `CHANGELOG.md`, `RELEASE.md`, `RELEASE_NOTES.md`, `.env*`, etc.).
+- Calls `clawhub publish <stageDir> --slug js-eyes --version <pkg.version> --changelog <extracted>`:
+  - `--version` is taken from `package.json.version` (so keep the monorepo root `version` in sync via `npm run bump <X.Y.Z>` before releasing).
+  - `--changelog` is auto-extracted from the `## v<version>` block in `RELEASE_NOTES.md`.
+  - Slug defaults to `js-eyes`; override with `--clawhub-slug <other>` if you ever ship a different bundle.
+- Parses the trailing `(<id>)` from the `clawhub` output and prints `published js-eyes@<version> (<id>) as @<who>`.
+- After publish, ClawHub hides the new version until its security scan completes. The `js-eyes` bundle intentionally contains `child_process` / `fs` / `ws` usage in `packages/protocol/skills.js` that the scanner flags — this is expected; the release stays in "scanning" state briefly and then becomes public.
+
+### 7.4 Verify
+
+```bash
+clawhub whoami                       # should print your handle
+```
+
+Then open `https://clawhub.ai/skills/js-eyes` and confirm:
+
+- New version entry appears with the correct `<version>`.
+- Version count on the skill header increments by one.
+- Changelog body matches the `## v<version>` section of `RELEASE_NOTES.md`.
+
+### 7.5 Troubleshooting
+
+- `clawhub CLI not installed (npm install -g clawhub)` — install it globally; the release script silently skips the step otherwise.
+- `clawhub not logged in ...` — either run `clawhub login` once, or put `CLAWHUB_TOKEN` in `.env`.
+- `clawhub publish: <dir> is missing SKILL.md` — the skill stage was not built. Re-run `npm run build:skill` or drop `--skip-bundle` from your invocation.
+- `Skill flagged — suspicious patterns detected` on the ClawHub page — expected for this bundle; wait for the scan to finish or contact ClawHub support with the flagged pattern list.
+
+## 8. Post-Release Checks
 
 - `git tag` includes `vX.Y.Z`
 - GitHub Release is public and complete
