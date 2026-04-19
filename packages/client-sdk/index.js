@@ -5,6 +5,7 @@ const {
   DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
+  isLoopbackHost,
 } = require('@js-eyes/protocol');
 const {
   PolicyContext,
@@ -105,9 +106,23 @@ class BrowserAutomation {
       this.logger.info(`[JS-Eyes] 正在连接: ${sanitizedUrl}`);
 
       const protocols = this.token ? [WS_SUBPROTOCOL_PREFIX + this.token] : undefined;
+      
+      // Extract host from wsUrl for Origin header (loopback only)
+      let originHeader = null;
+      try {
+        const parsed = new URL(wsUrl);
+        if (isLoopbackHost(parsed.hostname)) {
+          originHeader = parsed.protocol === 'wss:'
+            ? `https://${parsed.host}`
+            : `http://${parsed.host}`;
+        }
+      } catch {}
+
       const wsOptions = this.token
-        ? { headers: { Authorization: `Bearer ${this.token}` } }
-        : undefined;
+        ? { headers: { Authorization: `Bearer ${this.token}`, ...(originHeader ? { Origin: originHeader } : {}) } }
+        : originHeader
+          ? { headers: { Origin: originHeader } }
+          : undefined;
 
       try {
         this.ws = protocols
