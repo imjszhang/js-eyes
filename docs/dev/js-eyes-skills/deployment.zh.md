@@ -162,7 +162,7 @@ js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载
           // primary 保持默认（SKILL_ROOT/skills），不用写；如需显式覆盖再填
           // "skillsDir": "/abs/primary",
           "extraSkillDirs": [
-            "/Volumes/home_x/github/my/js-mastodon-ops-skill",
+            "/Users/you/github/my/js-mastodon-ops-skill",
             "/Users/you/work/company-private-skills"
           ]
         }
@@ -180,10 +180,10 @@ js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载
 
 ```bash
 # 把一个外部 skill 目录接入当前主机
-js-eyes skills link /Volumes/home_x/github/my/js-mastodon-ops-skill
+js-eyes skills link /Users/you/github/my/js-mastodon-ops-skill
 
 # 解除接入
-js-eyes skills unlink /Volumes/home_x/github/my/js-mastodon-ops-skill
+js-eyes skills unlink /Users/you/github/my/js-mastodon-ops-skill
 
 # 显式触发 reload（touch configFile；通常不需要）
 js-eyes skills reload

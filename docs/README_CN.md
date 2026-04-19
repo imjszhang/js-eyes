@@ -454,7 +454,7 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步版本号到所有 manifest
-npm run bump -- 2.4.0
+npm run bump -- 2.5.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

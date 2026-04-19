@@ -37,7 +37,7 @@ my-skill/
 1. 目录是 `skillsDir`（primary）或 `extraSkillDirs`（extras）下的直接子目录；或者是 `extraSkillDirs` 里**自身就是 skill 目录**的条目（含 `skill.contract.js`）；
 2. 目录里有 `skill.contract.js`。
 
-没有 `skill.contract.js` 的目录会被忽略（例如 `skills/js-eyes/` 就是这种"纯文档 skill"，仅给 ClawHub 展示用）。
+没有 `skill.contract.js` 的目录会被静默忽略（见 `test/skill-bundle.test.js` 里 "ignores parent skill docs without a child skill contract" 这条用例）。
 
 ## 3. 推荐起点：拷贝最小样例
 

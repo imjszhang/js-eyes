@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.4.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.5.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -396,12 +396,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.4.0` |
-| Browser extension assets | `2.4.0` |
-| `@js-eyes/server-core` | `2.4.0` |
-| `@js-eyes/client-sdk` | `2.4.0` |
-| `openclaw-plugin` | `2.4.0` |
-| Skills using `@js-eyes/client-sdk` | `2.4.0` |
+| CLI | `2.5.0` |
+| Browser extension assets | `2.5.0` |
+| `@js-eyes/server-core` | `2.5.0` |
+| `@js-eyes/client-sdk` | `2.5.0` |
+| `openclaw-plugin` | `2.5.0` |
+| Skills using `@js-eyes/client-sdk` | `2.5.0` |
 
 ## Extension Skills
 
@@ -507,7 +507,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump version across all manifests
-npm run bump -- 2.4.0
+npm run bump -- 2.5.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

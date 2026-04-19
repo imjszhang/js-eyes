@@ -19,6 +19,7 @@ window.I18nLocales['zh-CN'] = {
         deployHint: '在终端中运行',
         deployCmdUnix: 'curl -fsSL https://js-eyes.com/install.sh | bash',
         deployCmdWin: 'irm https://js-eyes.com/install.ps1 | iex',
+        deployCmdClawhub: 'openclaw skills install js-eyes',
         deployCopy: '\u590d\u5236',
         deployResult1: '\u2713 js-eyes \u5df2\u5b89\u88c5',
         deployResult2: '\u2713 \u63d2\u4ef6\u5df2\u5199\u5165\u89e3\u6790\u540e\u7684 openclaw.json',

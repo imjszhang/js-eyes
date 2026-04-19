@@ -728,6 +728,10 @@ function collectVersionFiles() {
       name: 'openclaw-plugin/openclaw.plugin.json',
     },
     {
+      path: path.join(PROJECT_ROOT, 'openclaw-plugin', 'package.json'),
+      name: 'openclaw-plugin/package.json',
+    },
+    {
       path: path.join(PROJECT_ROOT, 'extensions', 'firefox', 'popup', 'package.json'),
       name: 'extensions/firefox/popup/package.json',
     },
