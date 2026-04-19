@@ -160,6 +160,137 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     assert.match(result.content[0].text, /not currently loaded/);
   });
 
+  it('exposes real description/parameters on first dispatcher registration', async () => {
+    const primary = path.join(tempDir, 'primary');
+    fs.mkdirSync(primary, { recursive: true });
+    writeSkill(path.join(primary, 'alpha'), 'alpha', { tool: 'alpha_tool' });
+
+    const api = createFakeApi();
+    const io = stubConfigIo({ skillsEnabled: { alpha: true } });
+    const registry = createSkillRegistry({
+      api,
+      skillsDir: primary,
+      extrasProvider: () => [],
+      configLoader: io.loader,
+      setConfigValue: io.setter,
+      logger: api.logger,
+      suppressSelfWrites: false,
+    });
+    await registry.init();
+
+    const entry = api._registered.get('alpha_tool');
+    assert.ok(entry, 'alpha_tool should be registered');
+    assert.equal(entry.definition.name, 'alpha_tool');
+    assert.equal(entry.definition.label, 'alpha_tool');
+    assert.equal(entry.definition.description, 'test tool');
+    assert.deepEqual(entry.definition.parameters, {
+      type: 'object',
+      properties: { msg: { type: 'string' } },
+    });
+    // Optional flag is also forwarded so OpenClaw tool-allowlist semantics still apply.
+    assert.deepEqual(entry.options, { optional: true });
+  });
+
+  it('refreshes dispatcher description/parameters on hot-reload when contract changes', async () => {
+    const primary = path.join(tempDir, 'primary');
+    fs.mkdirSync(primary, { recursive: true });
+    const skillDir = path.join(primary, 'alpha');
+    writeSkill(skillDir, 'alpha', { tool: 'alpha_tool' });
+
+    const api = createFakeApi();
+    const io = stubConfigIo({ skillsEnabled: { alpha: true } });
+    const registry = createSkillRegistry({
+      api,
+      skillsDir: primary,
+      extrasProvider: () => [],
+      configLoader: io.loader,
+      setConfigValue: io.setter,
+      logger: api.logger,
+      suppressSelfWrites: false,
+    });
+    await registry.init();
+
+    const entryBefore = api._registered.get('alpha_tool');
+    // Grab the dispatcher object by reference so we can assert mutate-in-place.
+    const dispatcherRef = entryBefore.definition;
+    assert.deepEqual(dispatcherRef.parameters, {
+      type: 'object',
+      properties: { msg: { type: 'string' } },
+    });
+    assert.equal(dispatcherRef.description, 'test tool');
+
+    // Rewrite the contract with a new schema + description; keep the same tool name
+    // so we exercise the hot-reload refresh path (not a new-name registration).
+    // Use disposeSkill() to unbind first so the subsequent reload() re-runs
+    // loadSkillState (_reloadCore skips re-loading when skillDir is unchanged).
+    await registry.disposeSkill('alpha');
+    fs.writeFileSync(
+      path.join(skillDir, 'skill.contract.js'),
+      `'use strict';
+const pkg = require('./package.json');
+function createOpenClawAdapter() {
+  return {
+    runtime: {},
+    tools: [{
+      name: 'alpha_tool',
+      label: 'Alpha (updated)',
+      description: 'updated description',
+      parameters: {
+        type: 'object',
+        properties: {
+          msg: { type: 'string', description: 'required msg' },
+          count: { type: 'number' },
+        },
+        required: ['msg'],
+      },
+      optional: true,
+      async execute(_id, params) {
+        return { content: [{ type: 'text', text: 'updated:' + (params && params.msg) }] };
+      },
+    }],
+  };
+}
+module.exports = {
+  id: 'alpha',
+  name: 'alpha',
+  version: '1.0.1',
+  description: '',
+  openclaw: { tools: [{ name: 'alpha_tool', description: 'updated description', parameters: { type: 'object', properties: {} } }] },
+  createOpenClawAdapter,
+};
+`,
+      'utf8',
+    );
+
+    await registry.reload('test');
+
+    // api.registerTool must only have been called once per name (no duplicate registration).
+    assert.equal(api._registered.size, 1);
+    const entryAfter = api._registered.get('alpha_tool');
+    // Same dispatcher object — mutated in place.
+    assert.equal(entryAfter.definition, dispatcherRef);
+    assert.equal(dispatcherRef.label, 'Alpha (updated)');
+    assert.equal(dispatcherRef.description, 'updated description');
+    assert.deepEqual(dispatcherRef.parameters, {
+      type: 'object',
+      properties: {
+        msg: { type: 'string', description: 'required msg' },
+        count: { type: 'number' },
+      },
+      required: ['msg'],
+    });
+
+    // Execute should delegate to the new implementation via toolBindings.
+    const result = await dispatcherRef.execute('t-2', { msg: 'hey' });
+    assert.match(result.content[0].text, /updated:hey/);
+
+    // A refresh info log should have been emitted.
+    const refreshLog = api._calls.find(
+      (c) => c[0] === 'info' && /Refreshed dispatcher schema for tool "alpha_tool"/.test(c[1]),
+    );
+    assert.ok(refreshLog, 'expected an info log when dispatcher schema is refreshed');
+  });
+
   it('applies wrapSensitiveTool to skill tool definitions', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });

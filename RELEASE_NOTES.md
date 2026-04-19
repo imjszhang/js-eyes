@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+### Highlights
+- **Skill tool schema is now visible to OpenClaw / LLM** _(2026-04-20)_: `SkillRegistry` used to register per-tool dispatchers with an empty placeholder schema (`{ type: 'object', properties: {} }`) and a generic description, so the LLM could not see `required` / `anyOf` constraints coming from skill contracts (e.g. `mastodon_get_status` silently dropped its `url`/`tabId` parameter and failed at runtime). The dispatcher now carries the contract's real `label` / `description` / `parameters` on first registration. Hot-reloads mutate the dispatcher object in place, so hosts that keep the tool object by reference see schema updates automatically; hosts that snapshot at registration time still get the correct first-load schema, with a one-time OpenClaw restart needed for subsequent schema changes. Affects [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js); new tests in [test/skill-registry.test.js](test/skill-registry.test.js); docs in [docs/dev/js-eyes-skills/deployment.zh.md](docs/dev/js-eyes-skills/deployment.zh.md).
+
+### Migration Notes
+- **No breaking changes.** Existing skill contracts work unchanged; they just show up to LLM with their real schema now.
+- After upgrading, a one-time OpenClaw restart is recommended so the first `registerTool` call sees the new code path; subsequent `js-eyes skills link`/`reload` stay zero-restart for same-name tools.
+
+## v2.5.1
+
+> Security UX patch release. Fixes the long-standing gap where `security.allowRawEval` on the host was effectively inert because the extension never synced it. No breaking changes.
+
+### Highlights
+- **`allowRawEval`: single-toggle from the host** _(2026-04-20)_: The host now pushes `security.allowRawEval` to the browser extension via `init_ack.serverConfig.security.allowRawEval` at WebSocket handshake, and the extension applies it automatically. Previously operators had to flip the value in two places (host config **and** `chrome.storage.local`) because the extension popup never exposed a UI toggle for it — and the host value was never propagated — making the host-side switch effectively a no-op. Now only `security.allowRawEval=true` in `~/.js-eyes/config/config.json` is required; the extension picks it up on the next reconnect. The storage key remains as an explicit opt-out override for security-hardened deployments: `chrome.storage.local.set({allowRawEval:false})` (or `true`) pins the extension regardless of the host. Affects [packages/server-core/ws-handler.js](packages/server-core/ws-handler.js), [extensions/chrome/background/background.js](extensions/chrome/background/background.js), and [extensions/firefox/background/background.js](extensions/firefox/background/background.js).
+
+### Migration Notes
+- **No breaking changes.** Wire protocol additive: older extensions ignore the new `serverConfig.security.allowRawEval`; newer extensions still fall back to their previous behavior against older servers.
+- After upgrading, restart the js-eyes server and reload the browser extension (`chrome://extensions` → reload). The extension's background console will log `[ConfigSync] allowRawEval synced from host: <value>` on the next handshake.
+- If you had previously set `chrome.storage.local.allowRawEval=true` as a workaround, you can clear it with `chrome.storage.local.remove('allowRawEval')` to start following the host again — or leave it as an explicit override.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.1/js-eyes-chrome-v2.5.1.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.1/js-eyes-firefox-v2.5.1.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.5.1/js-eyes-skill-v2.5.1.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.5.1`
+2. `js-eyes doctor` — confirm output is unchanged from 2.5.0.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.5.1 and run `npm install` in the bundle root.
+2. Restart OpenClaw so the updated server-core (`init_ack` downlink) is loaded.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.5.1.zip`, extract, reload unpacked (or update from the Chrome Web Store once live).
+2. Open `chrome://extensions` → reload the JS Eyes extension. Confirm `[ConfigSync] allowRawEval synced from host: <value>` shows up in the service-worker console after reconnect.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.5.1.xpi` (or update from AMO once the listing is live). Reload the extension so the new background script picks up the sync logic.
+
+---
+
 ## v2.5.0
 
 > Extensibility & hot-reload release. Makes JS Eyes Skills a first-class runtime surface: new `SkillRegistry` delivers zero-restart `link` / `unlink` / `reload` semantics on a running OpenClaw plugin, and a new `extraSkillDirs` multi-source layer lets users mount external skill directories without touching the primary `skillsDir`. Wire protocol and CLI contract unchanged.

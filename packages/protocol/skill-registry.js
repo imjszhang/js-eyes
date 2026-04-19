@@ -10,6 +10,11 @@
  *
  * 对「全新 tool name 的首次出现」（init 之后）会尝试 api.registerTool；
  * 若宿主在运行时拒绝新工具名，降级为记录 warning，其余变更仍然 0 重启。
+ *
+ * Schema 透传：dispatcher 对象会携带 skill contract 的真实 `label`/`description`/`parameters`，
+ * 让 OpenClaw / LLM 看到正确的入参约束（required / properties 等）。热加载时若 contract
+ * 改了 schema，会按**引用** mutate 已注册的 dispatcher 对象；若某些 OpenClaw 宿主对 tool
+ * 对象做了深拷贝/快照，则 mutate 不会生效，但首次注册的 schema 仍然是正确的。
  */
 
 const fs = require('fs');
@@ -121,8 +126,9 @@ function createSkillRegistry(options = {}) {
   const skills = new Map();
   // toolName -> { skillId, definition, optional }
   const toolBindings = new Map();
-  // toolName -> dispatcher (registered once per name)
-  const dispatcherRegistered = new Set();
+  // toolName -> dispatcher object (registered once per name; kept by reference so we can
+  // mutate `description`/`parameters`/`label` on hot-reload to keep OpenClaw-visible schema in sync)
+  const dispatchers = new Map();
   // Reserved names (built-ins + sensitive wrapper fixed names); skills cannot override.
   const reservedToolNames = new Set(builtinToolNames);
 
@@ -134,28 +140,66 @@ function createSkillRegistry(options = {}) {
     return skills.get(skillId) || null;
   }
 
-  function ensureDispatcher(toolName, optional) {
-    if (dispatcherRegistered.has(toolName)) return { ok: true };
+  function deriveDispatcherMeta(toolName, definition) {
+    const label = (definition && typeof definition.label === 'string' && definition.label)
+      || toolName;
+    const description = (definition && typeof definition.description === 'string' && definition.description)
+      || `[js-eyes dispatcher] ${toolName}`;
+    const parameters = (definition && definition.parameters && typeof definition.parameters === 'object')
+      ? definition.parameters
+      : { type: 'object', properties: {} };
+    return { label, description, parameters };
+  }
+
+  function safeStringify(value) {
+    try { return JSON.stringify(value); } catch (_) { return null; }
+  }
+
+  function ensureDispatcher(toolName, optional, definition) {
+    const existing = dispatchers.get(toolName);
+    const meta = deriveDispatcherMeta(toolName, definition);
+
+    if (existing) {
+      // Hot-reload path: the dispatcher was already registered with OpenClaw.
+      // Mutate in place so hosts that keep the tool object by reference (e.g.
+      // captured-registration's `tools.push(tool)`) surface the new schema; hosts that
+      // snapshotted at registration time will keep the first-load schema, which is
+      // already accurate for the common case.
+      const changed =
+        existing.label !== meta.label
+        || existing.description !== meta.description
+        || safeStringify(existing.parameters) !== safeStringify(meta.parameters);
+      if (changed) {
+        existing.label = meta.label;
+        existing.description = meta.description;
+        existing.parameters = meta.parameters;
+        logger.info(
+          `[js-eyes] Refreshed dispatcher schema for tool "${toolName}" (hot-reload; a one-time OpenClaw restart may be required if the host snapshots tool metadata)`,
+        );
+      }
+      return { ok: true };
+    }
+
     const dispatcher = {
       name: toolName,
-      label: toolName,
-      description: `[js-eyes dispatcher] ${toolName}`,
-      parameters: { type: 'object', properties: {} },
+      label: meta.label,
+      description: meta.description,
+      parameters: meta.parameters,
       async execute(toolCallId, params) {
         const binding = toolBindings.get(toolName);
         if (!binding) {
           return { content: [{ type: 'text', text: DEFAULT_UNAVAILABLE_MESSAGE(toolName) }] };
         }
-        // When the binding is present, delegate using the latest metadata.
+        // Delegate via the current binding; execute is the authoritative behavior.
+        // label/description/parameters on `dispatcher` are kept in sync via ensureDispatcher
+        // on every applyBindings() so OpenClaw-visible metadata follows the latest contract.
         const def = binding.definition;
-        // Keep label/description/parameters in sync at call time by reading binding,
-        // but execute is what actually matters.
         return def.execute(toolCallId, params);
       },
     };
     try {
       api.registerTool(dispatcher, optional ? { optional: true } : undefined);
-      dispatcherRegistered.add(toolName);
+      dispatchers.set(toolName, dispatcher);
       return { ok: true };
     } catch (error) {
       logger.warn(
@@ -272,7 +316,7 @@ function createSkillRegistry(options = {}) {
   function applyBindings(state) {
     const failedDispatchers = [];
     for (const entry of state.toolDefs) {
-      const dispatched = ensureDispatcher(entry.toolName, entry.optional);
+      const dispatched = ensureDispatcher(entry.toolName, entry.optional, entry.definition);
       if (!dispatched.ok) {
         failedDispatchers.push(entry.toolName);
         continue;
@@ -529,7 +573,7 @@ function createSkillRegistry(options = {}) {
         tools: s.toolNames.slice(),
       })),
       toolBindings: Array.from(toolBindings.keys()),
-      dispatchersRegistered: Array.from(dispatcherRegistered),
+      dispatchersRegistered: Array.from(dispatchers.keys()),
     };
   }
 
@@ -544,7 +588,7 @@ function createSkillRegistry(options = {}) {
     _internals: {
       toolBindings,
       skills,
-      dispatcherRegistered,
+      dispatchers,
       setSuppressNextReload(v) { suppressNextReload = Boolean(v); },
     },
   };

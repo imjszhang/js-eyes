@@ -412,6 +412,21 @@ describe('handleExtensionMessage', () => {
     assert.equal(ack.serverConfig?.request?.defaultTimeout, 5000);
   });
 
+  it('init_ack defaults security.allowRawEval to false when not configured', () => {
+    handleExtensionMessage(JSON.stringify({ type: 'init', userAgent: 'Mozilla/5.0 Chrome/120' }), clientId, state);
+    const ack = socket._messages[0];
+    assert.equal(ack.type, 'init_ack');
+    assert.equal(ack.serverConfig?.security?.allowRawEval, false);
+  });
+
+  it('init_ack reflects state.security.allowRawEval when enabled', () => {
+    state.security = { allowRawEval: true };
+    handleExtensionMessage(JSON.stringify({ type: 'init', userAgent: 'Mozilla/5.0 Chrome/120' }), clientId, state);
+    const ack = socket._messages[0];
+    assert.equal(ack.type, 'init_ack');
+    assert.equal(ack.serverConfig?.security?.allowRawEval, true);
+  });
+
   it('handles init with notification envelope', () => {
     const msg = {
       type: 'notification',

@@ -250,6 +250,9 @@ function handleExtensionMessage(raw, clientId, state) {
           browserName: conn.browserName,
           serverConfig: {
             request: { defaultTimeout: state.requestTimeoutMs || REQUEST_TIMEOUT_MS },
+            security: {
+              allowRawEval: !!(state.security && state.security.allowRawEval),
+            },
           },
           timestamp: new Date().toISOString(),
         });

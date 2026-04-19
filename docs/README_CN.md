@@ -249,7 +249,7 @@ js-eyes doctor
 
 - WebSocket / HTTP 必须携带 Bearer Token，`Origin` 必须在白名单内；若需绑定非 loopback 主机，必须显式设置 `security.allowRemoteHost=true`。
 - `execute_script`、`get_cookies*`、`upload_file*`、`inject_css`、`install_skill` 默认策略为 `confirm`，需要经过 consent 审批。
-- 原始 `eval` 脚本默认拒绝；需同时开启 `security.allowRawEval`（宿主）与扩展存储中的 `allowRawEval` 才会放行，建议改用 `execute_action` 声明式执行。
+- 原始 `eval` 脚本默认拒绝；在宿主 `security.allowRawEval=true` 后，扩展会在下次 `init_ack` 握手时自动同步放行，无需再到扩展存储里另行开关（如需在扩展侧强制关闭，可显式 `chrome.storage.local.set({allowRawEval:false})` 作为 opt-out override）。仍建议优先改用 `execute_action` 声明式执行。
 - `config.json`、`server.token`、`audit.log`、`pending-consents/*.json` 在 POSIX 上以 `0600` 写入，在 Windows 上通过 `icacls` 限定权限。
 
 2.3.0 新增：
@@ -454,7 +454,7 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步版本号到所有 manifest
-npm run bump -- 2.5.0
+npm run bump -- 2.5.1
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

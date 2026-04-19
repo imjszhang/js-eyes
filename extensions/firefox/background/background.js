@@ -58,7 +58,9 @@ class BrowserControl {
             blockDuration: 5000
           }
         };
-    
+
+    this.rawEvalExplicitlySet = false;
+
     // 认证相关属性（仅保留内部状态机用于 60s 安全网超时）
     this.authState = 'disconnected'; // disconnected | authenticating | authenticated | failed
     this.authTimeout = null;         // 认证超时定时器
@@ -431,6 +433,9 @@ class BrowserControl {
       const result = await browser.storage.local.get(['serverUrl', 'autoConnect', 'serverToken', 'allowRawEval']);
       if (typeof result.allowRawEval === 'boolean') {
         this.securityConfig.allowRawEval = result.allowRawEval;
+        this.rawEvalExplicitlySet = true;
+      } else {
+        this.rawEvalExplicitlySet = false;
       }
       
       if (result.serverUrl) {
@@ -882,7 +887,18 @@ class BrowserControl {
       
       console.log(`[ConfigSync] 请求超时已更新: ${newTimeout}ms`);
     }
-    
+
+    if (serverConfig.security && typeof serverConfig.security.allowRawEval === 'boolean') {
+      if (this.rawEvalExplicitlySet) {
+        console.log(
+          `[ConfigSync] Host allowRawEval=${serverConfig.security.allowRawEval}, but extension storage override is active (allowRawEval=${this.securityConfig.allowRawEval})`
+        );
+      } else {
+        this.securityConfig.allowRawEval = serverConfig.security.allowRawEval;
+        console.log(`[ConfigSync] allowRawEval synced from host: ${serverConfig.security.allowRawEval}`);
+      }
+    }
+
     // 同步限流配置：优先使用 extensionRateLimit（扩展命令处理专用），
     // 不再使用 callbackQueryLimit（那是 HTTP 回调查询限流，不适用于扩展命令处理）
     if (serverConfig.extensionRateLimit) {
@@ -1522,7 +1538,7 @@ class BrowserControl {
     const timeout = this.securityConfig.requestTimeout || 30000;
 
     if (!this.securityConfig.allowRawEval) {
-      const reason = 'execute_script with raw JavaScript is disabled by default in JS Eyes 2.2.0 (security.allowRawEval=false). Opt in via host config security.allowRawEval=true.';
+      const reason = 'execute_script with raw JavaScript is disabled (security.allowRawEval=false). Opt in via host config security.allowRawEval=true — the extension will sync automatically on the next handshake.';
       console.warn('[Security] handleExecuteScript refused:', reason);
       this.sendMessage({
         type: 'error',
@@ -2655,7 +2671,7 @@ class BrowserControl {
     if (!this.securityConfig.allowRawEval) {
       return {
         success: false,
-        error: 'execute_script raw eval is disabled (JS Eyes 2.2.0 security.allowRawEval=false). Opt in via host config security.allowRawEval=true.',
+        error: 'execute_script raw eval is disabled (security.allowRawEval=false). Opt in via host config security.allowRawEval=true — the extension will sync automatically on the next handshake.',
         code: 'RAW_EVAL_DISABLED',
       };
     }
