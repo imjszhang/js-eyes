@@ -752,6 +752,45 @@ function collectVersionFiles() {
   return files;
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Files that contain the human-visible `v<version>` string in the marketing /
+// landing page. These are NOT JSON, so they're not touched by the main JSON
+// bump loop — we do a targeted regex replace here instead.
+function collectHeroBadgeFiles() {
+  const candidates = [
+    'src/index.html',
+    'docs/index.html',
+    'src/i18n/locales/en-US.js',
+    'src/i18n/locales/zh-CN.js',
+    'docs/i18n/locales/en-US.js',
+    'docs/i18n/locales/zh-CN.js',
+  ];
+  return candidates
+    .map((rel) => ({ rel, abs: path.join(PROJECT_ROOT, rel) }))
+    .filter((f) => fs.existsSync(f.abs));
+}
+
+function bumpHeroBadgeVersions(t, oldVersion, newVersion) {
+  if (oldVersion === newVersion) return;
+  const pattern = new RegExp(`\\bv${escapeRegex(oldVersion)}\\b`, 'g');
+  for (const file of collectHeroBadgeFiles()) {
+    const before = fs.readFileSync(file.abs, 'utf8');
+    const after = before.replace(pattern, `v${newVersion}`);
+    if (after === before) continue;
+    fs.writeFileSync(file.abs, after, 'utf8');
+    const count = (before.match(pattern) || []).length;
+    console.log(
+      `  ✓ ${t('bump.updated')
+        .replace('{name}', `${file.rel} (${count} hero badge${count === 1 ? '' : 's'})`)
+        .replace('{old}', `v${oldVersion}`)
+        .replace('{new}', `v${newVersion}`)}`
+    );
+  }
+}
+
 function syncInternalDependencyVersions(content, newVersion) {
   const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
   for (const field of dependencyFields) {
@@ -804,6 +843,8 @@ function bump(t, newVersion) {
       process.exit(1);
     }
   }
+
+  bumpHeroBadgeVersions(t, current, newVersion);
 
   console.log('');
   console.log(`  ${t('bump.done')}`);
