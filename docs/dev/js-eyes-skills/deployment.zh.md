@@ -205,6 +205,7 @@ js-eyes skills reload
   - `js_eyes_reload_skills` 返回值里会列 `dispatcher-failures: { skillId, toolNames }`；
   - 届时需要**一次性**重启 OpenClaw 以暴露该新工具。
 - 写 `skill.contract.js`/`package.json` 时的深清：`SkillRegistry` 会递归删除 `skillDir` 下（排除 `node_modules`）的 `require.cache`，保证修改后的代码会被重新 `require`。
+- **工具 schema 透传**：dispatcher 现在会携带 skill contract 里声明的真实 `label`/`description`/`parameters`（含 `required`/`anyOf` 等），让 OpenClaw / LLM 看到完整入参约束。首次 `registerTool` 注册的就是真实 schema；之后若 contract 改了 schema，热加载时会**按引用 mutate** 同一个 dispatcher 对象把新 schema 同步过去，并打印 `Refreshed dispatcher schema for tool "…"` 的 info 日志。少数 OpenClaw 宿主在 registerTool 时会对 tool 对象做快照/深拷贝，这种情况下热加载期间的 schema 变更不会被 LLM 看到，需要**一次性**重启 OpenClaw（工具实际 execute 行为仍然是最新的，不受影响）。
 - `pluginCfg.watchConfig = false` 可关闭 host config 监听；`pluginCfg.devWatchSkills = false` 可关闭"改 skill 目录自动 reload"（默认都启用）。
 - 建议在 skill 的 `createRuntime()` 里实现 `async dispose()` 以清理 WebSocket / 定时器：参见 [`examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js`](../../../examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js)。
 

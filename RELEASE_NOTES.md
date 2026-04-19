@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Highlights
+- **Skill tool schema is now visible to OpenClaw / LLM** _(2026-04-20)_: `SkillRegistry` used to register per-tool dispatchers with an empty placeholder schema (`{ type: 'object', properties: {} }`) and a generic description, so the LLM could not see `required` / `anyOf` constraints coming from skill contracts (e.g. `mastodon_get_status` silently dropped its `url`/`tabId` parameter and failed at runtime). The dispatcher now carries the contract's real `label` / `description` / `parameters` on first registration. Hot-reloads mutate the dispatcher object in place, so hosts that keep the tool object by reference see schema updates automatically; hosts that snapshot at registration time still get the correct first-load schema, with a one-time OpenClaw restart needed for subsequent schema changes. Affects [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js); new tests in [test/skill-registry.test.js](test/skill-registry.test.js); docs in [docs/dev/js-eyes-skills/deployment.zh.md](docs/dev/js-eyes-skills/deployment.zh.md).
+
+### Migration Notes
+- **No breaking changes.** Existing skill contracts work unchanged; they just show up to LLM with their real schema now.
+- After upgrading, a one-time OpenClaw restart is recommended so the first `registerTool` call sees the new code path; subsequent `js-eyes skills link`/`reload` stay zero-restart for same-name tools.
+
 ## v2.5.1
 
 > Security UX patch release. Fixes the long-standing gap where `security.allowRawEval` on the host was effectively inert because the extension never synced it. No breaking changes.
