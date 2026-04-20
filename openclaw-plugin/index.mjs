@@ -41,7 +41,11 @@ patchWindowsHide();
 
 const require = createRequire(import.meta.url);
 const manifest = require("./openclaw.plugin.json");
-const { BrowserAutomation } = require("../packages/client-sdk");
+const {
+  BrowserAutomation,
+  PolicyBlockError,
+  ServerPolicyError,
+} = require("../packages/client-sdk");
 const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
 const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecurityConfig } = require("../packages/protocol");
@@ -242,6 +246,43 @@ function register(api) {
     return { content: [{ type: "text", text }] };
   }
 
+  /** 将 SDK 策略错误转为面向 Agent 的中文说明（含 egress CLI 指引） */
+  function formatJsEyesPolicyError(err) {
+    if (err instanceof ServerPolicyError) {
+      if (err.code === "POLICY_PENDING_EGRESS") {
+        const hostLine = err.host ? `目标主机: ${err.host}\n` : "";
+        const pendingLine = err.pendingId ? `pendingId: ${err.pendingId}\n` : "";
+        return (
+          `JS Eyes 出站策略未允许打开该 URL（pending-egress），浏览器未执行导航。\n` +
+          `${hostLine}` +
+          `${pendingLine}` +
+          `可执行: js-eyes egress list 查看待审批；js-eyes egress approve <id> 批准该条；` +
+          `js-eyes egress allow <域名> 写入 security.egressAllowlist；` +
+          `js-eyes security show 查看 egressAllowlist 与 taskOrigin。\n` +
+          `服务端说明: ${err.message}`
+        );
+      }
+      if (err.code === "POLICY_SOFT_BLOCK") {
+        return (
+          `JS Eyes 服务端策略拦截了该操作（多为任务范围 L4a、污点 L4b 等，与出站 egress 不同）。\n` +
+          `规则: ${err.rule || "unknown"}\n` +
+          `详情: ${err.message}`
+        );
+      }
+      return `JS Eyes 服务端策略拒绝: ${err.message} (code=${err.code})`;
+    }
+    if (err instanceof PolicyBlockError) {
+      return err.message;
+    }
+    return null;
+  }
+
+  function policyTextResultOrThrow(err) {
+    const text = formatJsEyesPolicyError(err);
+    if (text) return textResult(text);
+    throw err;
+  }
+
   function registerBuiltin(definition, options) {
     api.registerTool(wrapSensitiveTool(definition, { source: 'builtin' }), options);
   }
@@ -384,14 +425,18 @@ function register(api) {
         required: ["url"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const tabId = await b.openUrl(
-          params.url,
-          params.tabId ?? null,
-          params.windowId ?? null,
-          { target: params.target },
-        );
-        return textResult(`已打开 ${params.url}，标签页 ID: ${tabId}`);
+        try {
+          const b = ensureBot();
+          const tabId = await b.openUrl(
+            params.url,
+            params.tabId ?? null,
+            params.windowId ?? null,
+            { target: params.target },
+          );
+          return textResult(`已打开 ${params.url}，标签页 ID: ${tabId}`);
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -411,9 +456,13 @@ function register(api) {
         required: ["tabId"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        await b.closeTab(params.tabId, { target: params.target });
-        return textResult(`已关闭标签页 ${params.tabId}`);
+        try {
+          const b = ensureBot();
+          await b.closeTab(params.tabId, { target: params.target });
+          return textResult(`已关闭标签页 ${params.tabId}`);
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -433,9 +482,13 @@ function register(api) {
         required: ["tabId"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const html = await b.getTabHtml(params.tabId, { target: params.target });
-        return textResult(html);
+        try {
+          const b = ensureBot();
+          const html = await b.getTabHtml(params.tabId, { target: params.target });
+          return textResult(html);
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -456,12 +509,16 @@ function register(api) {
         required: ["tabId", "code"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const result = await b.executeScript(params.tabId, params.code, {
-          target: params.target,
-        });
-        const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-        return textResult(text);
+        try {
+          const b = ensureBot();
+          const result = await b.executeScript(params.tabId, params.code, {
+            target: params.target,
+          });
+          const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+          return textResult(text);
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -481,12 +538,16 @@ function register(api) {
         required: ["tabId"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const cookies = await b.getCookies(params.tabId, { target: params.target });
-        if (cookies.length === 0) {
-          return textResult("该标签页没有 Cookie。");
+        try {
+          const b = ensureBot();
+          const cookies = await b.getCookies(params.tabId, { target: params.target });
+          if (cookies.length === 0) {
+            return textResult("该标签页没有 Cookie。");
+          }
+          return textResult(JSON.stringify(cookies, null, 2));
+        } catch (err) {
+          return policyTextResultOrThrow(err);
         }
-        return textResult(JSON.stringify(cookies, null, 2));
       },
     },
     { optional: true },
@@ -507,9 +568,13 @@ function register(api) {
         required: ["tabId", "css"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        await b.injectCss(params.tabId, params.css, { target: params.target });
-        return textResult(`已向标签页 ${params.tabId} 注入 CSS 样式`);
+        try {
+          const b = ensureBot();
+          await b.injectCss(params.tabId, params.css, { target: params.target });
+          return textResult(`已向标签页 ${params.tabId} 注入 CSS 样式`);
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -533,15 +598,19 @@ function register(api) {
         required: ["domain"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const cookies = await b.getCookiesByDomain(params.domain, {
-          includeSubdomains: params.includeSubdomains,
-          target: params.target,
-        });
-        if (cookies.length === 0) {
-          return textResult(`域名 ${params.domain} 没有 Cookie。`);
+        try {
+          const b = ensureBot();
+          const cookies = await b.getCookiesByDomain(params.domain, {
+            includeSubdomains: params.includeSubdomains,
+            target: params.target,
+          });
+          if (cookies.length === 0) {
+            return textResult(`域名 ${params.domain} 没有 Cookie。`);
+          }
+          return textResult(JSON.stringify(cookies, null, 2));
+        } catch (err) {
+          return policyTextResultOrThrow(err);
         }
-        return textResult(JSON.stringify(cookies, null, 2));
       },
     },
     { optional: true },
@@ -561,9 +630,13 @@ function register(api) {
         required: ["tabId"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const info = await b.getPageInfo(params.tabId, { target: params.target });
-        return textResult(JSON.stringify(info, null, 2));
+        try {
+          const b = ensureBot();
+          const info = await b.getPageInfo(params.tabId, { target: params.target });
+          return textResult(JSON.stringify(info, null, 2));
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },
@@ -600,12 +673,16 @@ function register(api) {
         required: ["tabId", "files"],
       },
       async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const result = await b.uploadFileToTab(params.tabId, params.files, {
-          targetSelector: params.targetSelector,
-          target: params.target,
-        });
-        return textResult(JSON.stringify({ success: true, uploadedFiles: result }, null, 2));
+        try {
+          const b = ensureBot();
+          const result = await b.uploadFileToTab(params.tabId, params.files, {
+            targetSelector: params.targetSelector,
+            target: params.target,
+          });
+          return textResult(JSON.stringify({ success: true, uploadedFiles: result }, null, 2));
+        } catch (err) {
+          return policyTextResultOrThrow(err);
+        }
       },
     },
     { optional: true },

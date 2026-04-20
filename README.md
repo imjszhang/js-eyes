@@ -540,6 +540,7 @@ Use this checklist after a fresh ClawHub install:
 | `Cannot find module 'ws'` | Run `npm install` in the skill root |
 | Tools not appearing in OpenClaw | Ensure `plugins.load.paths` points to the main `openclaw-plugin` subdirectory and the target child skill is not disabled in the JS Eyes host config |
 | Plugin path not found (Windows) | Use forward slashes in JSON, e.g. `C:/Users/you/skills/js-eyes/openclaw-plugin` |
+| Agent returns `pending-egress` / policy-blocked text | The server policy engine blocked the URL or operation before it reached the browser. Run `js-eyes security show` to inspect `egressAllowlist` and `taskOrigin`; then use `js-eyes egress list`, `js-eyes egress approve <id>`, or `js-eyes egress allow <domain>` as appropriate. This is different from extension disconnects and consent gating. |
 
 ## Related Projects
 

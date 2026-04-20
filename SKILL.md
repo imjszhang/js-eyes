@@ -294,6 +294,16 @@ Check:
 2. `js-eyes consent approve <id>` or `js-eyes consent deny <id>` to resolve.
 3. To disable the gate for a specific tool, set `security.toolPolicies.<tool>=allow` in `config.json` (logs an audit event).
 
+### Open URL or automation tools fail with egress / policy messages (2.3.0+)
+
+If `js_eyes_open_url` or other browser tools return text mentioning **pending-egress**, **出站策略**, or **POLICY_SOFT_BLOCK**, the server applied the policy engine **before** the extension ran the action (navigation may never reach the browser).
+
+1. Run `js-eyes security show` and inspect `egressAllowlist` and `taskOrigin` (hosts must be in static allowlist, session scope, or task-origin scope — see `SECURITY.md` Policy Engine).
+2. Run `js-eyes egress list`; use `js-eyes egress approve <id>` for a queued host or `js-eyes egress allow <domain>` to append to `security.egressAllowlist`.
+3. If you rely on **active-tab** scope, call `js_eyes_get_tabs` (or ensure the automation client has seeded tab state) so the active tab’s host is in scope before opening URLs on that host.
+
+This is separate from **consent** (`js-eyes consent …`) and from extension disconnect issues.
+
 ### Skill Fails to Load With Integrity Error (2.2.0+)
 
 The main plugin refuses to register skills whose files no longer match `.integrity.json`.

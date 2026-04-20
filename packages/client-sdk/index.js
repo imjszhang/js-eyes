@@ -30,6 +30,39 @@ class PolicyBlockError extends Error {
   }
 }
 
+/** WebSocket 服务端策略层返回（pending-egress / POLICY_*），与本地 PolicyBlockError 区分 */
+class ServerPolicyError extends Error {
+  constructor(message, info = {}) {
+    super(message);
+    this.name = 'ServerPolicyError';
+    this.code = info.code || 'POLICY_BLOCK';
+    this.status = info.status;
+    this.rule = info.rule;
+    this.reasons = Array.isArray(info.reasons) ? info.reasons : [];
+    this.pendingId = info.pendingId ?? null;
+    this.host = info.host ?? null;
+  }
+}
+
+function policyErrorFromServerMessage(msg) {
+  const reasons = Array.isArray(msg.reasons) ? msg.reasons : [];
+  let host = null;
+  for (const r of reasons) {
+    if (r && r.host) {
+      host = r.host;
+      break;
+    }
+  }
+  return new ServerPolicyError(msg.message || '策略引擎拒绝', {
+    code: msg.code || 'POLICY_BLOCK',
+    status: msg.status || 'error',
+    rule: msg.rule,
+    reasons,
+    pendingId: msg.pendingId ?? null,
+    host,
+  });
+}
+
 function tryReadServerToken() {
   try {
     const { readToken } = require('@js-eyes/runtime-paths/token');
@@ -257,8 +290,15 @@ class BrowserAutomation {
         clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(msg.requestId);
 
-        if (msg.status === 'error' || msg.type === 'error') {
-          pending.reject(new Error(msg.message || '未知错误'));
+        if (msg.status === 'pending-egress') {
+          pending.reject(policyErrorFromServerMessage(msg));
+        } else if (msg.status === 'error' || msg.type === 'error') {
+          const code = msg.code;
+          if (code && String(code).startsWith('POLICY_')) {
+            pending.reject(policyErrorFromServerMessage(msg));
+          } else {
+            pending.reject(new Error(msg.message || '未知错误'));
+          }
         } else {
           pending.resolve(msg);
         }
@@ -495,4 +535,5 @@ module.exports = {
   TaintRegistry,
   EgressGate,
   PolicyBlockError,
+  ServerPolicyError,
 };

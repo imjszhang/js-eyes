@@ -487,6 +487,7 @@ npm run bump -- 2.5.1
 | `Cannot find module 'ws'` | 在技能根目录执行 `npm install` |
 | 工具未出现在 OpenClaw 中 | 确认 `plugins.load.paths` 指向主插件 `openclaw-plugin` 子目录，并确认目标子技能未在 `js-eyes` 宿主配置中被禁用 |
 | Windows 路径找不到 | JSON 中使用正斜杠，如 `C:/Users/you/skills/js-eyes/openclaw-plugin` |
+| Agent 返回 pending-egress / 出站策略 / 策略拦截 | 服务端策略未放行该 URL 或操作（扩展可能未执行导航）。执行 `js-eyes security show` 查看 `egressAllowlist` 与 `taskOrigin`；`js-eyes egress list` / `egress approve` / `egress allow <域名>`。详见仓库根目录 [SECURITY.md](../SECURITY.md) 中 Policy Engine。与扩展断连、consent 审批是不同问题。 |
 
 ## 相关项目
 
