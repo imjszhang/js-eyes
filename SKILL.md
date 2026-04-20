@@ -149,6 +149,24 @@ Important details:
 - To mount extension skills from outside `{baseDir}/skills` (e.g. a user's private `~/my-skills/js-foo-ops-skill`), either add absolute paths to `plugins.entries["js-eyes"].config.extraSkillDirs: [...]` directly, or let the CLI handle it: `js-eyes skills link <abs-path>` does the dedup append and also triggers an in-memory reload on the running plugin. Entries are read-only to js-eyes (no `install` / `approve` / `verify` / integrity check).
 - Two new optional plugin config booleans control the hot-reload watchers (both default `true`): `watchConfig` (listen on `~/.js-eyes/config/config.json`) and `devWatchSkills` (listen on discovered skill directories). Turn them off only if fs-watch load is a concern or in sandboxed environments.
 
+#### Host security hot-reload (2.5.2+)
+
+Some `security.*` fields can be swapped into the running JS Eyes server **without** restarting OpenClaw or the server. The server-core ships its own chokidar watcher on `~/.js-eyes/config/config.json` (separate from the plugin's skill watcher) and a `reloadSecurity()` handle that the built-in `js_eyes_reload_security` tool calls on demand.
+
+- **Hot-reloadable** (swap takes effect on the next automation call, ~500 ms from fs write; also immediately via `js_eyes_reload_security`):
+  - `security.egressAllowlist`
+  - `security.toolPolicies`
+  - `security.sensitiveCookieDomains`
+  - `security.allowedOrigins`
+  - `security.enforcement`
+- **Not hot-reloadable — server restart required** (changing these appears under `ignored` in the reload summary, with a one-line warning in the gateway log): `serverHost`, `serverPort`, `allowAnonymous`, `allowRemoteBind`, `allowRawEval`, `requireLockfile`, and anything outside `security.*` (token rotation, `requestTimeout`, etc.).
+- **Caveat — session-level egress approvals reset**: when the allowlist flips, each live automation connection rebuilds its `PolicyContext`, which means per-session `js-eyes egress approve <id>` grants are dropped. Agents re-issue the approval on the next `pending-egress` response; no action needed for standard `allow <domain>` edits because those are part of the static allowlist and get picked up automatically.
+- **Operator triggers** (any one is sufficient):
+  1. Edit `~/.js-eyes/config/config.json` and save — chokidar debounces 300 ms and fires `reloadSecurity({ source: 'fs-watch' })`.
+  2. Agent call: `js_eyes_reload_security` built-in tool (returns `{ changed, applied, ignored, generation, egressAllowlist }`).
+  3. CLI preview: `js-eyes security reload` — read-only dry run that prints what would be applied (CLI does not own the server event loop, so trigger #1 or #2 is required for the actual swap).
+- **Observability**: the audit log (`~/.js-eyes/logs/audit.log`) gains three new events — `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt` — and `GET /api/browser/status` now includes `data.policy.generation` / `data.policy.egressAllowlist` so operators can externally confirm the live generation.
+
 ## Verification Workflow
 
 After setup, verify the stack in this order:

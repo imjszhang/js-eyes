@@ -215,15 +215,97 @@ function parseConfigValue(raw) {
   }
 }
 
+// Fields in `security` that may be swapped at runtime without restarting the
+// server. Changing any other `security.*` field is recorded under `ignored` and
+// requires a restart to take effect (see `packages/server-core/index.js` →
+// reloadSecurity).
+const HOT_RELOADABLE_SECURITY_KEYS = Object.freeze([
+  'egressAllowlist',
+  'toolPolicies',
+  'sensitiveCookieDomains',
+  'allowedOrigins',
+  'enforcement',
+]);
+
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+    if (!deepEqual(a[k], b[k])) return false;
+  }
+  return true;
+}
+
+function computeHostDiff(prevList, nextList) {
+  const prev = Array.isArray(prevList) ? prevList.slice() : [];
+  const next = Array.isArray(nextList) ? nextList.slice() : [];
+  const prevSet = new Set(prev);
+  const nextSet = new Set(next);
+  const added = next.filter((h) => !prevSet.has(h));
+  const removed = prev.filter((h) => !nextSet.has(h));
+  return { added, removed };
+}
+
+/**
+ * Diff two resolved `security` objects and split the result by hot-reload safety.
+ *
+ * @param {object} nextSecurity resolved via `resolveSecurityConfig(loadConfig())`
+ * @param {object} prevSecurity current `state.security`
+ * @returns {{ applied: object, ignored: object, egressDiff: {added: string[], removed: string[]} }}
+ *   - `applied`: subset of `nextSecurity` whose values differ from `prevSecurity`
+ *     and belong to {@link HOT_RELOADABLE_SECURITY_KEYS}.
+ *   - `ignored`: map of `{ key: { before, after } }` for fields that differ but
+ *     are NOT in the hot-reloadable whitelist — the caller should log/audit and
+ *     tell the user a restart is needed.
+ *   - `egressDiff`: convenience summary of egress host additions/removals (empty
+ *     arrays when `egressAllowlist` is unchanged).
+ */
+function resolveHotReloadableSecurity(nextSecurity, prevSecurity) {
+  const prev = prevSecurity || {};
+  const next = nextSecurity || {};
+
+  const applied = {};
+  const ignored = {};
+
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const key of keys) {
+    if (deepEqual(prev[key], next[key])) continue;
+    if (HOT_RELOADABLE_SECURITY_KEYS.includes(key)) {
+      applied[key] = next[key];
+    } else {
+      ignored[key] = { before: prev[key], after: next[key] };
+    }
+  }
+
+  const egressDiff = computeHostDiff(prev.egressAllowlist, next.egressAllowlist);
+
+  return { applied, ignored, egressDiff };
+}
+
 module.exports = {
   DEFAULT_CONFIG,
   DEFAULT_RECORDING_CONFIG,
+  HOT_RELOADABLE_SECURITY_KEYS,
   getConfigValue,
   loadConfig,
   mergeRecordingConfig,
   mergeSecurityConfig,
   normalizeConfig,
   parseConfigValue,
+  resolveHotReloadableSecurity,
   saveConfig,
   setConfigValue,
 };

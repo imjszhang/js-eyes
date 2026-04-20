@@ -111,6 +111,7 @@ const BUILTIN_TOOL_NAMES = [
   "js_eyes_discover_skills",
   "js_eyes_install_skill",
   "js_eyes_reload_skills",
+  "js_eyes_reload_security",
 ];
 
 function resolvePluginEntry(definition) {
@@ -875,6 +876,50 @@ function register(api) {
           return { content: [{ type: 'text', text: lines.join('\n') }] };
         } catch (error) {
           return { content: [{ type: 'text', text: `reload 失败: ${error.message}` }] };
+        }
+      },
+    }),
+    { optional: true },
+  );
+
+  api.registerTool(
+    wrapSensitiveTool({
+      name: "js_eyes_reload_security",
+      label: "JS Eyes: Reload Security",
+      description: "热加载 ~/.js-eyes/config/config.json 中的安全配置（egressAllowlist / toolPolicies / enforcement 等），无需重启 OpenClaw 或 JS Eyes 服务器。下一次 open_url 会立即生效。非热加载字段（serverHost/serverPort/allowAnonymous/token 等）会出现在 ignored 字段中，仍需重启。",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: {
+            type: "string",
+            description: "触发原因，仅用于日志（如 'agent-call', 'user-link'）",
+          },
+        },
+      },
+      async execute(_toolCallId, params) {
+        const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
+        if (!server || typeof server.reloadSecurity !== 'function') {
+          return { content: [{ type: 'text', text: '[js-eyes] 服务器未启动或未暴露 reloadSecurity（可能 autoStartServer=false 或版本过旧）。' }] };
+        }
+        try {
+          const summary = server.reloadSecurity({ source: `tool:${reason}` });
+          const lines = [
+            `[js-eyes] security reload (source=tool:${reason})`,
+            `  changed:    ${summary.changed}`,
+            `  generation: ${summary.generation}`,
+            `  applied:    ${Object.keys(summary.applied || {}).join(', ') || '(none)'}`,
+            `  ignored:    ${Object.keys(summary.ignored || {}).join(', ') || '(none)'}`,
+            `  egressAllowlist: ${JSON.stringify(summary.egressAllowlist || [])}`,
+          ];
+          if (summary.error) {
+            lines.push(`  error: ${summary.error}`);
+          }
+          if (Object.keys(summary.ignored || {}).length > 0) {
+            lines.push('  (ignored fields require a server restart to take effect.)');
+          }
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        } catch (error) {
+          return { content: [{ type: 'text', text: `security reload 失败: ${error.message}` }] };
         }
       },
     }),

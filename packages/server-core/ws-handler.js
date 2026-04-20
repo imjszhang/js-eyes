@@ -47,7 +47,23 @@ function getOrCreatePolicyForClient(state, clientId) {
   }
   const conn = state.automationClients.get(clientId);
   if (!conn) return null;
-  if (conn.policy) return conn.policy;
+  // Generation counter lets `server.reloadSecurity()` invalidate cached
+  // per-connection policies by bumping `state.policyGeneration`. Session-level
+  // approvals held inside the old `PolicyContext` (e.g. `allowSession`) are
+  // dropped on rebuild; this is documented in SKILL.md as the MVP caveat.
+  const currentGeneration = Number.isFinite(state.policyGeneration) ? state.policyGeneration : 1;
+  if (conn.policy) {
+    if (conn.policyGeneration === currentGeneration) {
+      return conn.policy;
+    }
+    const previousGeneration = conn.policyGeneration;
+    conn.policy = null;
+    state.audit?.write?.('automation.policy-rebuilt', {
+      clientId,
+      previousGeneration: previousGeneration ?? null,
+      generation: currentGeneration,
+    });
+  }
   const Ctor = loadPolicyContext();
   if (!Ctor) return null;
   conn.policy = new Ctor({
@@ -56,6 +72,7 @@ function getOrCreatePolicyForClient(state, clientId) {
     audit: state.audit || null,
     tabLookup: (tabId) => lookupTabUrlInState(state, tabId),
   });
+  conn.policyGeneration = currentGeneration;
   return conn.policy;
 }
 
@@ -667,6 +684,7 @@ function createState() {
     security: null,
     pendingEgressDir: null,
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    policyGeneration: 1,
   };
 }
 
@@ -688,5 +706,6 @@ module.exports = {
     setupAutomationClient,
     registerPending,
     resolveRequest,
+    getOrCreatePolicyForClient,
   },
 };
