@@ -32,7 +32,7 @@ A successful setup has all of the following:
 5. The user can run `openclaw js-eyes status`.
 6. The browser extension is connected to `http://<serverHost>:<serverPort>`, the popup **Server Token** field is populated (2.2.0+), and `js_eyes_get_tabs` returns real tabs.
 7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir` (primary), plus any read-only directories listed in `extraSkillDirs` (extras).
-8. `js-eyes doctor` reports a clean security posture (token present, `allowAnonymous=false`, `allowRawEval=false`, host bound to loopback, skill integrity OK).
+8. `js-eyes doctor` reports an acceptable security posture for this skill's deployment (token present, `allowAnonymous=false`, **`allowRawEval=true` in `~/.js-eyes/config/config.json`**, host bound to loopback, skill integrity OK). `doctor` will still label raw eval as insecure — that is expected when following this skill.
 
 ## Deployment Modes
 
@@ -52,6 +52,8 @@ There are two supported complete deployment modes:
    - If you are debugging the browser side, load the extension from `extensions/chrome/` or `extensions/firefox/manifest.json` as appropriate.
    - **Restart scope**: only changes to files **under `openclaw-plugin/` itself** (or any `packages/*` module the plugin imports directly) require restarting / refreshing OpenClaw so the plugin module is re-`require`d. Edits to individual skill files (`skills/<id>/skill.contract.js`, an `extraSkillDirs` entry's contract, etc.) are picked up hot by the `SkillRegistry` + chokidar watcher — no restart needed.
 
+For **both** deployment modes above, treat **host-side raw eval** as part of the default install: merge `security.allowRawEval: true` into `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) **during** deployment — not in `openclaw.json`. The js-eyes server reads this file; the browser extension syncs the value on WebSocket handshake (2.5.1+). Restart the server / OpenClaw after changing it so `execute_script` raw JavaScript is not blocked with `RAW_EVAL_DISABLED`.
+
 ## Setup Workflow
 
 When the user asks to install, configure, or repair JS Eyes, follow this exact order:
@@ -70,6 +72,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
      - `serverHost: "localhost"`
      - `serverPort: 18080`
      - `autoStartServer: true`
+   - merge or create the **JS Eyes host config** at `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) with `security.allowRawEval: true` so deployment matches this skill (see `Host security config` below). Restart the js-eyes server after edits (or restart OpenClaw if it auto-starts the server).
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
 8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run `npx js-eyes native-host install --browser all` so the extension auto-syncs the token, or run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
@@ -77,7 +80,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
 10. After the base setup works, pick the right path for extension skills:
     - **Registry / first-party skills**: prefer `js_eyes_discover_skills` + `js_eyes_install_skill` — 2.2.0+ writes a plan under `runtime/pending-skills/<id>.json`; finalize with `js-eyes skills approve <id>` then `js-eyes skills enable <id>`.
     - **Custom / external skills** (a directory the user already has on disk): prefer `js-eyes skills link <abs-path>` — it appends the path to `extraSkillDirs`, auto-enables it on first discovery, and the running plugin hot-loads it within ~300 ms via the config watcher. Reverse with `js-eyes skills unlink <abs-path>`. No OpenClaw restart is needed for either direction; see the `Dynamic Extension Skills` section for the full zero-restart contract.
-11. Run `js-eyes doctor` to confirm the hardened defaults (token present, `allowAnonymous=false`, loopback-bound, skill integrity OK) before handing off.
+11. Run `js-eyes doctor` to confirm the deployment posture (token present, `allowAnonymous=false`, **`allowRawEval` enabled** — `doctor` may still print it as insecure, which is expected here, loopback-bound, skill integrity OK) before handing off.
 
 When asked to fix a broken setup, prefer repairing the existing config instead of repeating the whole installation.
 
@@ -120,6 +123,20 @@ Update the resolved OpenClaw config so it contains the plugin path and enablemen
   }
 }
 ```
+
+### Host security config (`~/.js-eyes/config/config.json`)
+
+This file is **not** `openclaw.json`. For deployments following this skill, ensure at least:
+
+```json
+{
+  "security": {
+    "allowRawEval": true
+  }
+}
+```
+
+Merge with existing keys (for example `skillsDir`, `skillsEnabled`). Operators who **do not** need raw `execute_script` may set `allowRawEval` to `false` instead; optional plugin tools then still work, but raw JS payloads are rejected until enabled.
 
 Important details:
 
