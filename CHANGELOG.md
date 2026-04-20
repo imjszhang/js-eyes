@@ -4,8 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-04-21
+
+> Zero-restart security config release. `security.egressAllowlist` and a small whitelist of related fields are now hot-reloadable without restarting OpenClaw or the server, and skill tool schemas are finally visible to OpenClaw / LLM. **No breaking changes** — wire protocol and public APIs remain backward compatible.
+
+### Added
+
+- **Security config hot-reload — `egressAllowlist` without restart** _(2026-04-20)_: Editing `security.egressAllowlist` (and a small whitelist of other hot-safe fields) in `~/.js-eyes/config/config.json` now takes effect on the running JS Eyes server **without** restarting OpenClaw. Server-core ships its own chokidar watcher on the config file (option `hotReloadConfig`, default `true`, with 300 ms debounce and graceful fallback when chokidar is not installed) plus a new `server.reloadSecurity({ source })` handle. A per-connection `PolicyContext` cache was the root cause of the previous "I edited config but `open_url` still returns `pending-egress`" confusion — reloads now bump `state.policyGeneration`, and `getOrCreatePolicyForClient` rebuilds stale per-connection policies from the live `state.security` on the next automation call. Hot-reloadable fields: `egressAllowlist`, `toolPolicies`, `sensitiveCookieDomains`, `allowedOrigins`, `enforcement`. Everything else (e.g. `allowAnonymous`, `allowRemoteBind`, `serverHost`/`serverPort`, token) is recorded under `ignored` in the reload summary and still requires a restart. New built-in tool `js_eyes_reload_security` (agent-driven) and new CLI preview `js-eyes security reload` (read-only dry run). New audit events: `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt`. `GET /api/browser/status` now exposes `data.policy.generation` and `data.policy.egressAllowlist` for external verification. Files: [packages/server-core/index.js](packages/server-core/index.js), [packages/server-core/ws-handler.js](packages/server-core/ws-handler.js), [packages/config/index.js](packages/config/index.js) (new `resolveHotReloadableSecurity`), [apps/cli/src/cli.js](apps/cli/src/cli.js), [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs). New tests in [test/security-hot-reload.test.js](test/security-hot-reload.test.js).
+
 ### Fixed
+
 - **Skill tool schema is now visible to OpenClaw / LLM** _(2026-04-20)_: `SkillRegistry`'s per-tool dispatcher was previously registered with a placeholder `{ type: 'object', properties: {} }` schema and a generic `[js-eyes dispatcher] <name>` description, so OpenClaw (and the LLM behind it) never saw the real `label`/`description`/`parameters` (including `required` / `anyOf`) declared by the skill contract. This made models silently omit required arguments, e.g. `mastodon_get_status` being invoked without `url` or `tabId` and failing at runtime with `必须提供 url 或 tabId 其中之一`. The dispatcher now carries the contract's real metadata on first registration, and hot-reloads mutate the dispatcher object in place (by reference) so schema updates propagate to hosts that retain the tool object by reference; a one-time OpenClaw restart is still suggested for hosts that snapshot tool metadata at registration time. Files: [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js), [test/skill-registry.test.js](test/skill-registry.test.js), [docs/dev/js-eyes-skills/deployment.zh.md](docs/dev/js-eyes-skills/deployment.zh.md).
+
+### Compatibility
+
+- **Wire Protocol Unchanged**: Servers, clients, and automation keep working against 2.5.2. Existing skill contracts work unchanged and now show up to the LLM with their real schema.
+- **Upgrade Path**:
+  - After upgrading, a one-time OpenClaw restart is recommended so the first `registerTool` call sees the new dispatcher-schema code path; subsequent `js-eyes skills link`/`reload` stay zero-restart for same-name tools.
+  - **Security hot-reload caveats**: (1) When the allowlist flips, live automation connections rebuild their `PolicyContext`, so per-session `js-eyes egress approve <id>` grants are dropped — re-issue on the next `pending-egress`. Static `security.egressAllowlist` entries are picked up automatically. (2) Changing non-hot-reloadable fields (e.g. `allowAnonymous`) prints a warning to the gateway log and still requires a server restart. (3) If `chokidar` is unavailable in the server-core runtime (rare — it ships with the OpenClaw bundle), the fs-watch path is disabled; use the `js_eyes_reload_security` tool from the agent as an equivalent trigger.
 
 ## [2.5.1] - 2026-04-20
 

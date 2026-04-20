@@ -161,11 +161,32 @@ Environment and config overrides: `JS_EYES_POLICY_ENFORCEMENT`, `config.security
 
 `packages/server-core` now emits `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Permissions-Policy: interest-cohort=()` on every HTTP response. This closes the Chrome `externally_connectable` surface against any future accidental HTML response on port 18080.
 
-### Non-Goals (2.5.1)
+### Non-Goals (2.5.x)
 
 - Interactive `confirm` dialogs (still excluded by design).
 - Task profiles (L3) and reader sub-agent (L5') — remain opt-in additions on the roadmap and stay off by default.
 
+## Host-Synced `allowRawEval` (2.5.1+)
+
+Historically, enabling raw `execute_script` required flipping `security.allowRawEval=true` on the host **and** manually seeding `chrome.storage.local.allowRawEval=true` on the extension (no popup UI exposed the latter), so the host-side toggle was effectively a no-op in practice. Starting with 2.5.1:
+
+- The host pushes `security.allowRawEval` to the browser extension via `init_ack.serverConfig.security.allowRawEval` at WebSocket handshake; the extension applies the value automatically.
+- The extension storage key `allowRawEval` is retained as an explicit **opt-out override** — set it to `true` or `false` via `chrome.storage.local.set({allowRawEval:false})` (or `true`) to pin the extension regardless of the host. Useful for security-hardened deployments that want to force-disable raw eval even if the host flips it on.
+- Everyday users only need to touch `~/.js-eyes/config/config.json`. Restart the server / OpenClaw after changing it so the extension picks up the new value on the next reconnect.
+
+## Security Config Hot-Reload (2.5.2+)
+
+A small whitelist of `security.*` fields can now be swapped into the running JS Eyes server **without** restarting OpenClaw or the server. Server-core ships its own chokidar watcher on `~/.js-eyes/config/config.json` (separate from the plugin's skill watcher) plus a `server.reloadSecurity()` handle that the built-in `js_eyes_reload_security` tool calls on demand.
+
+- **Hot-reloadable** (swap takes effect on the next automation call, ~300 ms from fs write; also immediately via `js_eyes_reload_security`): `security.egressAllowlist`, `security.toolPolicies`, `security.sensitiveCookieDomains`, `security.allowedOrigins`, `security.enforcement`.
+- **Not hot-reloadable — server restart required** (changing these appears under `ignored` in the reload summary, with a one-line warning in the gateway log): `serverHost`, `serverPort`, `allowAnonymous`, `allowRemoteBind`, `allowRawEval`, `requireLockfile`, and anything outside `security.*` (token rotation, `requestTimeout`, etc.).
+- **Caveat — session-level egress approvals reset**: when the allowlist flips, each live automation connection rebuilds its `PolicyContext`, which means per-session `js-eyes egress approve <id>` grants are dropped. Agents re-issue the approval on the next `pending-egress` response; no action needed for standard `allow <domain>` edits because those are part of the static allowlist and get picked up automatically.
+- **Operator triggers** (any one is sufficient):
+  1. Edit `~/.js-eyes/config/config.json` and save — chokidar debounces 300 ms and fires `reloadSecurity({ source: 'fs-watch' })`.
+  2. Agent call: `js_eyes_reload_security` built-in tool (returns `{ changed, applied, ignored, generation, egressAllowlist }`).
+  3. CLI preview: `js-eyes security reload` — read-only dry run that prints what would be applied (CLI does not own the server event loop, so trigger #1 or #2 is required for the actual swap).
+- **Observability**: the audit log (`~/.js-eyes/logs/audit.log`) gains three new events — `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt` — and `GET /api/browser/status` now includes `data.policy.generation` / `data.policy.egressAllowlist` so operators can externally confirm the live generation.
+
 ---
 
-*Last updated: 2026-04-19 — covers the 2.3.0 policy engine and the 2.4.0 Native Messaging host.*
+*Last updated: 2026-04-21 — covers the 2.3.0 policy engine, 2.4.0 Native Messaging host, 2.5.1 host-synced `allowRawEval`, and 2.5.2 security config hot-reload.*

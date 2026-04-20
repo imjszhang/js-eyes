@@ -1,15 +1,43 @@
 # Release Notes
 
-## Unreleased
+## v2.5.2
+
+> Zero-restart security config release. Editing `security.egressAllowlist` (and a small whitelist of related hot-safe fields) in `~/.js-eyes/config/config.json` now takes effect on the running server **without** restarting OpenClaw. Also fixes a long-standing gap where skill tool schemas were invisible to OpenClaw / the LLM. No breaking changes.
 
 ### Highlights
-- **Security config hot-reload — `egressAllowlist` without restart** _(2026-04-20)_: Editing `security.egressAllowlist` (and a small whitelist of other hot-safe fields) in `~/.js-eyes/config/config.json` now takes effect on the running JS Eyes server **without** restarting OpenClaw. Server-core now ships its own chokidar watcher on the config file (option `hotReloadConfig`, default `true`, with 300 ms debounce and graceful fallback when chokidar is not installed) plus a new `server.reloadSecurity({ source })` handle. A per-connection `PolicyContext` cache was the root cause of the previous "I edited config but open_url still returns pending-egress" confusion — reloads now bump `state.policyGeneration`, and `getOrCreatePolicyForClient` rebuilds stale per-connection policies from the live `state.security` on the next automation call. Hot-reloadable fields: `egressAllowlist`, `toolPolicies`, `sensitiveCookieDomains`, `allowedOrigins`, `enforcement`. Everything else (e.g. `allowAnonymous`, `allowRemoteBind`, `serverHost`/`Port`, token) is recorded under `ignored` in the reload summary and still requires a restart. New built-in tool `js_eyes_reload_security` (agent-driven) and new CLI preview `js-eyes security reload` (read-only dry run). New audit events: `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt`. `GET /api/browser/status` now exposes `data.policy.generation` and `data.policy.egressAllowlist` for external verification. Affects [packages/server-core/index.js](packages/server-core/index.js), [packages/server-core/ws-handler.js](packages/server-core/ws-handler.js), [packages/config/index.js](packages/config/index.js) (new `resolveHotReloadableSecurity`), [apps/cli/src/cli.js](apps/cli/src/cli.js), and [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs). New tests in [test/security-hot-reload.test.js](test/security-hot-reload.test.js).
+- **Security config hot-reload — `egressAllowlist` without restart** _(2026-04-20)_: Editing `security.egressAllowlist` (and a small whitelist of other hot-safe fields) in `~/.js-eyes/config/config.json` now takes effect on the running JS Eyes server **without** restarting OpenClaw. Server-core now ships its own chokidar watcher on the config file (option `hotReloadConfig`, default `true`, with 300 ms debounce and graceful fallback when chokidar is not installed) plus a new `server.reloadSecurity({ source })` handle. A per-connection `PolicyContext` cache was the root cause of the previous "I edited config but `open_url` still returns `pending-egress`" confusion — reloads now bump `state.policyGeneration`, and `getOrCreatePolicyForClient` rebuilds stale per-connection policies from the live `state.security` on the next automation call. Hot-reloadable fields: `egressAllowlist`, `toolPolicies`, `sensitiveCookieDomains`, `allowedOrigins`, `enforcement`. Everything else (e.g. `allowAnonymous`, `allowRemoteBind`, `serverHost`/`serverPort`, token) is recorded under `ignored` in the reload summary and still requires a restart. New built-in tool `js_eyes_reload_security` (agent-driven) and new CLI preview `js-eyes security reload` (read-only dry run). New audit events: `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt`. `GET /api/browser/status` now exposes `data.policy.generation` and `data.policy.egressAllowlist` for external verification. Affects [packages/server-core/index.js](packages/server-core/index.js), [packages/server-core/ws-handler.js](packages/server-core/ws-handler.js), [packages/config/index.js](packages/config/index.js) (new `resolveHotReloadableSecurity`), [apps/cli/src/cli.js](apps/cli/src/cli.js), and [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs). New tests in [test/security-hot-reload.test.js](test/security-hot-reload.test.js).
 - **Skill tool schema is now visible to OpenClaw / LLM** _(2026-04-20)_: `SkillRegistry` used to register per-tool dispatchers with an empty placeholder schema (`{ type: 'object', properties: {} }`) and a generic description, so the LLM could not see `required` / `anyOf` constraints coming from skill contracts (e.g. `mastodon_get_status` silently dropped its `url`/`tabId` parameter and failed at runtime). The dispatcher now carries the contract's real `label` / `description` / `parameters` on first registration. Hot-reloads mutate the dispatcher object in place, so hosts that keep the tool object by reference see schema updates automatically; hosts that snapshot at registration time still get the correct first-load schema, with a one-time OpenClaw restart needed for subsequent schema changes. Affects [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js); new tests in [test/skill-registry.test.js](test/skill-registry.test.js); docs in [docs/dev/js-eyes-skills/deployment.zh.md](docs/dev/js-eyes-skills/deployment.zh.md).
 
 ### Migration Notes
-- **No breaking changes.** Existing skill contracts work unchanged; they just show up to LLM with their real schema now.
+- **No breaking changes.** Existing skill contracts work unchanged; they just show up to the LLM with their real schema now.
 - After upgrading, a one-time OpenClaw restart is recommended so the first `registerTool` call sees the new code path; subsequent `js-eyes skills link`/`reload` stay zero-restart for same-name tools.
 - **Security hot-reload caveats**: (1) When the allowlist flips, live automation connections rebuild their `PolicyContext`, so per-session `js-eyes egress approve <id>` grants are dropped — re-issue on the next `pending-egress`. Static `security.egressAllowlist` entries are picked up automatically. (2) Changing non-hot-reloadable fields (e.g. `allowAnonymous`) prints a warning to the gateway log and still requires a server restart. (3) If `chokidar` is unavailable in the server-core's runtime (rare — it ships with the OpenClaw bundle), the fs-watch path is disabled; use the `js_eyes_reload_security` tool from the agent as an equivalent trigger.
+
+### Downloads
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.2/js-eyes-chrome-v2.5.2.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.5.2/js-eyes-firefox-v2.5.2.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.5.2/js-eyes-skill-v2.5.2.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.5.2`
+2. `js-eyes doctor` — confirm output is unchanged from 2.5.1, and that the new `data.policy.generation` field shows up under the security posture section.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.5.2 and run `npm install` in the bundle root so the new `chokidar` usage in server-core resolves.
+2. Restart OpenClaw **once** so the updated server-core (config watcher + `reloadSecurity`) and plugin (`js_eyes_reload_security` built-in tool) are loaded. Subsequent edits to `security.egressAllowlist` / `toolPolicies` / `sensitiveCookieDomains` / `allowedOrigins` / `enforcement` take effect within ~300 ms, or immediately via `js_eyes_reload_security`.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.5.2.zip`, extract, reload unpacked (or update from the Chrome Web Store once live).
+2. No popup changes vs 2.5.1 — the **Sync Token From Host** flow keeps working once `native-host install` has been run.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.5.2.xpi` (or update from AMO once the listing is live).
+
+---
 
 ## v2.5.1
 
