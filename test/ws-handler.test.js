@@ -589,6 +589,68 @@ describe('handleAutomationMessage', () => {
     });
   });
 
+  describe('policy prewarm for active-tab scope', () => {
+    function addAutomationClient(clientId = 'auto-1') {
+      state.automationClients.set(clientId, {
+        socket: autoSocket,
+        clientAddress: '127.0.0.1:6000',
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        anonymous: false,
+      });
+      return clientId;
+    }
+
+    it('prewarms active tab scope before first execute_script evaluation', async () => {
+      state.security = {
+        enforcement: 'soft',
+        taskOrigin: { enabled: true, sources: ['active-tab'] },
+      };
+      const ext = addExtension(state, {
+        browserName: 'firefox',
+        tabs: [{ id: '2', url: 'https://review.newidea.pro/outline', title: 'Outline' }],
+        activeTabId: '2',
+      });
+      const clientId = addAutomationClient();
+
+      await handleAutomationMessage(
+        JSON.stringify({ action: 'execute_script', tabId: '2', code: 'document.title', requestId: 'prewarm-1' }),
+        clientId, autoSocket, state,
+      );
+
+      assert.equal(autoSocket._messages.length, 0);
+      assert.equal(ext.socket._messages.length, 1);
+      assert.equal(ext.socket._messages[0].type, 'execute_script');
+      assert.equal(ext.socket._messages[0].tabId, '2');
+      assert.equal(ext.socket._messages[0].code, 'document.title');
+    });
+
+    it('still soft-blocks execute_script when no active-tab scope was seeded', async () => {
+      state.security = {
+        enforcement: 'soft',
+        taskOrigin: { enabled: true, sources: ['active-tab'] },
+      };
+      const ext = addExtension(state, {
+        browserName: 'firefox',
+        tabs: [{ id: '2', url: 'https://review.newidea.pro/outline', title: 'Outline' }],
+        activeTabId: null,
+      });
+      const clientId = addAutomationClient();
+
+      await handleAutomationMessage(
+        JSON.stringify({ action: 'execute_script', tabId: '2', code: 'document.title', requestId: 'prewarm-2' }),
+        clientId, autoSocket, state,
+      );
+
+      assert.equal(ext.socket._messages.length, 0);
+      assert.equal(autoSocket._messages.length, 1);
+      assert.equal(autoSocket._messages[0].type, 'execute_script_response');
+      assert.equal(autoSocket._messages[0].status, 'error');
+      assert.equal(autoSocket._messages[0].code, 'POLICY_SOFT_BLOCK');
+      assert.equal(autoSocket._messages[0].rule, 'L4a-task-origin');
+    });
+  });
+
   describe('command forwarding with target', () => {
     it('forwards open_url to targeted browser', () => {
       const ffSocket = createMockSocket();

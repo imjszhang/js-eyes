@@ -4,7 +4,7 @@ const { describe, it, before, after, beforeEach, afterEach } = require('node:tes
 const assert = require('node:assert/strict');
 const { WebSocketServer } = require('ws');
 
-const { BrowserAutomation } = require('@js-eyes/client-sdk');
+const { BrowserAutomation, ServerPolicyError } = require('@js-eyes/client-sdk');
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -238,6 +238,57 @@ describe('_handleMessage', () => {
     assert.ok(rejected.message.includes('Unknown action'));
   });
 
+  it('rejects pending request on status=pending-egress with ServerPolicyError', () => {
+    let rejected = null;
+    const pending = {
+      resolve: () => {},
+      reject: (e) => { rejected = e; },
+      timeoutId: setTimeout(() => {}, 10000),
+    };
+    bot.pendingRequests.set('req-eg', pending);
+
+    bot._handleMessage(JSON.stringify({
+      type: 'open_url_response',
+      requestId: 'req-eg',
+      status: 'pending-egress',
+      code: 'POLICY_PENDING_EGRESS',
+      message: '出口未在允许列表',
+      pendingId: 'eg_x',
+      rule: 'L5-egress',
+      reasons: [{ rule: 'L5-egress', host: 'example.com' }],
+    }));
+
+    assert.ok(rejected instanceof ServerPolicyError);
+    assert.equal(rejected.code, 'POLICY_PENDING_EGRESS');
+    assert.equal(rejected.host, 'example.com');
+    assert.equal(rejected.pendingId, 'eg_x');
+    assert.equal(bot.pendingRequests.size, 0);
+  });
+
+  it('rejects pending request on status=error + POLICY_SOFT_BLOCK with ServerPolicyError', () => {
+    let rejected = null;
+    const pending = {
+      resolve: () => {},
+      reject: (e) => { rejected = e; },
+      timeoutId: setTimeout(() => {}, 10000),
+    };
+    bot.pendingRequests.set('req-sb', pending);
+
+    bot._handleMessage(JSON.stringify({
+      type: 'execute_script_response',
+      requestId: 'req-sb',
+      status: 'error',
+      code: 'POLICY_SOFT_BLOCK',
+      message: '规则引擎拒绝此操作（soft-block）',
+      rule: 'L4a-task-origin',
+      reasons: [{ rule: 'L4a-task-origin', host: 'a.com' }],
+    }));
+
+    assert.ok(rejected instanceof ServerPolicyError);
+    assert.equal(rejected.code, 'POLICY_SOFT_BLOCK');
+    assert.equal(rejected.host, 'a.com');
+  });
+
   it('ignores messages without matching requestId', () => {
     bot._handleMessage(JSON.stringify({
       type: 'get_tabs_response', requestId: 'nonexistent', status: 'success',
@@ -437,6 +488,79 @@ describe('error handling', () => {
       () => bot._sendRequest('unknown_boom', {}),
       (err) => {
         assert.ok(err.message.includes('Unknown action'));
+        return true;
+      },
+    );
+  });
+});
+
+// ── server policy: open_url pending-egress / execute_script soft-block ─
+
+describe('server policy integration', () => {
+  let server;
+  let bot;
+
+  before(async () => {
+    server = await createMockServer((ws, data) => {
+      const action = data.action || data.type;
+      const requestId = data.requestId;
+      if (action === 'open_url') {
+        ws.send(JSON.stringify({
+          type: 'open_url_response',
+          requestId,
+          status: 'pending-egress',
+          code: 'POLICY_PENDING_EGRESS',
+          message: '出口未在允许列表中',
+          pendingId: null,
+          rule: 'L5-egress',
+          reasons: [{ rule: 'L5-egress', host: 'blocked.example' }],
+        }));
+        return;
+      }
+      if (action === 'execute_script') {
+        ws.send(JSON.stringify({
+          type: 'execute_script_response',
+          requestId,
+          status: 'error',
+          code: 'POLICY_SOFT_BLOCK',
+          message: '规则引擎拒绝此操作（soft-block）',
+          rule: 'L4a-task-origin',
+          reasons: [{ rule: 'L4a-task-origin', host: 'x.com' }],
+        }));
+        return;
+      }
+      defaultHandler(ws, data);
+    });
+    bot = new BrowserAutomation(server.url, {
+      logger: silentLogger,
+      requestInterval: 0,
+    });
+    await bot.connect();
+  });
+
+  after(async () => {
+    bot.disconnect();
+    await closeMockServer(server.wss);
+  });
+
+  it('openUrl rejects ServerPolicyError when server returns pending-egress', async () => {
+    await assert.rejects(
+      () => bot.openUrl('https://blocked.example/p'),
+      (err) => {
+        assert.ok(err instanceof ServerPolicyError);
+        assert.equal(err.code, 'POLICY_PENDING_EGRESS');
+        assert.equal(err.host, 'blocked.example');
+        return true;
+      },
+    );
+  });
+
+  it('executeScript rejects ServerPolicyError when server returns POLICY_SOFT_BLOCK', async () => {
+    await assert.rejects(
+      () => bot.executeScript(1, '1+1'),
+      (err) => {
+        assert.ok(err instanceof ServerPolicyError);
+        assert.equal(err.code, 'POLICY_SOFT_BLOCK');
         return true;
       },
     );

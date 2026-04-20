@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/client-sdk",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "JS Eyes BrowserAutomation client SDK",
   "main": "index.js",
   "files": [
@@ -29,8 +29,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/protocol": "2.5.1",
-    "@js-eyes/runtime-paths": "2.5.1",
+    "@js-eyes/protocol": "2.5.2",
+    "@js-eyes/runtime-paths": "2.5.2",
     "ws": "^8.19.0"
   }
 }

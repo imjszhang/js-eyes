@@ -19,16 +19,28 @@ const {
   resolveSecurityConfig,
 } = require('@js-eyes/protocol');
 const { ensureToken } = require('@js-eyes/runtime-paths/token');
+const { getPaths } = require('@js-eyes/runtime-paths');
 const { checkAccess, WS_SUBPROTOCOL_PREFIX } = require('./auth');
 const { createAuditLogger, NOOP_AUDIT } = require('./audit');
-const { loadConfig } = tryLoadConfigModule();
+const { loadConfig, resolveHotReloadableSecurity } = tryLoadConfigModule();
 const pkg = require('./package.json');
 
 function tryLoadConfigModule() {
   try {
     return require('@js-eyes/config');
   } catch {
-    return { loadConfig: () => ({}) };
+    return {
+      loadConfig: () => ({}),
+      resolveHotReloadableSecurity: () => ({ applied: {}, ignored: {}, egressDiff: { added: [], removed: [] } }),
+    };
+  }
+}
+
+function tryLoadChokidar() {
+  try {
+    return require('chokidar');
+  } catch {
+    return null;
   }
 }
 
@@ -59,14 +71,18 @@ function createServer(options = {}) {
   const port = options.port || DEFAULT_SERVER_PORT;
   const host = options.host || DEFAULT_SERVER_HOST;
   const logger = options.logger || console;
+  const baseDirOption = options.baseDir;
+  const hotReloadConfig = options.hotReloadConfig !== false;
 
   let config = {};
   try {
-    config = options.config || loadConfig();
+    config = options.config || loadConfig(baseDirOption ? { baseDir: baseDirOption } : undefined);
   } catch {
     config = {};
   }
-  const security = options.security || resolveSecurityConfig(config);
+  // Mutable so that `reloadSecurity` can rebind the in-scope reference that
+  // request / ws closures below read from (`security.allowedOrigins`, etc.).
+  let security = options.security || resolveSecurityConfig(config);
 
   if (!isLoopbackHost(host) && !security.allowRemoteBind) {
     throw new Error(
@@ -109,8 +125,14 @@ function createServer(options = {}) {
   state.audit = audit;
   state.pendingEgressDir = options.pendingEgressDir || null;
   state.requestTimeoutMs = requestTimeoutMs;
+  // Bumped by `reloadSecurity()` so that `getOrCreatePolicyForClient` can
+  // detect stale per-connection `conn.policy` objects and rebuild them from
+  // the updated `state.security` (see packages/server-core/ws-handler.js).
+  state.policyGeneration = 1;
 
   let cleanupTimer = null;
+  let configWatcher = null;
+  let configReloadTimer = null;
 
   function originFromHeaders(req) {
     const raw = req.headers && (req.headers.origin || req.headers.Origin);
@@ -249,6 +271,13 @@ function createServer(options = {}) {
             },
             tabs: totalTabs,
             pendingRequests: state.pendingResponses.size,
+            policy: {
+              generation: state.policyGeneration,
+              enforcement: security.enforcement || null,
+              egressAllowlist: Array.isArray(security.egressAllowlist)
+                ? security.egressAllowlist.slice()
+                : [],
+            },
           },
         }, req);
         break;
@@ -345,6 +374,149 @@ function createServer(options = {}) {
     logger.error?.(`[js-eyes-server] wss error: ${err.message}`);
   });
 
+  /**
+   * Re-read `~/.js-eyes/config/config.json`, diff the resolved `security`
+   * against the current `state.security`, and atomically swap the fields that
+   * are safe to hot-reload (see HOT_RELOADABLE_SECURITY_KEYS in
+   * @js-eyes/config). Fields outside the whitelist are recorded on `ignored`
+   * and left in place — they require a server restart to take effect.
+   *
+   * @param {{ source?: string }} [opts]
+   * @returns {{ changed: boolean, applied: object, ignored: object, generation: number, egressAllowlist: string[], error?: string }}
+   */
+  function reloadSecurity(opts = {}) {
+    const source = (opts && typeof opts.source === 'string') ? opts.source : 'manual';
+    let nextConfig;
+    try {
+      nextConfig = loadConfig(baseDirOption ? { baseDir: baseDirOption } : undefined);
+    } catch (error) {
+      logger.warn?.(`[js-eyes-server] reloadSecurity: 配置读取失败 (${error.message})，保持旧配置`);
+      audit.write('config.hot-reload.error', {
+        source,
+        phase: 'loadConfig',
+        message: error.message,
+      });
+      return {
+        changed: false,
+        applied: {},
+        ignored: {},
+        generation: state.policyGeneration,
+        egressAllowlist: Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [],
+        error: error.message,
+      };
+    }
+
+    let nextSecurity;
+    try {
+      nextSecurity = resolveSecurityConfig(nextConfig);
+    } catch (error) {
+      logger.warn?.(`[js-eyes-server] reloadSecurity: security 解析失败 (${error.message})`);
+      audit.write('config.hot-reload.error', {
+        source,
+        phase: 'resolveSecurityConfig',
+        message: error.message,
+      });
+      return {
+        changed: false,
+        applied: {},
+        ignored: {},
+        generation: state.policyGeneration,
+        egressAllowlist: Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [],
+        error: error.message,
+      };
+    }
+
+    const { applied, ignored, egressDiff } = resolveHotReloadableSecurity(nextSecurity, security);
+    const appliedKeys = Object.keys(applied);
+    const ignoredKeys = Object.keys(ignored);
+
+    if (appliedKeys.length === 0 && ignoredKeys.length === 0) {
+      return {
+        changed: false,
+        applied: {},
+        ignored: {},
+        generation: state.policyGeneration,
+        egressAllowlist: Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [],
+      };
+    }
+
+    if (appliedKeys.length > 0) {
+      // Rebind the in-scope `security` reference so request / ws closures see
+      // the new object; `state.security` is kept in sync for ws-handler.
+      const merged = { ...security, ...applied };
+      security = merged;
+      state.security = merged;
+      state.policyGeneration += 1;
+      logger.info?.(
+        `[js-eyes-server] security reloaded (source=${source}, applied=[${appliedKeys.join(',')}], generation=${state.policyGeneration}, egress=+${egressDiff.added.length}/-${egressDiff.removed.length})`,
+      );
+    } else {
+      logger.warn?.(
+        `[js-eyes-server] security reload: 0 hot-reloadable fields changed, but ${ignoredKeys.length} non-hot field(s) require restart: [${ignoredKeys.join(',')}] (source=${source})`,
+      );
+    }
+
+    audit.write('config.hot-reload', {
+      source,
+      appliedKeys,
+      ignoredKeys,
+      egressAdded: egressDiff.added,
+      egressRemoved: egressDiff.removed,
+      generation: state.policyGeneration,
+    });
+
+    return {
+      changed: appliedKeys.length > 0,
+      applied,
+      ignored,
+      generation: state.policyGeneration,
+      egressAllowlist: Array.isArray(security.egressAllowlist) ? security.egressAllowlist.slice() : [],
+    };
+  }
+
+  function scheduleReloadSecurity(source) {
+    if (configReloadTimer) clearTimeout(configReloadTimer);
+    configReloadTimer = setTimeout(() => {
+      configReloadTimer = null;
+      try {
+        reloadSecurity({ source });
+      } catch (error) {
+        logger.warn?.(`[js-eyes-server] scheduled reloadSecurity failed: ${error.message}`);
+      }
+    }, 300);
+  }
+
+  function startConfigWatcher() {
+    if (!hotReloadConfig) return;
+    const chokidar = tryLoadChokidar();
+    if (!chokidar) {
+      logger.warn?.('[js-eyes-server] chokidar not installed; security hot-reload from fs-watch disabled. Use server.reloadSecurity() to trigger manually.');
+      return;
+    }
+    let configFile;
+    try {
+      configFile = getPaths(baseDirOption ? { baseDir: baseDirOption } : undefined).configFile;
+    } catch (error) {
+      logger.warn?.(`[js-eyes-server] 无法解析配置文件路径，跳过 watcher: ${error.message}`);
+      return;
+    }
+    try {
+      configWatcher = chokidar.watch(configFile, {
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
+      });
+      configWatcher.on('all', () => scheduleReloadSecurity('fs-watch'));
+      configWatcher.on('error', (error) => {
+        logger.warn?.(`[js-eyes-server] config watcher error: ${error.message}`);
+      });
+      logger.info?.(`[js-eyes-server] Watching security config: ${configFile}`);
+    } catch (error) {
+      logger.warn?.(`[js-eyes-server] Failed to start config watcher: ${error.message}`);
+      configWatcher = null;
+    }
+  }
+
   function start() {
     return new Promise((resolve, reject) => {
       cleanupTimer = startCleanup(state);
@@ -366,6 +538,7 @@ function createServer(options = {}) {
           tokenRequired: Boolean(serverToken),
           allowAnonymous: Boolean(security.allowAnonymous),
         });
+        startConfigWatcher();
         resolve();
       });
     });
@@ -379,6 +552,16 @@ function createServer(options = {}) {
       if (cleanupTimer) {
         clearInterval(cleanupTimer);
         cleanupTimer = null;
+      }
+
+      if (configReloadTimer) {
+        clearTimeout(configReloadTimer);
+        configReloadTimer = null;
+      }
+
+      if (configWatcher) {
+        try { configWatcher.close(); } catch {}
+        configWatcher = null;
       }
 
       for (const [, conn] of state.extensionClients) {
@@ -404,7 +587,16 @@ function createServer(options = {}) {
     });
   }
 
-  return { start, stop, httpServer, wss, state, token: serverToken, tokenFilePath };
+  return {
+    start,
+    stop,
+    httpServer,
+    wss,
+    state,
+    token: serverToken,
+    tokenFilePath,
+    reloadSecurity,
+  };
 }
 
 module.exports = {

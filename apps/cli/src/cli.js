@@ -882,8 +882,29 @@ async function commandSecurity(positionals, flags) {
       if (level === 'strict') print('!! Policy rules will reject violating calls (breaks existing workflows if task origin is not declared).');
       return;
     }
+    case 'reload': {
+      // The CLI does not own the running server's event loop (servers started
+      // by OpenClaw or `js-eyes server start` run in separate processes), so
+      // this command is intentionally read-only: it re-resolves the on-disk
+      // security config and prints what a live reload WOULD apply. The actual
+      // reload path is one of:
+      //   1. The running server's chokidar watcher on ~/.js-eyes/config/config.json
+      //      (auto-fires within ~500ms of a write when chokidar is available).
+      //   2. The built-in tool `js_eyes_reload_security` (agent-driven).
+      const config = loadConfig();
+      const security = resolveSecurityConfig(config);
+      print('security.reload (read-only preview)');
+      print(`  enforcement:     ${security.enforcement}`);
+      print(`  egressAllowlist: ${JSON.stringify(security.egressAllowlist)}`);
+      print('');
+      print('如要通知正在运行的服务器热加载新配置，选择一条:');
+      print('  1) 等待 ~0.5s：server-core 的 chokidar watcher 监听 ~/.js-eyes/config/config.json，写入后自动热加载（需安装 chokidar）。');
+      print('  2) 在 Agent 中调用内置工具 `js_eyes_reload_security`（OpenClaw 插件装载时可用）。');
+      print('注: 仅 egressAllowlist / toolPolicies / sensitiveCookieDomains / allowedOrigins / enforcement 支持热加载；其余字段需要重启服务器。');
+      return;
+    }
     default:
-      throw new Error('支持的命令: `js-eyes security show` / `enforce <off|soft|strict>`');
+      throw new Error('支持的命令: `js-eyes security show` / `enforce <off|soft|strict>` / `reload`');
   }
 }
 
@@ -1415,7 +1436,7 @@ function printHelp() {
   print('  js-eyes audit tail [--lines 100] [--since <iso>]');
   print('  js-eyes consent list|approve <id>|deny <id>');
   print('  js-eyes egress list|approve <id>|allow <domain>|clear');
-  print('  js-eyes security show|enforce <off|soft|strict>');
+  print('  js-eyes security show|enforce <off|soft|strict>|reload');
   print('  js-eyes config get [key]');
   print('  js-eyes config set <key> <value>');
   print('  js-eyes skills list [--registry https://js-eyes.com/skills.json]');

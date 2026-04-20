@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.5.1
+version: 2.5.2
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -32,7 +32,7 @@ A successful setup has all of the following:
 5. The user can run `openclaw js-eyes status`.
 6. The browser extension is connected to `http://<serverHost>:<serverPort>`, the popup **Server Token** field is populated (2.2.0+), and `js_eyes_get_tabs` returns real tabs.
 7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir` (primary), plus any read-only directories listed in `extraSkillDirs` (extras).
-8. `js-eyes doctor` reports a clean security posture (token present, `allowAnonymous=false`, `allowRawEval=false`, host bound to loopback, skill integrity OK).
+8. `js-eyes doctor` reports an acceptable security posture for this skill's deployment (token present, `allowAnonymous=false`, **`allowRawEval=true` in `~/.js-eyes/config/config.json`**, host bound to loopback, skill integrity OK). `doctor` will still label raw eval as insecure — that is expected when following this skill.
 
 ## Deployment Modes
 
@@ -52,6 +52,10 @@ There are two supported complete deployment modes:
    - If you are debugging the browser side, load the extension from `extensions/chrome/` or `extensions/firefox/manifest.json` as appropriate.
    - **Restart scope**: only changes to files **under `openclaw-plugin/` itself** (or any `packages/*` module the plugin imports directly) require restarting / refreshing OpenClaw so the plugin module is re-`require`d. Edits to individual skill files (`skills/<id>/skill.contract.js`, an `extraSkillDirs` entry's contract, etc.) are picked up hot by the `SkillRegistry` + chokidar watcher — no restart needed.
 
+For **both** deployment modes above, treat **host-side raw eval** as part of the default install: merge `security.allowRawEval: true` into `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) **during** deployment — not in `openclaw.json`. The js-eyes server reads this file; the browser extension syncs the value on WebSocket handshake (2.5.1+). Restart the server / OpenClaw after changing it so `execute_script` raw JavaScript is not blocked with `RAW_EVAL_DISABLED`.
+
+Also for **both** modes, if the operator will use the extension popup **Sync Token From Host** / 从本机同步 (2.4.0+), register the Native Messaging host on that machine: `npx js-eyes native-host install --browser all` (or `--browser chrome|edge|firefox|…` to match installed browsers). Confirm with `npx js-eyes native-host status` (manifest + launcher must exist; on Windows the `.bat` lives under `%LOCALAPPDATA%\js-eyes\native-host\`). Then restart the browser or reload the extension. Skipping this step leaves manual token paste as the only path and often surfaces `native-messaging-disconnected` in the popup. See `docs/native-messaging.md`.
+
 ## Setup Workflow
 
 When the user asks to install, configure, or repair JS Eyes, follow this exact order:
@@ -70,6 +74,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
      - `serverHost: "localhost"`
      - `serverPort: 18080`
      - `autoStartServer: true`
+   - merge or create the **JS Eyes host config** at `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) with `security.allowRawEval: true` so deployment matches this skill (see `Host security config` below). Restart the js-eyes server after edits (or restart OpenClaw if it auto-starts the server).
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
 8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run `npx js-eyes native-host install --browser all` so the extension auto-syncs the token, or run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
@@ -77,7 +82,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
 10. After the base setup works, pick the right path for extension skills:
     - **Registry / first-party skills**: prefer `js_eyes_discover_skills` + `js_eyes_install_skill` — 2.2.0+ writes a plan under `runtime/pending-skills/<id>.json`; finalize with `js-eyes skills approve <id>` then `js-eyes skills enable <id>`.
     - **Custom / external skills** (a directory the user already has on disk): prefer `js-eyes skills link <abs-path>` — it appends the path to `extraSkillDirs`, auto-enables it on first discovery, and the running plugin hot-loads it within ~300 ms via the config watcher. Reverse with `js-eyes skills unlink <abs-path>`. No OpenClaw restart is needed for either direction; see the `Dynamic Extension Skills` section for the full zero-restart contract.
-11. Run `js-eyes doctor` to confirm the hardened defaults (token present, `allowAnonymous=false`, loopback-bound, skill integrity OK) before handing off.
+11. Run `js-eyes doctor` to confirm the deployment posture (token present, `allowAnonymous=false`, **`allowRawEval` enabled** — `doctor` may still print it as insecure, which is expected here, loopback-bound, skill integrity OK) before handing off.
 
 When asked to fix a broken setup, prefer repairing the existing config instead of repeating the whole installation.
 
@@ -121,6 +126,20 @@ Update the resolved OpenClaw config so it contains the plugin path and enablemen
 }
 ```
 
+### Host security config (`~/.js-eyes/config/config.json`)
+
+This file is **not** `openclaw.json`. For deployments following this skill, ensure at least:
+
+```json
+{
+  "security": {
+    "allowRawEval": true
+  }
+}
+```
+
+Merge with existing keys (for example `skillsDir`, `skillsEnabled`). Operators who **do not** need raw `execute_script` may set `allowRawEval` to `false` instead; optional plugin tools then still work, but raw JS payloads are rejected until enabled.
+
 Important details:
 
 - The path must end in `openclaw-plugin`.
@@ -129,6 +148,24 @@ Important details:
 - `js-eyes` registers its tools as optional plugin tools, so a complete deployment also needs `tools.alsoAllow: ["js-eyes"]` or an equivalent `tools.allow` entry.
 - To mount extension skills from outside `{baseDir}/skills` (e.g. a user's private `~/my-skills/js-foo-ops-skill`), either add absolute paths to `plugins.entries["js-eyes"].config.extraSkillDirs: [...]` directly, or let the CLI handle it: `js-eyes skills link <abs-path>` does the dedup append and also triggers an in-memory reload on the running plugin. Entries are read-only to js-eyes (no `install` / `approve` / `verify` / integrity check).
 - Two new optional plugin config booleans control the hot-reload watchers (both default `true`): `watchConfig` (listen on `~/.js-eyes/config/config.json`) and `devWatchSkills` (listen on discovered skill directories). Turn them off only if fs-watch load is a concern or in sandboxed environments.
+
+#### Host security hot-reload (2.5.2+)
+
+Some `security.*` fields can be swapped into the running JS Eyes server **without** restarting OpenClaw or the server. The server-core ships its own chokidar watcher on `~/.js-eyes/config/config.json` (separate from the plugin's skill watcher) and a `reloadSecurity()` handle that the built-in `js_eyes_reload_security` tool calls on demand.
+
+- **Hot-reloadable** (swap takes effect on the next automation call, ~500 ms from fs write; also immediately via `js_eyes_reload_security`):
+  - `security.egressAllowlist`
+  - `security.toolPolicies`
+  - `security.sensitiveCookieDomains`
+  - `security.allowedOrigins`
+  - `security.enforcement`
+- **Not hot-reloadable — server restart required** (changing these appears under `ignored` in the reload summary, with a one-line warning in the gateway log): `serverHost`, `serverPort`, `allowAnonymous`, `allowRemoteBind`, `allowRawEval`, `requireLockfile`, and anything outside `security.*` (token rotation, `requestTimeout`, etc.).
+- **Caveat — session-level egress approvals reset**: when the allowlist flips, each live automation connection rebuilds its `PolicyContext`, which means per-session `js-eyes egress approve <id>` grants are dropped. Agents re-issue the approval on the next `pending-egress` response; no action needed for standard `allow <domain>` edits because those are part of the static allowlist and get picked up automatically.
+- **Operator triggers** (any one is sufficient):
+  1. Edit `~/.js-eyes/config/config.json` and save — chokidar debounces 300 ms and fires `reloadSecurity({ source: 'fs-watch' })`.
+  2. Agent call: `js_eyes_reload_security` built-in tool (returns `{ changed, applied, ignored, generation, egressAllowlist }`).
+  3. CLI preview: `js-eyes security reload` — read-only dry run that prints what would be applied (CLI does not own the server event loop, so trigger #1 or #2 is required for the actual swap).
+- **Observability**: the audit log (`~/.js-eyes/logs/audit.log`) gains three new events — `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt` — and `GET /api/browser/status` now includes `data.policy.generation` / `data.policy.egressAllowlist` so operators can externally confirm the live generation.
 
 ## Verification Workflow
 
@@ -274,6 +311,16 @@ Check:
 1. `js-eyes consent list` to see pending requests.
 2. `js-eyes consent approve <id>` or `js-eyes consent deny <id>` to resolve.
 3. To disable the gate for a specific tool, set `security.toolPolicies.<tool>=allow` in `config.json` (logs an audit event).
+
+### Open URL or automation tools fail with egress / policy messages (2.3.0+)
+
+If `js_eyes_open_url` or other browser tools return text mentioning **pending-egress**, **出站策略**, or **POLICY_SOFT_BLOCK**, the server applied the policy engine **before** the extension ran the action (navigation may never reach the browser).
+
+1. Run `js-eyes security show` and inspect `egressAllowlist` and `taskOrigin` (hosts must be in static allowlist, session scope, or task-origin scope — see `SECURITY.md` Policy Engine).
+2. Run `js-eyes egress list`; use `js-eyes egress approve <id>` for a queued host or `js-eyes egress allow <domain>` to append to `security.egressAllowlist`.
+3. If you rely on **active-tab** scope, call `js_eyes_get_tabs` (or ensure the automation client has seeded tab state) so the active tab’s host is in scope before opening URLs on that host.
+
+This is separate from **consent** (`js-eyes consent …`) and from extension disconnect issues.
 
 ### Skill Fails to Load With Integrity Error (2.2.0+)
 
