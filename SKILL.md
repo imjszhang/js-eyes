@@ -54,6 +54,8 @@ There are two supported complete deployment modes:
 
 For **both** deployment modes above, treat **host-side raw eval** as part of the default install: merge `security.allowRawEval: true` into `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) **during** deployment — not in `openclaw.json`. The js-eyes server reads this file; the browser extension syncs the value on WebSocket handshake (2.5.1+). Restart the server / OpenClaw after changing it so `execute_script` raw JavaScript is not blocked with `RAW_EVAL_DISABLED`.
 
+Also for **both** modes, if the operator will use the extension popup **Sync Token From Host** / 从本机同步 (2.4.0+), register the Native Messaging host on that machine: `npx js-eyes native-host install --browser all` (or `--browser chrome|edge|firefox|…` to match installed browsers). Confirm with `npx js-eyes native-host status` (manifest + launcher must exist; on Windows the `.bat` lives under `%LOCALAPPDATA%\js-eyes\native-host\`). Then restart the browser or reload the extension. Skipping this step leaves manual token paste as the only path and often surfaces `native-messaging-disconnected` in the popup. See `docs/native-messaging.md`.
+
 ## Setup Workflow
 
 When the user asks to install, configure, or repair JS Eyes, follow this exact order:
