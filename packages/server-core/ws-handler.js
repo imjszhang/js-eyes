@@ -109,6 +109,15 @@ function getExtensionSummaries(state) {
   return summaries;
 }
 
+function prewarmPolicyFromTargetExtension(policy, state, target) {
+  if (!policy || typeof policy.recordTabs !== 'function') return;
+  const ext = pickExtension(state, target || null);
+  if (!ext || !Array.isArray(ext.tabs) || ext.tabs.length === 0) return;
+  try {
+    policy.recordTabs(ext.tabs, ext.activeTabId);
+  } catch {}
+}
+
 function handleConnection(socket, request, state, options = {}) {
   const clientAddress = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
   const url = new URL(request.url, `ws://${request.headers.host || 'localhost'}`);
@@ -423,6 +432,7 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
   if (toolName && state.security && state.security.enforcement !== 'off') {
     const policy = getOrCreatePolicyForClient(state, clientId);
     if (policy) {
+      prewarmPolicyFromTargetExtension(policy, state, target);
       const params = {};
       if (data.url !== undefined) params.url = data.url;
       if (data.tabId !== undefined) params.tabId = data.tabId;
