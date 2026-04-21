@@ -106,7 +106,28 @@ js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载
 
 或 Agent 侧调 `js_eyes_install_skill` 走同样流程。
 
-### 4.2 发布自己的 skill（简要）
+### 4.2 升级已经装过的 skill（2.6.0+）
+
+子技能的版本号**独立于父技能**——作者推一个新版本到 registry 后，用户不用重装父 bundle 就能拿到新版：
+
+```bash
+# 升级单个已安装的子技能到 registry 最新版
+js-eyes skills update js-x-ops-skill
+
+# 升级所有通过 primary skillsDir 装进来的子技能
+js-eyes skills update --all
+
+# 先看要改什么再决定
+js-eyes skills update js-x-ops-skill --dry-run
+
+# 等价的纯 shell 方式（给没装 CLI 的用户）
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
+```
+
+`update` 复用 `install`/`approve` 的 stage-then-atomic-move 流程：sha256 校验通过才会替换，失败自动回滚到原目录；`skillsEnabled.<id>` 用户开关会保留。当 registry 的 `minParentVersion` 高于本机父技能时，会直接输出 `BLOCKED (requires parent js-eyes >= X.Y.Z)` 并以退出码 `2` 结束，不会装进去跑崩。`js-eyes skills list` 会在本地版本落后 registry 时提示 `Update available: <local> -> <registry>`；`--json` 输出里带 `updateAvailable` / `latestVersion` 字段。
+
+### 4.3 发布自己的 skill（简要）
 
 1. 把 skill 打包成 zip，文件结构和仓库内 skill 目录一致。
 2. 生成 sha256、大小。
@@ -123,9 +144,15 @@ js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载
      "size": 12345,
      "downloadUrl": "https://example.com/skills/js-foo-ops-skill-1.0.0.zip",
      "tools": ["foo_get_title"],
-     "requires": { "skills": ["js-eyes"] }
+     "requires": { "skills": ["js-eyes"] },
+     "minParentVersion": "2.6.0",
+     "releasedAt": "2026-04-21T00:00:00Z",
+     "changelogUrl": "https://example.com/skills/js-foo-ops-skill/CHANGELOG.md"
    }
    ```
+
+   官方仓库的 `packages/devtools/lib/builder.js` 会在 `npm run build:site` 期间自动填上后三个字段——`minParentVersion` 从 sub-skill 的 `package.json#jsEyes.minParentVersion` / `peerDependencies["js-eyes"]` 读（兜底到当前父技能版本），`releasedAt` 取 sub-skill 目录最近一次 git commit 时间，`changelogUrl` 若 sub-skill 根目录存在 `CHANGELOG.md` 则指向 GitHub 文件链接。自己托管 registry 的话按上面的 JSON 手写这三项即可。
+
 5. 让用户把 `plugins.entries["js-eyes"].config.skillsRegistryUrl` 指向你的 `skills.json`：
 
    ```bash
@@ -322,4 +349,4 @@ js-eyes skills approve js-foo-ops-skill
 
 ---
 
-Last updated: 2026-04-19
+Last updated: 2026-04-21

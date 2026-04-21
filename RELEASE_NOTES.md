@@ -1,5 +1,50 @@
 # Release Notes
 
+## v2.6.0
+
+> Sub-skill independent upgrade release. Sub-skills under `skills/*` now ship their own version channel — users on an older parent `js-eyes` skill can pull just the sub-skills they care about without reinstalling the whole bundle. No breaking changes.
+
+### Highlights
+
+- **Sub-skill independent upgrade channel** _(2026-04-21)_: Every sub-skill under `skills/*` tracks its own `package.json#version`, decoupled from the parent `js-eyes` version (`npm run bump` intentionally skips `skills/*`). New CLI command `js-eyes skills update <skillId|--all> [--dry-run] [--allow-postinstall]` reuses the existing `planSkillInstall` / `applySkillInstall` pipeline, preserves `skillsEnabled.<id>`, and refuses to cross a `minParentVersion` gap (exit code `2`). The gate compares the registry entry's `minParentVersion` against the **client's** installed parent version (read from `apps/cli/package.json#version`), not the registry snapshot's `parentSkill.version`. Affects [apps/cli/src/cli.js](apps/cli/src/cli.js); see [CHANGELOG.md](CHANGELOG.md) for the full change surface.
+- **`install.sh` learns version-aware upgrades** _(2026-04-21)_: `install.sh` (and its mirror at [docs/install.sh](docs/install.sh)) now compares the local sub-skill's `package.json` version against the registry, prints `up to date` when they match, and upgrades in place (no `Overwrite?` prompt) when the registry is newer. `curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=<id> bash` upgrades a single skill; `JS_EYES_SKILL=all` iterates every installed primary-source sub-skill. The shell path mirrors the CLI's `minParentVersion` gate by reading the local parent version from `${JS_EYES_ROOT}/package.json`.
+- **Richer `docs/skills.json` entries** _(2026-04-21)_: Each sub-skill now carries `minParentVersion`, `releasedAt`, and `changelogUrl`. Sub-skill authors can declare their parent floor via `package.json#jsEyes.minParentVersion` or `peerDependencies["js-eyes"]`; `packages/devtools/lib/builder.js` backfills `releasedAt` from the sub-skill directory's latest git commit time and points `changelogUrl` at the sub-skill's `CHANGELOG.md` on GitHub when present. Older clients that parse `skills.json` see these as unknown optional fields and keep working.
+- **`skills list` surfaces update hints** _(2026-04-21)_: `js-eyes skills list` now prints `Update available: <local> -> <registry> (run: js-eyes skills update <id>)` for outdated primary-source skills, and exposes `updateAvailable` / `latestVersion` in the `--json` payload so other tooling can plumb it into dashboards.
+
+### Migration Notes
+
+- **No breaking changes.** Wire protocol, CLI contract, existing `install.sh` flags, and the `skills install/approve/uninstall` flows are all unchanged. The new registry fields are additive and optional.
+- **Upgrade path**: Upgrade the parent `js-eyes` skill to 2.6.0 (normal install) to pick up the new `skills update` command and the richer `skills list` output.
+- **`minParentVersion` activates now**: Once 2.6.0 is live, future sub-skill releases can set `minParentVersion: "2.6.0"` (or higher) in their `package.json#jsEyes.minParentVersion` to give old parents a clear `BLOCKED (requires parent js-eyes >= ...)` message instead of a broken install. Sub-skills that don't declare a floor continue to install on any parent the registry still advertises — the builder fills the field with the current parent version as a safe default.
+- **Sub-skill versions are not synced by `bump`**: When releasing the parent, `npm run bump -- <x.y.z>` updates `package.json`, CLI, plugin, extensions, and i18n badges — but **never** `skills/*/package.json`. That's the whole premise of the independent upgrade channel. Bump a sub-skill by editing its own `package.json` and running `npm run build:site`.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.0/js-eyes-chrome-v2.6.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.0/js-eyes-firefox-v2.6.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.6.0/js-eyes-skill-v2.6.0.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.6.0`
+2. `js-eyes skills list` — verify the output now includes `Update available: ...` hints for any outdated primary-source skills (empty list is fine; nothing is out of date at first install).
+3. `js-eyes skills update --all --dry-run` — non-mutating rehearsal: should print per-skill `already up to date` / `upgrading ...` / `BLOCKED ...` lines without touching the filesystem.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.6.0 and run `npm install` in the bundle root.
+2. Restart OpenClaw **once** so the updated CLI is picked up. From that point on, sub-skill upgrades happen via `js-eyes skills update <id>` or `JS_EYES_SKILL=<id> bash` — no further OpenClaw restart needed (the main plugin hot-reloads sub-skills via the existing chokidar watcher).
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.6.0.zip`, extract, reload unpacked (or update from the Chrome Web Store once live). No popup or background behavior change vs 2.5.2.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.6.0.xpi` (or update from AMO once the listing is live).
+
+---
+
 ## v2.5.2
 
 > Zero-restart security config release. Editing `security.egressAllowlist` (and a small whitelist of related hot-safe fields) in `~/.js-eyes/config/config.json` now takes effect on the running server **without** restarting OpenClaw. Also fixes a long-standing gap where skill tool schemas were invisible to OpenClaw / the LLM. No breaking changes.

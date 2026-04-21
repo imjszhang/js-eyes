@@ -1,6 +1,6 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-04-19
+Last updated: 2026-04-21
 
 ## 2.3.0 Migration Guide (Policy Engine)
 
@@ -82,10 +82,13 @@ JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when
 
 - All skills are left **disabled** after upgrade. Re-enable only the ones you trust with `js-eyes skills enable <id>`.
 - Skill registry entries must carry `sha256` and `size`. Re-run `npm run build:site` to regenerate `docs/skills.json` and the per-skill `.sha256` sidecars.
+- Since the sub-skill upgrade channel (2.6.0), `docs/skills.json` entries also carry `minParentVersion`, `releasedAt`, and `changelogUrl`. A sub-skill may declare its required parent floor via `package.json#jsEyes.minParentVersion` or `peerDependencies["js-eyes"]`; missing declarations default to the current parent version. The `minParentVersion` gate is enforced by both `js-eyes skills update` (comparing against the CLI's own `pkg.version`) and `install.sh` (comparing against `${JS_EYES_ROOT}/package.json`'s version).
 - New workflow:
   - `js-eyes skills install <id> --plan` downloads and stages the bundle, writing a plan file under `runtime/pending-skills/`.
   - `js-eyes skills approve <id>` applies the staged plan, runs `npm ci --ignore-scripts`, and writes `.integrity.json`.
+  - `js-eyes skills update <id|--all> [--dry-run]` upgrades an already-installed sub-skill in place. It enforces the registry's `minParentVersion`, preserves `skillsEnabled.<id>`, and is the single path you need for "my sub-skill is out of date but I don't want to touch js-eyes itself".
   - `js-eyes skills verify [id]` re-validates file hashes against `.integrity.json`.
+- One-shot sub-skill upgrades are also available via the install script: `curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=<id> bash` (or `JS_EYES_SKILL=all`) compares the local `package.json#version` against the registry and only re-downloads when the registry is strictly newer.
 - OpenClaw's `js_eyes_install_skill` tool only produces plans; approval still requires the CLI.
 
 ### Operator Maintenance

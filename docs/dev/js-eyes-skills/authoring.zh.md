@@ -244,7 +244,7 @@ Agent 侧调 `foo_get_title` 即可验证工具可用；也可以先调 `js_eyes
 4. **`require('../../packages/...')` 不要用**。skill 要能独立分发，全部走 `@js-eyes/*` npm 包（已发布到 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)）或自包含 `lib/js-eyes-client.js` 的约定。
 5. **`@js-eyes/skill-recording` 可按需引入**。简单 skill 不用；要做跨会话缓存 / debug bundle 再加。
 6. **改完 `skill.contract.js` 可以零重启生效**。`SkillRegistry` 会在 reload 时递归清理该 skill 目录下的 `require.cache`（排除 `node_modules`）并重新 `require` contract；触发方式见 [deployment.zh.md §5.3](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)。只有改到 `openclaw-plugin/` 自身的代码才需要重启 OpenClaw。
-7. **新版本的 `version` 字段**要同步改 `package.json.version`、`SKILL.md` frontmatter `version`、`skill.contract.js` 导出的 `version`（后者其实读的是 `pkg.version`，省心做法就是只改 `package.json`）。
+7. **新版本的 `version` 字段**要同步改 `package.json.version`、`SKILL.md` frontmatter `version`、`skill.contract.js` 导出的 `version`（后者其实读的是 `pkg.version`，省心做法就是只改 `package.json`）。子技能有**独立版本号**——仓库根的 `npm run bump` 刻意不会同步 `skills/*/package.json`，这样用户可以用 `js-eyes skills update <id>` 单独升级你这个 skill，不需要重装父 bundle。**2.6.0+**：在子技能的 `package.json` 里声明 `"jsEyes": { "minParentVersion": "2.6.0" }`（或 `"peerDependencies": { "js-eyes": ">=2.6.0" }`）可以给用户一条清晰的门禁——父技能版本过低时 `skills update` / `install.sh` 会直接 `BLOCKED` 而不是装进去跑崩。未声明时 registry 会填当前父技能版本作为兜底。
 
 ## 10. 让别人通过 `extraSkillDirs` 纳入你的外部 skill
 
@@ -282,4 +282,4 @@ Agent 侧调 `foo_get_title` 即可验证工具可用；也可以先调 `js_eyes
 
 ---
 
-Last updated: 2026-04-19
+Last updated: 2026-04-21

@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-16T20:04:35.682Z",
+  "generated": "2026-04-21T16:11:42.311Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.5.2"
+    "version": "2.6.0"
   },
   "skills": [
     {
@@ -19,7 +19,7 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
-      "sha256": "7b469997a7490c8e1da469f3483bc2aa90f8446d5045547557c4f0b1e99b7379",
+      "sha256": "6b9298b26fa371ae7eb3f3466ae0e1227ebcd44170da3e2f22838e41ef863757",
       "size": 13606,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
@@ -35,7 +35,10 @@
         "platforms": [
           "bilibili.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-browser-ops-skill",
@@ -44,16 +47,13 @@
       "version": "2.1.0",
       "emoji": "🌐",
       "requires": {
-        "skills": [
-          "js-eyes"
-        ],
         "bins": [
           "node"
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "sha256": "241dbbc0a14933787c3ebcca38d0c03d9c1176f0f959536a2a7163d1f7431392",
-      "size": 19295,
+      "sha256": "b69b8b0977e7bc01cd869f3d02a3dd889ef56ddcb42a8793f2bfed93f4a412aa",
+      "size": 19291,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -73,7 +73,10 @@
         "platforms": [
           "*"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T20:27:12+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-jike-ops-skill",
@@ -87,8 +90,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
-      "sha256": "bb00f5fc111c88dc8447a6dd84b8c2a12d4a23ba6caab9ffe833c331e65aa8c7",
-      "size": 15041,
+      "sha256": "08791438abd37092d348c8689f4365051736f3b800729fc00891067810ff1b31",
+      "size": 15043,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
@@ -102,7 +105,10 @@
         "platforms": [
           "okjike.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-reddit-ops-skill",
@@ -116,8 +122,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "sha256": "96ff3baa1525d642e722ec6414f85101f2fcc03493e80a3080f29ce83b04ea2c",
-      "size": 18392,
+      "sha256": "e6fc8c5672ac84077ab5b346b4e36cc4303920bae1e36b347545e754180f0b6a",
+      "size": 18395,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post"
@@ -131,7 +137,10 @@
         "platforms": [
           "reddit.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-wechat-ops-skill",
@@ -145,8 +154,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
-      "sha256": "2b8f433ea77ee67f006ce141bb95ef934a976f659e6e216a85c53b665e1899e6",
-      "size": 15289,
+      "sha256": "a36b09a2f3a96b6920c1d7b87db18fee0dd389af1a6ed868ec6514f37893e3c0",
+      "size": 15291,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "wechat_get_article"
@@ -160,7 +169,10 @@
         "platforms": [
           "mp.weixin.qq.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-x-ops-skill",
@@ -169,16 +181,13 @@
       "version": "2.0.0",
       "emoji": "🔍",
       "requires": {
-        "skills": [
-          "js-eyes"
-        ],
         "bins": [
           "node"
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
-      "sha256": "e25a779b3093ff480c81236bb9d7dbd01033b619c83807f33f88a798e765b35e",
-      "size": 91261,
+      "sha256": "d9baa877947e7b0988508a43f03a1ac809111c06dee2af9773c27f2af1c65929",
+      "size": 91259,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
@@ -199,7 +208,10 @@
         "platforms": [
           "x.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T20:27:12+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-xiaohongshu-ops-skill",
@@ -213,8 +225,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "sha256": "0591e3d0c31e7891839721be3f47160fca06a575eded6c683137e9b3e99620ec",
-      "size": 16558,
+      "sha256": "4640cd6262a2f106d495850734470ea81d25e87ed797218e184a9dd80086b6ab",
+      "size": 16560,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "xhs_get_note"
@@ -228,7 +240,10 @@
         "platforms": [
           "xiaohongshu.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-youtube-ops-skill",
@@ -242,7 +257,7 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
-      "sha256": "60caf6c36354dca74ccef8988da21f592ac73310e9af3f2b2ace087f1e916aff",
+      "sha256": "9fd486e80100f7f7d2518b86b141b53020acbd074073f0d08046f5ba7081a25f",
       "size": 13829,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
@@ -258,7 +273,10 @@
         "platforms": [
           "youtube.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     },
     {
       "id": "js-zhihu-ops-skill",
@@ -272,8 +290,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
-      "sha256": "741ed340b88531f1329a20af6b66010bae4e46b9098d1f8aebef178c12ecabf4",
-      "size": 15999,
+      "sha256": "8128401aa554fae2c1192a1220cf3c923bc5e93931cb072f636c32447e7d1af9",
+      "size": 16001,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "zhihu_get_answer",
@@ -289,7 +307,10 @@
         "platforms": [
           "zhihu.com"
         ]
-      }
+      },
+      "minParentVersion": "2.6.0",
+      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "changelogUrl": null
     }
   ]
 }

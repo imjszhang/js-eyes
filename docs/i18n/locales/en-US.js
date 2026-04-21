@@ -10,7 +10,7 @@ window.I18nLocales['en-US'] = {
         langToggle: '中',
     },
     hero: {
-        badge: 'v2.5.2 // BROWSER AUTOMATION',
+        badge: 'v2.6.0 // BROWSER AUTOMATION',
         openclawBadge: 'NATIVE OPENCLAW SUPPORT',
         titleLine1: "AI Agent's",
         titleLine2: 'Browser Eyes',
@@ -19,7 +19,6 @@ window.I18nLocales['en-US'] = {
         deployHint: 'Run in your terminal',
         deployCmdUnix: 'curl -fsSL https://js-eyes.com/install.sh | bash',
         deployCmdWin: 'irm https://js-eyes.com/install.ps1 | iex',
-        deployCmdClawhub: 'openclaw skills install js-eyes',
         deployCopy: 'Copy',
         deployResult1: '\u2713 js-eyes installed',
         deployResult2: '\u2713 Plugin registered in resolved openclaw.json',

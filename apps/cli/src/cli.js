@@ -38,6 +38,7 @@ const {
 } = require('@js-eyes/native-host');
 const {
   applySkillInstall,
+  cleanupStaging,
   discoverLocalSkills,
   discoverSkillsFromSources,
   fetchSkillsRegistry,
@@ -59,6 +60,25 @@ function resolveSources(paths, config) {
     primary: resolveSkillsDir(paths, config),
     extras: Array.isArray(config && config.extraSkillDirs) ? config.extraSkillDirs : [],
   });
+}
+
+function parseSemver(input) {
+  if (typeof input !== 'string') return null;
+  const m = input.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function compareSemver(a, b) {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa && !pb) return 0;
+  if (!pa) return -1;
+  if (!pb) return 1;
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
 }
 const pkg = require('../package.json');
 
@@ -975,6 +995,10 @@ async function commandSkills(positionals, flags) {
         }
       }
 
+      const registryById = new Map(
+        registry && Array.isArray(registry.skills) ? registry.skills.map((e) => [e.id, e]) : [],
+      );
+
       if (wantJson) {
         const extrasSummary = sources.extras.map((extra) => ({
           path: extra.path,
@@ -988,18 +1012,27 @@ async function commandSkills(positionals, flags) {
           registry: registry ? { url: registryUrl, skills: registry.skills || [] } : null,
           registryError: registryError ? registryError.message : null,
           conflicts,
-          skills: installed.map((skill) => ({
-            id: skill.id,
-            name: skill.name,
-            version: skill.version,
-            description: skill.description,
-            source: skill.source,
-            sourcePath: skill.sourcePath,
-            skillDir: skill.skillDir,
-            tools: skill.tools,
-            commands: skill.commands,
-            enabled: isSkillEnabled(config, skill.id, legacyState),
-          })),
+          skills: installed.map((skill) => {
+            const entry = registryById.get(skill.id);
+            const latestVersion = entry ? entry.version : null;
+            const updateAvailable =
+              Boolean(entry) && skill.source === 'primary' &&
+              compareSemver(skill.version || '0.0.0', entry.version) < 0;
+            return {
+              id: skill.id,
+              name: skill.name,
+              version: skill.version,
+              description: skill.description,
+              source: skill.source,
+              sourcePath: skill.sourcePath,
+              skillDir: skill.skillDir,
+              tools: skill.tools,
+              commands: skill.commands,
+              enabled: isSkillEnabled(config, skill.id, legacyState),
+              latestVersion,
+              updateAvailable,
+            };
+          }),
         };
         print(JSON.stringify(payload, null, 2));
         return;
@@ -1037,6 +1070,9 @@ async function commandSkills(positionals, flags) {
             lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${local.skillDir}`);
             lines.push(renderSourceLine(local));
+            if (local.source === 'primary' && compareSemver(local.version || '0.0.0', skill.version) < 0) {
+              lines.push(`  Update available: ${local.version || '?'} -> ${skill.version} (run: js-eyes skills update ${skill.id})`);
+            }
           }
           lines.push('');
         }
@@ -1193,6 +1229,135 @@ async function commandSkills(positionals, flags) {
       print(`Approved and installed ${skillId} at ${apply.targetDir}`);
       return;
     }
+    case 'update': {
+      const all = Boolean(flags.all);
+      if (!skillId && !all) {
+        throw new Error('用法: `js-eyes skills update <skillId> [--dry-run] [--allow-postinstall]` 或 `js-eyes skills update --all`');
+      }
+
+      const registryUrl = flags.registry || config.skillsRegistryUrl;
+      let registry;
+      try {
+        registry = await fetchSkillsRegistry(registryUrl);
+      } catch (error) {
+        throw new Error(`无法读取技能注册表: ${error.message}`);
+      }
+
+      const registryById = new Map((registry.skills || []).map((entry) => [entry.id, entry]));
+      // The client's current parent is the CLI's own version (the CLI ships inside the parent skill).
+      // registry.parentSkill.version is merely the registry snapshot's parent and must NOT drive
+      // the minParentVersion gate on the user's machine.
+      const parentVersion = pkg.version || (registry.parentSkill && registry.parentSkill.version) || null;
+
+      const { skills: installed } = discoverSkillsFromSources(sources);
+      const localMap = new Map(installed.map((skill) => [skill.id, skill]));
+
+      let targets;
+      if (all) {
+        targets = installed
+          .filter((skill) => skill.source === 'primary')
+          .map((skill) => skill.id);
+        if (targets.length === 0) {
+          print('No primary-source skills installed; nothing to update.');
+          return;
+        }
+      } else {
+        const local = localMap.get(skillId);
+        if (!local) {
+          throw new Error(`技能未安装: ${skillId}`);
+        }
+        if (local.source === 'extra') {
+          throw new Error(
+            `技能 "${skillId}" 来自外部源 ${local.sourcePath}，js-eyes 不接管其生命周期（update 仅作用于 primary）。`,
+          );
+        }
+        targets = [skillId];
+      }
+
+      const security = resolveSecurityConfig(config);
+      const dryRun = Boolean(flags['dry-run']);
+      const results = { upToDate: [], updated: [], skipped: [], blocked: [] };
+
+      for (const id of targets) {
+        const local = localMap.get(id);
+        const entry = registryById.get(id);
+
+        if (!entry) {
+          print(`- ${id}: SKIPPED (not in registry ${registryUrl})`);
+          results.skipped.push(id);
+          continue;
+        }
+
+        const localVersion = (local && local.version) || '0.0.0';
+        const cmp = compareSemver(localVersion, entry.version);
+        if (cmp >= 0) {
+          print(`- ${id}: already up to date (${localVersion})`);
+          results.upToDate.push(id);
+          continue;
+        }
+
+        if (entry.minParentVersion && parentVersion && compareSemver(parentVersion, entry.minParentVersion) < 0) {
+          print(`- ${id}: BLOCKED (requires parent js-eyes >= ${entry.minParentVersion}, current ${parentVersion})`);
+          print('    Upgrade the parent skill first, then retry.');
+          results.blocked.push(id);
+          continue;
+        }
+
+        print(`- ${id}: upgrading ${localVersion} -> ${entry.version}`);
+
+        let planResult;
+        try {
+          planResult = await planSkillInstall({
+            skillId: id,
+            registryUrl,
+            skillsDir,
+            force: true,
+            logger: console,
+          });
+        } catch (error) {
+          print(`    plan failed: ${error.message}`);
+          results.skipped.push(id);
+          continue;
+        }
+
+        const plan = planResult.plan;
+        print(`    source: ${plan.sourceUrl}`);
+        print(`    sha256: ${plan.bundleSha256}`);
+        print(`    size:   ${plan.bundleSize} bytes (${plan.stagedFiles.length} files)`);
+
+        if (dryRun) {
+          print(`    dry-run: staged at ${plan.stagingDir} (not applied)`);
+          try { cleanupStaging(plan.stagingDir); } catch {}
+          results.skipped.push(id);
+          continue;
+        }
+
+        try {
+          const apply = applySkillInstall(plan, {
+            requireLockfile: security.requireLockfile,
+            allowPostinstall: Boolean(flags['allow-postinstall']),
+          });
+          print(`    installed at ${apply.targetDir}`);
+          results.updated.push(id);
+        } catch (error) {
+          print(`    apply failed: ${error.message}`);
+          results.skipped.push(id);
+        }
+      }
+
+      print('');
+      print(
+        `Summary: ${results.updated.length} updated, ${results.upToDate.length} up-to-date, ` +
+        `${results.blocked.length} blocked, ${results.skipped.length} skipped`,
+      );
+      if (results.updated.length > 0 && !dryRun) {
+        print('Restart OpenClaw or start a new session to load the new skill tools.');
+      }
+      if (results.blocked.length > 0) {
+        process.exitCode = 2;
+      }
+      return;
+    }
     case 'verify': {
       const targets = skillId ? [skillId] : discoverLocalSkills(skillsDir).map((s) => s.id);
       let failed = 0;
@@ -1320,7 +1485,7 @@ async function commandSkills(positionals, flags) {
       return;
     }
     default:
-      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `reload`');
+      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `update <skillId|--all> [--dry-run]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `reload`');
   }
 }
 
@@ -1441,6 +1606,7 @@ function printHelp() {
   print('  js-eyes config set <key> <value>');
   print('  js-eyes skills list [--registry https://js-eyes.com/skills.json]');
   print('  js-eyes skills install <skillId> [--force] [--plan] [--allow-postinstall]');
+  print('  js-eyes skills update <skillId|--all> [--dry-run] [--allow-postinstall]');
   print('  js-eyes skills approve <skillId>');
   print('  js-eyes skills verify [skillId]');
   print('  js-eyes skills enable <skillId>');
@@ -1518,12 +1684,14 @@ module.exports = {
   commandSkill,
   commandSkills,
   commandStatus,
+  compareSemver,
   flagsToArgv,
   getServerOptions,
   getLoopbackOrigin,
   isProcessAlive,
   main,
   parseArgs,
+  parseSemver,
   readPid,
   resolveExtensionAsset,
   resolvePluginPath,

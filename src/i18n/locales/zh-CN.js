@@ -10,7 +10,7 @@ window.I18nLocales['zh-CN'] = {
         langToggle: 'EN',
     },
     hero: {
-        badge: 'v2.5.2 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
+        badge: 'v2.6.0 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
         openclawBadge: '\u539f\u751f\u652f\u6301 OPENCLAW',
         titleLine1: 'AI Agent \u7684',
         titleLine2: '\u6d4f\u89c8\u5668\u4e4b\u773c',
