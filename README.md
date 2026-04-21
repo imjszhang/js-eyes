@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.5.2.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.6.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -235,18 +235,29 @@ Expected output shows server uptime, connected extensions, and tab count.
 `js-eyes` now acts as the host for extension skills as well:
 
 ```bash
-# List remote + installed skills
+# List remote + installed skills (shows "Update available" when the registry is newer)
 js-eyes skills list
 
 # Install and enable a skill
 js-eyes skills install js-x-ops-skill
 js-eyes skills enable js-x-ops-skill
 
+# Update a single sub-skill to the latest version published in the registry
+js-eyes skills update js-x-ops-skill
+
+# Update every primary-source sub-skill in one shot
+js-eyes skills update --all
+
+# Preview what would change without touching the installed skill
+js-eyes skills update js-x-ops-skill --dry-run
+
 # Run a skill command through the js-eyes host
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
 Skill install state is tracked by the JS Eyes runtime config. OpenClaw only needs to load the main `js-eyes` plugin; the main plugin auto-discovers enabled local skills from the same runtime `skills/` directory when it starts.
+
+`skills update` preserves the user's `skillsEnabled` state and verifies the downloaded bundle against the registry's `sha256`. If the registry entry declares `minParentVersion` higher than the installed `js-eyes` parent skill, the update is blocked with exit code 2 and the operator is asked to upgrade the parent first.
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
@@ -396,12 +407,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.5.2` |
-| Browser extension assets | `2.5.2` |
-| `@js-eyes/server-core` | `2.5.2` |
-| `@js-eyes/client-sdk` | `2.5.2` |
-| `openclaw-plugin` | `2.5.2` |
-| Skills using `@js-eyes/client-sdk` | `2.5.2` |
+| CLI | `2.6.0` |
+| Browser extension assets | `2.6.0` |
+| `@js-eyes/server-core` | `2.6.0` |
+| `@js-eyes/client-sdk` | `2.6.0` |
+| `openclaw-plugin` | `2.6.0` |
+| Skills using `@js-eyes/client-sdk` | `2.6.0` |
 
 ## Extension Skills
 
@@ -431,7 +442,7 @@ https://js-eyes.com/skills.json
 
 ### Installing Extension Skills
 
-**One-command install:**
+**One-command install (and upgrade):**
 
 ```bash
 # Linux / macOS (arg)
@@ -440,9 +451,19 @@ curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-x-ops-skill
 # Linux / macOS (env var, same as PowerShell)
 curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 
+# Upgrade every installed sub-skill in one go
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
+
 # Windows PowerShell
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
+
+Re-running `install.sh` for a sub-skill that is already installed is safe:
+the script reads the local `package.json` version, compares it against the
+registry, and reports `up to date` when they match. When the registry is
+newer it upgrades in place (no `Overwrite?` prompt) after verifying the
+bundle `sha256`. `JS_EYES_SKILL=all` iterates every directory under
+`<install-dir>/js-eyes/skills/`.
 
 **Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID. It downloads, extracts, installs dependencies, and enables the skill in the JS Eyes host config. Since 2026-04-19 the main plugin **hot-loads** the skill via `SkillRegistry` + chokidar within ~300 ms — no OpenClaw restart needed unless the skill introduces a brand-new tool name (see [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)).
 
@@ -506,8 +527,10 @@ npm run build:chrome
 # Build and sign Firefox extension
 npm run build:firefox
 
-# Bump version across all manifests
-npm run bump -- 2.5.2
+# Bump version across all manifests (note: this does NOT touch skills/*/package.json —
+# sub-skills keep their own independent versions so users can upgrade them via
+# `js-eyes skills update` without reinstalling the parent bundle)
+npm run bump -- 2.6.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

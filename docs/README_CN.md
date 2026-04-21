@@ -127,7 +127,7 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 
 如果不使用[一键安装](#一键安装)，也可以手动安装：
 
-1. 从 [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) 下载 `js-eyes-skill.zip`，或者从 [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest) 下载带版本号的 `js-eyes-skill-v<version>.zip`（例如 `js-eyes-skill-v2.5.2.zip`）
+1. 从 [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) 下载 `js-eyes-skill.zip`，或者从 [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest) 下载带版本号的 `js-eyes-skill-v<version>.zip`（例如 `js-eyes-skill-v2.6.0.zip`）
 2. 解压到目录（如 `./skills/js-eyes`）
 3. 使用 Node.js 22+ 在解压目录中执行 `npm install`
 4. 在解析后的 OpenClaw 配置文件中注册插件（见 [OpenClaw 插件](#openclaw-插件)）
@@ -218,18 +218,29 @@ openclaw js-eyes status
 现在 `js-eyes` 也可以作为扩展技能宿主：
 
 ```bash
-# 查看远端注册表和本地已安装技能
+# 查看远端注册表和本地已安装技能（版本不一致时会显示 Update available）
 js-eyes skills list
 
 # 安装并启用技能
 js-eyes skills install js-x-ops-skill
 js-eyes skills enable js-x-ops-skill
 
+# 升级单个子技能到注册表中的最新版本
+js-eyes skills update js-x-ops-skill
+
+# 一次性升级所有 primary 来源的子技能
+js-eyes skills update --all
+
+# 只预览将要变更的内容，不实际覆盖本地文件
+js-eyes skills update js-x-ops-skill --dry-run
+
 # 通过 js-eyes 宿主执行技能命令
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
 技能的安装状态由 `js-eyes` 自己的运行时配置维护。OpenClaw 只需要加载主插件 `js-eyes`；主插件会在启动时自动扫描同一份技能目录并注册已启用的子技能。
+
+`skills update` 会保留用户原有的 `skillsEnabled` 开关状态，并依据注册表中的 `sha256` 校验下载包。若注册表条目声明的 `minParentVersion` 高于本地 `js-eyes` 父技能版本，升级会被阻止（退出码 2），并提示先升级父技能。
 
 > 从 2.2.0 开始，`install_skill` 只会把**安装计划**写入 `runtime/pending-skills/<id>.json`。运维需执行 `js-eyes skills approve <id>` 才会落地，再用 `js-eyes skills enable <id>` 启用。详见 [SECURITY.md](../SECURITY.md#supply-chain-hardening-220)。
 
@@ -398,7 +409,7 @@ https://js-eyes.com/skills.json
 
 ### 安装扩展技能
 
-**一键安装：**
+**一键安装 / 升级：**
 
 ```bash
 # Linux / macOS（方式一：参数）
@@ -407,9 +418,18 @@ curl -fsSL https://js-eyes.com/install.sh | bash -s -- js-x-ops-skill
 # Linux / macOS（方式二：环境变量，与 PowerShell 一致）
 curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=js-x-ops-skill bash
 
+# 一次性升级所有已安装的子技能
+curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
+
 # Windows PowerShell
 $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 ```
+
+对已安装的子技能重跑该脚本是安全的：脚本会读取本地
+`package.json` 的 `version`，与注册表比较，相同时只提示 `up to date`；
+注册表版本更高时直接原地升级（不再弹 `Overwrite?`），升级前按 `sha256`
+校验下载包。`JS_EYES_SKILL=all` 会遍历
+`<install-dir>/js-eyes/skills/` 下的每个子技能目录依次升级。
 
 **通过 AI Agent：** Agent 调用 `js_eyes_install_skill`，传入技能 ID — 自动下载、解压、安装依赖，并在 `js-eyes` 宿主配置中启用该技能。自 2026-04-19 起，运行中的主插件会通过 `SkillRegistry` + chokidar 在 ~300 ms 内**零重启热加载**该技能，无需重启 OpenClaw；仅当技能带来了一个从未注册过的 tool name 时才需要重启一次（详见 [deployment.zh.md §5.3](dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）。
 
@@ -473,8 +493,10 @@ npm run build:chrome
 # 打包并签名 Firefox 扩展
 npm run build:firefox
 
-# 同步版本号到所有 manifest
-npm run bump -- 2.5.2
+# 同步版本号到所有 manifest（注意：bump 刻意跳过 skills/*/package.json —
+# 子技能保留各自的独立版本号，用户可以通过 `js-eyes skills update` 单独升级，
+# 不需要重装父 bundle）
+npm run bump -- 2.6.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

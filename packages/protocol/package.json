@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/protocol",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "description": "Shared protocol constants for JS Eyes runtime packages",
   "main": "index.js",
   "files": [

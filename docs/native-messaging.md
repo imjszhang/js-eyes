@@ -99,7 +99,7 @@ npx js-eyes native-host status
 
 - stdio 帧: 4 字节小端长度 + UTF-8 JSON；单条消息上限 1 MiB。
 - 输入:
-  - `{"type":"ping"}` -> `{"ok":true,"type":"pong","version":"2.5.2"}`
+  - `{"type":"ping"}` -> `{"ok":true,"type":"pong","version":"2.6.0"}`
   - `{"type":"get-config"}` -> `{"ok":true,"serverHost":"localhost","serverPort":18080,"serverUrl":"ws://...","httpUrl":"http://...","serverToken":"..."}`
 - 失败: `{"ok":false,"error":"token-missing"}` 等。
 

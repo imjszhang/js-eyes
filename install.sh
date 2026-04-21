@@ -93,25 +93,54 @@ command -v node >/dev/null 2>&1 || { err "Node.js is required. Install: https://
 command -v npm  >/dev/null 2>&1 || { err "npm is required."; exit 1; }
 
 # ══════════════════════════════════════════════════════════════════════
-# Sub-skill install: curl ... | JS_EYES_SKILL=<id> bash  or  bash -s -- <skill-id>
+# Sub-skill install / update
+#   curl ... | JS_EYES_SKILL=<id> bash       # install or upgrade one
+#   curl ... | JS_EYES_SKILL=all bash        # upgrade every installed sub-skill
+#   bash -s -- <skill-id>                    # same as JS_EYES_SKILL=<id>
 # ══════════════════════════════════════════════════════════════════════
-if [ -n "$SUB_SKILL" ]; then
-  JS_EYES_ROOT="${INSTALL_DIR}/${SKILL_NAME}"
-  if [ ! -d "$JS_EYES_ROOT" ]; then
-    err "JS Eyes is not installed at ${JS_EYES_ROOT}."
-    err "Install js-eyes first: curl -fsSL ${SITE_URL}/install.sh | bash"
-    exit 1
-  fi
 
-  info "Installing extension skill: ${SUB_SKILL}"
-  info "Fetching skill registry..."
-  REGISTRY_JSON=$(http_get "${SITE_URL}/skills.json" 2>/dev/null || true)
+# Read a JSON value via node (usage: json_get <json> <jsPath>)
+json_get_skill_field() {
+  node -e "
+    let r; try { r = JSON.parse(process.argv[1]); } catch (_) { process.exit(0); }
+    const s = r.skills && r.skills.find(x => x.id === process.argv[2]);
+    if (s && s[process.argv[3]] != null) console.log(s[process.argv[3]]);
+  " "$1" "$2" "$3" 2>/dev/null || true
+}
 
-  if [ -z "$REGISTRY_JSON" ]; then
-    err "Could not fetch skill registry from ${SITE_URL}/skills.json"
-    exit 1
-  fi
+json_get_parent_version() {
+  node -e "
+    let r; try { r = JSON.parse(process.argv[1]); } catch (_) { process.exit(0); }
+    if (r.parentSkill && r.parentSkill.version) console.log(r.parentSkill.version);
+  " "$1" 2>/dev/null || true
+}
 
+# Compare two semver strings. Echo '<', '=' or '>' (a vs b).
+compare_semver() {
+  node -e "
+    function p(v){const m=String(v||'').trim().match(/^v?(\\d+)\\.(\\d+)\\.(\\d+)/);if(!m)return null;return [+m[1],+m[2],+m[3]];}
+    const a=p(process.argv[1]),b=p(process.argv[2]);
+    if(!a&&!b){console.log('=');process.exit(0);}
+    if(!a){console.log('<');process.exit(0);}
+    if(!b){console.log('>');process.exit(0);}
+    for(let i=0;i<3;i++){if(a[i]!==b[i]){console.log(a[i]<b[i]?'<':'>');process.exit(0);}}
+    console.log('=');
+  " "$1" "$2" 2>/dev/null || echo '='
+}
+
+read_local_version() {
+  local pkg="$1/package.json"
+  [ -f "$pkg" ] || return 0
+  node -e "
+    try { const j = JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if (j.version) console.log(j.version); } catch (_) {}
+  " "$pkg" 2>/dev/null || true
+}
+
+install_one_sub_skill() {
+  local sid="$1" registry_json="$2" parent_version="$3"
+  local target="${JS_EYES_ROOT}/skills/${sid}"
+
+  local _download_urls_raw
   _download_urls_raw=$(node -e "
     let r; try { r = JSON.parse(process.argv[1]); } catch (_) { process.exit(1); }
     const s = r.skills && r.skills.find(x => x.id === process.argv[2]);
@@ -121,85 +150,172 @@ if [ -n "$SUB_SKILL" ]; then
       urls.push(s.downloadUrlFallback);
     }
     console.log(urls.join('\n'));
-  " "$REGISTRY_JSON" "$SUB_SKILL" 2>/dev/null) || true
+  " "$registry_json" "$sid" 2>/dev/null) || true
 
   if [ -z "$_download_urls_raw" ]; then
-    err "Skill '${SUB_SKILL}' not found in registry."
-    info "Available skills:"
-    printf '%s' "$REGISTRY_JSON" | grep '"id"' | sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/  - \1/'
-    exit 1
+    err "Skill '${sid}' not found in registry."
+    return 1
   fi
 
-  EXPECTED_SHA256=$(node -e "
-    let r; try { r = JSON.parse(process.argv[1]); } catch (_) { process.exit(0); }
-    const s = r.skills && r.skills.find(x => x.id === process.argv[2]);
-    if (s && s.sha256) console.log(s.sha256);
-  " "$REGISTRY_JSON" "$SUB_SKILL" 2>/dev/null) || true
+  local expected_sha remote_version min_parent
+  expected_sha=$(json_get_skill_field "$registry_json" "$sid" sha256)
+  remote_version=$(json_get_skill_field "$registry_json" "$sid" version)
+  min_parent=$(json_get_skill_field "$registry_json" "$sid" minParentVersion)
 
-  download_urls=()
+  local local_version=""
+  if [ -d "$target" ]; then
+    local_version=$(read_local_version "$target")
+  fi
+
+  if [ -n "$local_version" ] && [ -n "$remote_version" ]; then
+    case $(compare_semver "$local_version" "$remote_version") in
+      '=')
+        ok "${sid} is up to date (${local_version})"
+        return 0
+        ;;
+      '>')
+        info "${sid} local (${local_version}) is newer than registry (${remote_version}); skipping."
+        return 0
+        ;;
+      '<')
+        info "Upgrading ${sid}: ${local_version} -> ${remote_version}"
+        ;;
+    esac
+  else
+    info "Installing extension skill: ${sid}${remote_version:+ (${remote_version})}"
+  fi
+
+  if [ -n "$min_parent" ] && [ -n "$parent_version" ]; then
+    if [ "$(compare_semver "$parent_version" "$min_parent")" = '<' ]; then
+      err "${sid} requires parent js-eyes >= ${min_parent}, but current parent is ${parent_version}."
+      err "Upgrade the parent skill first: curl -fsSL ${SITE_URL}/install.sh | bash"
+      return 1
+    fi
+  fi
+
+  local download_urls=()
   while IFS= read -r _line; do
     [ -n "$_line" ] && download_urls+=("$_line")
   done <<< "$_download_urls_raw"
 
-  TARGET="${JS_EYES_ROOT}/skills/${SUB_SKILL}"
-  if [ -d "$TARGET" ]; then
-    warn "Directory already exists: ${TARGET}"
-    confirm "Overwrite?" || { info "Aborted."; exit 0; }
-    rm -rf "$TARGET"
+  if [ -d "$target" ] && [ -z "$local_version" ]; then
+    # Existing directory but unreadable/missing version: confirm before overwriting.
+    warn "Directory already exists: ${target}"
+    confirm "Overwrite?" || { info "Aborted."; return 0; }
   fi
-  mkdir -p "$TARGET"
 
+  local _tmpdir
   _tmpdir=$(mktemp -d)
-  trap 'rm -rf "$_tmpdir"' EXIT
+  # Per-invocation trap (outer trap resets on function exit)
 
-  SKILL_ZIP="${_tmpdir}/skill.zip"
-  info "Downloading ${SUB_SKILL}..."
-  if ! try_download "$SKILL_ZIP" "${download_urls[@]}"; then
-    err "Failed to download skill bundle."; exit 1
+  local skill_zip="${_tmpdir}/skill.zip"
+  info "Downloading ${sid}..."
+  if ! try_download "$skill_zip" "${download_urls[@]}"; then
+    err "Failed to download skill bundle."
+    rm -rf "$_tmpdir"
+    return 1
   fi
 
-  if ! verify_sha256 "$SKILL_ZIP" "$EXPECTED_SHA256"; then
+  if ! verify_sha256 "$skill_zip" "$expected_sha"; then
     err "Refusing to install skill without verified SHA-256."
-    exit 1
+    rm -rf "$_tmpdir"
+    return 1
   fi
 
   info "Extracting..."
+  local extract_dir="${_tmpdir}/extracted"
+  mkdir -p "$extract_dir"
   if command -v unzip >/dev/null 2>&1; then
-    unzip -qo "$SKILL_ZIP" -d "$TARGET"
+    unzip -qo "$skill_zip" -d "$extract_dir"
   elif command -v python3 >/dev/null 2>&1; then
-    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$SKILL_ZIP" "$TARGET"
+    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$skill_zip" "$extract_dir"
   else
-    err "unzip or python3 is required."; exit 1
+    err "unzip or python3 is required."
+    rm -rf "$_tmpdir"
+    return 1
   fi
 
-  # Fix permissions: OpenClaw rejects world-writable plugin paths
-  find "$TARGET" -type f -exec chmod 644 {} + 2>/dev/null || true
-  find "$TARGET" -type d -exec chmod 755 {} + 2>/dev/null || true
+  find "$extract_dir" -type f -exec chmod 644 {} + 2>/dev/null || true
+  find "$extract_dir" -type d -exec chmod 755 {} + 2>/dev/null || true
 
-  if [ -f "${TARGET}/package.json" ]; then
+  if [ -f "${extract_dir}/package.json" ]; then
     info "Installing dependencies (npm ci --ignore-scripts)..."
-    if ! run_npm_ci "$TARGET"; then
+    if ! run_npm_ci "$extract_dir"; then
       err "Dependency installation failed."
-      exit 1
+      rm -rf "$_tmpdir"
+      return 1
     fi
   fi
 
-  ABSOLUTE_TARGET=$(cd "$TARGET" && pwd)
-  PLUGIN_PATH="${ABSOLUTE_TARGET}/openclaw-plugin"
+  rm -rf "$target"
+  mkdir -p "$(dirname "$target")"
+  mv "$extract_dir" "$target"
+  rm -rf "$_tmpdir"
 
-  ok "${SUB_SKILL} installed to: ${ABSOLUTE_TARGET}"
+  local absolute_target plugin_path
+  absolute_target=$(cd "$target" && pwd)
+  plugin_path="${absolute_target}/openclaw-plugin"
+
+  ok "${sid} installed to: ${absolute_target}"
+  if [ -n "$local_version" ]; then
+    return 0
+  fi
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  Next: register the plugin in ~/.openclaw/openclaw.json"
   echo ""
   echo "  Add to plugins.load.paths:"
-  echo "    \"${PLUGIN_PATH}\""
+  echo "    \"${plugin_path}\""
   echo ""
   echo "  Add to plugins.entries:"
-  echo "    \"${SUB_SKILL}\": { \"enabled\": true }"
+  echo "    \"${sid}\": { \"enabled\": true }"
   echo ""
   echo "  Then restart OpenClaw."
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+if [ -n "$SUB_SKILL" ]; then
+  JS_EYES_ROOT="${INSTALL_DIR}/${SKILL_NAME}"
+  if [ ! -d "$JS_EYES_ROOT" ]; then
+    err "JS Eyes is not installed at ${JS_EYES_ROOT}."
+    err "Install js-eyes first: curl -fsSL ${SITE_URL}/install.sh | bash"
+    exit 1
+  fi
+
+  info "Fetching skill registry..."
+  REGISTRY_JSON=$(http_get "${SITE_URL}/skills.json" 2>/dev/null || true)
+
+  if [ -z "$REGISTRY_JSON" ]; then
+    err "Could not fetch skill registry from ${SITE_URL}/skills.json"
+    exit 1
+  fi
+
+  PARENT_VERSION=$(read_local_version "$JS_EYES_ROOT")
+  [ -n "$PARENT_VERSION" ] || PARENT_VERSION=$(json_get_parent_version "$REGISTRY_JSON")
+
+  if [ "$SUB_SKILL" = "all" ]; then
+    if [ ! -d "${JS_EYES_ROOT}/skills" ]; then
+      err "No skills directory at ${JS_EYES_ROOT}/skills; nothing to update."
+      exit 1
+    fi
+    any=0
+    failed=0
+    for entry in "${JS_EYES_ROOT}/skills"/*/; do
+      [ -d "$entry" ] || continue
+      any=1
+      sid=$(basename "$entry")
+      if ! install_one_sub_skill "$sid" "$REGISTRY_JSON" "$PARENT_VERSION"; then
+        failed=$((failed + 1))
+      fi
+    done
+    if [ "$any" = 0 ]; then
+      info "No sub-skills installed under ${JS_EYES_ROOT}/skills."
+    fi
+    [ "$failed" = 0 ] || exit 1
+    exit 0
+  fi
+
+  install_one_sub_skill "$SUB_SKILL" "$REGISTRY_JSON" "$PARENT_VERSION" || exit 1
   exit 0
 fi
 

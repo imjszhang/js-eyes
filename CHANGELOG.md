@@ -2,7 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.6.0] - 2026-04-21
+
+> Sub-skill independent upgrade release. Sub-skills under `skills/*` now ship their own version channel — users on an older parent `js-eyes` skill can pull just the sub-skills they care about without reinstalling the whole bundle. **No breaking changes** — wire protocol, CLI contract, and existing `install.sh` flows are all backward compatible; the new `minParentVersion` gate is forward-looking and only activates when a future sub-skill declares a floor.
+
+### Added
+
+- **Sub-skill independent upgrade channel** _(2026-04-21)_: Sub-skills under `skills/*` can now be upgraded without re-installing the parent `js-eyes` skill.
+  - New CLI command `js-eyes skills update <skillId|--all> [--dry-run] [--allow-postinstall]` that reuses the existing `planSkillInstall` / `applySkillInstall` pipeline, preserves the user's `skillsEnabled.<id>` state, and refuses to cross a `minParentVersion` gap (exit code `2`). The gate compares the registry entry's `minParentVersion` against the **client's** installed parent version (read from `apps/cli/package.json#version`), not the registry snapshot's `parentSkill.version`.
+  - `js-eyes skills list` now reports `Update available: <local> -> <registry> (run: js-eyes skills update <id>)` and surfaces `updateAvailable` / `latestVersion` in the `--json` payload.
+  - `install.sh` (and `docs/install.sh`) compare the local sub-skill's `package.json` version against the registry, report `up to date` when they match, and upgrade in place (no `Overwrite?` prompt) when the registry is newer. `JS_EYES_SKILL=all bash` iterates every installed primary-source sub-skill. The shell path mirrors the CLI's `minParentVersion` gate, reading the local parent version from `${JS_EYES_ROOT}/package.json`.
+  - `docs/skills.json` entries gain `minParentVersion`, `releasedAt`, and `changelogUrl` fields so clients can enforce parent-version gates and surface release metadata. Sub-skills can declare their parent floor via `package.json#jsEyes.minParentVersion` or `peerDependencies["js-eyes"]`; missing declarations fall back to the current parent version for backward compatibility. `releasedAt` uses the latest git commit time for the sub-skill directory; `changelogUrl` points to the sub-skill's `CHANGELOG.md` on GitHub when present.
+  - Registry `sha256` integrity is still enforced on every update, and installs are atomic (staging directory → rename) so a failed upgrade never leaves a half-installed skill behind.
+  - Tests: new `test/skill-update.test.js` covers happy path, already-up-to-date, `minParentVersion` block, `--dry-run`, and the `skills list` update hint via a mock HTTP registry. Full suite: 225/225 passing.
+
+### Compatibility
+
+- **Wire Protocol Unchanged**: Servers, clients, browser extensions, and automation keep working against 2.5.x. The new registry fields are additive and optional — old clients parsing `docs/skills.json` ignore them safely.
+- **Upgrade Path**: Upgrade the parent `js-eyes` skill to 2.6.0 (normal install) to pick up `skills update`. Existing `js-eyes skills install/approve/uninstall` flows are unchanged. Sub-skill versions in `skills/*/package.json` are **intentionally not synced** by `js-eyes-dev bump` — the independent upgrade channel relies on that decoupling.
+- **`minParentVersion` semantics**: Shipping `2.6.0` is what makes this gate usable. Future sub-skill releases can set `minParentVersion: "2.6.0"` (or higher) to ensure old parents get a clear `BLOCKED (requires parent js-eyes >= ...)` message instead of a broken install. Sub-skills that don't declare a floor continue to install on any parent the registry still advertises.
 
 ## [2.5.2] - 2026-04-21
 

@@ -321,11 +321,52 @@ function loadSkillContract(skillDir) {
   return require(contractPath);
 }
 
+function readSubSkillPackageJson(skillDir) {
+  const pkgPath = path.join(skillDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function resolveMinParentVersion(pkg, fallbackVersion) {
+  if (pkg && pkg.jsEyes && typeof pkg.jsEyes.minParentVersion === 'string') {
+    return pkg.jsEyes.minParentVersion;
+  }
+  const peer = pkg && pkg.peerDependencies && pkg.peerDependencies['js-eyes'];
+  if (typeof peer === 'string') {
+    const m = peer.match(/\d+\.\d+\.\d+/);
+    if (m) return m[0];
+  }
+  return fallbackVersion;
+}
+
+function resolveSkillReleasedAt(skillDir, fallbackISO) {
+  try {
+    const out = execSync(`git log -1 --format=%cI -- "${skillDir}"`, {
+      cwd: PROJECT_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (out) return out;
+  } catch {}
+  return fallbackISO;
+}
+
+function resolveSkillChangelogUrl(skillDir, dirName) {
+  const changelog = path.join(skillDir, 'CHANGELOG.md');
+  if (!fs.existsSync(changelog)) return null;
+  return `https://github.com/imjszhang/js-eyes/blob/main/skills/${dirName}/CHANGELOG.md`;
+}
+
 function discoverSubSkills() {
   if (!fs.existsSync(SKILLS_DIR)) return [];
 
   const entries = fs.readdirSync(SKILLS_DIR, { withFileTypes: true });
   const skills = [];
+  const parentVersion = getVersion();
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -346,6 +387,7 @@ function discoverSubSkills() {
       : [];
 
     const oc = (meta.metadata && meta.metadata.openclaw) || {};
+    const pkg = readSubSkillPackageJson(skillDir);
     skills.push({
       id: meta.name,
       dir: skillDir,
@@ -359,6 +401,8 @@ function discoverSubSkills() {
       tools,
       commands,
       runtime: contract?.runtime || {},
+      minParentVersion: resolveMinParentVersion(pkg, parentVersion),
+      changelogUrl: resolveSkillChangelogUrl(skillDir, entry.name),
     });
   }
   return skills;
@@ -418,10 +462,11 @@ async function buildSubSkillZips() {
 async function buildSkillsRegistry(preBuiltSkills) {
   const skills = preBuiltSkills || discoverSubSkills();
   const version = getVersion();
+  const generated = new Date().toISOString();
 
   const registry = {
     version: 1,
-    generated: new Date().toISOString(),
+    generated,
     baseUrl: SITE_URL,
     parentSkill: { id: 'js-eyes', version },
     skills: skills.map((skill) => {
@@ -436,6 +481,7 @@ async function buildSkillsRegistry(preBuiltSkills) {
           size = info.size;
         }
       }
+      const releasedAt = resolveSkillReleasedAt(skill.dir, generated);
       return {
         id: skill.id,
         name: skill.name,
@@ -450,6 +496,9 @@ async function buildSkillsRegistry(preBuiltSkills) {
         tools: skill.tools,
         commands: skill.commands,
         runtime: skill.runtime,
+        minParentVersion: skill.minParentVersion || version,
+        releasedAt,
+        changelogUrl: skill.changelogUrl || null,
       };
     }),
   };

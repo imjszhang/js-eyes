@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.5.2
+version: 2.6.0
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -254,6 +254,7 @@ Use this table to pick the correct command for any user intent. All rows are zer
 | Inspect what is installed locally | `js-eyes skills list` | same (entries annotated `Source: extra (<path>)`) |
 | Browse what can be installed | `js_eyes_discover_skills` | N/A (externals are out-of-registry by definition) |
 | Install / mount | `js_eyes_install_skill` → `js-eyes skills approve <id>` → `js-eyes skills enable <id>` | `js-eyes skills link <abs-path>` (auto-enables on first discovery) |
+| Upgrade to the latest registry version | `js-eyes skills update <id>` (preserves `skillsEnabled`, honors `minParentVersion`); `js-eyes skills update --all` for every primary-source skill; rerunning `curl … \| JS_EYES_SKILL=<id> bash` works too | N/A — externals are managed in their source tree; pull/rebuild there |
 | Temporarily stop without removing | `js-eyes skills disable <id>` — `runtime.dispose()` fires, tools stop responding, files stay on disk | `js-eyes skills disable <id>` (works the same; the `link` path stays in `extraSkillDirs`) |
 | Re-enable | `js-eyes skills enable <id>` | `js-eyes skills enable <id>` |
 | Replace / edit in place | Edit `{baseDir}/skills/<id>/skill.contract.js` and save — picked up by the skill-dir watcher, or call `js-eyes skills reload` | Same, against the external directory |

@@ -10,7 +10,7 @@ window.I18nLocales['zh-CN'] = {
         langToggle: 'EN',
     },
     hero: {
-        badge: 'v2.5.2 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
+        badge: 'v2.6.0 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
         openclawBadge: '\u539f\u751f\u652f\u6301 OPENCLAW',
         titleLine1: 'AI Agent \u7684',
         titleLine2: '\u6d4f\u89c8\u5668\u4e4b\u773c',
@@ -19,7 +19,6 @@ window.I18nLocales['zh-CN'] = {
         deployHint: '在终端中运行',
         deployCmdUnix: 'curl -fsSL https://js-eyes.com/install.sh | bash',
         deployCmdWin: 'irm https://js-eyes.com/install.ps1 | iex',
-        deployCmdClawhub: 'openclaw skills install js-eyes',
         deployCopy: '\u590d\u5236',
         deployResult1: '\u2713 js-eyes \u5df2\u5b89\u88c5',
         deployResult2: '\u2713 \u63d2\u4ef6\u5df2\u5199\u5165\u89e3\u6790\u540e\u7684 openclaw.json',

@@ -21,7 +21,7 @@
 | `skillsDir`（`openclaw-plugin` 配置项） | JS Eyes Skills 主安装根（primary，可指向仓库外）；`install` / `approve` / `uninstall` / 完整性校验只作用于此处 | 代码层（不改名） |
 | `extraSkillDirs`（`openclaw-plugin` 配置项） | 额外只读技能来源列表，条目可为单个技能目录或父目录；同 id 冲突时 primary 优先；extras 不做完整性校验 | 代码层（新增） |
 | `skill.contract.js` | JS Eyes Skills 契约入口（必需） | 代码层（不改名） |
-| `js-eyes skills <cmd>` CLI | JS Eyes Skills 管理命令（install / enable / approve / verify） | 代码层（不改名） |
+| `js-eyes skills <cmd>` CLI | JS Eyes Skills 管理命令（install / update / enable / approve / verify） | 代码层（不改名） |
 | `@js-eyes/skill-recording` npm 包 | JS Eyes Skills 运行录制底座 | 代码层（不改名） |
 | `@js-eyes/*`（npm scope） | 对应 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)，仅官方运行时包 + 官方 JS Eyes Skills 使用 | npm 层（不改名） |
 | `SKILLS_REGISTRY_URL`、`skills.json` | JS Eyes Skills 官方注册表 | 代码层（不改名） |
@@ -39,6 +39,7 @@
 2. **[契约规范（contract.zh.md）](contract.zh.md)** — `skill.contract.js` 顶层字段、`TOOL_DEFINITIONS` schema、`execute` 返回形态、敏感工具与 consent、`.integrity.json` 与完整性校验、`runtime.dispose()` 钩子。
 3. **[部署与启用（deployment.zh.md）](deployment.zh.md)** — 四种部署模式（仓库内 / 外部 `skillsDir` / ClawHub 注册表 / primary + `extraSkillDirs` 混合），`js-eyes skills enable <id>` 流程，配置优先级。
 4. **[零重启部署（deployment.zh.md §5.3）](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)** — `js-eyes skills link / unlink / reload`、`js_eyes_reload_skills` 工具、`SkillRegistry` + chokidar 的工作原理、边界条件（新 tool name 需要一次重启）。
+5. **独立升级通道（2.6.0+）** — `skills/*` 下的子技能有**独立版本号**（`bump` 命令刻意不会同步它们）。作者按需更新 sub-skill 的 `package.json#version` 后，运行 `npm run build:site` 重建 `docs/skills.json`，registry 会为每个条目写入 `minParentVersion / releasedAt / changelogUrl`。`minParentVersion` 可在 sub-skill 的 `package.json#jsEyes.minParentVersion` 或 `peerDependencies["js-eyes"]` 中声明，缺省时回退到当前父技能版本。用户侧升级命令：`js-eyes skills update <id|--all> [--dry-run]` 或 `curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=<id|all> bash`。
 
 ## 可运行样例
 
@@ -71,4 +72,4 @@
 
 ---
 
-Last updated: 2026-04-19
+Last updated: 2026-04-21
