@@ -1,6 +1,6 @@
 {
   "name": "js-wechat-ops-skill",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "微信公众号内容读取技能，基于 JS-Eyes 浏览器自动化获取文章正文与配图",
   "private": true,
   "main": "index.js",

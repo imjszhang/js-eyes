@@ -21,6 +21,28 @@
 
 const WebSocket = require('ws');
 
+// 活跃的 BrowserAutomation 实例集合；进程退出信号只注册一次，避免每个实例都挂
+// SIGINT/SIGTERM/exit 造成 MaxListenersExceededWarning 与 listener 泄漏。
+const _activeAutomations = new Set();
+let _processHooksInstalled = false;
+
+function _installProcessHooksOnce() {
+  if (_processHooksInstalled) return;
+  _processHooksInstalled = true;
+  const cleanup = () => {
+    for (const bot of Array.from(_activeAutomations)) {
+      try { bot.disconnect(); } catch {}
+    }
+  };
+  try {
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    process.on('exit', cleanup);
+  } catch {
+    // Best-effort: some sandboxed runtimes may forbid process.on.
+  }
+}
+
 class BrowserAutomation {
   /**
    * @param {string} [serverUrl='ws://localhost:18080'] WebSocket 服务器地址
@@ -48,12 +70,8 @@ class BrowserAutomation {
 
     this.pendingRequests = new Map(); // requestId -> { resolve, reject, timeoutId }
 
-    this._processCleanup = () => {
-      try { this.disconnect(); } catch {}
-    };
-    process.on('SIGINT', this._processCleanup);
-    process.on('SIGTERM', this._processCleanup);
-    process.on('exit', this._processCleanup);
+    _installProcessHooksOnce();
+    _activeAutomations.add(this);
   }
 
   /**
@@ -172,9 +190,7 @@ class BrowserAutomation {
     this._connectPromise = null;
     this._clientId = null;
 
-    process.removeListener('SIGINT', this._processCleanup);
-    process.removeListener('SIGTERM', this._processCleanup);
-    process.removeListener('exit', this._processCleanup);
+    _activeAutomations.delete(this);
 
     this.logger.info('[JS-Eyes] 已断开连接');
   }

@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.6.0
+version: 2.6.1
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 

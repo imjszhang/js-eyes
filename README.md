@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.6.0.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.6.1.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -407,12 +407,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.6.0` |
-| Browser extension assets | `2.6.0` |
-| `@js-eyes/server-core` | `2.6.0` |
-| `@js-eyes/client-sdk` | `2.6.0` |
-| `openclaw-plugin` | `2.6.0` |
-| Skills using `@js-eyes/client-sdk` | `2.6.0` |
+| CLI | `2.6.1` |
+| Browser extension assets | `2.6.1` |
+| `@js-eyes/server-core` | `2.6.1` |
+| `@js-eyes/client-sdk` | `2.6.1` |
+| `openclaw-plugin` | `2.6.1` |
+| Skills using `@js-eyes/client-sdk` | `2.6.1` |
 
 ## Extension Skills
 
@@ -530,7 +530,7 @@ npm run build:firefox
 # Bump version across all manifests (note: this does NOT touch skills/*/package.json —
 # sub-skills keep their own independent versions so users can upgrade them via
 # `js-eyes skills update` without reinstalling the parent bundle)
-npm run bump -- 2.6.0
+npm run bump -- 2.6.1
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

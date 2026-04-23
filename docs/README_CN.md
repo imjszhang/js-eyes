@@ -127,7 +127,7 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 
 如果不使用[一键安装](#一键安装)，也可以手动安装：
 
-1. 从 [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) 下载 `js-eyes-skill.zip`，或者从 [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest) 下载带版本号的 `js-eyes-skill-v<version>.zip`（例如 `js-eyes-skill-v2.6.0.zip`）
+1. 从 [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip) 下载 `js-eyes-skill.zip`，或者从 [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest) 下载带版本号的 `js-eyes-skill-v<version>.zip`（例如 `js-eyes-skill-v2.6.1.zip`）
 2. 解压到目录（如 `./skills/js-eyes`）
 3. 使用 Node.js 22+ 在解压目录中执行 `npm install`
 4. 在解析后的 OpenClaw 配置文件中注册插件（见 [OpenClaw 插件](#openclaw-插件)）
@@ -496,7 +496,7 @@ npm run build:firefox
 # 同步版本号到所有 manifest（注意：bump 刻意跳过 skills/*/package.json —
 # 子技能保留各自的独立版本号，用户可以通过 `js-eyes skills update` 单独升级，
 # 不需要重装父 bundle）
-npm run bump -- 2.6.0
+npm run bump -- 2.6.1
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

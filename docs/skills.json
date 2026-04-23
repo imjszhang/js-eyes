@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-21T16:11:42.311Z",
+  "generated": "2026-04-23T16:45:25.338Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.6.0"
+    "version": "2.6.1"
   },
   "skills": [
     {
@@ -36,7 +36,7 @@
           "bilibili.com"
         ]
       },
-      "minParentVersion": "2.6.0",
+      "minParentVersion": "2.6.1",
       "releasedAt": "2026-04-19T03:58:35+08:00",
       "changelogUrl": null
     },
@@ -44,7 +44,7 @@
       "id": "js-browser-ops-skill",
       "name": "JS Browser Ops Skill",
       "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "emoji": "🌐",
       "requires": {
         "bins": [
@@ -52,8 +52,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "sha256": "b69b8b0977e7bc01cd869f3d02a3dd889ef56ddcb42a8793f2bfed93f4a412aa",
-      "size": 19291,
+      "sha256": "e2761f65af19d97d008bfa23636e747ba55be4bcfcae98a182aceb1a5b410ea8",
+      "size": 19613,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -74,15 +74,15 @@
           "*"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T20:27:12+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-jike-ops-skill",
       "name": "JS Jike Ops Skill",
       "description": "即刻内容读取 skill，提供帖子详情、图片、互动数据和评论读取能力。",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "💬",
       "requires": {
         "bins": [
@@ -90,8 +90,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
-      "sha256": "08791438abd37092d348c8689f4365051736f3b800729fc00891067810ff1b31",
-      "size": 15043,
+      "sha256": "22fd960dfdf108c31a565d71e8f1dc1b4ad37f5fe36a2fea8741c5394699d769",
+      "size": 15367,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
@@ -106,15 +106,15 @@
           "okjike.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-reddit-ops-skill",
       "name": "JS Reddit Ops Skill",
       "description": "Reddit 内容读取 skill，提供帖子详情、图片和评论树读取能力。",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "🧵",
       "requires": {
         "bins": [
@@ -122,8 +122,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "sha256": "e6fc8c5672ac84077ab5b346b4e36cc4303920bae1e36b347545e754180f0b6a",
-      "size": 18395,
+      "sha256": "451f2b785e2c6265ab86c0c6746554a25b53accb9b45386deb38be70534e7ce4",
+      "size": 18716,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post"
@@ -138,15 +138,15 @@
           "reddit.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-wechat-ops-skill",
       "name": "JS WeChat Ops Skill",
       "description": "微信公众号内容读取 skill，基于 JS-Eyes 浏览器自动化获取文章标题、作者、正文、封面和图片列表。",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "📰",
       "requires": {
         "bins": [
@@ -154,8 +154,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
-      "sha256": "a36b09a2f3a96b6920c1d7b87db18fee0dd389af1a6ed868ec6514f37893e3c0",
-      "size": 15291,
+      "sha256": "1319325a52fc4127cab756bf62f2046f373494e112d474cbfef12474b8f5cabe",
+      "size": 15612,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "wechat_get_article"
@@ -170,15 +170,15 @@
           "mp.weixin.qq.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-x-ops-skill",
       "name": "JS X Ops Skill",
       "description": "X.com (Twitter) content operations skill — search content, browse timelines and home feed, read post details, and handle posting workflows via browser automation.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "🔍",
       "requires": {
         "bins": [
@@ -186,8 +186,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
-      "sha256": "d9baa877947e7b0988508a43f03a1ac809111c06dee2af9773c27f2af1c65929",
-      "size": 91259,
+      "sha256": "c420290d186daeb2e756b53bc3a96a57a04a78dfe02837b7b899e56e40e2350f",
+      "size": 91740,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
@@ -209,15 +209,15 @@
           "x.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T20:27:12+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-xiaohongshu-ops-skill",
       "name": "JS Xiaohongshu Ops Skill",
       "description": "小红书内容读取 skill，提供笔记详情、图片、作者信息和评论读取。",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "🌸",
       "requires": {
         "bins": [
@@ -225,8 +225,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "sha256": "4640cd6262a2f106d495850734470ea81d25e87ed797218e184a9dd80086b6ab",
-      "size": 16560,
+      "sha256": "b903b2470e43cdc7585022fb6a256b23cc041f3f7d6fd0d2b972f2fd96c9b839",
+      "size": 16879,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "xhs_get_note"
@@ -241,8 +241,8 @@
           "xiaohongshu.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     },
     {
@@ -274,7 +274,7 @@
           "youtube.com"
         ]
       },
-      "minParentVersion": "2.6.0",
+      "minParentVersion": "2.6.1",
       "releasedAt": "2026-04-19T03:58:35+08:00",
       "changelogUrl": null
     },
@@ -282,7 +282,7 @@
       "id": "js-zhihu-ops-skill",
       "name": "JS Zhihu Ops Skill",
       "description": "知乎内容读取 skill，提供回答与专栏详情读取能力。",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "emoji": "📘",
       "requires": {
         "bins": [
@@ -290,8 +290,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
-      "sha256": "8128401aa554fae2c1192a1220cf3c923bc5e93931cb072f636c32447e7d1af9",
-      "size": 16001,
+      "sha256": "3e0659fbed3e3794d8f8f20954707c0e3f183c5859db24cc627a05ae5d21f674",
+      "size": 16321,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "zhihu_get_answer",
@@ -308,8 +308,8 @@
           "zhihu.com"
         ]
       },
-      "minParentVersion": "2.6.0",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-24T00:35:08+08:00",
       "changelogUrl": null
     }
   ]

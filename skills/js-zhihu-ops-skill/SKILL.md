@@ -1,7 +1,7 @@
 ---
 name: js-zhihu-ops-skill
 description: 知乎内容读取 skill，提供回答与专栏详情读取能力。
-version: 2.0.0
+version: 2.0.1
 metadata:
   openclaw:
     emoji: "\U0001F4D8"

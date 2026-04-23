@@ -322,8 +322,13 @@ function _registryStatus(registry) {
     return `占用中: [${entries.join(', ')}]`;
 }
 
-// 进程退出时清理本进程的注册条目
-process.on('exit', () => {
+// 进程退出时清理本进程的注册条目。
+// 用 Symbol.for 在 process 上做全局去重，确保 require.cache purge 后模块被重新 require
+// 也不会重复挂同一个 exit listener（否则 skill 热加载会累积 process listener）。
+const _X_EXIT_HOOK_KEY = Symbol.for('js-eyes.skills.x-ops.xUtils.exitHook.v1');
+if (!process[_X_EXIT_HOOK_KEY]) {
+    process[_X_EXIT_HOOK_KEY] = true;
+    process.on('exit', () => {
     try {
         if (!existsSync(REGISTRY_FILE)) return;
         const registry = JSON.parse(readFileSync(REGISTRY_FILE, 'utf-8'));
@@ -343,7 +348,8 @@ process.on('exit', () => {
     }
     // 如果本进程持有锁文件也一并清理
     _releaseFileLock();
-});
+    });
+}
 
 // ============================================================================
 // 浏览器端推文 DOM 解析代码片段

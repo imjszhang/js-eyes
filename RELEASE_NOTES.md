@@ -1,5 +1,50 @@
 # Release Notes
 
+## v2.6.1
+
+> Memory-leak bugfix release for the long-running OpenClaw host (`ai.openclaw.gateway`). Fixes listener / fd / resource accumulation caused by hot-reload and repeated plugin registration. No breaking changes.
+
+### Highlights
+
+- **`MaxListenersExceededWarning` + `process.on('exit')` listener leak fixed** _(2026-04-24)_: `BrowserAutomation` no longer attaches per-instance `SIGINT` / `SIGTERM` / `exit` listeners — a module-level `Set` of active instances is now driven by a single set of process hooks installed via `_installProcessHooksOnce()`. The same fix applies to all 7 `skills/*/lib/js-eyes-client.js` copies. `skills/js-x-ops-skill/lib/xUtils.js` guards its own `process.on('exit')` with a `Symbol.for('js-eyes.skills.x-ops.xUtils.exitHook.v1')` flag so re-requires after a `require.cache` purge no longer stack duplicate exit callbacks. Affects [packages/client-sdk/index.js](packages/client-sdk/index.js), [skills/*/lib/js-eyes-client.js](skills), [skills/js-x-ops-skill/lib/xUtils.js](skills/js-x-ops-skill/lib/xUtils.js).
+- **`openclaw-plugin#register()` is now idempotent** _(2026-04-24)_: Re-entering `register()` (e.g. after a skill toggle or config edit) previously rebuilt a fresh `SkillRegistry`, chokidar watchers, WebSocket server, and `BrowserAutomation` while the old ones kept running — causing port bind races, leaked fds, and phantom reload storms. `register()` is now `async` and guards a module-level `currentRegistration` singleton: on re-entry it `await`s a deterministic `teardownRegistration(ctx)` (`reloadTimer → configWatcher → skillDirWatcher → skillRegistry.disposeAll() → bot.disconnect() → server.stop()`) before wiring the new instance. The `registerService({ id: "js-eyes-server" }).stop()` path routes through the same teardown and only nulls the singleton when its `api` identity matches the current one. Affects [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs).
+- **Skill hot-reload now disposes adapters and detects real content changes** _(2026-04-24)_: `SkillRegistry._reloadCore` used to decide "changed vs. unchanged" from `sourcePath`/`skillDir` only, so edits to `skill.contract.js` that kept the same path were ignored and old adapters piled up in memory with live WebSockets + intervals. A new `computeSkillFingerprint(skillDir)` (mtime + size of `skill.contract.js` and `package.json`) is now stored on skill state and compared on every reload; the contract-level `runtime.dispose()` is called before the old module is evicted from `require.cache`, with a warn-level invariant assertion and a `Purged N cached module(s)` info log when purge actually runs. Every skill that opens a `BrowserAutomation` (`js-browser-ops`, `js-jike-ops`, `js-reddit-ops`, `js-wechat-ops`, `js-x-ops`, `js-xiaohongshu-ops`, `js-zhihu-ops`) gained a `dispose()` that drains the bot and nulls the handle. Affects [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js), [skills/*/skill.contract.js](skills).
+- **Chokidar noise no longer triggers phantom reloads** _(2026-04-24)_: Editor atomic-writes, `.DS_Store` churn, and swap files on macOS used to fire `config-watch` / `skills-dir-watch` events that cascaded into full `SkillRegistry.reload()` calls. The plugin now ignores `.DS_Store`, `.git/`, `*.swp|swo|swx`, and `*~` at the watcher layer, and layers a sha1 content-hash gate (`scheduleReloadIfChanged(reason, filePath)`) so reloads only fire when the watched file's bytes actually changed. `runDiscover` also deduplicates `invalidExtraSkillDir` / skill-conflict warnings via per-registry `Set`s to stop log spam on repeated reloads. Affects [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs), [packages/protocol/skill-registry.js](packages/protocol/skill-registry.js).
+
+### Migration Notes
+
+- **No breaking changes.** Wire protocol, CLI contract, and all public APIs are unchanged from 2.6.0.
+- **Sub-skill patch bumps**: `js-browser-ops` `2.1.0 → 2.1.1`; `js-jike-ops` / `js-reddit-ops` / `js-wechat-ops` / `js-x-ops` / `js-xiaohongshu-ops` / `js-zhihu-ops` `2.0.0 → 2.0.1`. `js-bilibili-ops` and `js-youtube-ops` are untouched. Per the 2.6.0 decoupling, these sub-skill patches are independent of the parent bump.
+- **Long-running gateway operators**: after upgrading, restart the gateway process once so the freshly-imported plugin module installs the single-shot `process.on` hooks. Subsequent skill changes remain zero-restart.
+- **Upgrade path**: Reinstall the parent bundle, or run `js-eyes skills update --all` to pull the patched sub-skills. `docs/skills.json` in this release lists `minParentVersion: 2.6.1` as the safe default for sub-skills that don't declare their own floor — the builder always backfills the current parent version.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.1/js-eyes-chrome-v2.6.1.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.1/js-eyes-firefox-v2.6.1.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.6.1/js-eyes-skill-v2.6.1.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.6.1`
+2. `js-eyes doctor` — output should be unchanged from 2.6.0 aside from the new version strings.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.6.1 and run `npm install` in the bundle root.
+2. Restart OpenClaw **once** so the updated plugin module is re-imported — this is what installs the single-shot `process.on` hooks and wipes the old per-instance listeners. After that first restart, `js-eyes skills link/unlink/reload` stay zero-restart.
+3. `js-eyes skills update --all --dry-run` — optional rehearsal; then drop `--dry-run` to pull the patched sub-skills.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.6.1.zip`, extract, reload unpacked (or update from the Chrome Web Store once live). No popup or background behavior change vs 2.6.0.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.6.1.xpi` (or update from AMO once the listing is live).
+
+---
+
 ## v2.6.0
 
 > Sub-skill independent upgrade release. Sub-skills under `skills/*` now ship their own version channel — users on an older parent `js-eyes` skill can pull just the sub-skills they care about without reinstalling the whole bundle. No breaking changes.
