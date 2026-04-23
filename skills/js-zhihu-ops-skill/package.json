@@ -1,6 +1,6 @@
 {
   "name": "js-zhihu-ops-skill",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "知乎内容读取技能，提供回答与专栏详情读取",
   "private": true,
   "main": "index.js",

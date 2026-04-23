@@ -1,6 +1,6 @@
 {
   "name": "js-browser-ops-skill",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、截图等能力",
   "private": true,
   "main": "index.js",

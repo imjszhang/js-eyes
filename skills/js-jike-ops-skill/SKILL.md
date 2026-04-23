@@ -1,7 +1,7 @@
 ---
 name: js-jike-ops-skill
 description: 即刻内容读取 skill，提供帖子详情、图片、互动数据和评论读取能力。
-version: 2.0.0
+version: 2.0.1
 metadata:
   openclaw:
     emoji: "\U0001F4AC"

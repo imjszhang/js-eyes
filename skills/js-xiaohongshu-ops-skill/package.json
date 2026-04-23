@@ -1,6 +1,6 @@
 {
   "name": "js-xiaohongshu-ops-skill",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "小红书内容读取技能，提供笔记详情与评论读取",
   "private": true,
   "main": "index.js",

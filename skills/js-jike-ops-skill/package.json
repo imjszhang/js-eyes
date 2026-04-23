@@ -1,6 +1,6 @@
 {
   "name": "js-jike-ops-skill",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "即刻内容读取技能，提供帖子详情读取",
   "private": true,
   "main": "index.js",

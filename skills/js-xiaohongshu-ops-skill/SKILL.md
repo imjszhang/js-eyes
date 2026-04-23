@@ -1,7 +1,7 @@
 ---
 name: js-xiaohongshu-ops-skill
 description: 小红书内容读取 skill，提供笔记详情、图片、作者信息和评论读取。
-version: 2.0.0
+version: 2.0.1
 metadata:
   openclaw:
     emoji: "\U0001F338"

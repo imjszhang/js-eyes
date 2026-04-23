@@ -1,6 +1,6 @@
 {
   "name": "js-reddit-ops-skill",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Reddit 内容读取技能，提供帖子详情与评论树读取",
   "private": true,
   "main": "index.js",
