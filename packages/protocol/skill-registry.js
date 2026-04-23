@@ -50,6 +50,26 @@ function makeLogger(candidate) {
 }
 
 /**
+ * 计算 skillDir 内"驱动热更"的关键文件的指纹（mtime 组合）。
+ * 任一文件缺失按 0 处理；出错时退化为空字符串（此时 reload 语义保守：会认为"没变"）。
+ * 只用 mtime 是因为 chokidar 已经有 awaitWriteFinish 保护；要更强隔离可改 sha1。
+ */
+function computeSkillFingerprint(skillDir) {
+  if (!skillDir) return '';
+  const targets = ['skill.contract.js', 'package.json'];
+  const parts = [];
+  for (const name of targets) {
+    try {
+      const st = fs.statSync(path.join(skillDir, name));
+      parts.push(`${name}:${st.mtimeMs || 0}:${st.size || 0}`);
+    } catch (_) {
+      parts.push(`${name}:0:0`);
+    }
+  }
+  return parts.join('|');
+}
+
+/**
  * 深度清理 require.cache：删除所有位于 skillDir 下（排除 node_modules）
  * 的已缓存模块，避免热加载时沿用旧模块实例。
  */
@@ -135,6 +155,10 @@ function createSkillRegistry(options = {}) {
   let reloadInFlight = null;
   let suppressNextReload = false;
   let disposed = false;
+  // Once-per-path dedup sets so hot reloads don't flood the log with the same
+  // "Ignoring extra skill dir" / "Skipped extra skill" warnings on every tick.
+  const warnedInvalidPaths = new Set();
+  const warnedConflictKeys = new Set();
 
   function getState(skillId) {
     return skills.get(skillId) || null;
@@ -250,9 +274,21 @@ function createSkillRegistry(options = {}) {
       return installManifest?.declaredTools || skill.tools || [];
     })();
 
+    // Invariant: callers (_reloadCore) must `await disposeSkill(prev)` before we
+    // purge the require cache below. Otherwise stale timers/listeners inside the
+    // old contract module would outlive the purge and leak on every hot-reload.
+    if (skills.has(skill.id)) {
+      logger.warn(
+        `[js-eyes] loadSkillState invoked for "${skill.id}" while an old state is still registered; caller must dispose it first to avoid leaks`,
+      );
+    }
+
     let contract;
     try {
-      purgeRequireCacheFor(skill.skillDir);
+      const purged = purgeRequireCacheFor(skill.skillDir);
+      if (purged > 0) {
+        logger.info(`[js-eyes] Purged ${purged} cached module(s) under "${skill.id}" skillDir before reload`);
+      }
       contract = skill.contract || loadSkillContract(skill.skillDir);
     } catch (error) {
       logger.warn(`[js-eyes] Failed to load contract for "${skill.id}": ${error.message}`);
@@ -294,6 +330,7 @@ function createSkillRegistry(options = {}) {
       source: skill.source,
       sourcePath: skill.sourcePath,
       skillDir: skill.skillDir,
+      fingerprint: computeSkillFingerprint(skill.skillDir),
       contract,
       adapter,
       toolNames: toolDefs.map((t) => t.toolName),
@@ -340,11 +377,17 @@ function createSkillRegistry(options = {}) {
 
     const invalid = (sources && sources.invalid) || [];
     for (const item of invalid) {
+      const key = `${item.path}|${item.reason}`;
+      if (warnedInvalidPaths.has(key)) continue;
+      warnedInvalidPaths.add(key);
       logger.warn(`[js-eyes] Ignoring extra skill dir "${item.path}" (${item.reason})`);
     }
 
     const { skills: discovered, conflicts } = discoverSkillsFromSources(sources, {
       onConflict: ({ id, winner, loser }) => {
+        const key = `${id}|${loser.path}|${winner.path}`;
+        if (warnedConflictKeys.has(key)) return;
+        warnedConflictKeys.add(key);
         logger.warn(
           `[js-eyes] Skipped extra skill "${id}" at ${loser.path} (conflicts with ${winner.source} at ${winner.path})`,
         );
@@ -497,11 +540,14 @@ function createSkillRegistry(options = {}) {
         continue;
       }
 
-      // Detect if reload is required: new, sourcePath changed, or we dropped bindings.
+      // Detect if reload is required: new, sourcePath changed, or the on-disk
+      // contract/package.json fingerprint changed (true content hot-reload).
+      const nextFingerprint = computeSkillFingerprint(skill.skillDir);
       const changed = !existing
         || existing.source !== skill.source
         || existing.sourcePath !== skill.sourcePath
-        || existing.skillDir !== skill.skillDir;
+        || existing.skillDir !== skill.skillDir
+        || existing.fingerprint !== nextFingerprint;
 
       if (existing && !changed) {
         // Still alive; nothing to do unless explicit reload is requested.

@@ -126,7 +126,24 @@ function resolvePluginEntry(definition) {
   return definition.register;
 }
 
-function register(api) {
+// 模块级单例：防止 OpenClaw host 直接重跑 register() 时 chokidar watcher /
+// skillRegistry / server 被重复创建（老的没关 → listener + fd 持续累积）。
+// 每次 register() 入口会先 await 旧 currentRegistration.teardown()，再装新的。
+let currentRegistration = null;
+
+async function register(api) {
+  if (currentRegistration) {
+    try {
+      api.logger.warn(
+        "[js-eyes] register() called while a previous registration is still active; tearing it down first",
+      );
+      await currentRegistration.teardown({ logger: api.logger });
+    } catch (error) {
+      api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
+    }
+    currentRegistration = null;
+  }
+
   const pluginCfg = api.pluginConfig ?? {};
 
   const serverHost = pluginCfg.serverHost || "localhost";
@@ -148,6 +165,40 @@ function register(api) {
 
   let bot = null;
   let server = null;
+  // 以下变量随 register() 深入才被赋值，但 teardown() 闭包需要能读到，故提前声明。
+  let skillRegistry = null;
+  let configWatcher = null;
+  let skillDirWatcher = null;
+  let reloadTimer = null;
+
+  async function teardownRegistration(ctx) {
+    const log = (ctx && ctx.logger) || api.logger;
+    if (reloadTimer) {
+      try { clearTimeout(reloadTimer); } catch {}
+      reloadTimer = null;
+    }
+    if (configWatcher) {
+      try { await configWatcher.close(); } catch {}
+      configWatcher = null;
+    }
+    if (skillDirWatcher) {
+      try { await skillDirWatcher.close(); } catch {}
+      skillDirWatcher = null;
+    }
+    if (skillRegistry) {
+      try { await skillRegistry.disposeAll(); } catch {}
+      skillRegistry = null;
+    }
+    if (bot) {
+      try { bot.disconnect(); } catch {}
+      bot = null;
+    }
+    if (server) {
+      try { await server.stop(); } catch {}
+      server = null;
+    }
+    try { log.info("[js-eyes] Service stopped"); } catch {}
+  }
 
   function getServerToken() {
     if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
@@ -322,28 +373,10 @@ function register(api) {
       }
     },
     async stop(ctx) {
-      if (reloadTimer) {
-        try { clearTimeout(reloadTimer); } catch {}
-        reloadTimer = null;
+      await teardownRegistration(ctx);
+      if (currentRegistration && currentRegistration.api === api) {
+        currentRegistration = null;
       }
-      if (configWatcher) {
-        try { await configWatcher.close(); } catch {}
-        configWatcher = null;
-      }
-      if (skillDirWatcher) {
-        try { await skillDirWatcher.close(); } catch {}
-        skillDirWatcher = null;
-      }
-      try { await skillRegistry.disposeAll(); } catch {}
-      if (bot) {
-        try { bot.disconnect(); } catch {}
-        bot = null;
-      }
-      if (server) {
-        try { await server.stop(); } catch {}
-        server = null;
-      }
-      ctx.logger.info("[js-eyes] Service stopped");
     },
   });
 
@@ -816,7 +849,7 @@ function register(api) {
     { optional: true },
   );
 
-  const skillRegistry = createSkillRegistry({
+  skillRegistry = createSkillRegistry({
     api,
     pluginConfig: pluginCfg,
     wrapSensitiveTool,
@@ -931,9 +964,46 @@ function register(api) {
   const watchConfig = pluginCfg.watchConfig !== false;
   const devWatchSkills = pluginCfg.devWatchSkills !== false;
   const chokidar = watchConfig || devWatchSkills ? tryLoadChokidar() : null;
-  let configWatcher = null;
-  let skillDirWatcher = null;
-  let reloadTimer = null;
+
+  // macOS 下编辑器原子写、.DS_Store 抖动、swap 文件等会刷 chokidar 事件。
+  // 忽略这些噪音源；对于真正发生变化的文件，再在下面用 sha1 指纹二次过滤，
+  // 保证 scheduleReload 只在内容真变时调用，避免空跑 reload 放大泄漏。
+  const WATCHER_IGNORED = [
+    /(^|[\/\\])\.DS_Store$/,
+    /(^|[\/\\])\.git([\/\\]|$)/,
+    /\.sw[pox]$/i,
+    /~$/,
+  ];
+
+  const _lastHashByPath = new Map();
+
+  function _hashFileSync(filePath) {
+    try {
+      const buf = nodeFs.readFileSync(filePath);
+      return nodeCrypto.createHash('sha1').update(buf).digest('hex');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
+   * 只有当 filePath 的内容 sha1 与上次记录不同时才触发 reason 对应的 reload。
+   * 对删除事件（sha1='' 且之前没记录过）直接放行。
+   */
+  function scheduleReloadIfChanged(reason, filePath) {
+    if (!filePath) {
+      scheduleReload(reason);
+      return;
+    }
+    const prev = _lastHashByPath.get(filePath);
+    const next = _hashFileSync(filePath);
+    if (prev === next && prev !== undefined) {
+      // 内容未变（或读失败两次都拿到空串），视为噪音，忽略。
+      return;
+    }
+    _lastHashByPath.set(filePath, next);
+    scheduleReload(reason);
+  }
 
   function scheduleReload(reason) {
     if (reloadTimer) clearTimeout(reloadTimer);
@@ -950,9 +1020,10 @@ function register(api) {
       configWatcher = chokidar.watch(runtimePaths.configFile, {
         persistent: true,
         ignoreInitial: true,
+        ignored: WATCHER_IGNORED,
         awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
       });
-      configWatcher.on('all', () => scheduleReload('config-watch'));
+      configWatcher.on('all', (_event, path) => scheduleReloadIfChanged('config-watch', path || runtimePaths.configFile));
       configWatcher.on('error', (error) => {
         api.logger.warn(`[js-eyes] config watcher error: ${error.message}`);
       });
@@ -984,9 +1055,10 @@ function register(api) {
         skillDirWatcher = chokidar.watch(watchGlobs, {
           persistent: true,
           ignoreInitial: true,
+          ignored: WATCHER_IGNORED,
           awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
         });
-        skillDirWatcher.on('all', () => scheduleReload('skill-dir-watch'));
+        skillDirWatcher.on('all', (_event, path) => scheduleReloadIfChanged('skill-dir-watch', path));
         skillDirWatcher.on('error', (error) => {
           api.logger.warn(`[js-eyes] skill dir watcher error: ${error.message}`);
         });
@@ -1096,6 +1168,11 @@ function register(api) {
     },
     { commands: ["js-eyes"] },
   );
+
+  currentRegistration = {
+    api,
+    teardown: teardownRegistration,
+  };
 }
 
 const definition = {

@@ -41,6 +41,12 @@ function createRuntime(config = {}, logger) {
     jsonResult(value) {
       return this.textResult(JSON.stringify(value, null, 2));
     },
+    dispose() {
+      if (bot && typeof bot.disconnect === 'function') {
+        try { bot.disconnect(); } catch {}
+      }
+      bot = null;
+    },
   };
 }
 
