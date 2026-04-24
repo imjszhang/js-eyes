@@ -1,5 +1,112 @@
 # Release Notes
 
+## v2.6.2
+
+> **Security hygiene release — zero behavioural changes.** Responds to the
+> [ClawHub v2.6.1 Security Scan](https://clawhub.ai/imjszhang/js-eyes) by
+> splitting flagged call sites into dedicated single-responsibility modules,
+> adding an opt-in integrity layer for `extraSkillDirs`, and documenting the
+> remaining posture trade-offs. Wire protocol, CLI contract, default config
+> values, and every public API are byte-for-byte compatible with 2.6.1.
+> See [SECURITY_SCAN_NOTES.md](SECURITY_SCAN_NOTES.md) for the per-finding
+> response matrix.
+
+### Highlights
+
+- **Shell / env / fs / network call sites decoupled** *(2026-04-24)*: The five
+  static-analysis patterns flagged by ClawHub (shell exec, env + network,
+  file read + network) are dissolved by extracting each operation into a
+  small, purpose-built module: [`packages/protocol/safe-npm.js`](packages/protocol/safe-npm.js)
+  owns the only `npm` invocation (whitelisted subcommand / argv / env,
+  `shell:false`, `windowsHide:true`); [`packages/protocol/skill-runner.js`](packages/protocol/skill-runner.js)
+  owns sub-skill CLI invocation (`process.execPath` only, no PATH lookup,
+  `shell:false`, `windowsHide:true`); [`packages/protocol/openclaw-paths.js`](packages/protocol/openclaw-paths.js)
+  owns env-based path resolution; [`packages/protocol/fs-io.js`](packages/protocol/fs-io.js)
+  owns JSON / fs helpers; [`packages/protocol/registry-client.js`](packages/protocol/registry-client.js)
+  owns every `fetch(…)` against the skill registry so network I/O is never
+  co-located with `fs.readFileSync` / `createReadStream`;
+  [`openclaw-plugin/auth.mjs`](openclaw-plugin/auth.mjs) owns token reading +
+  header construction; [`openclaw-plugin/fs-utils/hash.mjs`](openclaw-plugin/fs-utils/hash.mjs)
+  streams SHA1 hashes with `createReadStream`; and
+  [`openclaw-plugin/windows-hide-patch.mjs`](openclaw-plugin/windows-hide-patch.mjs)
+  isolates the Windows-only `child_process` patch (no-op on POSIX).
+  `test/import-boundaries.test.js` prohibits these modules from importing
+  `ws` / `http` / `https` / `net` — the invariant is enforced by CI, and
+  `npm run scan:security` reproduces the ClawHub heuristic locally with an
+  allowlist of three documented residual `spawnSync` callsites.
+- **Optional integrity snapshots for `extraSkillDirs`** *(2026-04-24)*: New
+  config key `security.verifyExtraSkillDirs` (default **off**). When enabled,
+  `js-eyes skills link` writes a per-file sha256 map to
+  `~/.js-eyes/state/extras/<sha1(absPath)>.json` (outside the external dir);
+  `SkillRegistry` refuses to load an extra whose snapshot drifted and points
+  the operator at a new `js-eyes skills relink <abs-path>` command. `doctor`
+  reports the live integrity state per extra. Closes the "extraSkillDirs
+  bypass integrity verification" concern raised by the OpenClaw review.
+- **`js-eyes doctor --json`** *(2026-04-24)*: Emits the full security posture
+  as a single JSON document (token source, security config, loopback state,
+  per-skill integrity, policy snapshot) for auditors and CI. The human-readable
+  text output is byte-identical to 2.6.1.
+- **Local native-host launcher** *(2026-04-24)*: New scripts
+  [`bin/js-eyes-native-host-install.sh`](bin/js-eyes-native-host-install.sh) and
+  [`bin/js-eyes-native-host-install.ps1`](bin/js-eyes-native-host-install.ps1)
+  wrap `node apps/cli/bin/js-eyes.js native-host install` — zero network, zero
+  `npx`. `SKILL.md` and `docs/native-messaging.md` now recommend the local
+  launcher as the preferred path; `npx` remains a documented fallback.
+- **New documentation**: [`SECURITY_SCAN_NOTES.md`](SECURITY_SCAN_NOTES.md)
+  (per-finding response matrix), README **Security Posture** table, SKILL.md
+  **Safe Default Mode** section (capability envelope when
+  `allowRawEval=false`).
+
+### Migration Notes
+
+- **No breaking changes.** Every default is identical to 2.6.1; every public
+  symbol keeps its prior module path (via re-exports where the source moved).
+- **No config migration required.** `security.verifyExtraSkillDirs` defaults
+  to `false` — existing `extraSkillDirs` users see no difference on upgrade.
+- **Scope clarification**: this release is code + documentation only. Release
+  artifact signing (cosign / minisign), SBOM emission, CI supply-chain
+  scanners, and ClawHub-side registry metadata fixes are out of scope and are
+  tracked for 2.7.
+- **Upgrade path**: `js-eyes skills update js-eyes` or reinstall the parent
+  bundle. No gateway restart is required beyond the usual plugin-module
+  reload rule; skill-level edits stay zero-restart.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.2/js-eyes-chrome-v2.6.2.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.2/js-eyes-firefox-v2.6.2.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.6.2/js-eyes-skill-v2.6.2.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.6.2`
+2. `js-eyes doctor --json` — new machine-readable posture snapshot; the text
+   output of `js-eyes doctor` is unchanged from 2.6.1.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.6.2 and run `npm install`
+   in the bundle root.
+2. Restart OpenClaw once so the plugin module reloads. Subsequent
+   `js-eyes skills link/unlink/reload/relink` remain zero-restart.
+3. Optional hardening: merge `{ "security": { "verifyExtraSkillDirs": true } }`
+   into `~/.js-eyes/config/config.json` and then re-run
+   `js-eyes skills link <abs-path>` for every entry in `extraSkillDirs` to
+   seed the integrity snapshot.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.6.2.zip`, extract, reload unpacked (or update
+   from the Chrome Web Store once live). No popup or background behaviour
+   change vs 2.6.1.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.6.2.xpi` (or update from AMO once the listing
+   is live).
+
+---
+
 ## v2.6.1
 
 > Memory-leak bugfix release for the long-running OpenClaw host (`ai.openclaw.gateway`). Fixes listener / fd / resource accumulation caused by hot-reload and repeated plugin registration. No breaking changes.

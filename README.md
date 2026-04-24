@@ -137,7 +137,7 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 If you prefer manual setup instead of the [one-command install](#quick-install):
 
-1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.6.1.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
+1. Download `js-eyes-skill.zip` from [js-eyes.com](https://js-eyes.com/js-eyes-skill.zip), or the versioned `js-eyes-skill-v<version>.zip` asset (e.g. `js-eyes-skill-v2.6.2.zip`) from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest)
 2. Extract to a directory (for example `./skills/js-eyes`)
 3. Run `npm install` inside the extracted folder with Node.js 22 or newer
 4. Register the plugin in the resolved OpenClaw config file (see [OpenClaw Plugin](#openclaw-plugin))
@@ -260,6 +260,26 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 `skills update` preserves the user's `skillsEnabled` state and verifies the downloaded bundle against the registry's `sha256`. If the registry entry declares `minParentVersion` higher than the installed `js-eyes` parent skill, the update is blocked with exit code 2 and the operator is asked to upgrade the parent first.
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
+
+### Security Posture (2.6.2)
+
+The table below summarises the attack surface `js-eyes` exposes, what the stock
+install ships with, and the single-knob tightening path for each. Every row
+links to a section of [SECURITY_SCAN_NOTES.md](./SECURITY_SCAN_NOTES.md) that
+explains the trade-off in full.
+
+| Risk item | Current default | How to tighten | Config switch | Verify |
+| --- | --- | --- | --- | --- |
+| Host-side raw JavaScript eval (`execute_script` family) | `allowRawEval=false` (SKILL.md deployment opts in to `true`) | Leave `false`; run in [Safe Default Mode](./SKILL.md#safe-default-mode-no-raw-eval) — click / type / open_url / screenshot still work | `security.allowRawEval` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#b-securityallowrawevaltrue-is-required-by-the-skill)) | `js-eyes doctor --json \| jq '.security.allowRawEval'` |
+| Plugin auto-starts embedded WS/HTTP server | `autoStartServer=true`, loopback-only bind, token required | Set `autoStartServer=false` and start the server manually with `js-eyes server start` | `plugins.entries["js-eyes"].config.autoStartServer` in `openclaw.json` ([notes](./SECURITY_SCAN_NOTES.md#e-autostartservertrue-expands-blast-radius)) | `js-eyes doctor` → *Server* section |
+| Tool allowlist exposes every `js_eyes_*` tool to the model | `tools.alsoAllow: ["js-eyes"]` (full set) + per-tool `confirm` gate on sensitive ones | Replace with explicit `tools.allow: ["js_eyes_open_url", …]`; keep `toolPolicies` gates | `tools.allow` / `security.toolPolicies` ([notes](./SECURITY_SCAN_NOTES.md#f-raw-eval--tool-allowlist-combine-into-a-big-blast-radius)) | `js-eyes consent list` + `js-eyes doctor` |
+| `extraSkillDirs` skipped integrity verification | New switch off — 2.6.1 behaviour preserved | Set `security.verifyExtraSkillDirs=true`; `skills link` then auto-snapshots, `skills relink` after reviewed edits | `security.verifyExtraSkillDirs` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification)) | `js-eyes doctor` prints `integrity: verified \| drifted \| missing-snapshot` per extra; `js-eyes doctor --json` exposes it on each skill row |
+| Native-host install path runs remote code (`npx`) | `npx js-eyes native-host install` remains supported | Use the local launcher `bin/js-eyes-native-host-install.sh \| .ps1` (zero network) | none — doc-only change in 2.6.2 ([notes](./SECURITY_SCAN_NOTES.md#d-npx-js-eyes-native-host-install-runs-remote-code)) | `node apps/cli/bin/js-eyes.js native-host status` |
+| Server token handling | Generated on demand, file `0600` / Windows `icacls`, bearer on WS + HTTP | Keep defaults; rotate periodically; never set `allowAnonymous=true` in production | `security.allowAnonymous`, `js-eyes server token rotate` ([notes](./SECURITY_SCAN_NOTES.md#scope)) | `js-eyes doctor` → *Token* section; `js-eyes audit tail` |
+| npm install path (`installSkillDependencies`) | `spawnSync` with whitelisted argv, `shell:false`, filtered env ([safe-npm.js](./packages/protocol/safe-npm.js)) | Enforce strict lockfile usage so remote tarballs must match | `plugins.entries["js-eyes"].config.requireLockfile=true` ([notes](./SECURITY_SCAN_NOTES.md#1-packagesprotocolskillsjs536--shell-command-execution)) | `npm test -- test/safe-npm.test.js` |
+
+Run `js-eyes doctor --json` to get the live machine-readable snapshot of every
+row above; pipe to `jq` or your auditor's tool of choice.
 
 ### 5. Security Quickstart (2.2.0+ / 2.3.0+)
 
@@ -407,12 +427,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.6.1` |
-| Browser extension assets | `2.6.1` |
-| `@js-eyes/server-core` | `2.6.1` |
-| `@js-eyes/client-sdk` | `2.6.1` |
-| `openclaw-plugin` | `2.6.1` |
-| Skills using `@js-eyes/client-sdk` | `2.6.1` |
+| CLI | `2.6.2` |
+| Browser extension assets | `2.6.2` |
+| `@js-eyes/server-core` | `2.6.2` |
+| `@js-eyes/client-sdk` | `2.6.2` |
+| `openclaw-plugin` | `2.6.2` |
+| Skills using `@js-eyes/client-sdk` | `2.6.2` |
 
 ## Extension Skills
 
@@ -530,7 +550,7 @@ npm run build:firefox
 # Bump version across all manifests (note: this does NOT touch skills/*/package.json —
 # sub-skills keep their own independent versions so users can upgrade them via
 # `js-eyes skills update` without reinstalling the parent bundle)
-npm run bump -- 2.6.1
+npm run bump -- 2.6.2
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

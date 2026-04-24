@@ -1,6 +1,6 @@
 {
   "name": "js-eyes-monorepo",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "private": true,
   "description": "JS Eyes monorepo for npm CLI, runtime packages, and extension skills",
   "workspaces": [
@@ -31,7 +31,8 @@
     "release:dry-run": "node packages/devtools/bin/js-eyes-dev.js release --dry-run",
     "setup:gh-pages": "node packages/devtools/bin/js-eyes-dev.js setup-github-pages",
     "setup:cloudflare": "node packages/devtools/bin/js-eyes-dev.js setup-cloudflare",
-    "test": "node --test test/ws-handler.test.js test/utils.test.js test/js-eyes-client.test.js test/npm-cli.test.js test/skill-bundle.test.js test/skill-sources.test.js test/skill-registry.test.js test/skill-registry.integration.test.js test/skill-update.test.js test/security-hot-reload.test.js",
+    "test": "node --test test/ws-handler.test.js test/utils.test.js test/js-eyes-client.test.js test/npm-cli.test.js test/skill-bundle.test.js test/skill-sources.test.js test/skill-registry.test.js test/skill-registry.integration.test.js test/skill-update.test.js test/security-hot-reload.test.js test/import-boundaries.test.js test/safe-npm.test.js test/extra-integrity.test.js test/doctor-json.test.js",
+    "scan:security": "node scripts/scan-clawhub-patterns.js",
     "test:server": "node --test test/ws-handler.test.js",
     "test:extension": "node --test test/utils.test.js",
     "test:client": "node --test test/js-eyes-client.test.js",

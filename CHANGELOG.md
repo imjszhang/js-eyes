@@ -2,6 +2,134 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.2] - 2026-04-24
+
+> **Security hygiene release — zero behavioural changes.** Responds to the
+> [ClawHub v2.6.1 Security Scan](https://clawhub.ai/imjszhang/js-eyes) by
+> splitting five flagged call sites into dedicated, single-responsibility
+> modules (shell exec / env read / file read never co-located with network
+> send), adding an opt-in integrity layer for `extraSkillDirs`, and documenting
+> the remaining posture trade-offs. Wire protocol, CLI contract, default
+> config values, and every public API are byte-for-byte compatible with 2.6.1 —
+> upgrading is a drop-in. No CI / signing / SBOM / registry-metadata changes
+> in this version; those land in 2.7. See
+> [SECURITY_SCAN_NOTES.md](SECURITY_SCAN_NOTES.md).
+
+### Added
+
+- **`packages/protocol/safe-npm.js`** *(2026-04-24)*: New module that wraps the
+  only `child_process` call in `@js-eyes/protocol`. `spawnSync('npm', ...)` is
+  invoked with `shell: false`, `windowsHide: true`, a whitelisted subcommand
+  (`ci` / `install`), constant argv (`--no-audit`, `--no-fund`), and a filtered
+  env that drops tokens / OAuth state / arbitrary `process.env` keys before
+  reaching npm. `installSkillDependencies` in `packages/protocol/skills.js`
+  now delegates to this module.
+- **`packages/protocol/openclaw-paths.js`** *(2026-04-24)*: Extracts
+  `getOpenClawConfigPath()` — the reader of `OPENCLAW_CONFIG_PATH` /
+  `OPENCLAW_STATE_DIR` / `OPENCLAW_HOME` — into its own file so env reads are
+  no longer co-located with registry / HTTP code. `skills.js` re-exports the
+  symbol, so every external consumer keeps working unchanged.
+- **`packages/protocol/fs-io.js`** *(2026-04-24)*: `readJson`, `ensureDir`,
+  `safeStat` moved into a network-free module; the invariant is enforced by
+  `test/import-boundaries.test.js`.
+- **`openclaw-plugin/auth.mjs`** *(2026-04-24)*: Token reading
+  (`JS_EYES_SERVER_TOKEN`) and header construction split out of
+  `openclaw-plugin/index.mjs`. The new file may never import `ws`, `http`,
+  `https`, `net`, or any plugin network helper.
+- **`openclaw-plugin/fs-utils/hash.mjs`** *(2026-04-24)*: Streaming
+  SHA1 hashing via `createReadStream` + `crypto.createHash`; replaces the
+  prior `fs.readFileSync` + buffer path in `_hashFileSync`. Provides both
+  async (`hashFileSha1`) and sync (`hashFileSha1Sync`, with a `maxBytes`
+  ceiling) variants so existing synchronous callers keep their semantics.
+- **`packages/protocol/skill-runner.js`** *(2026-04-24)*: Hosts `runSkillCli`
+  — the only remaining `child_process.spawnSync` in `@js-eyes/protocol`
+  outside `safe-npm.js`. `argv[0]=process.execPath` (no PATH lookup),
+  `shell:false`, `windowsHide:true`; does not import any network helper
+  (enforced by `test/import-boundaries.test.js`). `skills.js` re-exports
+  `runSkillCli` for backwards compatibility.
+- **`packages/protocol/registry-client.js`** *(2026-04-24)*: Hosts
+  `fetchSkillsRegistry` and `downloadBuffer`. Keeps all `fetch(…)` calls in
+  a single module so they are never co-located with `fs.readFileSync(…)` or
+  `fs.createReadStream(…)`. `skills.js` re-exports both symbols.
+- **`openclaw-plugin/windows-hide-patch.mjs`** *(2026-04-24)*: Moved the
+  Windows-only boot-time patch that defaults `windowsHide:true` on every
+  `child_process.spawn` / `execFile` out of `openclaw-plugin/index.mjs`. The
+  new module contains the only `child_process` import in the plugin
+  (Windows path only; no-op on POSIX); network imports are prohibited.
+- **Opt-in integrity snapshots for `extraSkillDirs`** *(2026-04-24)*:
+  - New config key `security.verifyExtraSkillDirs` (default `false` — no
+    behaviour change on upgrade).
+  - New module `packages/protocol/extra-integrity.js` with
+    `snapshotExtraDir`, `verifyExtraDir`, `clearSnapshotForExtraDir`, and
+    `classifyExtraDir`. Per-file sha256 maps are written to
+    `~/.js-eyes/state/extras/<sha1(absPath)>.json` — **outside** the external
+    skill directory, so js-eyes never writes into operator-owned trees.
+  - `js-eyes skills link <abs-path>` auto-snapshots when verification is
+    enabled; new `js-eyes skills relink <abs-path>` re-snapshots after a
+    reviewed edit; `js-eyes skills unlink` clears the snapshot.
+  - `SkillRegistry` refuses to load an `extra` skill whose snapshot drifted,
+    with a gateway-log pointer to `js-eyes skills relink`.
+- **`js-eyes doctor --json`** *(2026-04-24)*: New flag returns the full
+  security posture (version, token presence + source, security config,
+  loopback status, skill integrity map, policy snapshot) as a single JSON
+  document for auditors / CI pipelines. Text output is byte-identical to
+  2.6.1. Each extra skill row also carries an
+  `integrity: verified | drifted | missing-snapshot | off | error` tag.
+- **Local launcher scripts for native-host install** *(2026-04-24)*:
+  `bin/js-eyes-native-host-install.sh` (macOS/Linux) and
+  `bin/js-eyes-native-host-install.ps1` (Windows) forward to
+  `node apps/cli/bin/js-eyes.js native-host install` — zero network, zero
+  `npx` dependency. `SKILL.md` and `docs/native-messaging.md` now recommend
+  the local launcher as the preferred path; `npx` remains a documented
+  fallback.
+- **`SECURITY_SCAN_NOTES.md`** *(2026-04-24)*: New top-level document that
+  responds to each of the 5 static-analysis findings and 6 OpenClaw narrative
+  concerns from the ClawHub scan, with pointers to the modules / config keys
+  that mitigate them.
+- **`README.md` Security Posture table** *(2026-04-24)*: Compact matrix of
+  risk item / current default / how to tighten / config switch / verify
+  command, linked to the relevant `SECURITY_SCAN_NOTES.md` section.
+- **`SKILL.md` Safe Default Mode section** *(2026-04-24)*: Informational
+  section documenting the capability envelope when `allowRawEval=false`
+  (click / type / open_url / screenshot / xpath / declarative
+  `execute_action` all still work; only the `execute_script*` family is
+  refused with `RAW_EVAL_DISABLED`). The existing Setup Workflow is
+  unchanged — Safe Default Mode is purely additive guidance.
+
+### Tests
+
+- `test/import-boundaries.test.js`: AST-level assertion that
+  `fs-io.js`, `openclaw-paths.js`, `safe-npm.js`, `skill-runner.js`,
+  `auth.mjs`, `fs-utils/hash.mjs`, and `windows-hide-patch.mjs` never import
+  `ws` / `http` / `https` / `net` (or their `node:*` equivalents) and never
+  call `fetch` / `new WebSocket()`.
+- `scripts/scan-clawhub-patterns.js` + `npm run scan:security`:
+  self-contained reproduction of ClawHub's static-analysis heuristic over
+  `packages/protocol/` and `openclaw-plugin/`. Reports three expected
+  residuals (all allowlisted and documented in `SECURITY_SCAN_NOTES.md`) and
+  exits non-zero on any new unexpected finding.
+- `test/safe-npm.test.js`: subcommand whitelist, argv immutability,
+  `shell:false`, env filtering.
+- `test/extra-integrity.test.js`: snapshot → unchanged → drift (modified /
+  deleted / added file) → relink recovery; snapshot path derivation; clear.
+- `test/doctor-json.test.js`: `doctor --json` schema contract, including
+  the new `security.verifyExtraSkillDirs` row.
+
+### Compatibility
+
+- **Zero behavioural change**: every default is identical to 2.6.1. The
+  `security.verifyExtraSkillDirs` switch defaults to `false`, so existing
+  `extraSkillDirs` users see no difference until they opt in.
+- **Wire Protocol Unchanged**: servers, clients, browser extensions, and
+  automation keep working against 2.6.x.
+- **API Preservation**: `getOpenClawConfigPath`, `readJson`, `ensureDir`,
+  `installSkillDependencies`, `getServerToken`, and `getLocalRequestHeaders`
+  retain their external signatures and module paths (the `skills.js` /
+  `index.mjs` re-exports are preserved).
+- **Upgrade Path**: `js-eyes skills update js-eyes` (or reinstall the bundle)
+  is enough. No config migration, no restart semantics beyond the usual
+  plugin-module rule — skill-level edits remain zero-restart.
+
 ## [2.6.1] - 2026-04-24
 
 > Memory-leak bugfix release for the long-running OpenClaw host (`ai.openclaw.gateway`). Fixes listener / fd / resource accumulation caused by hot-reload and repeated plugin registration. **No breaking changes** — wire protocol, CLI contract, and all public APIs are unchanged.

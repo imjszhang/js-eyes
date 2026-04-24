@@ -69,6 +69,10 @@ const DEFAULT_SECURITY_CONFIG = Object.freeze({
   allowRemoteBind: false,
   allowRawEval: false,
   requireLockfile: true,
+  // 2.6.2 opt-in integrity checks for extraSkillDirs. Default false keeps
+  // behaviour identical to 2.6.1; flip to true (or run
+  // `js-eyes skills link`/`relink` with the flag enabled) to start verifying.
+  verifyExtraSkillDirs: false,
   enforcement: 'soft',
   taskOrigin: { ...DEFAULT_TASK_ORIGIN_CONFIG, sources: DEFAULT_TASK_ORIGIN_CONFIG.sources.slice() },
   egressAllowlist: [],

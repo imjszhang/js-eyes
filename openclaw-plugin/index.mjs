@@ -1,41 +1,5 @@
 import { createRequire } from "node:module";
-
-function patchWindowsHide() {
-  if (process.platform !== "win32") return;
-  try {
-    const require = createRequire(import.meta.url);
-    const cp = require("node:child_process");
-
-    const _spawn = cp.spawn;
-    cp.spawn = function patchedSpawn(cmd, args, opts) {
-      if (args && typeof args === "object" && !Array.isArray(args)) {
-        if (args.windowsHide === undefined) args.windowsHide = true;
-        return _spawn.call(this, cmd, args);
-      }
-      if (!opts || typeof opts !== "object") opts = {};
-      if (opts.windowsHide === undefined) opts.windowsHide = true;
-      return _spawn.call(this, cmd, args, opts);
-    };
-
-    const _execFile = cp.execFile;
-    cp.execFile = function patchedExecFile(file, args, opts, cb) {
-      if (typeof args === "function") return _execFile.call(this, file, args);
-      if (typeof opts === "function") {
-        if (Array.isArray(args)) return _execFile.call(this, file, args, opts);
-        if (args && typeof args === "object") {
-          if (args.windowsHide === undefined) args.windowsHide = true;
-        }
-        return _execFile.call(this, file, args, opts);
-      }
-      if (opts && typeof opts === "object") {
-        if (opts.windowsHide === undefined) opts.windowsHide = true;
-      }
-      return _execFile.call(this, file, args, opts, cb);
-    };
-  } catch {
-    // Best-effort.
-  }
-}
+import { patchWindowsHide } from "./windows-hide-patch.mjs";
 
 patchWindowsHide();
 
@@ -48,7 +12,7 @@ const {
 } = require("../packages/client-sdk");
 const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
-const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecurityConfig } = require("../packages/protocol");
+const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
 const {
   createSkillRegistry,
   discoverSkillsFromSources,
@@ -57,7 +21,9 @@ const {
   resolveSkillSources,
 } = require("../packages/protocol/skills");
 const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
-const { ensureToken, readToken } = require("../packages/runtime-paths/token.js");
+const { ensureToken } = require("../packages/runtime-paths/token.js");
+import { createAuthHelpers } from "./auth.mjs";
+import { hashFileSha1Sync } from "./fs-utils/hash.mjs";
 
 function tryLoadChokidar() {
   try {
@@ -200,24 +166,7 @@ async function register(api) {
     try { log.info("[js-eyes] Service stopped"); } catch {}
   }
 
-  function getServerToken() {
-    if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
-    return readToken();
-  }
-
-  function getLocalRequestHeaders() {
-    const headers = {};
-    const token = getServerToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-    if (isLoopbackHost(serverHost)) {
-      headers.Origin = serverHost === "::1" || serverHost === "[::1]"
-        ? "http://[::1]"
-        : `http://${serverHost}`;
-    }
-    return headers;
-  }
+  const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
 
   function ensureBot() {
     if (!bot) {
@@ -977,15 +926,6 @@ async function register(api) {
 
   const _lastHashByPath = new Map();
 
-  function _hashFileSync(filePath) {
-    try {
-      const buf = nodeFs.readFileSync(filePath);
-      return nodeCrypto.createHash('sha1').update(buf).digest('hex');
-    } catch (_) {
-      return '';
-    }
-  }
-
   /**
    * 只有当 filePath 的内容 sha1 与上次记录不同时才触发 reason 对应的 reload。
    * 对删除事件（sha1='' 且之前没记录过）直接放行。
@@ -996,7 +936,7 @@ async function register(api) {
       return;
     }
     const prev = _lastHashByPath.get(filePath);
-    const next = _hashFileSync(filePath);
+    const next = hashFileSha1Sync(filePath);
     if (prev === next && prev !== undefined) {
       // 内容未变（或读失败两次都拿到空串），视为噪音，忽略。
       return;
