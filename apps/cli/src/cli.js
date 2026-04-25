@@ -54,6 +54,12 @@ const {
   runSkillCli,
   verifySkillIntegrity,
 } = require('@js-eyes/protocol/skills');
+const {
+  snapshotExtraDir,
+  verifyExtraDir,
+  clearSnapshotForExtraDir,
+  classifyExtraDir,
+} = require('@js-eyes/protocol/extra-integrity');
 
 function resolveSources(paths, config) {
   return resolveSkillSources({
@@ -310,7 +316,126 @@ function checkFilePermissions(filePath) {
   }
 }
 
+function resolveTokenSource() {
+  if (process.env.JS_EYES_SERVER_TOKEN) return 'env';
+  const filePath = getTokenFilePath();
+  if (filePath && fs.existsSync(filePath)) return 'file';
+  return null;
+}
+
+function buildDoctorPosture(flags) {
+  const paths = ensureRuntimePaths();
+  const config = loadConfig();
+  const security = resolveSecurityConfig(config);
+  const { host, port } = getServerOptions(flags, config);
+  const token = readServerToken();
+  const sources = resolveSources(paths, config);
+  const skillsDir = sources.primary;
+  const verifyEnabled = Boolean(security.verifyExtraSkillDirs);
+
+  const legacyState = getLegacyOpenClawSkillState({
+    skillIds: (sources.extras || []).length > 0 ? null : [],
+  });
+
+  const skillsSummary = [];
+  if (fs.existsSync(skillsDir)) {
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const id = entry.name;
+      const dir = path.join(skillsDir, id);
+      let integrity = 'unknown';
+      try {
+        const result = verifySkillIntegrity(dir);
+        if (!result.hasIntegrity) integrity = 'no-manifest';
+        else if (result.ok) integrity = 'ok';
+        else integrity = 'fail';
+      } catch (_) {
+        integrity = 'error';
+      }
+      skillsSummary.push({
+        id,
+        source: 'primary',
+        sourcePath: skillsDir,
+        integrity,
+        enabled: isSkillEnabled(config, id, legacyState),
+      });
+    }
+  }
+
+  const extrasSummary = (sources.extras || []).map((extra) => {
+    const discovered = discoverSkillsFromSources({ primary: '', extras: [extra] }).skills;
+    const classification = classifyExtraDir(extra.path, { enabled: verifyEnabled });
+    for (const skill of discovered) {
+      skillsSummary.push({
+        id: skill.id,
+        source: 'extra',
+        sourcePath: extra.path,
+        integrity: classification.state,
+        enabled: isSkillEnabled(config, skill.id, legacyState),
+      });
+    }
+    return {
+      path: extra.path,
+      kind: extra.kind,
+      skillCount: discovered.length,
+      integrity: classification.state,
+    };
+  });
+
+  return {
+    version: pkg.version,
+    protocolVersion: COMPATIBILITY_MATRIX.protocolVersion,
+    token: {
+      present: Boolean(token),
+      source: resolveTokenSource(),
+      file: paths.tokenFile,
+    },
+    host: {
+      serverHost: host,
+      serverPort: port,
+      loopback: isLoopbackHost(host),
+      autoStartServer: config.autoStartServer !== false,
+    },
+    security: {
+      allowAnonymous: Boolean(security.allowAnonymous),
+      allowRawEval: Boolean(security.allowRawEval),
+      allowRemoteBind: Boolean(security.allowRemoteBind),
+      requireLockfile: security.requireLockfile !== false,
+      verifyExtraSkillDirs: verifyEnabled,
+      enforcement: security.enforcement || 'soft',
+      allowedOrigins: (security.allowedOrigins || []).slice(),
+    },
+    policy: {
+      enforcement: security.enforcement || 'soft',
+      taskOrigin: {
+        enabled: Boolean(security.taskOrigin?.enabled),
+        sources: (security.taskOrigin?.sources || []).slice(),
+      },
+      taint: {
+        enabled: Boolean(security.taint?.enabled),
+        mode: security.taint?.mode || null,
+      },
+      egressAllowlist: (security.egressAllowlist || []).slice(),
+    },
+    paths: {
+      configFile: paths.configFile,
+      runtimeDir: paths.runtimeDir,
+      auditLogFile: paths.auditLogFile,
+      primarySkillsDir: skillsDir,
+    },
+    skills: skillsSummary,
+    extras: extrasSummary,
+    registryUrl: config.skillsRegistryUrl,
+  };
+}
+
 async function commandDoctor(flags) {
+  if (flags && flags.json) {
+    const posture = buildDoctorPosture(flags);
+    process.stdout.write(JSON.stringify(posture, null, 2) + '\n');
+    return;
+  }
+
   const paths = ensureRuntimePaths();
   const config = loadConfig();
   const security = resolveSecurityConfig(config);
@@ -330,10 +455,29 @@ async function commandDoctor(flags) {
   print(`Downloads dir: ${paths.downloadsDir}`);
   print(`Primary skills dir: ${skillsDir}`);
   if (sources.extras.length > 0) {
+    const verifyEnabled = Boolean(security.verifyExtraSkillDirs);
     print(`Extra skill dirs:`);
     for (const extra of sources.extras) {
       const extraSkills = discoverSkillsFromSources({ primary: '', extras: [extra] }).skills;
-      print(`  - ${extra.path} (${extra.kind}, ${extraSkills.length} skill${extraSkills.length === 1 ? '' : 's'})`);
+      const classification = classifyExtraDir(extra.path, { enabled: verifyEnabled });
+      let integritySuffix;
+      switch (classification.state) {
+        case 'verified':
+          integritySuffix = 'integrity: verified';
+          break;
+        case 'drifted':
+          integritySuffix = `integrity: DRIFTED (${classification.detail.drifted.length} changed, ${classification.detail.missing.length} missing, ${classification.detail.extra.length} new) — run \`js-eyes skills relink ${extra.path}\``;
+          break;
+        case 'missing-snapshot':
+          integritySuffix = 'integrity: no snapshot — run `js-eyes skills relink ' + extra.path + '`';
+          break;
+        case 'error':
+          integritySuffix = `integrity: error (${classification.error})`;
+          break;
+        default:
+          integritySuffix = 'integrity: off (security.verifyExtraSkillDirs=false)';
+      }
+      print(`  - ${extra.path} (${extra.kind}, ${extraSkills.length} skill${extraSkills.length === 1 ? '' : 's'}, ${integritySuffix})`);
     }
   }
   for (const invalid of sources.invalid || []) {
@@ -1446,6 +1590,18 @@ async function commandSkills(positionals, flags) {
       existing.push(absTarget);
       setConfigValue('extraSkillDirs', existing);
       print(`Linked ${absTarget}`);
+      const verifyEnabled = Boolean(
+        config.security && config.security.verifyExtraSkillDirs,
+      );
+      if (verifyEnabled) {
+        try {
+          const { snapshot } = snapshotExtraDir(absTarget);
+          const fileCount = Object.keys(snapshot.files || {}).length;
+          print(`Integrity snapshot recorded (${fileCount} files).`);
+        } catch (error) {
+          print(`Integrity snapshot FAILED: ${error.message}`);
+        }
+      }
       print('If the OpenClaw plugin is running, it will hot-load new skills within ~300ms via the config watcher.');
       return;
     }
@@ -1462,8 +1618,50 @@ async function commandSkills(positionals, flags) {
         return;
       }
       setConfigValue('extraSkillDirs', remaining);
+      clearSnapshotForExtraDir(absTarget);
       print(`Unlinked ${absTarget}`);
       print('If the OpenClaw plugin is running, the affected skills will be disposed within ~300ms via the config watcher.');
+      return;
+    }
+    case 'relink': {
+      const target = positionals[2] || flags.path;
+      if (!target) {
+        throw new Error('用法: `js-eyes skills relink <path>`');
+      }
+      const absTarget = path.resolve(String(target));
+      if (!fs.existsSync(absTarget)) {
+        throw new Error(`路径不存在: ${absTarget}`);
+      }
+      const stat = fs.statSync(absTarget);
+      if (!stat.isDirectory()) {
+        throw new Error(`路径不是目录: ${absTarget}`);
+      }
+      const existing = Array.isArray(config.extraSkillDirs) ? config.extraSkillDirs.slice() : [];
+      const normalized = existing.map((entry) => path.resolve(String(entry)));
+      if (!normalized.includes(absTarget)) {
+        existing.push(absTarget);
+        setConfigValue('extraSkillDirs', existing);
+        print(`Linked ${absTarget}`);
+      } else {
+        print(`Re-snapshotting ${absTarget}`);
+      }
+      try {
+        const { snapshot } = snapshotExtraDir(absTarget);
+        const fileCount = Object.keys(snapshot.files || {}).length;
+        print(`Integrity snapshot refreshed (${fileCount} files).`);
+      } catch (error) {
+        print(`Integrity snapshot FAILED: ${error.message}`);
+        process.exitCode = 2;
+        return;
+      }
+      const verifyEnabled = Boolean(
+        config.security && config.security.verifyExtraSkillDirs,
+      );
+      if (!verifyEnabled) {
+        print('Note: security.verifyExtraSkillDirs is currently false — the snapshot is stored but not enforced.');
+        print('      Enable via: js-eyes config set security.verifyExtraSkillDirs true');
+      }
+      print('If the OpenClaw plugin is running, it will re-scan within ~300ms via the config watcher.');
       return;
     }
     case 'reload': {
@@ -1485,7 +1683,7 @@ async function commandSkills(positionals, flags) {
       return;
     }
     default:
-      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `update <skillId|--all> [--dry-run]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `reload`');
+      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `update <skillId|--all> [--dry-run]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `relink <path>` / `reload`');
   }
 }
 

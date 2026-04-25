@@ -4,22 +4,14 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
 const { extractZipBuffer } = require('./zip-extract');
+const { ensureDir, readJson, safeStat } = require('./fs-io');
+const { getOpenClawConfigPath } = require('./openclaw-paths');
+const safeNpm = require('./safe-npm');
 
 const SKILL_CONTRACT_FILE = 'skill.contract.js';
 const INTEGRITY_FILE = '.integrity.json';
 const INSTALL_MANIFEST_FILE = 'skills-install.json';
-
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function readJson(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
 
 function loadSkillContract(skillDir) {
   const contractPath = path.resolve(skillDir, SKILL_CONTRACT_FILE);
@@ -30,14 +22,6 @@ function loadSkillContract(skillDir) {
 
 function hasSkillContract(skillDir) {
   return fs.existsSync(path.join(skillDir, SKILL_CONTRACT_FILE));
-}
-
-function safeStat(target) {
-  try {
-    return fs.statSync(target);
-  } catch (_) {
-    return null;
-  }
 }
 
 /**
@@ -144,22 +128,6 @@ function resolveSkillSources(input = {}) {
   }
 
   return { primary, extras, invalid };
-}
-
-function getOpenClawConfigPath(options = {}) {
-  const env = options.env || process.env;
-  const home = options.home || os.homedir();
-
-  if (env.OPENCLAW_CONFIG_PATH) {
-    return path.resolve(env.OPENCLAW_CONFIG_PATH);
-  }
-  if (env.OPENCLAW_STATE_DIR) {
-    return path.resolve(env.OPENCLAW_STATE_DIR, 'openclaw.json');
-  }
-  if (env.OPENCLAW_HOME) {
-    return path.resolve(env.OPENCLAW_HOME, '.openclaw', 'openclaw.json');
-  }
-  return path.join(home, '.openclaw', 'openclaw.json');
 }
 
 function normalizeSkillMetadata(skillDir) {
@@ -299,15 +267,11 @@ function readSkillByIdFromSources(input = {}) {
   return null;
 }
 
-async function fetchSkillsRegistry(registryUrl) {
-  const response = await fetch(registryUrl, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  return response.json();
-}
+// Registry network I/O lives in registry-client.js so `fetch(…)` is not
+// co-located with `fs.readFileSync(…)` / `fs.createReadStream(…)` in this
+// module. Re-exported below for backwards compatibility. See
+// SECURITY_SCAN_NOTES.md.
+const { fetchSkillsRegistry, downloadBuffer } = require('./registry-client');
 
 function resolveOpenClawPluginEntry(definition) {
   try {
@@ -491,61 +455,10 @@ function isMainRefUrl(url) {
   return /\/(refs\/heads\/)?main(?=[/?])/.test(url);
 }
 
-async function downloadBuffer(urls, logger = console) {
-  let lastError = null;
-  for (const url of urls) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) {
-        const buf = Buffer.from(await response.arrayBuffer());
-        return { buffer: buf, url };
-      }
-      lastError = new Error(`HTTP ${response.status} (${url})`);
-    } catch (error) {
-      lastError = error;
-    }
-    if (logger && typeof logger.warn === 'function') {
-      logger.warn(`[js-eyes] Download failed (${url}): ${lastError?.message || 'unknown'}`);
-    }
-  }
-  throw lastError || new Error('Download failed for all URLs');
-}
-
-function detectPackageManager(targetDir) {
-  if (fs.existsSync(path.join(targetDir, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (fs.existsSync(path.join(targetDir, 'yarn.lock'))) return 'yarn';
-  if (fs.existsSync(path.join(targetDir, 'package-lock.json'))) return 'npm';
-  return null;
-}
+const detectPackageManager = safeNpm.detectPackageManager;
 
 function installSkillDependencies(targetDir, options = {}) {
-  const pkgJson = path.join(targetDir, 'package.json');
-  if (!fs.existsSync(pkgJson)) return { ran: false, manager: null };
-
-  const requireLockfile = options.requireLockfile !== false;
-  const manager = detectPackageManager(targetDir);
-
-  if (requireLockfile && manager !== 'npm') {
-    throw new Error('安装拒绝执行：缺少 package-lock.json（开启 security.requireLockfile=false 可放宽）');
-  }
-
-  const ignoreScripts = options.allowPostinstall ? [] : ['--ignore-scripts'];
-  const command = manager === 'npm' ? 'ci' : 'install';
-  const args = [command, ...ignoreScripts, '--no-audit', '--no-fund'];
-
-  const result = spawnSync('npm', args, {
-    cwd: targetDir,
-    stdio: options.stdio || 'pipe',
-    windowsHide: true,
-    env: { ...process.env, npm_config_ignore_scripts: options.allowPostinstall ? 'false' : 'true' },
-  });
-
-  if (result.status !== 0) {
-    const stderr = result.stderr ? String(result.stderr) : '';
-    throw new Error(`npm ${args.join(' ')} 失败 (status=${result.status}): ${stderr.slice(0, 500)}`);
-  }
-
-  return { ran: true, manager: manager || 'npm', allowPostinstall: Boolean(options.allowPostinstall) };
+  return safeNpm.installSkillDependencies(targetDir, options);
 }
 
 function listFilesRecursive(dir) {
@@ -779,20 +692,11 @@ async function installSkillFromRegistry(options) {
   };
 }
 
-function runSkillCli(options) {
-  const { skillDir, argv = [], stdio = 'inherit', env = process.env } = options;
-  const skill = normalizeSkillMetadata(skillDir);
-  if (!fs.existsSync(skill.cliEntry)) {
-    throw new Error(`技能 ${skill.id} 缺少 CLI 入口: ${skill.cliEntry}`);
-  }
-
-  return spawnSync(process.execPath, [skill.cliEntry, ...argv], {
-    cwd: skillDir,
-    env: { ...env, JS_EYES_SKILL_DIR: skillDir },
-    stdio,
-    encoding: stdio === 'pipe' ? 'utf8' : undefined,
-  });
-}
+// `runSkillCli` is the only remaining child_process caller in @js-eyes/protocol
+// outside the hardened `safe-npm.js` module. It lives in its own file so the
+// child_process import is not co-located with `fetch(registryUrl)` / other
+// network code in this module. See SECURITY_SCAN_NOTES.md.
+const { runSkillCli } = require('./skill-runner');
 
 // Assign to (rather than replace) module.exports so that modules which have
 // already captured a reference during circular require — notably

@@ -32,6 +32,8 @@ function readSkillIntegrity(...args) { return skillsApi.readSkillIntegrity(...ar
 function resolveSkillSources(...args) { return skillsApi.resolveSkillSources(...args); }
 function verifySkillIntegrity(...args) { return skillsApi.verifySkillIntegrity(...args); }
 
+const { verifyExtraDir: verifyExtraSkillDir } = require('./extra-integrity');
+
 const DEFAULT_UNAVAILABLE_MESSAGE = (name) =>
   `Tool "${name}" is not currently loaded (skill disabled, removed, or reloading).`;
 
@@ -436,7 +438,34 @@ function createSkillRegistry(options = {}) {
     return { mutated, legacyState };
   }
 
-  function checkIntegrity(skill) {
+  function checkIntegrity(skill, cfg = null) {
+    if (skill.source === 'extra') {
+      const effectiveCfg = cfg || configLoader();
+      const verifyEnabled = Boolean(
+        effectiveCfg
+          && effectiveCfg.security
+          && effectiveCfg.security.verifyExtraSkillDirs,
+      );
+      if (!verifyEnabled) return { ok: true, skipped: true };
+      // `sourcePath` for extras is the root that was passed via `extraSkillDirs`
+      // (either a skill dir or a parent dir). Verify that root — that matches
+      // what `snapshotExtraDir(abs-path)` was asked to capture.
+      const extraRoot = skill.sourcePath || skill.skillDir;
+      const result = verifyExtraSkillDir(extraRoot);
+      if (!result.hasSnapshot) {
+        logger.warn(
+          `[js-eyes] Refused extra skill "${skill.id}": no integrity snapshot for ${extraRoot}, run \`js-eyes skills relink ${extraRoot}\``,
+        );
+        return { ok: false };
+      }
+      if (!result.ok) {
+        logger.warn(
+          `[js-eyes] Refused extra skill "${skill.id}": integrity drift at ${extraRoot} (${result.drifted.length} changed, ${result.missing.length} missing, ${result.extra.length} new), run \`js-eyes skills relink ${extraRoot}\``,
+        );
+        return { ok: false };
+      }
+      return { ok: true };
+    }
     if (skill.source !== 'primary') return { ok: true, skipped: true };
     const integrity = verifySkillIntegrity(skill.skillDir);
     if (integrity.hasIntegrity && !integrity.ok) {
@@ -520,7 +549,7 @@ function createSkillRegistry(options = {}) {
     for (const skill of discovered) {
       const enabled = isSkillEnabled(effectiveConfig, skill.id, legacyState);
       const existing = skills.get(skill.id);
-      const integrity = checkIntegrity(skill);
+      const integrity = checkIntegrity(skill, effectiveConfig);
       if (!integrity.ok) {
         if (existing) {
           await disposeSkill(skill.id);

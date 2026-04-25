@@ -1,41 +1,5 @@
 import { createRequire } from "node:module";
-
-function patchWindowsHide() {
-  if (process.platform !== "win32") return;
-  try {
-    const require = createRequire(import.meta.url);
-    const cp = require("node:child_process");
-
-    const _spawn = cp.spawn;
-    cp.spawn = function patchedSpawn(cmd, args, opts) {
-      if (args && typeof args === "object" && !Array.isArray(args)) {
-        if (args.windowsHide === undefined) args.windowsHide = true;
-        return _spawn.call(this, cmd, args);
-      }
-      if (!opts || typeof opts !== "object") opts = {};
-      if (opts.windowsHide === undefined) opts.windowsHide = true;
-      return _spawn.call(this, cmd, args, opts);
-    };
-
-    const _execFile = cp.execFile;
-    cp.execFile = function patchedExecFile(file, args, opts, cb) {
-      if (typeof args === "function") return _execFile.call(this, file, args);
-      if (typeof opts === "function") {
-        if (Array.isArray(args)) return _execFile.call(this, file, args, opts);
-        if (args && typeof args === "object") {
-          if (args.windowsHide === undefined) args.windowsHide = true;
-        }
-        return _execFile.call(this, file, args, opts);
-      }
-      if (opts && typeof opts === "object") {
-        if (opts.windowsHide === undefined) opts.windowsHide = true;
-      }
-      return _execFile.call(this, file, args, opts, cb);
-    };
-  } catch {
-    // Best-effort.
-  }
-}
+import { patchWindowsHide } from "./windows-hide-patch.mjs";
 
 patchWindowsHide();
 
@@ -48,7 +12,7 @@ const {
 } = require("../packages/client-sdk");
 const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
-const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, isLoopbackHost, resolveSecurityConfig } = require("../packages/protocol");
+const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
 const {
   createSkillRegistry,
   discoverSkillsFromSources,
@@ -57,7 +21,9 @@ const {
   resolveSkillSources,
 } = require("../packages/protocol/skills");
 const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
-const { ensureToken, readToken } = require("../packages/runtime-paths/token.js");
+const { ensureToken } = require("../packages/runtime-paths/token.js");
+import { createAuthHelpers } from "./auth.mjs";
+import { hashFileSha1Sync } from "./fs-utils/hash.mjs";
 
 function tryLoadChokidar() {
   try {
@@ -131,6 +97,32 @@ function resolvePluginEntry(definition) {
 // 每次 register() 入口会先 await 旧 currentRegistration.teardown()，再装新的。
 let currentRegistration = null;
 
+// CLI 子进程退出辅助：先 teardown chokidar / skillRegistry / WS bot 让 event loop
+// 自然清空，再 setTimeout 兜底强退避免任何残留 handle 钉住进程。
+// .unref() 保证 event loop 真空了不必等满 100ms。
+async function exitCli(success) {
+  process.exitCode = success ? 0 : 1;
+  if (currentRegistration) {
+    try { await currentRegistration.teardown({}); } catch {}
+    currentRegistration = null;
+  }
+  setTimeout(() => process.exit(process.exitCode || 0), 100).unref();
+}
+
+let _cliExitHandlersInstalled = false;
+function installCliExitHandlers() {
+  if (_cliExitHandlersInstalled) return;
+  _cliExitHandlersInstalled = true;
+  process.on("uncaughtException", (err) => {
+    console.error("[js-eyes] uncaughtException:", err?.stack || err);
+    exitCli(false);
+  });
+  process.on("unhandledRejection", (err) => {
+    console.error("[js-eyes] unhandledRejection:", err?.stack || err);
+    exitCli(false);
+  });
+}
+
 async function register(api) {
   if (currentRegistration) {
     try {
@@ -200,24 +192,7 @@ async function register(api) {
     try { log.info("[js-eyes] Service stopped"); } catch {}
   }
 
-  function getServerToken() {
-    if (process.env.JS_EYES_SERVER_TOKEN) return process.env.JS_EYES_SERVER_TOKEN;
-    return readToken();
-  }
-
-  function getLocalRequestHeaders() {
-    const headers = {};
-    const token = getServerToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-    if (isLoopbackHost(serverHost)) {
-      headers.Origin = serverHost === "::1" || serverHost === "[::1]"
-        ? "http://[::1]"
-        : `http://${serverHost}`;
-    }
-    return headers;
-  }
+  const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
 
   function ensureBot() {
     if (!bot) {
@@ -977,15 +952,6 @@ async function register(api) {
 
   const _lastHashByPath = new Map();
 
-  function _hashFileSync(filePath) {
-    try {
-      const buf = nodeFs.readFileSync(filePath);
-      return nodeCrypto.createHash('sha1').update(buf).digest('hex');
-    } catch (_) {
-      return '';
-    }
-  }
-
   /**
    * 只有当 filePath 的内容 sha1 与上次记录不同时才触发 reason 对应的 reload。
    * 对删除事件（sha1='' 且之前没记录过）直接放行。
@@ -996,7 +962,7 @@ async function register(api) {
       return;
     }
     const prev = _lastHashByPath.get(filePath);
-    const next = _hashFileSync(filePath);
+    const next = hashFileSha1Sync(filePath);
     if (prev === next && prev !== undefined) {
       // 内容未变（或读失败两次都拿到空串），视为噪音，忽略。
       return;
@@ -1071,6 +1037,8 @@ async function register(api) {
 
   api.registerCli(
     ({ program }) => {
+      installCliExitHandlers();
+
       const jsEyes = program
         .command("js-eyes")
         .description("JS Eyes — 浏览器自动化工具");
@@ -1093,8 +1061,10 @@ async function register(api) {
             console.log(`  自动化客户端: ${d.connections.automationClients} 个`);
             console.log(`  标签页总数: ${d.tabs}`);
             console.log(`  待处理请求: ${d.pendingRequests}\n`);
+            await exitCli(true);
           } catch (err) {
             console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
+            await exitCli(false);
           }
         });
 
@@ -1108,6 +1078,7 @@ async function register(api) {
             const data = await resp.json();
             if (!data.browsers || data.browsers.length === 0) {
               console.log("\n当前没有浏览器扩展连接。\n");
+              await exitCli(true);
               return;
             }
             console.log("");
@@ -1120,8 +1091,10 @@ async function register(api) {
               }
             }
             console.log("");
+            await exitCli(true);
           } catch (err) {
             console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
+            await exitCli(false);
           }
         });
 
@@ -1153,17 +1126,24 @@ async function register(api) {
         .command("stop")
         .description("停止内置服务器")
         .action(async () => {
-          if (!server) {
-            console.log("服务器未在运行。");
-            return;
+          try {
+            if (!server) {
+              console.log("服务器未在运行。");
+              await exitCli(true);
+              return;
+            }
+            await server.stop();
+            server = null;
+            if (bot) {
+              try { bot.disconnect(); } catch {}
+              bot = null;
+            }
+            console.log("服务器已停止。");
+            await exitCli(true);
+          } catch (err) {
+            console.error(`停止失败: ${err.message}`);
+            await exitCli(false);
           }
-          await server.stop();
-          server = null;
-          if (bot) {
-            try { bot.disconnect(); } catch {}
-            bot = null;
-          }
-          console.log("服务器已停止。");
         });
     },
     { commands: ["js-eyes"] },

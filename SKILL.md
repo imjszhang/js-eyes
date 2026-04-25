@@ -1,7 +1,7 @@
 ---
 name: js-eyes
 description: Install, configure, verify, and troubleshoot JS Eyes browser automation for OpenClaw.
-version: 2.6.1
+version: 2.6.2
 metadata: {"openclaw":{"emoji":"\U0001F441","homepage":"https://github.com/imjszhang/js-eyes","os":["darwin","linux","win32"],"requires":{"bins":["node"]}}}
 ---
 
@@ -54,7 +54,45 @@ There are two supported complete deployment modes:
 
 For **both** deployment modes above, treat **host-side raw eval** as part of the default install: merge `security.allowRawEval: true` into `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) **during** deployment — not in `openclaw.json`. The js-eyes server reads this file; the browser extension syncs the value on WebSocket handshake (2.5.1+). Restart the server / OpenClaw after changing it so `execute_script` raw JavaScript is not blocked with `RAW_EVAL_DISABLED`.
 
-Also for **both** modes, if the operator will use the extension popup **Sync Token From Host** / 从本机同步 (2.4.0+), register the Native Messaging host on that machine: `npx js-eyes native-host install --browser all` (or `--browser chrome|edge|firefox|…` to match installed browsers). Confirm with `npx js-eyes native-host status` (manifest + launcher must exist; on Windows the `.bat` lives under `%LOCALAPPDATA%\js-eyes\native-host\`). Then restart the browser or reload the extension. Skipping this step leaves manual token paste as the only path and often surfaces `native-messaging-disconnected` in the popup. See `docs/native-messaging.md`.
+Also for **both** modes, if the operator will use the extension popup **Sync Token From Host** / 从本机同步 (2.4.0+), register the Native Messaging host on that machine. **Preferred (local launcher, no network):** from the checked-out repo run `bin/js-eyes-native-host-install.sh --browser all` (macOS/Linux) or `./bin/js-eyes-native-host-install.ps1 -Browser all` (Windows); both forward to `node apps/cli/bin/js-eyes.js native-host install`, which never touches the npm registry. **Fallback:** `npx js-eyes native-host install --browser all` — only recommended when `js-eyes` is globally installed and the operator trusts the npm registry at install time. Confirm with `node apps/cli/bin/js-eyes.js native-host status` (manifest + launcher must exist; on Windows the `.bat` lives under `%LOCALAPPDATA%\js-eyes\native-host\`). Then restart the browser or reload the extension. Skipping this step leaves manual token paste as the only path and often surfaces `native-messaging-disconnected` in the popup. See `docs/native-messaging.md`.
+
+## Safe Default Mode (no raw eval)
+
+This section is **informational** — the default Setup Workflow below still opts
+into `allowRawEval=true` for full compatibility with the 2.6.x SKILL contract.
+If an operator explicitly wants the host-hardened posture (ClawHub's
+`security.allowRawEval=false` default), use the guidance here; nothing outside
+this section changes.
+
+- **What still works without `allowRawEval`**: `js_eyes_open_url`,
+  `js_eyes_get_tabs`, `js_eyes_screenshot`, `js_eyes_xpath*`,
+  `js_eyes_click`, `js_eyes_type`, `js_eyes_hover`, `js_eyes_scroll`,
+  `js_eyes_press_key`, `js_eyes_execute_action` (declarative action DSL),
+  `js_eyes_find_element`, `js_eyes_reload_skills`, `js_eyes_reload_security`,
+  plus every extension-skill tool that goes through `execute_action`. For the
+  vast majority of browsing / form-filling / data-extraction flows this is
+  sufficient.
+- **What gets refused with `RAW_EVAL_DISABLED`**: `js_eyes_execute_script` and
+  `js_eyes_execute_script_async` — the raw-JS entry points. Sensitive tools
+  that also happen to run raw JS (e.g. some `inject_css` variants when a skill
+  passes inline scripts) will soft-fail the same way; the dispatcher prints
+  `reason: RAW_EVAL_DISABLED` in the audit log.
+- **`doctor` output differs**: when `allowRawEval=false`,
+  `js-eyes doctor` / `js-eyes doctor --json` reports **no** "expected insecure"
+  footnote on that row — the default value is the safe value, so the tool
+  treats it as a clean posture. Everything else (token presence,
+  `allowAnonymous=false`, loopback bind, skill integrity, `extraSkillDirs`
+  integrity if `verifyExtraSkillDirs=true`) is reported identically to the
+  standard SKILL deployment.
+- **How to opt in**: omit the `security.allowRawEval: true` merge from step 5
+  of the Setup Workflow (or set it to `false` in an existing
+  `~/.js-eyes/config/config.json`), restart the js-eyes server / OpenClaw, and
+  optionally flip `security.verifyExtraSkillDirs=true` to close the
+  extraSkillDirs gap described in
+  [SECURITY_SCAN_NOTES.md](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification).
+- **Behaviour guarantee**: if an operator follows the default SKILL workflow
+  below without any of these tweaks, the runtime behaviour in 2.6.2 is
+  identical to 2.6.1 — Safe Default Mode is purely additive guidance.
 
 ## Setup Workflow
 
@@ -77,7 +115,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
    - merge or create the **JS Eyes host config** at `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) with `security.allowRawEval: true` so deployment matches this skill (see `Host security config` below). Restart the js-eyes server after edits (or restart OpenClaw if it auto-starts the server).
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
-8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run `npx js-eyes native-host install --browser all` so the extension auto-syncs the token, or run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
+8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run the local launcher `bin/js-eyes-native-host-install.sh --browser all` (macOS/Linux) / `./bin/js-eyes-native-host-install.ps1 -Browser all` (Windows) — or the equivalent `node apps/cli/bin/js-eyes.js native-host install --browser all` — so the extension auto-syncs the token **without hitting the npm registry**. `npx js-eyes native-host install` remains as a fallback when the operator already has `js-eyes` globally installed. Otherwise run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
 9. If the server is healthy but no browser is connected, guide the user through browser extension installation, server-token entry, and connection.
 10. After the base setup works, pick the right path for extension skills:
     - **Registry / first-party skills**: prefer `js_eyes_discover_skills` + `js_eyes_install_skill` — 2.2.0+ writes a plan under `runtime/pending-skills/<id>.json`; finalize with `js-eyes skills approve <id>` then `js-eyes skills enable <id>`.
@@ -205,7 +243,7 @@ If steps 2-4 all fail for a freshly linked external skill, see the `Custom Exten
 If the plugin is enabled but no browser is connected:
 
 1. Install the JS Eyes browser extension separately from GitHub Releases or the website.
-2. (Preferred, 2.4.0+) Run `npx js-eyes native-host install --browser all` once so the extension auto-syncs `server.token` and the HTTP URL via Native Messaging; then open the popup and click **Sync Token From Host**.
+2. (Preferred, 2.4.0+) Run the local launcher `bin/js-eyes-native-host-install.sh --browser all` (macOS/Linux) or `./bin/js-eyes-native-host-install.ps1 -Browser all` (Windows) — equivalent to `node apps/cli/bin/js-eyes.js native-host install --browser all`; this never contacts the npm registry. `npx js-eyes native-host install --browser all` remains as a fallback. Either path sets up Native Messaging so the extension auto-syncs `server.token` and the HTTP URL; then open the popup and click **Sync Token From Host**.
 3. Manual fallback: open the extension popup, expand **Advanced**, set the server address to `http://<serverHost>:<serverPort>`, paste the output of `js-eyes server token show --reveal` into the **Server Token (2.2.0+)** field, and click `Connect`.
 4. Re-run `openclaw js-eyes status`.
 
