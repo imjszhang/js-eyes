@@ -115,6 +115,10 @@ All notable changes to this project will be documented in this file.
 - `test/doctor-json.test.js`: `doctor --json` schema contract, including
   the new `security.verifyExtraSkillDirs` row.
 
+### Fixed
+
+- **CLI 子进程长尾 — 一次性查询命令跑完不退出** _(2026-04-25)_: `openclaw js-eyes status` / `openclaw js-eyes tabs` / `openclaw js-eyes server stop` 这类一次性 CLI 命令在子进程跑完业务后会挂着 ~50–100 MB 不退出，根因是 `register()` 入口启动的 chokidar `configWatcher` + `skillDirWatcher` 和 `skillRegistry.init()` 持有 inotify/FSEvents handle 钉住 event loop，OpenClaw runtime 等不到 event loop 自然清空 → 子进程长尾。修复方式：在 [`openclaw-plugin/index.mjs`](openclaw-plugin/index.mjs) 模块顶层新增 `async exitCli(success)` helper，先 `await currentRegistration.teardown({})` 关掉 chokidar / skillRegistry / WS bot，再 `setTimeout(() => process.exit(...), 100).unref()` 兜底强退；三个一次性 CLI handler（`status` / `tabs` / `server stop`）末尾按成功/失败分别调 `await exitCli(true/false)`。同时新增 `installCliExitHandlers()` 注册 `uncaughtException` / `unhandledRejection` 全局兜底（仅在 `api.registerCli` 回调里调用一次，不污染 Gateway 进程），与 [js-moltbook 那次同模式](https://github.com/imjszhang/js-moltbook) 实战验证过的 helper 一致。**严格保持 `serverCmd.command("start")` 不动** — 它是预期永不退出的 daemon，靠 `await server.start()` 后开放端口钉住 event loop。`registerService` / `registerTool` / `currentRegistration` / `teardownRegistration` / chokidar 整体设计、`_lastHashByPath` Map 全部原样。实测：CLI 退出时间从"长尾几十秒至分钟级"降到 ~2.6s（其中 ~2.5s 是 plugin 冷启 skill 加载），日志可见 `[js-eyes] Service stopped` 确认 teardown 触发。Files: [openclaw-plugin/index.mjs](openclaw-plugin/index.mjs).
+
 ### Compatibility
 
 - **Zero behavioural change**: every default is identical to 2.6.1. The

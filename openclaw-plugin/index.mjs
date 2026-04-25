@@ -97,6 +97,32 @@ function resolvePluginEntry(definition) {
 // 每次 register() 入口会先 await 旧 currentRegistration.teardown()，再装新的。
 let currentRegistration = null;
 
+// CLI 子进程退出辅助：先 teardown chokidar / skillRegistry / WS bot 让 event loop
+// 自然清空，再 setTimeout 兜底强退避免任何残留 handle 钉住进程。
+// .unref() 保证 event loop 真空了不必等满 100ms。
+async function exitCli(success) {
+  process.exitCode = success ? 0 : 1;
+  if (currentRegistration) {
+    try { await currentRegistration.teardown({}); } catch {}
+    currentRegistration = null;
+  }
+  setTimeout(() => process.exit(process.exitCode || 0), 100).unref();
+}
+
+let _cliExitHandlersInstalled = false;
+function installCliExitHandlers() {
+  if (_cliExitHandlersInstalled) return;
+  _cliExitHandlersInstalled = true;
+  process.on("uncaughtException", (err) => {
+    console.error("[js-eyes] uncaughtException:", err?.stack || err);
+    exitCli(false);
+  });
+  process.on("unhandledRejection", (err) => {
+    console.error("[js-eyes] unhandledRejection:", err?.stack || err);
+    exitCli(false);
+  });
+}
+
 async function register(api) {
   if (currentRegistration) {
     try {
@@ -1011,6 +1037,8 @@ async function register(api) {
 
   api.registerCli(
     ({ program }) => {
+      installCliExitHandlers();
+
       const jsEyes = program
         .command("js-eyes")
         .description("JS Eyes — 浏览器自动化工具");
@@ -1033,8 +1061,10 @@ async function register(api) {
             console.log(`  自动化客户端: ${d.connections.automationClients} 个`);
             console.log(`  标签页总数: ${d.tabs}`);
             console.log(`  待处理请求: ${d.pendingRequests}\n`);
+            await exitCli(true);
           } catch (err) {
             console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
+            await exitCli(false);
           }
         });
 
@@ -1048,6 +1078,7 @@ async function register(api) {
             const data = await resp.json();
             if (!data.browsers || data.browsers.length === 0) {
               console.log("\n当前没有浏览器扩展连接。\n");
+              await exitCli(true);
               return;
             }
             console.log("");
@@ -1060,8 +1091,10 @@ async function register(api) {
               }
             }
             console.log("");
+            await exitCli(true);
           } catch (err) {
             console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
+            await exitCli(false);
           }
         });
 
@@ -1093,17 +1126,24 @@ async function register(api) {
         .command("stop")
         .description("停止内置服务器")
         .action(async () => {
-          if (!server) {
-            console.log("服务器未在运行。");
-            return;
+          try {
+            if (!server) {
+              console.log("服务器未在运行。");
+              await exitCli(true);
+              return;
+            }
+            await server.stop();
+            server = null;
+            if (bot) {
+              try { bot.disconnect(); } catch {}
+              bot = null;
+            }
+            console.log("服务器已停止。");
+            await exitCli(true);
+          } catch (err) {
+            console.error(`停止失败: ${err.message}`);
+            await exitCli(false);
           }
-          await server.stop();
-          server = null;
-          if (bot) {
-            try { bot.disconnect(); } catch {}
-            bot = null;
-          }
-          console.log("服务器已停止。");
         });
     },
     { commands: ["js-eyes"] },
