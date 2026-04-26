@@ -1,12 +1,34 @@
 {
   "name": "js-reddit-ops-skill",
-  "version": "2.0.1",
-  "description": "Reddit 内容读取技能，提供帖子详情与评论树读取",
+  "version": "3.4.1",
+  "description": "Reddit 内容读取 + 浏览器导航技能：PAGE_PROFILES + Bridges + Session 架构，READ + INTERACTIVE 两档（不做 DESTRUCTIVE）",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "post": "node index.js post"
+    "post": "node index.js post",
+    "doctor": "node index.js doctor",
+    "probe": "node index.js probe",
+    "state": "node index.js state",
+    "session-state": "node index.js session-state",
+    "list-subreddit": "node index.js list-subreddit",
+    "subreddit-about": "node index.js subreddit-about",
+    "search": "node index.js search",
+    "user-profile": "node index.js user-profile",
+    "inbox-list": "node index.js inbox-list",
+    "my-feed": "node index.js my-feed",
+    "expand-more": "node index.js expand-more",
+    "navigate-post": "node index.js navigate-post",
+    "navigate-subreddit": "node index.js navigate-subreddit",
+    "navigate-search": "node index.js navigate-search",
+    "navigate-user": "node index.js navigate-user",
+    "navigate-inbox": "node index.js navigate-inbox",
+    "navigate-home": "node index.js navigate-home",
+    "dom-dump": "node index.js dom-dump",
+    "xhr-log": "node index.js xhr-log",
+    "diff-post": "node scripts/_dev/diff-post-schema.js",
+    "aggregate-subreddit": "node scripts/aggregate-subreddit.js",
+    "batch-post": "node scripts/batch-post.js"
   },
   "engines": {
     "node": ">=16.0.0"

@@ -2,12 +2,87 @@
 
 const pkg = require('../package.json');
 const { scrapeRedditPost } = require('./redditUtils');
+const { scrapeViaBridge } = require('./bridgeAdapter');
 const { createRunContext } = require('./runContext');
 const { appendHistory } = require('./history');
 const { readCacheEntry, writeCacheEntry } = require('./cache');
 const { writeDebugBundle } = require('./debug');
 
 const SKILL_ID = pkg.name;
+
+const FALLBACK_REASON = {
+  DISABLED_BY_ENV: 'bridge_disabled_by_env',
+  RETURN_NOT_OK: 'bridge_returned_error',
+  INJECT_FAILED: 'bridge_inject_failed',
+  CORRUPT: 'bridge_corrupt',
+  NO_TAB: 'bridge_no_target_tab',
+  BAD_ARG: 'bridge_bad_arg',
+  CALL_FAILED: 'bridge_call_failed',
+};
+
+function classifyBridgeError(err) {
+  if (!err) return FALLBACK_REASON.CALL_FAILED;
+  switch (err.code) {
+    case 'BRIDGE_RETURN_NOT_OK': return FALLBACK_REASON.RETURN_NOT_OK;
+    case 'E_BRIDGE_INSTALL': return FALLBACK_REASON.INJECT_FAILED;
+    case 'E_BRIDGE_CORRUPT': return FALLBACK_REASON.CORRUPT;
+    case 'E_NO_TAB': return FALLBACK_REASON.NO_TAB;
+    case 'E_BAD_ARG': return FALLBACK_REASON.BAD_ARG;
+    default: return FALLBACK_REASON.CALL_FAILED;
+  }
+}
+
+/**
+ * scrapePost - 主路径走 bridge JSON API；失败时 fallback 到 cheerio DOM 实现，
+ * 保证字段级与旧版（v2.x）输出一致。
+ *
+ * 旁路开关（仅 CLI / 调试用，不暴露给 AI）：
+ * - JS_REDDIT_DISABLE_BRIDGE=1   直接走 DOM 兜底
+ * - JS_REDDIT_DISABLE_FALLBACK=1 bridge 失败直接抛错（用于 schema diff / 排查）
+ *
+ * metrics 里的 bridgeFallbackReason 是稳定枚举（见 FALLBACK_REASON），
+ * bridgeFallbackMessage 才是原始错误文本，方便上层做监控聚合。
+ */
+async function scrapePost(browser, url, options = {}) {
+  const disabledByEnv = process.env.JS_REDDIT_DISABLE_BRIDGE === '1';
+  const useBridge = options.useBridge !== false && !disabledByEnv;
+  if (!useBridge) {
+    const result = await scrapeRedditPost(browser, url, options);
+    result.metrics = result.metrics || {};
+    result.metrics.bridgeUsed = false;
+    result.metrics.bridgeFallback = false;
+    if (disabledByEnv) {
+      result.metrics.bridgeFallback = true;
+      result.metrics.bridgeFallbackReason = FALLBACK_REASON.DISABLED_BY_ENV;
+      result.metrics.bridgeFallbackMessage = 'JS_REDDIT_DISABLE_BRIDGE=1';
+      result.metrics.bridgeFallbackCode = null;
+    }
+    return result;
+  }
+  try {
+    const result = await scrapeViaBridge(browser, url, {
+      depth: options.depth,
+      limit: options.limit,
+      sort: options.sort,
+      verbose: options.verbose,
+      timeoutMs: options.bridgeTimeoutMs,
+    });
+    result.metrics = result.metrics || {};
+    result.metrics.bridgeUsed = true;
+    result.metrics.bridgeFallback = false;
+    return result;
+  } catch (bridgeError) {
+    if (process.env.JS_REDDIT_DISABLE_FALLBACK === '1') throw bridgeError;
+    const fallback = await scrapeRedditPost(browser, url, options);
+    fallback.metrics = fallback.metrics || {};
+    fallback.metrics.bridgeUsed = false;
+    fallback.metrics.bridgeFallback = true;
+    fallback.metrics.bridgeFallbackReason = classifyBridgeError(bridgeError);
+    fallback.metrics.bridgeFallbackMessage = bridgeError.message || String(bridgeError);
+    fallback.metrics.bridgeFallbackCode = bridgeError.code || null;
+    return fallback;
+  }
+}
 
 function clone(value) {
   return value ? JSON.parse(JSON.stringify(value)) : value;
@@ -45,6 +120,12 @@ function buildMetrics(scrapeResult, durationMs, cacheHit) {
     collapsedCountAfter: afterPrepare?.collapsedCount ?? null,
     moreRepliesCountBefore: beforePrepare?.moreRepliesCount ?? null,
     moreRepliesCountAfter: afterPrepare?.moreRepliesCount ?? null,
+    bridgeUsed: scrapeResult.metrics?.bridgeUsed === true,
+    bridgeFallback: scrapeResult.metrics?.bridgeFallback === true,
+    bridgeFallbackReason: scrapeResult.metrics?.bridgeFallbackReason || null,
+    bridgeFallbackMessage: scrapeResult.metrics?.bridgeFallbackMessage || null,
+    bridgeFallbackCode: scrapeResult.metrics?.bridgeFallbackCode || null,
+    bridge: scrapeResult.metrics?.bridge || null,
   };
 }
 
@@ -139,7 +220,15 @@ async function getPost(browser, url, options = {}) {
   let debugBundlePath = '';
 
   try {
-    const result = await scrapeRedditPost(browser, url, { runContext });
+    const result = await scrapePost(browser, url, {
+      runContext,
+      depth: options.depth,
+      limit: options.limit,
+      sort: options.sort,
+      verbose: options.verbose,
+      bridgeTimeoutMs: options.bridgeTimeoutMs,
+      useBridge: options.useBridge,
+    });
     response = buildResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
 
     const cacheEntry = writeCacheEntry(runContext, { response }, 'post');
@@ -207,4 +296,4 @@ async function getPost(browser, url, options = {}) {
   }
 }
 
-module.exports = { getPost };
+module.exports = { getPost, scrapePost, FALLBACK_REASON };
