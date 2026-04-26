@@ -106,6 +106,33 @@ limitChildren 可选，单次提交 child id 上限（默认 200，最大 500）
 
 ---
 
+## 实用工具（lib/）
+
+| 模块                     | 出口                  | 用途                                                                                       |
+| ------------------------ | --------------------- | ------------------------------------------------------------------------------------------ |
+| `lib/runCliToFile.js`    | `{ runCliToFile }`    | 跑 `node index.js <args...>` 把 stdout 直写到目标文件，绕开 spawn().stdout 的 64KB 截断。批量调研脚本（多个 search/list-subreddit 串跑）必备 |
+| `lib/session.js`         | `{ Session }`         | 主调度器，外部脚本可以 `new Session({ opts:{ page, reuseAnyRedditTab:true } })` 后 `connect/resolveTarget/callRaw/callApi` |
+| `lib/js-eyes-client.js`  | `{ BrowserAutomation }` | WS 客户端。`Session` 内部用，外部一般不直接 new                                             |
+| `lib/bridgeAdapter.js`   | `{ scrapeViaBridge }` | 标准化的"调用 bridge 方法 + 失败兜底"包装                                                  |
+
+`runCliToFile` 速用：
+
+```js
+const path = require('path');
+const { runCliToFile } = require('/path/to/skills/js-reddit-ops-skill/lib/runCliToFile');
+
+const SKILL_DIR = '/path/to/skills/js-reddit-ops-skill';
+
+const r = await runCliToFile({
+  skillDir: SKILL_DIR,
+  args: ['search', 'karpathy autoresearch', '--sort', 'top', '--time-range', 'all', '--limit', '50'],
+  outFile: path.join(__dirname, 'raw/kp.json'),
+});
+console.log(r.code, r.elapsedMs, r.outBytes);
+```
+
+---
+
 ## 故障排查
 
 | 现象                                                                | 通常原因                                                            |
@@ -119,6 +146,8 @@ limitChildren 可选，单次提交 child id 上限（默认 200，最大 500）
 | `loggedIn=false` 但浏览器明显已登录                                 | `/api/v1/me.json` 在隐私模式 / 第三方 cookie 限制下会 401。`readLoginStateDom` 会兜底 |
 | `diff-post-schema.js` 报 `image_urls` bridge 比 DOM 少               | 通常不是 bridge 的 bug：DOM 端会把 avatar / subreddit banner 当图扫进来，bridge 严格看 `media_metadata` / `preview.images` / `i.redd.it` / `preview.redd.it` 白名单。bridge 的输出对下游更准 |
 | 改了 bridge 代码但浏览器里没生效                                    | `Session::ensureBridge` 只在 `bridge.__meta.version !== 文件 VERSION` 时重装。改完 bridge 必须 bump 顶部 `VERSION` 常量，或手动关掉所有 reddit tab 让 bridge 丢失 |
+| `Session::callRaw` 里 `fetch('/r/.../<id>.json')` 抛 `... is not a valid URL` | `executeScript` 走的是扩展隔离上下文，没有 `document` 也没有 base origin，相对路径 fetch 会失败。**必须传绝对 URL**：`fetch('https://www.reddit.com/r/.../<id>.json?raw_json=1', { credentials:'include' })`。bridges/ 下的方法都通过 `buildRedditUrl()` 自动加前缀，外部脚本直接 callRaw 时要自己拼 |
+| 批量跑 `node index.js search/list-subreddit/...` 把 stdout 写文件，结果偶发性截断在 65536 字节 | Node `child_process.spawn().stdout.pipe(fs.createWriteStream)` 在大输出（>64KB）下会丢尾。改用 `lib/runCliToFile.js`：内部走 `stdio: ['ignore', fd, 'pipe']` 让子进程 stdout 直写 fd，绕开 readable 缓冲。所有 `scripts/` 和 `work_dir/*/run-searches.js` 风格的批处理都应当用它 |
 
 ## 烟测顺序（联机）
 

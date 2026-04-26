@@ -1,6 +1,6 @@
 {
   "name": "js-reddit-ops-skill",
-  "version": "3.4.1",
+  "version": "3.4.2",
   "description": "Reddit 内容读取 + 浏览器导航技能：PAGE_PROFILES + Bridges + Session 架构，READ + INTERACTIVE 两档（不做 DESTRUCTIVE）",
   "private": true,
   "main": "index.js",
