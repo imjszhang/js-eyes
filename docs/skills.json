@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-04-23T16:45:25.338Z",
+  "generated": "2026-04-26T14:53:49.822Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.6.1"
+    "version": "2.6.2"
   },
   "skills": [
     {
@@ -113,34 +113,76 @@
     {
       "id": "js-reddit-ops-skill",
       "name": "JS Reddit Ops Skill",
-      "description": "Reddit 内容读取 skill，提供帖子详情、图片和评论树读取能力。",
-      "version": "2.0.1",
-      "emoji": "🧵",
+      "description": "Reddit 内容只读 + 浏览器导航 skill：帖子详情 / subreddit 列表 / 搜索 / 用户主页 / 收件箱 / 主 feed，全部走 reddit 公开 JSON 端点，浏览器侧仅 location.assign 改 URL。",
+      "version": "3.4.1",
+      "emoji": "📰",
       "requires": {
+        "skills": [
+          "js-eyes"
+        ],
         "bins": [
           "node"
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "sha256": "451f2b785e2c6265ab86c0c6746554a25b53accb9b45386deb38be70534e7ce4",
-      "size": 18716,
+      "sha256": "1b8d8acab7be159f20eb2b590e8b96aced0789734ba3cf462f868a390a9872be",
+      "size": 83427,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
-        "reddit_get_post"
+        "reddit_get_post",
+        "reddit_session_state",
+        "reddit_list_subreddit",
+        "reddit_subreddit_about",
+        "reddit_search",
+        "reddit_user_profile",
+        "reddit_inbox_list",
+        "reddit_my_feed",
+        "reddit_expand_more",
+        "reddit_navigate_post",
+        "reddit_navigate_subreddit",
+        "reddit_navigate_search",
+        "reddit_navigate_user",
+        "reddit_navigate_inbox",
+        "reddit_navigate_home"
       ],
       "commands": [
-        "post"
+        "post",
+        "doctor",
+        "probe",
+        "state",
+        "session-state",
+        "list-subreddit",
+        "subreddit-about",
+        "search",
+        "user-profile",
+        "inbox-list",
+        "my-feed",
+        "expand-more",
+        "navigate-post",
+        "navigate-subreddit",
+        "navigate-search",
+        "navigate-user",
+        "navigate-inbox",
+        "navigate-home"
       ],
       "runtime": {
         "requiresServer": true,
         "requiresBrowserExtension": true,
         "platforms": [
           "reddit.com"
+        ],
+        "pageProfiles": [
+          "post",
+          "subreddit",
+          "search",
+          "user",
+          "inbox",
+          "home"
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
-      "changelogUrl": null
+      "releasedAt": "2026-04-26T18:23:46+08:00",
+      "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-reddit-ops-skill/CHANGELOG.md"
     },
     {
       "id": "js-wechat-ops-skill",
