@@ -37,7 +37,7 @@
 
 ---
 
-### bridges/search-bridge.js（v3.0.2，page=`search`，global=`__jse_x_search__`）
+### bridges/search-bridge.js（v3.0.4，page=`search`，global=`__jse_x_search__`）
 
 | 方法                  | GraphQL Op / 端点          | 说明                                                                                              |
 | --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -47,11 +47,11 @@
 | `search(args)`        | `SearchTimeline`            | keyword/sort/maxPages/since/until/lang/from/minLikes/...，**SearchTimeline 偶发 404 → 自动降级到 DOM 提取** |
 | `navigateSearch(args)`| -                           | INTERACTIVE：`location.assign` 到 `https://x.com/search?q=&f=`                                    |
 
-注：search 主路径优先 DOM 抽取（`_extractTweetsFromDom`）+ 翻页用 `__NEXT_DATA__` cursor；GraphQL 路径作为补充。429 连续 3 次会暂停 5 分钟。
+注：v3.0.4 起 GraphQL 主路径默认开启（`ENABLE_GRAPHQL = true`）；4xx → invalidateCache → rediscover → 仍 4xx 时降级 DOM。`search() / searchViaDom()` 入口先校验 `location.pathname` 是否 `/search\b`；`searchViaDom()` 还多一道 `searchUrlMatches(keyword)` —— 比对当前 URL 的 `q` 参数是否等于本次搜索关键词，不匹配返回 `not_on_search_page` + `reason: 'q_param_mismatch'`。这是 `navigateOnReuse=false`（READ 默认）下的硬约束：浏览器停在旧搜索页面时不会把旧关键词的推文当新数据返回。429 连续 3 次会暂停 5 分钟。
 
 ---
 
-### bridges/profile-bridge.js（v3.0.2，page=`profile`，global=`__jse_x_profile__`）
+### bridges/profile-bridge.js（v3.0.4，page=`profile`，global=`__jse_x_profile__`）
 
 | 方法                  | GraphQL Op                   | 说明                                                                                            |
 | --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -59,9 +59,11 @@
 | `getProfile(args)`    | `UserByScreenName` + `UserTweets` / `UserTweetsAndReplies` | 二段：先解析 userId，再翻页 timeline。`includeReplies` 切第二个 op；返回里 `profile` 字段带 followers/following/createdAt/verified |
 | `navigateProfile(args)` | -                          | INTERACTIVE：`https://x.com/<username>` 或 `<username>/with_replies`                            |
 
+注：v3.0.4 起翻页主循环抽到 `_fetchTimelinePages()`；rediscover 拿到与上次相同的 queryId 视为"无新值"不再 retry；`UserTweetsAndReplies` 不可恢复（`recovery: queryid_unchanged | rediscover_no_new` 或 4xx 仍空）时自动 fallback 到 `UserTweets`，meta 多 4 个字段：`tweetsOpRequested / tweetsOpName`（实际用的）/ `repliesFallback / fallbackReason / secondaryRecovery`。
+
 ---
 
-### bridges/post-bridge.js（v3.0.2，page=`post`，global=`__jse_x_post__`）
+### bridges/post-bridge.js（v3.0.4，page=`post`，global=`__jse_x_post__`）
 
 | 方法                  | GraphQL Op                   | 说明                                                                                            |
 | --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -69,7 +71,7 @@
 | `getPost(args)`       | `TweetDetail` → `TweetResultByRestId` 兜底 | 单帖正文 + 串推 + 回复树。`withThread`/`withReplies` 控制深度；`parseSingleTweetResult` 完整覆盖 author/stats/mediaDetails/quoted/cardUrls/visibility/isVerified/quotes |
 | `navigatePost(args)`  | -                            | INTERACTIVE：`https://x.com/i/status/<id>`（不需要 username）                                   |
 
-注：v3.0.2 起 `parseSingleTweetResult` 与老 `scripts/x-post.js` 字段一致（`scripts/_dev/diff-post-schema.js` 守护）。
+注：v3.0.4 起加了 wall-clock budget（`args.budgetMs` 覆盖，缺省 60s）；超出预算后停止新请求，把当前已收集的 thread / replies 子集带 `meta.timedOut/partial/collectedReplyPages/durationMs/budgetMs` 返回。`fetchXGraphQL` 单次 timeout 显式 25s（缺省 15s）。`lib/bridgeAdapter.js::postViaBridge` 的 `session.callApi` timeout 默认从 120s 降到 70s（10s buffer 让 wall-clock 优先触发）。
 
 ---
 
@@ -129,6 +131,11 @@ console.log(r.code, r.elapsedMs, r.outBytes);
 | 现象                                                                | 通常原因                                                            |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `connect WebSocket 401 / Unexpected server response: 401`           | js-eyes server 默认 `allowAnonymous=false`。CLI 没拿到 token：先 `js-eyes server token show --reveal`，再确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN`。`lib/js-eyes-client.js::_resolveToken` 优先级 options.token > env > runtime/server.token |
+| `E_NAV_FAILED` / `E_NAV_VERIFY_FAILED` （v3.0.4+）                  | `Session::_navigateAndVerify` 在 `bot.openUrl` 失败或 `location.href` 不等于期望 URL 时抛出。`err.detail` 里看 `actual / targetUrl / fromUrl`。常见原因：扩展未连上 tab、X.com 把 URL 重定向（如未登录）、URL 里有特殊字符 navigate 后被规范化（用 `urlsEquivalent` 已经容忍 hash / 尾 / 参数顺序差异）。**v3.0.4 之前会被静默吞掉导致 bridge 在错误页面运行**，是 openclaw 调研里"在 profile 跑 search 拿到 profile 时间线"的根因 |
+| search 命令返回 `not_on_search_page` （v3.0.4+）                    | `search-bridge.js` 入口的 `location.pathname` 自检失败，或 `searchViaDom()` 里 `searchUrlMatches(keyword)` 失败（`reason: 'q_param_mismatch'`）。**典型场景**：当前 tab 停在 `/search?q=旧关键词`，`runTool` 默认 `navigateOnReuse=false` 不切 tab，bridge 拒绝读旧 DOM。修复手段：(a) 先调 `node index.js navigate-search "<keyword>"` 切到正确页面；或 (b) GraphQL 主路径成功时根本不会落到这条路径 —— 检查 `meta.graphqlEnabled / opName` |
+| `profile --include-replies` 返回 `meta.repliesFallback=true` （v3.0.4+） | `UserTweetsAndReplies` queryId 失效，重发现拿到同样 queryId 后自动 fallback 到 `UserTweets`（不带 replies）。`meta.fallbackReason` 形如 `UserTweetsAndReplies_unrecoverable:queryid_unchanged`；不影响主时间线分析。**这是降级，不是失败**；如必须拿 replies，等 X 更新 bundle 后 queryId 会变 |
+| `getPost` 返回 `meta.timedOut=true` + `meta.partial=true` （v3.0.4+） | 单次 wall-clock budget（默认 60s）耗尽，老推文 / 大 thread / 回复树深 时常见。已经返回当前已收集的 focal tweet + thread + replies 子集 + `meta.collectedReplyPages`。批量拉时按 `partial` 字段分桶；如要更全，bridge 直调时 `args.budgetMs=120000` |
+| `getPost` 返回 `error: budget_exceeded_no_data` （v3.0.4+）         | TweetDetail 在预算内**完全没拿到任何数据**（包括 focal）。常见于老推文 X 后端不响应。脚本侧应当跳过这个 tweetId，不要对 partial 做错处理 |
 | `bridgeFallback=true` + `bridgeFallbackReason='bridge_returned_error'` | bridge 拿到 X 响应但语义失败（如 404 / GraphQL forbidden）。看 `bridgeFallbackMessage` 取原始 X error |
 | `bridgeFallbackReason='bridge_inject_failed'`                       | 注入失败，常因 X CSP 或扩展未连上 tab。先跑 `node index.js doctor` |
 | `bridgeFallbackReason='bridge_no_target_tab'`                       | 没有任何 X tab 且 `createIfMissing=false`。READ 工具默认 true        |
@@ -172,5 +179,6 @@ node index.js post https://x.com/<user>/status/<id> --reply "test" --dry-run
 
 ## 路线图
 
-- **v3.0**（本次）：READ 侧（search/profile/post-readonly/home）+ 4 INTERACTIVE 导航 + 1 个 `x_session_state` READ 工具。架构落地：`PAGE_PROFILES + Session + Bridges + bridge-first with fallback`。写操作（reply/post/quote/thread）保持 v2.0.1 行为。
+- **v3.0**：READ 侧（search/profile/post-readonly/home）+ 4 INTERACTIVE 导航 + 1 个 `x_session_state` READ 工具。架构落地：`PAGE_PROFILES + Session + Bridges + bridge-first with fallback`。写操作（reply/post/quote/thread）保持 v2.0.1 行为。
+- **v3.0.4**（当前）：openclaw 调研暴露的 4 个 bridge/session bug 修复 patch（参考 SKILL.md 路线图细节）。
 - **v3.1**（下一步）：拆 `bridges/compose-bridge.js`（DESTRUCTIVE 唯一入口）；4 个独立 DESTRUCTIVE 工具（`x_create_tweet` / `x_reply_tweet` / `x_quote_tweet` / `x_create_thread`）；`--confirm` + 默认 `--dry-run` 安全约束；砍 `x_get_post` 的写参数。

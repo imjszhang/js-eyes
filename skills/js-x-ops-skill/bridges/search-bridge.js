@@ -15,7 +15,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.2';
+  const VERSION = '3.0.4';
 
   // @@include ./common.js
 
@@ -26,7 +26,45 @@
   const PAUSE_AFTER_429_MS = 5 * 60 * 1000;
   const SCROLL_DELAY_MS = 1500;
   const SCROLL_NO_NEW_THRESHOLD = 2;
-  const ENABLE_GRAPHQL = false;
+  // v3.0.4：恢复 GraphQL 主路径，4xx/error 自动降级到 DOM。
+  const ENABLE_GRAPHQL = true;
+
+  function isOnSearchPath(){
+    try { return /^\/search(?:\/|\?|$)/i.test(location.pathname || ''); }
+    catch (_) { return false; }
+  }
+
+  function notOnSearchPageError(detail){
+    let path = '';
+    let q = null;
+    try {
+      path = location.pathname || '';
+      q = new URLSearchParams(location.search).get('q');
+    } catch (_) {}
+    return errResult('not_on_search_page', Object.assign({
+      currentPath: path,
+      currentQuery: q,
+      hint: 'session 没把 tab 切到 /search?q=...；检查 lib/session.js 的 navigate verify 是否抛错',
+    }, detail || {}));
+  }
+
+  /**
+   * 比较"页面当前 q 参数" vs "调用方期望搜索的 keyword"。
+   *
+   * 这是 v3.0.4 的关键防御：当 navigateOnReuse=false 时（READ 默认行为），
+   * 浏览器可能停在 q=旧关键词 的 search 页面，DOM 路径会读到错误数据。
+   * 用空格、URL 编码差异容忍化比较。
+   */
+  function searchUrlMatches(keyword){
+    if (!keyword) return false;
+    try {
+      const sp = new URLSearchParams(location.search);
+      const q = (sp.get('q') || '').trim();
+      if (!q) return false;
+      const norm = (s) => String(s).replace(/\s+/g, ' ').trim().toLowerCase();
+      return norm(q) === norm(keyword);
+    } catch (_) { return false; }
+  }
 
   function parseSearchParams(){
     try {
@@ -112,7 +150,18 @@
   }
 
   async function searchViaDom(opts){
+    if (!isOnSearchPath()) return notOnSearchPageError({ stage: 'enter_search_via_dom' });
     const keyword = opts.keyword;
+    if (!searchUrlMatches(keyword)) {
+      // v3.0.4：DOM 路径硬约束 —— q 参数必须等于本次 keyword。
+      // 否则 navigateOnReuse=false 时会把"旧关键词页面"的推文当成"新关键词"返回。
+      return notOnSearchPageError({
+        stage: 'enter_search_via_dom',
+        keyword,
+        reason: 'q_param_mismatch',
+        hint: '当前 tab 的 q 参数 != 本次搜索的 keyword；要么先调 x_navigate_search 切页，要么用 navigateOnReuse=true 让 session 自动切 tab',
+      });
+    }
     const sort = opts.sort;
     const fullQuery = opts.fullQuery;
     const maxPages = opts.maxPages;
@@ -128,6 +177,7 @@
       await delay(1000);
     }
     if (!contentReady) {
+      if (!isOnSearchPath()) return notOnSearchPageError({ stage: 'wait_for_articles' });
       return errResult('content_not_ready', { hint: 'no_tweet_articles_in_dom' });
     }
 
@@ -174,6 +224,7 @@
     args = args || {};
     const keyword = String(args.keyword || args.q || '').trim();
     if (!keyword) return errResult('missing_query');
+    if (!isOnSearchPath()) return notOnSearchPageError();
     const sortRaw = String(args.sort || 'top').toLowerCase();
     const sort = ALLOWED_SORTS.has(sortRaw) ? sortRaw : 'top';
     const product = sortToProduct(sort);

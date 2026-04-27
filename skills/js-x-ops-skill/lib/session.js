@@ -49,6 +49,38 @@ function isPlainObject(value){
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/**
+ * urlsEquivalent - 判断两个 URL 是否"功能上等价"。
+ *
+ * 比 === 更宽容：
+ *   - 忽略 hash（#anchor）
+ *   - 忽略尾部的 / 差异
+ *   - 忽略 search 参数顺序（同名同值即可）
+ *   - 大小写对 host 不敏感（path / search 保留大小写）
+ *
+ * 解析失败时退回字符串相等比较。
+ */
+function urlsEquivalent(a, b){
+  if (a === b) return true;
+  if (!a || !b) return false;
+  let ua, ub;
+  try { ua = new URL(a); } catch (_) { return a === b; }
+  try { ub = new URL(b); } catch (_) { return a === b; }
+  if (ua.protocol !== ub.protocol) return false;
+  if (ua.hostname.toLowerCase() !== ub.hostname.toLowerCase()) return false;
+  if ((ua.port || '') !== (ub.port || '')) return false;
+  const pa = ua.pathname.replace(/\/+$/, '') || '/';
+  const pb = ub.pathname.replace(/\/+$/, '') || '/';
+  if (pa !== pb) return false;
+  const sa = [...ua.searchParams.entries()].sort();
+  const sb = [...ub.searchParams.entries()].sort();
+  if (sa.length !== sb.length) return false;
+  for (let i = 0; i < sa.length; i++) {
+    if (sa[i][0] !== sb[i][0] || sa[i][1] !== sb[i][1]) return false;
+  }
+  return true;
+}
+
 class Session {
   /**
    * @param {Object} args
@@ -104,9 +136,7 @@ class Session {
       }
       this.target = { id: String(rawId), rawId, url: '(explicit)' };
       if (this.opts.targetUrl) {
-        try { await this.bot.openUrl(this.opts.targetUrl, rawId); } catch (_) {}
-        await this._waitForReady(15000);
-        this.target.url = this.opts.targetUrl;
+        await this._navigateAndVerify(this.opts.targetUrl);
       }
       this.log(`target: ${this.target.id} (explicit)`);
       return this.target;
@@ -126,11 +156,8 @@ class Session {
 
     if (hit) {
       this.target = { id: String(hit.id), rawId: parseInt(hit.id, 10), url: hit.url || '' };
-      if (navigateOnReuse && targetUrl && this.target.url !== targetUrl) {
-        this.log(`navigate ${this.target.id}: ${this.target.url} -> ${targetUrl}`);
-        try { await this.bot.openUrl(targetUrl, this.target.rawId); } catch (_) {}
-        await this._waitForReady(15000);
-        this.target.url = targetUrl;
+      if (navigateOnReuse && targetUrl && !urlsEquivalent(this.target.url, targetUrl)) {
+        await this._navigateAndVerify(targetUrl);
       }
       this.log(`target: ${this.target.id} (${this.target.url})`);
       return this.target;
@@ -146,7 +173,11 @@ class Session {
         _created: true,
       };
       await this._waitForReady(20000);
-      this.log(`target: ${this.target.id} (newly opened)`);
+      try {
+        const actual = await this.callRaw('location.href');
+        if (typeof actual === 'string' && actual) this.target.url = actual;
+      } catch (_) { /* keep optimistic createUrl */ }
+      this.log(`target: ${this.target.id} (newly opened: ${this.target.url})`);
       return this.target;
     }
 
@@ -156,6 +187,70 @@ class Session {
     );
     err.code = 'E_NO_TAB';
     throw err;
+  }
+
+  /**
+   * _navigateAndVerify - 把已选定的 tab 切到 targetUrl，
+   *   不再吞 openUrl 错误。导航后做三步等待：
+   *     1) 等 location.href 切到 targetUrl（防止 openUrl 异步未生效）
+   *     2) 等 document.readyState 回到 complete / interactive
+   *     3) 二次校验 location.href，不匹配则抛 E_NAV_VERIFY_FAILED
+   *
+   *   关键修复（v3.0.4）：旧版 _waitForReady 直接看 readyState，旧页面
+   *   的 readyState 已经是 complete，会立刻返回，导致 bridge 跑在
+   *   stale DOM 上。这里要先等 URL 转换完。
+   *
+   * 依赖 this.target 已经被 resolveTarget 选中。
+   */
+  async _navigateAndVerify(targetUrl){
+    if (!this.target || !Number.isFinite(this.target.rawId)) {
+      const err = new Error('_navigateAndVerify 前必须先选定 target');
+      err.code = 'E_NO_TAB';
+      throw err;
+    }
+    const fromUrl = this.target.url;
+    this.log(`navigate ${this.target.id}: ${fromUrl} -> ${targetUrl}`);
+    try {
+      await this.bot.openUrl(targetUrl, this.target.rawId);
+    } catch (err) {
+      const wrapped = new Error(
+        `navigate 失败 tab=${this.target.id} -> ${targetUrl}: ${(err && err.message) || err}`,
+      );
+      wrapped.code = 'E_NAV_FAILED';
+      wrapped.detail = { tabId: this.target.id, fromUrl, targetUrl, original: (err && err.message) || String(err) };
+      throw wrapped;
+    }
+
+    const urlSwitchTimeoutMs = 12000;
+    const urlSwitchStart = Date.now();
+    let actual = null;
+    while (Date.now() - urlSwitchStart < urlSwitchTimeoutMs) {
+      try { actual = await this.callRaw('location.href'); }
+      catch (_) { actual = null; }
+      if (typeof actual === 'string' && actual && urlsEquivalent(actual, targetUrl)) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    if (typeof actual !== 'string' || !actual) {
+      const wrapped = new Error(`navigate verify 失败：无法读取 location.href（tab=${this.target.id}）`);
+      wrapped.code = 'E_NAV_VERIFY_FAILED';
+      wrapped.detail = { tabId: this.target.id, fromUrl, targetUrl, actual };
+      throw wrapped;
+    }
+
+    if (!urlsEquivalent(actual, targetUrl)) {
+      const wrapped = new Error(
+        `navigate verify 失败：tab=${this.target.id} 实际 URL=${actual} 与期望 ${targetUrl} 不匹配（${urlSwitchTimeoutMs}ms 内未切换）`,
+      );
+      wrapped.code = 'E_NAV_VERIFY_FAILED';
+      wrapped.detail = { tabId: this.target.id, fromUrl, targetUrl, actual };
+      throw wrapped;
+    }
+
+    await this._waitForReady(15000);
+
+    this.target.url = actual;
+    this.log(`navigate verified: ${this.target.id} @ ${actual}`);
   }
 
   async _waitForReady(timeoutMs){
@@ -294,4 +389,4 @@ class Session {
   }
 }
 
-module.exports = { Session, pickTabMatchingProfile, expandBridgeSource };
+module.exports = { Session, pickTabMatchingProfile, expandBridgeSource, urlsEquivalent };

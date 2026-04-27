@@ -296,7 +296,9 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
 
       try {
         const resp = await session.callApi('getPost', bridgeArgs, {
-          timeoutMs: opts.bridgeTimeoutMs || 120000,
+          // v3.0.4：post-bridge 内部 wall-clock budget 默认 60s；
+          // session 给 70s（10s buffer）让 bridge 优先返回 partial 数据。
+          timeoutMs: opts.bridgeTimeoutMs || 70000,
         });
         if (!resp || resp.ok !== true) {
           allResults.push({
@@ -317,6 +319,15 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
         }
         if (Array.isArray(data.replies) && data.replies.length > 0 && opts.withReplies > 0) {
           postData.replies = data.replies.slice(0, opts.withReplies);
+        }
+        // v3.0.4：把 bridge 侧的 timedOut / partial / collectedReplyPages 透传给上层调用方。
+        if (data.meta) {
+          if (data.meta.timedOut) postData.timedOut = true;
+          if (data.meta.partial) postData.partial = true;
+          if (typeof data.meta.collectedReplyPages === 'number') {
+            postData.collectedReplyPages = data.meta.collectedReplyPages;
+          }
+          if (typeof data.meta.durationMs === 'number') postData.durationMs = data.meta.durationMs;
         }
         allResults.push(postData);
       } catch (err) {

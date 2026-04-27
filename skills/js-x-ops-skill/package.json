@@ -1,6 +1,6 @@
 {
   "name": "js-x-ops-skill",
-  "version": "3.0.0",
+  "version": "3.0.4",
   "description": "JS-Eyes 技能：X.com 内容操作，覆盖搜索发现、主页与 Feed 浏览、详情读取以及发帖相关流程",
   "private": true,
   "main": "index.js",

@@ -16,13 +16,17 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.3';
+  const VERSION = '3.0.4';
 
   // @@include ./common.js
 
   const PAUSE_AFTER_429_MS = 5 * 60 * 1000;
   const REPLY_PAGE_DELAY_MS = 1500;
   const MAX_REPLY_PAGES = 10;
+  // v3.0.4：单次 getPost 总耗时预算；超过则返回 partial + meta.timedOut。
+  const DEFAULT_BUDGET_MS = 60 * 1000;
+  // v3.0.4：fetchXGraphQL 单次调用 timeout（默认 15s 对老 thread 不够）。
+  const FETCH_TIMEOUT_MS = 25 * 1000;
 
   function parsePostFromPath(){
     const m = /^\/([\w_]+)\/status\/(\d+)/.exec(location.pathname || '');
@@ -144,6 +148,13 @@
     if (!tweetId) return errResult('missing_tweetId');
     const withThread = !!args.withThread;
     const withReplies = !!args.withReplies;
+    // v3.0.4：浏览器侧 wall-clock 预算（缺省 60s）。超过预算后停止新请求，
+    // 把当前已收集的数据带 meta.timedOut/partial 返回。
+    const budgetMs = Number.isFinite(args.budgetMs) && args.budgetMs > 0
+      ? Math.min(args.budgetMs, 5 * 60 * 1000)
+      : DEFAULT_BUDGET_MS;
+    const t0Total = Date.now();
+    const budgetExpired = () => (Date.now() - t0Total) > budgetMs;
 
     let disc = await discoverGraphQLParams(['TweetDetail', 'TweetResultByRestId']);
     let detailMeta = disc.data && disc.data.TweetDetail;
@@ -156,6 +167,8 @@
     let consecutive429 = 0;
     let detailCacheInvalidated = false;
     let restCacheInvalidated = false;
+    let collectedReplyPages = 0;
+    let timedOut = false;
 
     if (detailMeta && detailMeta.queryId) {
       const variables = {
@@ -178,15 +191,15 @@
 
       let resp = null;
       while (true) {
-        const t0 = Date.now();
+        if (budgetExpired()) { timedOut = true; break; }
         resp = await fetchXGraphQL({
           opName: 'TweetDetail',
           queryId: detailMeta.queryId,
           variables,
           features: detailMeta.features || DEFAULT_GRAPHQL_FEATURES,
           fieldToggles,
+          timeoutMs: FETCH_TIMEOUT_MS,
         });
-        const _durMs = Date.now() - t0;
         if (resp.ok) break;
         if (resp.statusCode === 429) {
           consecutive429++;
@@ -204,7 +217,7 @@
           invalidateGraphQLCache('TweetDetail');
           const reDisc = await discoverGraphQLParams(['TweetDetail']);
           const newMeta = reDisc.data && reDisc.data.TweetDetail;
-          if (newMeta && newMeta.queryId) {
+          if (newMeta && newMeta.queryId && newMeta.queryId !== detailMeta.queryId) {
             detailMeta = newMeta;
             continue;
           }
@@ -216,10 +229,13 @@
         const thread = withThread ? parsed.threadTweets : [];
         const replies = withReplies ? parsed.replies : [];
         let replyCursor = withReplies ? parsed.replyCursor : null;
+        collectedReplyPages = withReplies ? 1 : 0;
 
         if (withReplies && replyCursor) {
           for (let p = 0; p < MAX_REPLY_PAGES && replyCursor; p++) {
+            if (budgetExpired()) { timedOut = true; break; }
             await delay(REPLY_PAGE_DELAY_MS);
+            if (budgetExpired()) { timedOut = true; break; }
             const v2 = Object.assign({}, variables, { cursor: replyCursor });
             const next = await fetchXGraphQL({
               opName: 'TweetDetail',
@@ -227,8 +243,10 @@
               variables: v2,
               features: detailMeta.features || DEFAULT_GRAPHQL_FEATURES,
               fieldToggles,
+              timeoutMs: FETCH_TIMEOUT_MS,
             });
             if (!next.ok) break;
+            collectedReplyPages++;
             const more = _parseTweetDetail(next.data, tweetId);
             for (const r of more.replies) {
               if (r && !replies.some((x) => x.tweetId === r.tweetId)) replies.push(r);
@@ -252,12 +270,27 @@
             pausedOn429: pausedOnce,
             withThread,
             withReplies,
+            collectedReplyPages,
+            timedOut,
+            partial: timedOut,
+            durationMs: Date.now() - t0Total,
+            budgetMs,
           },
+        });
+      }
+      if (timedOut) {
+        // TweetDetail 拿不到任何数据但已超预算；不再降级到 REST，直接报告超时。
+        return errResult('budget_exceeded_no_data', {
+          tweetId,
+          opName: 'TweetDetail',
+          durationMs: Date.now() - t0Total,
+          budgetMs,
+          timedOut: true,
         });
       }
     }
 
-    if (restMeta && restMeta.queryId) {
+    if (restMeta && restMeta.queryId && !budgetExpired()) {
       const variables = {
         tweetId,
         withCommunity: false,
@@ -271,12 +304,14 @@
       };
       let resp = null;
       while (true) {
+        if (budgetExpired()) { timedOut = true; break; }
         resp = await fetchXGraphQL({
           opName: 'TweetResultByRestId',
           queryId: restMeta.queryId,
           variables,
           features: restMeta.features || DEFAULT_GRAPHQL_FEATURES,
           fieldToggles,
+          timeoutMs: FETCH_TIMEOUT_MS,
         });
         if (resp.ok) break;
         if (resp.statusCode === 429) {
@@ -295,7 +330,7 @@
           invalidateGraphQLCache('TweetResultByRestId');
           const reDisc = await discoverGraphQLParams(['TweetResultByRestId']);
           const newMeta = reDisc.data && reDisc.data.TweetResultByRestId;
-          if (newMeta && newMeta.queryId) {
+          if (newMeta && newMeta.queryId && newMeta.queryId !== restMeta.queryId) {
             restMeta = newMeta;
             continue;
           }
@@ -319,13 +354,22 @@
             queryId: restMeta.queryId,
             graphqlSource: restMeta.source || 'unknown',
             pausedOn429: pausedOnce,
+            timedOut,
+            partial: false,
+            durationMs: Date.now() - t0Total,
+            budgetMs,
             note: 'fallback_path_no_thread_no_replies',
           },
         });
       }
     }
 
-    return errResult('all_paths_failed', { tweetId });
+    return errResult('all_paths_failed', {
+      tweetId,
+      timedOut,
+      durationMs: Date.now() - t0Total,
+      budgetMs,
+    });
   }
 
   const api = {

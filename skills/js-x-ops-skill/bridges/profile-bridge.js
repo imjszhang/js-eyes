@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.2';
+  const VERSION = '3.0.4';
 
   // @@include ./common.js
 
@@ -149,55 +149,48 @@
     }
   }
 
-  async function getProfile(args){
-    args = args || {};
-    const username = String(args.username || '').replace(/^@/, '').trim();
-    if (!username) return errResult('missing_username');
-    const includeReplies = !!args.includeReplies;
-    const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
-
-    const tweetsOp = includeReplies ? 'UserTweetsAndReplies' : 'UserTweets';
-    let disc = await discoverGraphQLParams(['UserByScreenName', tweetsOp]);
-    let userMeta = disc.data && disc.data.UserByScreenName;
-    let tweetsMeta = disc.data && disc.data[tweetsOp];
-    if (!userMeta || !userMeta.queryId) {
-      return errResult('graphql_discover_failed', { opName: 'UserByScreenName' });
-    }
-    if (!tweetsMeta || !tweetsMeta.queryId) {
-      return errResult('graphql_discover_failed', { opName: tweetsOp });
-    }
-
-    let resolved = await _resolveUserId(username, userMeta.queryId, userMeta.features);
-    if (!resolved.ok && (resolved.statusCode === 400 || resolved.statusCode === 404)) {
-      invalidateGraphQLCache('UserByScreenName');
-      disc = await discoverGraphQLParams(['UserByScreenName', tweetsOp]);
-      const reUserMeta = disc.data && disc.data.UserByScreenName;
-      if (reUserMeta && reUserMeta.queryId) {
-        userMeta = reUserMeta;
-        resolved = await _resolveUserId(username, userMeta.queryId, userMeta.features);
-      }
-    }
-    if (!resolved.ok) return errResult(resolved.error, { opName: 'UserByScreenName', statusCode: resolved.statusCode });
-
+  /**
+   * _fetchTimelinePages - 给定 op 名 + queryId，分页拉用户时间线。
+   *
+   * v3.0.4：把翻页主循环抽出来，方便 UserTweetsAndReplies 失败后
+   * 切到 UserTweets 重试（整个生命周期独立的 cacheInvalidated / 429 状态）。
+   *
+   * 关键修复：rediscover 拿到与 lastTriedQueryId 相同的 queryId 时
+   * 视为"无新值"，不再重试（否则会无限同样 404）。
+   *
+   * @returns {Promise<Object>} { ok, tweets, pageMeta, tweetsMeta, recovery }
+   *   recovery 字段：
+   *     'none'                                 - 无重发现
+   *     'queryid_unchanged'                    - 重发现拿到同样 queryId
+   *     'rediscover_no_new'                    - 重发现没拿到新 queryId
+   *     'recovered'                            - 重发现拿到新 queryId 并继续
+   *   ok=false 时 lastError 有 statusCode/error。
+   */
+  async function _fetchTimelinePages(args){
+    const { tweetsOp, userId, maxPages } = args;
+    let tweetsMeta = args.tweetsMeta;
     let features = tweetsMeta.features || DEFAULT_GRAPHQL_FEATURES;
     let variablesTemplate = tweetsMeta.variables || null;
+    let lastTriedQueryId = tweetsMeta.queryId;
 
-    const allTweets = [];
+    const tweets = [];
     const seenIds = new Set();
+    const pageMeta = [];
     let cursor = null;
     let consecutive429 = 0;
     let pausedOnce = false;
     let cacheInvalidated = false;
-    const pageMeta = [];
+    let recovery = 'none';
+    let lastError = null;
 
     for (let page = 1; page <= maxPages; page++) {
       const variables = variablesTemplate
         ? Object.assign({}, variablesTemplate)
         : {
-            userId: resolved.userId, count: 20, includePromotedContent: false,
+            userId, count: 20, includePromotedContent: false,
             withQuickPromoteEligibilityTweetFields: true, withVoice: true, withV2Timeline: true,
           };
-      variables.userId = resolved.userId;
+      variables.userId = userId;
       if (!variables.count) variables.count = 20;
       if (cursor) variables.cursor = cursor; else delete variables.cursor;
 
@@ -227,17 +220,30 @@
       if (!resp.ok && (resp.statusCode === 400 || resp.statusCode === 404) && !cacheInvalidated) {
         cacheInvalidated = true;
         invalidateGraphQLCache(tweetsOp);
-        disc = await discoverGraphQLParams([tweetsOp]);
-        const newMeta = disc.data && disc.data[tweetsOp];
+        const reDisc = await discoverGraphQLParams([tweetsOp]);
+        const newMeta = reDisc.data && reDisc.data[tweetsOp];
         if (newMeta && newMeta.queryId) {
+          if (newMeta.queryId === lastTriedQueryId) {
+            recovery = 'queryid_unchanged';
+            lastError = { error: resp.error, statusCode: resp.statusCode || null };
+            pageMeta.push({ page, ok: false, error: resp.error, statusCode: resp.statusCode || null, durMs, recovery });
+            break;
+          }
           tweetsMeta = newMeta;
           features = newMeta.features || features;
           variablesTemplate = newMeta.variables || variablesTemplate;
+          lastTriedQueryId = newMeta.queryId;
+          recovery = 'recovered';
           page--;
           continue;
         }
+        recovery = 'rediscover_no_new';
+        lastError = { error: resp.error, statusCode: resp.statusCode || null };
+        pageMeta.push({ page, ok: false, error: resp.error, statusCode: resp.statusCode || null, durMs, recovery });
+        break;
       }
       if (!resp.ok) {
+        lastError = { error: resp.error, statusCode: resp.statusCode || null };
         pageMeta.push({ page, ok: false, error: resp.error, statusCode: resp.statusCode || null, durMs });
         break;
       }
@@ -262,7 +268,7 @@
       for (const tw of parsed.tweets) {
         if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
           seenIds.add(tw.tweetId);
-          allTweets.push(tw);
+          tweets.push(tw);
           added++;
         }
       }
@@ -272,24 +278,118 @@
       if (page < maxPages) await delay(PAGE_DELAY_MS);
     }
 
+    return {
+      ok: tweets.length > 0 || pageMeta.some((p) => p.ok),
+      tweets,
+      pageMeta,
+      tweetsMeta,
+      cursor,
+      pausedOnce,
+      recovery,
+      lastError,
+    };
+  }
+
+  async function getProfile(args){
+    args = args || {};
+    const username = String(args.username || '').replace(/^@/, '').trim();
+    if (!username) return errResult('missing_username');
+    const includeReplies = !!args.includeReplies;
+    const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
+
+    const requestedOp = includeReplies ? 'UserTweetsAndReplies' : 'UserTweets';
+    let disc = await discoverGraphQLParams(['UserByScreenName', requestedOp, 'UserTweets']);
+    let userMeta = disc.data && disc.data.UserByScreenName;
+    let tweetsMeta = disc.data && disc.data[requestedOp];
+    if (!userMeta || !userMeta.queryId) {
+      return errResult('graphql_discover_failed', { opName: 'UserByScreenName' });
+    }
+    if (!tweetsMeta || !tweetsMeta.queryId) {
+      return errResult('graphql_discover_failed', { opName: requestedOp });
+    }
+
+    let resolved = await _resolveUserId(username, userMeta.queryId, userMeta.features);
+    if (!resolved.ok && (resolved.statusCode === 400 || resolved.statusCode === 404)) {
+      invalidateGraphQLCache('UserByScreenName');
+      disc = await discoverGraphQLParams(['UserByScreenName']);
+      const reUserMeta = disc.data && disc.data.UserByScreenName;
+      if (reUserMeta && reUserMeta.queryId) {
+        userMeta = reUserMeta;
+        resolved = await _resolveUserId(username, userMeta.queryId, userMeta.features);
+      }
+    }
+    if (!resolved.ok) return errResult(resolved.error, { opName: 'UserByScreenName', statusCode: resolved.statusCode });
+
+    let result = await _fetchTimelinePages({
+      tweetsOp: requestedOp,
+      tweetsMeta,
+      userId: resolved.userId,
+      maxPages,
+    });
+
+    let actualOp = requestedOp;
+    let repliesFallback = false;
+    let fallbackReason = null;
+    let secondaryRecovery = null;
+
+    // v3.0.4：UserTweetsAndReplies 拿不到数据 -> 自动降级到 UserTweets。
+    // 触发条件：要 replies、本次结果空 / 不可恢复 / queryId 不变。
+    const replies_unrecoverable = includeReplies
+      && (
+        result.tweets.length === 0
+        || result.recovery === 'queryid_unchanged'
+        || result.recovery === 'rediscover_no_new'
+        || (result.lastError && (result.lastError.statusCode === 404 || result.lastError.statusCode === 400))
+      );
+
+    if (replies_unrecoverable) {
+      const fallbackDisc = (disc.data && disc.data.UserTweets) || null;
+      let fallbackMeta = fallbackDisc;
+      if (!fallbackMeta || !fallbackMeta.queryId) {
+        const reDisc = await discoverGraphQLParams(['UserTweets']);
+        fallbackMeta = reDisc.data && reDisc.data.UserTweets;
+      }
+      if (fallbackMeta && fallbackMeta.queryId) {
+        const fb = await _fetchTimelinePages({
+          tweetsOp: 'UserTweets',
+          tweetsMeta: fallbackMeta,
+          userId: resolved.userId,
+          maxPages,
+        });
+        actualOp = 'UserTweets';
+        repliesFallback = true;
+        fallbackReason = 'UserTweetsAndReplies_unrecoverable:' + (result.recovery || 'empty');
+        secondaryRecovery = fb.recovery;
+        result = fb;
+        tweetsMeta = fallbackMeta;
+      } else {
+        fallbackReason = 'UserTweets_discover_failed';
+      }
+    }
+
     return okResult({
       username,
-      includeReplies,
+      includeReplies: includeReplies && !repliesFallback,
       profile: resolved.profile,
-      total: allTweets.length,
-      tweets: allTweets,
-      pages: pageMeta,
+      total: result.tweets.length,
+      tweets: result.tweets,
+      pages: result.pageMeta,
       meta: {
         bridge: 'profile-bridge',
         version: VERSION,
         userOpName: 'UserByScreenName',
         userQueryId: userMeta.queryId,
-        tweetsOpName: tweetsOp,
-        tweetsQueryId: tweetsMeta.queryId,
+        tweetsOpName: actualOp,
+        tweetsOpRequested: requestedOp,
+        tweetsQueryId: result.tweetsMeta && result.tweetsMeta.queryId,
         graphqlSourceUser: userMeta.source || 'unknown',
-        graphqlSourceTweets: tweetsMeta.source || 'unknown',
-        pausedOn429: pausedOnce,
-        endedReason: cursor ? 'reached_max_pages' : 'no_cursor',
+        graphqlSourceTweets: (result.tweetsMeta && result.tweetsMeta.source) || 'unknown',
+        pausedOn429: result.pausedOnce,
+        recovery: result.recovery,
+        secondaryRecovery,
+        repliesFallback,
+        fallbackReason,
+        endedReason: result.cursor ? 'reached_max_pages' : 'no_cursor',
       },
     });
   }
