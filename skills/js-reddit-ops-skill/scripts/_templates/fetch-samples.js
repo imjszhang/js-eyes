@@ -13,9 +13,9 @@
  *   - 直接 callRaw 一次拿到 reddit 原始 listing JSON，便于后续多维分析
  *
  * 复制使用：
- *   cp scripts/_templates/fetch-samples.js work_dir/<topic>/fetch-samples.js
+ *   cp scripts/_templates/fetch-samples.js work_dir/reddit/<topic>/fetch-samples.js
  *   把 SAMPLES 改成你 aggregate.js 后挑出来的代表帖
- *   node work_dir/<topic>/fetch-samples.js
+ *   node work_dir/reddit/<topic>/fetch-samples.js
  *
  * 前置要求：浏览器里有任意已登录 reddit tab；CLI 端能正常连上 js-eyes server。
  *   不需要专门导航；脚本用 reuseAnyRedditTab 复用现有 tab。

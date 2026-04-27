@@ -36,8 +36,53 @@ const {
     saveProgress,
     appendPartialTweets,
 } = require('./xUtils');
+const {
+    searchViaBridge,
+    profileViaBridge,
+    postViaBridge,
+    homeViaBridge,
+    classifyBridgeError,
+    FALLBACK_REASON,
+} = require('./bridgeAdapter');
 
 const SKILL_ID = pkg.name;
+
+/**
+ * 内部双轨开关：
+ * - JS_X_DISABLE_BRIDGE=1   直接走老的 runXxx 路径（v2.0.1 行为）
+ * - JS_X_DISABLE_FALLBACK=1 bridge 失败直接抛错（用于 schema diff / 排查）
+ *
+ * options.useBridge=false 等价于 JS_X_DISABLE_BRIDGE=1（编程入口可单次关闭）。
+ */
+function _shouldUseBridge(options) {
+    if (options && options.useBridge === false) return false;
+    if (process.env.JS_X_DISABLE_BRIDGE === '1') return false;
+    return true;
+}
+
+function _shouldFallback() {
+    return process.env.JS_X_DISABLE_FALLBACK !== '1';
+}
+
+function _attachBridgeMetrics(result, info) {
+    result._bridgeRoute = {
+        bridgeUsed: !!info.bridgeUsed,
+        bridgeFallback: !!info.bridgeFallback,
+        bridgeFallbackReason: info.bridgeFallbackReason || null,
+        bridgeFallbackMessage: info.bridgeFallbackMessage || null,
+        bridgeFallbackCode: info.bridgeFallbackCode || null,
+        bridgeTarget: info.bridgeTarget || null,
+        bridgeVersion: info.bridgeVersion || null,
+        bridgeMeta: info.bridgeMeta || null,
+    };
+    return result;
+}
+
+function _readBridgeRoute(result) {
+    const route = (result && result._bridgeRoute) || null;
+    if (result && result._bridgeRoute) delete result._bridgeRoute;
+    return route;
+}
 
 // Lazy-load script modules to avoid circular dependency
 // (scripts import api.js, api.js imports scripts)
@@ -121,6 +166,16 @@ function createXRunContext(scrapeType, input, options = {}) {
 }
 
 function buildXMetrics(scrapeType, result, durationMs, cacheHit) {
+    const route = result && result._bridgeRoute ? result._bridgeRoute : {};
+    const bridgeFields = {
+        bridgeUsed: route.bridgeUsed === true,
+        bridgeFallback: route.bridgeFallback === true,
+        bridgeFallbackReason: route.bridgeFallbackReason || null,
+        bridgeFallbackMessage: route.bridgeFallbackMessage || null,
+        bridgeFallbackCode: route.bridgeFallbackCode || null,
+        bridgeVersion: route.bridgeVersion || null,
+    };
+
     if (scrapeType === 'x_post') {
         return {
             status: result.totalFailed > 0 ? 'partial' : 'success',
@@ -129,6 +184,7 @@ function buildXMetrics(scrapeType, result, durationMs, cacheHit) {
             totalRequested: result.totalRequested ?? 0,
             totalSuccess: result.totalSuccess ?? 0,
             totalFailed: result.totalFailed ?? 0,
+            ...bridgeFields,
         };
     }
 
@@ -137,6 +193,7 @@ function buildXMetrics(scrapeType, result, durationMs, cacheHit) {
         durationMs,
         cacheHit,
         totalResults: result.totalResults ?? (Array.isArray(result.results) ? result.results.length : 0),
+        ...bridgeFields,
     };
 }
 
@@ -1045,6 +1102,174 @@ async function runGetHomeFeed(browser, options = {}) {
     }
 }
 
+function _disabledByOptions(options) {
+    return process.env.JS_X_DISABLE_BRIDGE === '1' || (options && options.useBridge === false);
+}
+
+function _disabledMessage(options) {
+    if (process.env.JS_X_DISABLE_BRIDGE === '1') return 'JS_X_DISABLE_BRIDGE=1';
+    if (options && options.useBridge === false) return 'options.useBridge=false';
+    return null;
+}
+
+async function _profileWithBridgeOrFallback(browser, username, options) {
+    const log = makeLog(options.logger);
+    const useBridge = _shouldUseBridge(options);
+    if (!useBridge) {
+        const result = await runGetProfileTweets(browser, username, options);
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: false,
+            bridgeFallback: _disabledByOptions(options),
+            bridgeFallbackReason: _disabledByOptions(options) ? FALLBACK_REASON.DISABLED_BY_ENV : null,
+            bridgeFallbackMessage: _disabledMessage(options),
+        });
+    }
+    try {
+        const result = await profileViaBridge(browser, username, options);
+        const route = result._bridge || {};
+        delete result._bridge;
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: true,
+            bridgeFallback: false,
+            bridgeTarget: route.target || null,
+            bridgeVersion: route.bridge && route.bridge.version || null,
+            bridgeMeta: route.meta || null,
+        });
+    } catch (bridgeError) {
+        log.warn(`⚠ bridge profile 失败，回退老路径: ${bridgeError.message}`);
+        if (!_shouldFallback()) throw bridgeError;
+        const fallback = await runGetProfileTweets(browser, username, options);
+        return _attachBridgeMetrics(fallback, {
+            bridgeUsed: false,
+            bridgeFallback: true,
+            bridgeFallbackReason: classifyBridgeError(bridgeError),
+            bridgeFallbackMessage: bridgeError.message || String(bridgeError),
+            bridgeFallbackCode: bridgeError.code || null,
+        });
+    }
+}
+
+async function _homeWithBridgeOrFallback(browser, options) {
+    const log = makeLog(options.logger);
+    const useBridge = _shouldUseBridge(options);
+    if (!useBridge) {
+        const result = await runGetHomeFeed(browser, options);
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: false,
+            bridgeFallback: _disabledByOptions(options),
+            bridgeFallbackReason: _disabledByOptions(options) ? FALLBACK_REASON.DISABLED_BY_ENV : null,
+            bridgeFallbackMessage: _disabledMessage(options),
+        });
+    }
+    try {
+        const result = await homeViaBridge(browser, options);
+        const route = result._bridge || {};
+        delete result._bridge;
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: true,
+            bridgeFallback: false,
+            bridgeTarget: route.target || null,
+            bridgeVersion: route.bridge && route.bridge.version || null,
+            bridgeMeta: route.meta || null,
+        });
+    } catch (bridgeError) {
+        log.warn(`⚠ bridge home 失败，回退老路径: ${bridgeError.message}`);
+        if (!_shouldFallback()) throw bridgeError;
+        const fallback = await runGetHomeFeed(browser, options);
+        return _attachBridgeMetrics(fallback, {
+            bridgeUsed: false,
+            bridgeFallback: true,
+            bridgeFallbackReason: classifyBridgeError(bridgeError),
+            bridgeFallbackMessage: bridgeError.message || String(bridgeError),
+            bridgeFallbackCode: bridgeError.code || null,
+        });
+    }
+}
+
+function _hasWriteParams(options) {
+    if (!options) return false;
+    return !!(options.post || options.reply || options.quote || options.thread || options.media);
+}
+
+async function _postWithBridgeOrFallback(browser, tweetInputs, options) {
+    const log = makeLog(options.logger);
+    if (_hasWriteParams(options)) {
+        return await runGetPost(browser, tweetInputs, options);
+    }
+    const useBridge = _shouldUseBridge(options);
+    if (!useBridge) {
+        const result = await runGetPost(browser, tweetInputs, options);
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: false,
+            bridgeFallback: _disabledByOptions(options),
+            bridgeFallbackReason: _disabledByOptions(options) ? FALLBACK_REASON.DISABLED_BY_ENV : null,
+            bridgeFallbackMessage: _disabledMessage(options),
+        });
+    }
+    try {
+        const result = await postViaBridge(browser, tweetInputs, options);
+        const route = result._bridge || {};
+        delete result._bridge;
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: true,
+            bridgeFallback: false,
+            bridgeTarget: route.target || null,
+            bridgeVersion: route.bridge && route.bridge.version || null,
+            bridgeMeta: route.meta || null,
+        });
+    } catch (bridgeError) {
+        log.warn(`⚠ bridge post 失败，回退老路径: ${bridgeError.message}`);
+        if (!_shouldFallback()) throw bridgeError;
+        const fallback = await runGetPost(browser, tweetInputs, options);
+        return _attachBridgeMetrics(fallback, {
+            bridgeUsed: false,
+            bridgeFallback: true,
+            bridgeFallbackReason: classifyBridgeError(bridgeError),
+            bridgeFallbackMessage: bridgeError.message || String(bridgeError),
+            bridgeFallbackCode: bridgeError.code || null,
+        });
+    }
+}
+
+async function _searchWithBridgeOrFallback(browser, keyword, options) {
+    const log = makeLog(options.logger);
+    const useBridge = _shouldUseBridge(options);
+    if (!useBridge) {
+        const result = await runSearchTweets(browser, keyword, options);
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: false,
+            bridgeFallback: process.env.JS_X_DISABLE_BRIDGE === '1' || options.useBridge === false,
+            bridgeFallbackReason: process.env.JS_X_DISABLE_BRIDGE === '1' || options.useBridge === false
+                ? FALLBACK_REASON.DISABLED_BY_ENV : null,
+            bridgeFallbackMessage: process.env.JS_X_DISABLE_BRIDGE === '1'
+                ? 'JS_X_DISABLE_BRIDGE=1' : (options.useBridge === false ? 'options.useBridge=false' : null),
+        });
+    }
+    try {
+        const result = await searchViaBridge(browser, keyword, options);
+        const route = result._bridge || {};
+        delete result._bridge;
+        return _attachBridgeMetrics(result, {
+            bridgeUsed: true,
+            bridgeFallback: false,
+            bridgeTarget: route.target || null,
+            bridgeVersion: route.bridge && route.bridge.version || null,
+            bridgeMeta: route.meta || null,
+        });
+    } catch (bridgeError) {
+        log.warn(`⚠ bridge search 失败，回退老路径: ${bridgeError.message}`);
+        if (!_shouldFallback()) throw bridgeError;
+        const fallback = await runSearchTweets(browser, keyword, options);
+        return _attachBridgeMetrics(fallback, {
+            bridgeUsed: false,
+            bridgeFallback: true,
+            bridgeFallbackReason: classifyBridgeError(bridgeError),
+            bridgeFallbackMessage: bridgeError.message || String(bridgeError),
+            bridgeFallbackCode: bridgeError.code || null,
+        });
+    }
+}
+
 async function searchTweets(browser, keyword, options = {}) {
     const runContext = createXRunContext('x_search', {
         keyword,
@@ -1075,7 +1300,7 @@ async function searchTweets(browser, keyword, options = {}) {
     let debugBundlePath = '';
 
     try {
-        const result = await runSearchTweets(browser, keyword, { ...options, logger });
+        const result = await _searchWithBridgeOrFallback(browser, keyword, { ...options, logger });
         recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0 });
         response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
         const cacheEntry = writeCacheEntry(runContext, { response }, 'search');
@@ -1159,7 +1384,7 @@ async function getProfileTweets(browser, username, options = {}) {
     let debugBundlePath = '';
 
     try {
-        const result = await runGetProfileTweets(browser, username, { ...options, logger });
+        const result = await _profileWithBridgeOrFallback(browser, username, { ...options, logger });
         recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0 });
         response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
         const cacheEntry = writeCacheEntry(runContext, { response }, 'profile');
@@ -1237,7 +1462,7 @@ async function getPost(browser, tweetInputs, options = {}) {
     let debugBundlePath = '';
 
     try {
-        const result = await runGetPost(browser, tweetInputs, { ...options, logger });
+        const result = await _postWithBridgeOrFallback(browser, tweetInputs, { ...options, logger });
         recordDomStat(debugState, 'result_summary', {
             totalRequested: result.totalRequested || 0,
             totalSuccess: result.totalSuccess || 0,
@@ -1323,7 +1548,7 @@ async function getHomeFeed(browser, options = {}) {
     let debugBundlePath = '';
 
     try {
-        const result = await runGetHomeFeed(browser, { ...options, logger });
+        const result = await _homeWithBridgeOrFallback(browser, { ...options, logger });
         recordDomStat(debugState, 'result_summary', { totalResults: result.totalResults || 0, feed: result.feed });
         response = buildXResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
         const cacheEntry = writeCacheEntry(runContext, { response }, 'home');

@@ -14,8 +14,10 @@
 
 ## 推荐目录结构
 
+> 约定：所有 reddit 深度调研都放 `work_dir/reddit/<topic>/`。其它平台（X/HN/...）平级开 `work_dir/<platform>/`，互不污染。
+
 ```
-work_dir/<topic>/
+work_dir/reddit/<topic>/
 ├── run-searches.js     ← cp 自 batch-search.js
 ├── aggregate.js        ← 自己写：tag + 严格过滤 + topN + bySub/byTag/byMonth
 ├── fetch-samples.js    ← cp 自 fetch-samples.js
@@ -33,9 +35,9 @@ work_dir/<topic>/
 ### 1. batch-search.js
 ```bash
 cp skills/js-reddit-ops-skill/scripts/_templates/batch-search.js \
-   work_dir/<topic>/run-searches.js
+   work_dir/reddit/<topic>/run-searches.js
 # 编辑 QUERIES（一般 12-20 条够了，太多 reddit 会限流）
-node work_dir/<topic>/run-searches.js
+node work_dir/reddit/<topic>/run-searches.js
 ```
 
 模板内置：
@@ -45,7 +47,7 @@ node work_dir/<topic>/run-searches.js
 
 ### 2. aggregate.js（话题 specific，无模板）
 读 `raw/*.json`，按帖子 id 去重，加 tag，做严格过滤，输出 `aggregated.json`。
-关键模式（参考 `work_dir/karpathy-autoresearch/aggregate.js`）：
+关键模式（参考 `work_dir/reddit/karpathy-autoresearch/aggregate.js`）：
 ```js
 function tag(it) { /* 关键词 → 项目/概念 tag */ }
 const STRONG = new Set(['<project-name-1>', '<project-name-2>']);
@@ -62,9 +64,9 @@ function isRelevant(it) {
 ### 3. fetch-samples.js
 ```bash
 cp skills/js-reddit-ops-skill/scripts/_templates/fetch-samples.js \
-   work_dir/<topic>/fetch-samples.js
+   work_dir/reddit/<topic>/fetch-samples.js
 # 把 SAMPLES 改为 aggregate 后选出的代表帖（一般 8-12 篇）
-node work_dir/<topic>/fetch-samples.js
+node work_dir/reddit/<topic>/fetch-samples.js
 ```
 
 前置：浏览器里有任意已登录 reddit tab；脚本会自动 reuse，不导航。
@@ -73,11 +75,11 @@ node work_dir/<topic>/fetch-samples.js
 
 | 目录 | 调研对象 | 强相关帖数 |
 |---|---|---|
-| `work_dir/r-machinelearning-research/` | r/MachineLearning 子版总览 | — |
-| `work_dir/r-machinelearning-weekly/` | 子版周热榜 | — |
-| `work_dir/ai-self-evolution-research/` | AI 自我进化（综述） | 87 / 346 |
-| `work_dir/ai-autoresearch-research/` | autoresearch 概念（误解） | 32 / 460 |
-| `work_dir/karpathy-autoresearch/` | karpathy/autoresearch 仓库 | 169 / 420 |
+| `work_dir/reddit/r-machinelearning-research/` | r/MachineLearning 子版总览 | — |
+| `work_dir/reddit/r-machinelearning-weekly/` | 子版周热榜 | — |
+| `work_dir/reddit/ai-self-evolution-research/` | AI 自我进化（综述） | 87 / 346 |
+| `work_dir/reddit/ai-autoresearch-research/` | autoresearch 概念（误解） | 32 / 460 |
+| `work_dir/reddit/karpathy-autoresearch/` | karpathy/autoresearch 仓库 | 169 / 420 |
 
 它们都是手写的，发现共性后才抽出本模板。
 

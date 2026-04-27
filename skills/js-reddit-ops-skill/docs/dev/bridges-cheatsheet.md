@@ -147,7 +147,7 @@ console.log(r.code, r.elapsedMs, r.outBytes);
 | `diff-post-schema.js` 报 `image_urls` bridge 比 DOM 少               | 通常不是 bridge 的 bug：DOM 端会把 avatar / subreddit banner 当图扫进来，bridge 严格看 `media_metadata` / `preview.images` / `i.redd.it` / `preview.redd.it` 白名单。bridge 的输出对下游更准 |
 | 改了 bridge 代码但浏览器里没生效                                    | `Session::ensureBridge` 只在 `bridge.__meta.version !== 文件 VERSION` 时重装。改完 bridge 必须 bump 顶部 `VERSION` 常量，或手动关掉所有 reddit tab 让 bridge 丢失 |
 | `Session::callRaw` 里 `fetch('/r/.../<id>.json')` 抛 `... is not a valid URL` | `executeScript` 走的是扩展隔离上下文，没有 `document` 也没有 base origin，相对路径 fetch 会失败。**必须传绝对 URL**：`fetch('https://www.reddit.com/r/.../<id>.json?raw_json=1', { credentials:'include' })`。bridges/ 下的方法都通过 `buildRedditUrl()` 自动加前缀，外部脚本直接 callRaw 时要自己拼 |
-| 批量跑 `node index.js search/list-subreddit/...` 把 stdout 写文件，结果偶发性截断在 65536 字节 | Node `child_process.spawn().stdout.pipe(fs.createWriteStream)` 在大输出（>64KB）下会丢尾。改用 `lib/runCliToFile.js`：内部走 `stdio: ['ignore', fd, 'pipe']` 让子进程 stdout 直写 fd，绕开 readable 缓冲。所有 `scripts/` 和 `work_dir/*/run-searches.js` 风格的批处理都应当用它 |
+| 批量跑 `node index.js search/list-subreddit/...` 把 stdout 写文件，结果偶发性截断在 65536 字节 | Node `child_process.spawn().stdout.pipe(fs.createWriteStream)` 在大输出（>64KB）下会丢尾。改用 `lib/runCliToFile.js`：内部走 `stdio: ['ignore', fd, 'pipe']` 让子进程 stdout 直写 fd，绕开 readable 缓冲。所有 `scripts/` 和 `work_dir/reddit/*/run-searches.js` 风格的批处理都应当用它 |
 
 ## 烟测顺序（联机）
 

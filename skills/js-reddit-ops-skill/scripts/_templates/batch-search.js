@@ -7,10 +7,10 @@
  * 给一个 query 矩阵，串行跑 `node index.js search ...`，结果各自存一个 JSON 文件。
  *
  * 复制使用：
- *   cp scripts/_templates/batch-search.js work_dir/<topic>/run-searches.js
+ *   cp scripts/_templates/batch-search.js work_dir/reddit/<topic>/run-searches.js
  *   编辑 QUERIES 数组（项目名 + 关键词，子版 + 全站交叉）
  *   编辑 OUT_DIR / SUMMARY_FILE
- *   node work_dir/<topic>/run-searches.js
+ *   node work_dir/reddit/<topic>/run-searches.js
  *
  * 设计原则：
  *   - 串行（不并行），避免 reddit 限流；典型每个 query 1~25 秒
@@ -18,8 +18,8 @@
  *   - 每个 query 一个 raw/<label>.json，方便后续 aggregate 步骤去重
  *   - 每次跑完写 search-summary.json，便于回溯命中量
  *
- * 推荐目录约定（与 work_dir/<topic>/ 风格一致）：
- *   work_dir/<topic>/
+ * 推荐目录约定（与 work_dir/reddit/<topic>/ 风格一致）：
+ *   work_dir/reddit/<topic>/
  *     ├── run-searches.js   ← 本模板
  *     ├── aggregate.js      ← 你写的去重 + 过滤 + tag
  *     ├── raw/<label>.json  ← 本脚本产物
@@ -32,7 +32,7 @@ const { runCliToFile } = require('../../lib/runCliToFile');
 
 // ===== 必改 =====================================================
 const SKILL_DIR = path.resolve(__dirname, '../../');                    // 默认指向 skill 根
-const OUT_DIR = path.join(__dirname, 'raw');                            // 复制脚本到 work_dir 后，这里就是 work_dir/<topic>/raw
+const OUT_DIR = path.join(__dirname, 'raw');                            // 复制脚本到 work_dir 后，这里就是 work_dir/reddit/<topic>/raw
 const SUMMARY_FILE = path.join(__dirname, 'search-summary.json');
 
 /**

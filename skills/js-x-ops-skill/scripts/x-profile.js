@@ -40,6 +40,8 @@
  *   - 默认不关闭 tab，下次运行可秒级复用已有的 x.com 标签页
  */
 
+// v3.0：READ 主流程 / CLI 入口已被 cli/index.js + lib/api.js 替代；本文件仅保留 helper exports（lib/api.js fallback 用）。
+
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const path = require('path');
 const { getProfileTweets } = require('../lib/api');
@@ -71,115 +73,6 @@ const {
 // CLI 参数解析
 // ============================================================================
 
-function parseArgs() {
-    const args = process.argv.slice(2);
-    const options = {
-        username: null,
-        maxPages: 50,
-        maxTweets: 0,       // 0 = 不限制
-        pretty: false,
-        browserServer: null,
-        output: null,
-        minLikes: 0,
-        minRetweets: 0,
-        since: null,
-        until: null,
-        includeReplies: false,
-        includeRetweets: false,
-        closeTab: false,
-        resume: null,
-        recordingMode: null,
-        recordingBaseDir: null,
-        noCache: false,
-        debugRecording: false,
-        runId: null,
-    };
-
-    for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-
-        if (arg.startsWith('--')) {
-            const key = arg.replace('--', '').replace(/-/g, '');
-            const nextArg = args[i + 1];
-
-            switch (key) {
-                case 'maxpages':
-                    options.maxPages = parseInt(nextArg, 10) || 50;
-                    i++;
-                    break;
-                case 'maxtweets':
-                    options.maxTweets = parseInt(nextArg, 10) || 0;
-                    i++;
-                    break;
-                case 'pretty':
-                    options.pretty = true;
-                    break;
-                case 'browserserver':
-                    options.browserServer = nextArg;
-                    i++;
-                    break;
-                case 'output':
-                    options.output = nextArg;
-                    i++;
-                    break;
-                case 'minlikes':
-                    options.minLikes = parseInt(nextArg, 10) || 0;
-                    i++;
-                    break;
-                case 'minretweets':
-                    options.minRetweets = parseInt(nextArg, 10) || 0;
-                    i++;
-                    break;
-                case 'since':
-                    options.since = nextArg;
-                    i++;
-                    break;
-                case 'until':
-                    options.until = nextArg;
-                    i++;
-                    break;
-                case 'includereplies':
-                    options.includeReplies = true;
-                    break;
-                case 'includeretweets':
-                    options.includeRetweets = true;
-                    break;
-                case 'closetab':
-                    options.closeTab = true;
-                    break;
-                case 'resume':
-                    options.resume = nextArg;
-                    i++;
-                    break;
-                case 'recordingmode':
-                    options.recordingMode = nextArg;
-                    i++;
-                    break;
-                case 'recordingbasedir':
-                    options.recordingBaseDir = nextArg;
-                    i++;
-                    break;
-                case 'runid':
-                    options.runId = nextArg;
-                    i++;
-                    break;
-                case 'nocache':
-                    options.noCache = true;
-                    break;
-                case 'debugrecording':
-                    options.debugRecording = true;
-                    break;
-                default:
-                    console.warn(`未知选项: ${arg}`);
-            }
-        } else if (!options.username) {
-            // 去掉可能的 @ 前缀
-            options.username = arg.replace(/^@/, '');
-        }
-    }
-
-    return options;
-}
 
 // ============================================================================
 // GraphQL queryId 发现脚本
@@ -611,37 +504,6 @@ function buildProfileDomScript() {
 // 辅助函数
 // ============================================================================
 
-function printUsage() {
-    console.error('错误: 请提供用户名');
-    console.log('\n使用方法:');
-    console.log('  node scripts/x-profile.js <username> [options]');
-    console.log('\n选项:');
-    console.log('  --max-pages <number>       最多翻页数（默认50，每页约20条）');
-    console.log('  --max-tweets <number>      最多抓取推文数（达到后停止）');
-    console.log('  --since <date>             起始日期（YYYY-MM-DD）');
-    console.log('  --until <date>             截止日期（YYYY-MM-DD）');
-    console.log('  --include-replies          包含回复（默认不包含）');
-    console.log('  --include-retweets         包含转推（默认不包含）');
-    console.log('  --min-likes <number>       最低点赞过滤（默认0）');
-    console.log('  --min-retweets <number>    最低转发过滤（默认0）');
-    console.log('  --pretty                   美化 JSON 输出');
-    console.log('  --browser-server <url>     浏览器服务器地址');
-    console.log('  --output <file>            指定输出文件路径');
-    console.log('  --close-tab                抓完后关闭 tab（默认保留）');
-    console.log('  --resume <dir>             从中断的抓取目录恢复继续');
-    console.log('  --recording-mode <mode>    off | history | standard | debug');
-    console.log('  --debug-recording          强制开启 debug recording');
-    console.log('  --no-cache                 禁用 recording cache');
-    console.log('  --recording-base-dir <dir> 自定义 recording 落盘目录');
-    console.log('  --run-id <id>             自定义本次运行 ID');
-    console.log('\n示例:');
-    console.log('  node scripts/x-profile.js elonmusk');
-    console.log('  node scripts/x-profile.js elonmusk --max-pages 10 --pretty');
-    console.log('  node scripts/x-profile.js elonmusk --since 2025-01-01 --max-tweets 500');
-    console.log('  node scripts/x-profile.js elonmusk --include-replies --include-retweets');
-    console.log('  node scripts/x-profile.js elonmusk --close-tab');
-    console.log('  node scripts/x-profile.js --resume work_dir/scrape/x_com_profile/elonmusk_2025-01-01T12-00-00');
-}
 
 /**
  * 解析推文的 created_at 时间字符串为 Date 对象
@@ -725,94 +587,6 @@ function filterTweets(tweets, options) {
 // 主流程
 // ============================================================================
 
-async function main() {
-    const options = parseArgs();
-
-    // 处理 --resume 模式
-    if (options.resume) {
-        return await resumeProfile(options);
-    }
-
-    if (!options.username) {
-        printUsage();
-        process.exit(1);
-    }
-
-    const username = options.username;
-    const profileUrl = `https://x.com/${username}`;
-
-    // 确定输出路径和目录
-    let outputPath = options.output;
-    let outputDir;
-    if (!outputPath) {
-        const safeUsername = username.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
-        const timestamp = generateTimestamp();
-        const dirName = `${safeUsername}_${timestamp}`;
-        outputDir = path.join(process.cwd(), 'work_dir', 'scrape', 'x_com_profile', dirName);
-        outputPath = path.join(outputDir, 'data.json');
-    } else {
-        if (!path.isAbsolute(outputPath)) {
-            outputPath = path.join(process.cwd(), 'work_dir', 'scrape', 'x_com_profile', outputPath);
-        }
-        outputDir = path.dirname(outputPath);
-    }
-
-    // 打印信息
-    console.log('='.repeat(60));
-    console.log('X.com 用户主页与时间线工具');
-    console.log('='.repeat(60));
-    console.log(`用户名: @${username}`);
-    console.log(`用户主页: ${profileUrl}`);
-    console.log(`最多页数: ${options.maxPages}`);
-    if (options.maxTweets > 0) console.log(`最多推文数: ${options.maxTweets}`);
-    if (options.since) console.log(`起始日期: ${options.since}`);
-    if (options.until) console.log(`截止日期: ${options.until}`);
-    console.log(`包含回复: ${options.includeReplies ? '是' : '否'}`);
-    console.log(`包含转推: ${options.includeRetweets ? '是' : '否'}`);
-    if (options.minLikes > 0) console.log(`最低点赞: ${options.minLikes}`);
-    if (options.minRetweets > 0) console.log(`最低转发: ${options.minRetweets}`);
-    console.log(`关闭 Tab: ${options.closeTab ? '是' : '否（保留复用）'}`);
-    console.log(`输出文件: ${outputPath}`);
-    console.log('='.repeat(60));
-
-    const runtimeConfig = resolveRuntimeConfig({
-        browserServer: options.browserServer,
-        recording: {
-            ...(options.recordingMode ? { mode: options.recordingMode } : {}),
-            ...(options.recordingBaseDir ? { baseDir: options.recordingBaseDir } : {}),
-        },
-    });
-    options.browserServer = runtimeConfig.serverUrl;
-
-    const browser = new BrowserAutomation(options.browserServer);
-
-    try {
-        const result = await getProfileTweets(browser, username, {
-            ...options,
-            logger: console,
-            _outputDir: outputDir,
-            recording: runtimeConfig.recording,
-        });
-
-        const output = options.pretty
-            ? JSON.stringify(result, null, 2)
-            : JSON.stringify(result);
-        await saveToFile(outputPath, output);
-        await cleanupTempFiles(outputDir);
-        printSummary(result.results, '抓取完成');
-        browser.disconnect();
-
-    } catch (error) {
-        console.error('\n✗ 抓取失败:');
-        console.error(error.message);
-        if (error.stack) {
-            console.error('\n堆栈跟踪:');
-            console.error(error.stack);
-        }
-        browser.disconnect();
-        process.exit(1);
-    }
-}
 
 // ============================================================================
 // 断点续传 state 构建
@@ -1104,8 +878,6 @@ async function resumeProfile(options) {
 }
 
 module.exports = {
-    main,
-    parseArgs,
     buildDiscoverUserQueryIdsScript,
     buildUserByScreenNameScript,
     buildUserTweetsScript,
@@ -1113,9 +885,3 @@ module.exports = {
     filterTweets
 };
 
-if (require.main === module) {
-    main().catch(error => {
-        console.error('未处理的错误:', error);
-        process.exit(1);
-    });
-}

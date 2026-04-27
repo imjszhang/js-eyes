@@ -118,237 +118,20 @@ const DEFAULT_USER_FEATURES = {
 const BEARER_TOKEN = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
 // ============================================================================
-// Tab 注册表 + 文件锁（跨进程并发安全）
+// 兼容清理：v3.0 之前残留的 tab 注册表 / 文件锁文件，运行时静默清理。
 // ============================================================================
 
-const { writeFileSync, unlinkSync, mkdirSync, readFileSync, openSync, closeSync } = require('fs');
+const { unlinkSync } = require('fs');
 
-/** 自增计数器，为每次 acquireXTab 调用自动分配唯一 taskId */
-let _taskCounter = 0;
+const _LEGACY_REGISTRY_DIR = path.join(process.cwd(), 'work_dir', 'cache');
+const _LEGACY_REGISTRY_FILE = path.join(_LEGACY_REGISTRY_DIR, 'tab_registry.json');
+const _LEGACY_REGISTRY_LOCK = path.join(_LEGACY_REGISTRY_DIR, 'tab_registry.lock');
 
-/** 僵尸占用超时阈值（毫秒）：超过此时间未释放的占用将被自动清理 */
-const TAB_OCCUPY_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
-
-/** 文件锁超时阈值（毫秒）：锁文件存在超过此时间视为僵尸锁 */
-const FILE_LOCK_TIMEOUT_MS = 30 * 1000; // 30 秒
-
-/** 文件锁重试间隔（毫秒） */
-const FILE_LOCK_RETRY_INTERVAL_MS = 50;
-
-/** 文件锁最大等待时间（毫秒） */
-const FILE_LOCK_MAX_WAIT_MS = 10 * 1000; // 10 秒
-
-/** 注册表文件路径 */
-const REGISTRY_DIR = path.join(process.cwd(), 'work_dir', 'cache');
-const REGISTRY_FILE = path.join(REGISTRY_DIR, 'tab_registry.json');
-const REGISTRY_LOCK = path.join(REGISTRY_DIR, 'tab_registry.lock');
-
-/** 当前进程的 PID，用于标识注册表条目的归属 */
-const CURRENT_PID = process.pid;
-
-/**
- * 确保注册表目录存在
- */
-function _ensureRegistryDir() {
-    if (!existsSync(REGISTRY_DIR)) {
-        mkdirSync(REGISTRY_DIR, { recursive: true });
-    }
-}
-
-/**
- * 获取文件锁（跨进程互斥）
- * 
- * 使用 fs.openSync + 'wx' 独占标志实现原子性创建。
- * 锁文件中写入 PID 和时间戳，支持僵尸锁检测。
- * 
- * @returns {Promise<void>}
- * @throws {Error} 超时未获取到锁
- */
-async function _acquireFileLock() {
-    _ensureRegistryDir();
-    const startTime = Date.now();
-    
-    while (true) {
-        try {
-            // 'wx' 标志：独占创建，文件已存在则抛 EEXIST
-            const fd = openSync(REGISTRY_LOCK, 'wx');
-            writeFileSync(fd, JSON.stringify({ pid: CURRENT_PID, time: Date.now() }));
-            closeSync(fd);
-            return; // 成功获取锁
-        } catch (err) {
-            if (err.code !== 'EEXIST') throw err;
-            
-            // 锁文件已存在 —— 检查是否为僵尸锁
-            try {
-                const lockData = JSON.parse(readFileSync(REGISTRY_LOCK, 'utf-8'));
-                const lockAge = Date.now() - lockData.time;
-                
-                if (lockAge > FILE_LOCK_TIMEOUT_MS) {
-                    // 僵尸锁：持有时间超过阈值，强制清除
-                    console.warn(`⚠ [TabRegistry] 清除僵尸锁（pid=${lockData.pid}, 已持有 ${Math.round(lockAge / 1000)}s）`);
-                    try { unlinkSync(REGISTRY_LOCK); } catch (e) { /* 忽略 */ }
-                    continue; // 重试获取
-                }
-            } catch (readErr) {
-                // 锁文件读取失败（可能正在被写入），等待后重试
-            }
-            
-            // 检查是否超时
-            if (Date.now() - startTime > FILE_LOCK_MAX_WAIT_MS) {
-                throw new Error(`[TabRegistry] 获取文件锁超时（等待 ${FILE_LOCK_MAX_WAIT_MS}ms）`);
-            }
-            
-            // 等待后重试
-            await new Promise(resolve => setTimeout(resolve, FILE_LOCK_RETRY_INTERVAL_MS));
-        }
-    }
-}
-
-/**
- * 释放文件锁
- */
-function _releaseFileLock() {
-    try { unlinkSync(REGISTRY_LOCK); } catch (e) { /* 忽略 */ }
-}
-
-/**
- * 带文件锁执行操作（跨进程互斥）
- * 
- * 同时包含进程内 Promise 链锁，确保同一进程内的并发调用也是串行的。
- * 
- * @param {Function} fn - 要在锁保护下执行的异步函数
- * @returns {Promise<*>} fn 的返回值
- */
-let _mutexChain = Promise.resolve();
-function withMutex(fn) {
-    const wrapped = async () => {
-        await _acquireFileLock();
-        try {
-            return await fn();
-        } finally {
-            _releaseFileLock();
-        }
-    };
-    const p = _mutexChain.then(wrapped, wrapped);
-    _mutexChain = p.catch(() => {});
-    return p;
-}
-
-/**
- * 从文件读取注册表
- * @returns {Object} key: tabId(string) → { taskId, url, acquiredAt, pid }
- */
-function _readRegistry() {
-    try {
-        if (!existsSync(REGISTRY_FILE)) return {};
-        const data = readFileSync(REGISTRY_FILE, 'utf-8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.warn(`⚠ [TabRegistry] 读取注册表失败，返回空表: ${err.message}`);
-        return {};
-    }
-}
-
-/**
- * 将注册表写入文件
- * @param {Object} registry - 注册表对象
- */
-function _writeRegistry(registry) {
-    _ensureRegistryDir();
-    writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf-8');
-}
-
-/**
- * 检查 tabId 是否在注册表中被占用
- * @param {Object} registry - 注册表对象
- * @param {number|string} tabId
- * @returns {boolean}
- */
-function _isOccupied(registry, tabId) {
-    return registry.hasOwnProperty(String(tabId));
-}
-
-/**
- * 向注册表中添加占用记录
- * @param {Object} registry - 注册表对象
- * @param {number} tabId
- * @param {Object} entry - { taskId, url, acquiredAt, pid }
- */
-function _setEntry(registry, tabId, entry) {
-    registry[String(tabId)] = entry;
-}
-
-/**
- * 从注册表中删除占用记录
- * @param {Object} registry - 注册表对象
- * @param {number|string} tabId
- * @returns {Object|undefined} 被删除的条目
- */
-function _deleteEntry(registry, tabId) {
-    const key = String(tabId);
-    const entry = registry[key];
-    delete registry[key];
-    return entry;
-}
-
-/**
- * 清理僵尸占用：自动释放超过 TAB_OCCUPY_TIMEOUT_MS 未释放的注册条目
- * 在锁保护下调用，防止脚本异常退出后 tab 永久锁死。
- * @param {Object} registry - 注册表对象（会被就地修改）
- */
-function _cleanupStaleEntries(registry) {
-    const now = Date.now();
-    for (const [tabId, entry] of Object.entries(registry)) {
-        if (now - entry.acquiredAt > TAB_OCCUPY_TIMEOUT_MS) {
-            console.warn(`⚠ Tab 注册表：清理僵尸占用 tab=${tabId}, task=${entry.taskId}, pid=${entry.pid}（已占用 ${Math.round((now - entry.acquiredAt) / 60000)} 分钟）`);
-            delete registry[tabId];
-        }
-    }
-}
-
-/**
- * 获取注册表状态摘要（调试用）
- * @param {Object} registry - 注册表对象
- * @returns {string}
- */
-function _registryStatus(registry) {
-    const keys = Object.keys(registry);
-    if (keys.length === 0) return '注册表为空';
-    const entries = [];
-    for (const [tabId, entry] of Object.entries(registry)) {
-        const age = Math.round((Date.now() - entry.acquiredAt) / 1000);
-        entries.push(`tab=${tabId}(task=${entry.taskId}, pid=${entry.pid}, ${age}s)`);
-    }
-    return `占用中: [${entries.join(', ')}]`;
-}
-
-// 进程退出时清理本进程的注册条目。
-// 用 Symbol.for 在 process 上做全局去重，确保 require.cache purge 后模块被重新 require
-// 也不会重复挂同一个 exit listener（否则 skill 热加载会累积 process listener）。
-const _X_EXIT_HOOK_KEY = Symbol.for('js-eyes.skills.x-ops.xUtils.exitHook.v1');
-if (!process[_X_EXIT_HOOK_KEY]) {
-    process[_X_EXIT_HOOK_KEY] = true;
-    process.on('exit', () => {
-    try {
-        if (!existsSync(REGISTRY_FILE)) return;
-        const registry = JSON.parse(readFileSync(REGISTRY_FILE, 'utf-8'));
-        let cleaned = 0;
-        for (const [tabId, entry] of Object.entries(registry)) {
-            if (entry.pid === CURRENT_PID) {
-                delete registry[tabId];
-                cleaned++;
-            }
-        }
-        if (cleaned > 0) {
-            console.log(`[TabRegistry] 进程 ${CURRENT_PID} 退出，清理 ${cleaned} 个残留占用`);
-            writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf-8');
-        }
-    } catch (e) {
-        // exit 回调中不宜抛错
-    }
-    // 如果本进程持有锁文件也一并清理
-    _releaseFileLock();
-    });
+const _X_LEGACY_CLEAN_KEY = Symbol.for('js-eyes.skills.x-ops.xUtils.legacyClean.v1');
+if (!process[_X_LEGACY_CLEAN_KEY]) {
+    process[_X_LEGACY_CLEAN_KEY] = true;
+    try { if (existsSync(_LEGACY_REGISTRY_LOCK)) unlinkSync(_LEGACY_REGISTRY_LOCK); } catch (_) {}
+    try { if (existsSync(_LEGACY_REGISTRY_FILE)) unlinkSync(_LEGACY_REGISTRY_FILE); } catch (_) {}
 }
 
 // ============================================================================
@@ -900,133 +683,52 @@ function printSummary(filteredTweets, title = '完成') {
 // ============================================================================
 
 /**
- * 获取或复用 x.com 域名下的浏览器标签页（并发安全）
- * 
- * 使用互斥锁 + 注册表确保多任务并发时不会争抢同一个 tab。
- * 
+ * 获取或复用 x.com 域名下的浏览器标签页（v3.0 简化版，无文件锁、无注册表）
+ *
  * 优先级：
- * 1. URL 与 targetUrl 完全匹配且未被占用 → 直接复用，无需导航
- * 2. URL 在 x.com 域名下但路径不同且未被占用 → 复用 tab，在同 tab 内导航（SPA 内跳转）
- * 3. 无可用 x.com tab → 新建 tab（冷启动）
- * 
+ *  1. URL 完全匹配（忽略尾部斜杠）→ 直接复用、不导航
+ *  2. 同域 x.com|twitter.com → 复用并导航到目标 URL
+ *  3. 否则新建标签
+ *
  * @param {Object} browser - BrowserAutomation 实例
- * @param {string} targetUrl - 目标 URL（如 https://x.com/home）
- * @param {Object} [options] - 可选配置
- * @param {string} [options.taskId] - 任务 ID（不传则自动生成）
- * @returns {Promise<{ tabId: number, isReused: boolean, navigated: boolean, taskId: string }>}
+ * @param {string} targetUrl - 目标 URL
+ * @returns {Promise<{ tabId: number, isReused: boolean, navigated: boolean }>}
  */
-async function acquireXTab(browser, targetUrl, options = {}) {
-    const taskId = options.taskId || `task_${++_taskCounter}`;
-    
-    return withMutex(async () => {
-        try {
-            // 从文件读取注册表并清理僵尸占用
-            const registry = _readRegistry();
-            _cleanupStaleEntries(registry);
-            
-            const tabsResult = await browser.getTabs();
-            
-            if (tabsResult && tabsResult.tabs) {
-                let exactMatch = null;
-                let domainMatch = null;
-                const normalizeUrl = u => u.replace(/\/+$/, '');
-                
-                for (const tab of tabsResult.tabs) {
-                    const tabUrl = tab.url || '';
-                    
-                    // 跳过已被其他任务占用的 tab
-                    if (_isOccupied(registry, tab.id)) {
-                        continue;
-                    }
-                    
-                    // 优先级 1：URL 完全匹配（忽略尾部斜杠差异）
-                    if (normalizeUrl(tabUrl) === normalizeUrl(targetUrl)) {
-                        exactMatch = tab;
-                        break;
-                    }
-                    
-                    // 优先级 2：同域名匹配（x.com 或 twitter.com）
-                    if (!domainMatch && (tabUrl.includes('x.com/') || tabUrl.includes('twitter.com/'))) {
-                        domainMatch = tab;
-                    }
-                }
-                
-                if (exactMatch) {
-                    // 注册占用并写入文件
-                    _setEntry(registry, exactMatch.id, { taskId, url: targetUrl, acquiredAt: Date.now(), pid: CURRENT_PID });
-                    _writeRegistry(registry);
-                    console.log(`✓ [${taskId}] 复用已有标签页 ${exactMatch.id}（URL 完全匹配）| ${_registryStatus(registry)}`);
-                    return { tabId: exactMatch.id, isReused: true, navigated: false, taskId };
-                }
-                
-                if (domainMatch) {
-                    // 注册占用并写入文件
-                    _setEntry(registry, domainMatch.id, { taskId, url: targetUrl, acquiredAt: Date.now(), pid: CURRENT_PID });
-                    _writeRegistry(registry);
-                    console.log(`✓ [${taskId}] 复用同域标签页 ${domainMatch.id}，从 ${domainMatch.url.substring(0, 60)} 导航到目标页 | ${_registryStatus(registry)}`);
-                    await browser.openUrl(targetUrl, domainMatch.id);
-                    return { tabId: domainMatch.id, isReused: true, navigated: true, taskId };
-                }
+async function acquireXTab(browser, targetUrl) {
+    const tabsResult = await browser.getTabs();
+    if (tabsResult && tabsResult.tabs) {
+        const normalize = u => (u || '').replace(/\/+$/, '');
+        let exactMatch = null;
+        let domainMatch = null;
+        for (const tab of tabsResult.tabs) {
+            const tabUrl = tab.url || '';
+            if (normalize(tabUrl) === normalize(targetUrl)) { exactMatch = tab; break; }
+            if (!domainMatch && (/(^|\/\/)([\w-]+\.)?(x|twitter)\.com\//.test(tabUrl))) {
+                domainMatch = tab;
             }
-            
-            // 优先级 3：无匹配或无可用（未占用）tab，新建标签页
-            console.log(`[${taskId}] 创建新标签页...`);
-            const tabId = await browser.openUrl(targetUrl);
-            // 注册占用并写入文件
-            _setEntry(registry, tabId, { taskId, url: targetUrl, acquiredAt: Date.now(), pid: CURRENT_PID });
-            _writeRegistry(registry);
-            console.log(`✓ [${taskId}] 新建标签页 ${tabId} | ${_registryStatus(registry)}`);
-            return { tabId, isReused: false, navigated: false, taskId };
-        } catch (error) {
-            console.error(`[${taskId}] acquireXTab 失败: ${error.message}`);
-            throw error;
         }
-    });
+        if (exactMatch) {
+            return { tabId: exactMatch.id, isReused: true, navigated: false };
+        }
+        if (domainMatch) {
+            await browser.openUrl(targetUrl, domainMatch.id);
+            return { tabId: domainMatch.id, isReused: true, navigated: true };
+        }
+    }
+    const tabId = await browser.openUrl(targetUrl);
+    return { tabId, isReused: false, navigated: false };
 }
 
 /**
- * 释放浏览器标签页
- * 
- * 从注册表中移除占用记录，使 tab 可被其他任务复用。
- * 
+ * 释放浏览器标签页（v3.0 简化版，无注册表）
+ *
  * @param {Object} browser - BrowserAutomation 实例
  * @param {number} tabId - 标签页 ID
- * @param {boolean} [keepAlive=true] - 是否保留 tab（仅断开连接）
+ * @param {boolean} [keepAlive=true] - 是否保留 tab
  */
 async function releaseXTab(browser, tabId, keepAlive = true) {
-    // 从文件注册表中释放占用（带文件锁保护）
-    let taskLabel = 'unknown';
-    try {
-        await _acquireFileLock();
-        try {
-            const registry = _readRegistry();
-            const entry = _deleteEntry(registry, tabId);
-            taskLabel = entry ? entry.taskId : 'unknown';
-            _writeRegistry(registry);
-        } finally {
-            _releaseFileLock();
-        }
-    } catch (lockErr) {
-        console.warn(`⚠ [TabRegistry] release 时获取锁失败，尝试直接清理: ${lockErr.message}`);
-        // 降级：尝试不加锁直接清理（总比不清理好）
-        try {
-            const registry = _readRegistry();
-            const entry = _deleteEntry(registry, tabId);
-            taskLabel = entry ? entry.taskId : 'unknown';
-            _writeRegistry(registry);
-        } catch (e) { /* 忽略 */ }
-    }
-    
-    try {
-        if (keepAlive) {
-            console.log(`✓ [${taskLabel}] 标签页 ${tabId} 保留供下次复用`);
-        } else {
-            await browser.closeTab(tabId);
-            console.log(`✓ [${taskLabel}] 已关闭标签页 ${tabId}`);
-        }
-    } catch (error) {
-        console.warn(`⚠ [${taskLabel}] 释放标签页失败: ${error.message}`);
-    }
+    if (keepAlive) return;
+    try { await browser.closeTab(tabId); } catch (_) {}
 }
 
 // ============================================================================
