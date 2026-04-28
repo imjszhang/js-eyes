@@ -67,7 +67,7 @@
 
 - 主插件发现与注册：[`openclaw-plugin/index.mjs`](../../../openclaw-plugin/index.mjs)
 - 契约加载与完整性校验：[`packages/protocol/skills.js`](../../../packages/protocol/skills.js)
-- 现有契约实现参考：[`skills/js-x-ops-skill/skill.contract.js`](../../../skills/js-x-ops-skill/skill.contract.js)、[`skills/js-browser-ops-skill/skill.contract.js`](../../../skills/js-browser-ops-skill/skill.contract.js)
+- 现有契约实现参考：[`skills/js-x-ops-skill/skill.contract.js`](../../../skills/js-x-ops-skill/skill.contract.js)、[`skills/js-browser-ops-skill/skill.contract.js`](../../../skills/js-browser-ops-skill/skill.contract.js)、[`skills/js-github-ops-skill/skill.contract.js`](../../../skills/js-github-ops-skill/skill.contract.js)
 - CLI：[`apps/cli/src/cli.js`](../../../apps/cli/src/cli.js)（`js-eyes skills ...` 子命令）
 
 ---

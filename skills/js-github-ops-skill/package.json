@@ -1,0 +1,22 @@
+{
+  "name": "js-github-ops-skill",
+  "version": "0.1.0",
+  "description": "GitHub 仓库 / Issues 只读 + 浏览器导航：PAGE_PROFILES + Bridges + Session；READ 走 api.github.com（公开）；INTERACTIVE 仅 location.assign；不做 DESTRUCTIVE",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "doctor": "node index.js doctor"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "jsEyes": {
+    "minParentVersion": "2.6.1"
+  },
+  "dependencies": {
+    "@js-eyes/config": "^2.0.0",
+    "@js-eyes/skill-recording": "^2.0.0",
+    "ws": "^8.18.0"
+  }
+}
