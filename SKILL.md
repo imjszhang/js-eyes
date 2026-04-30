@@ -31,7 +31,7 @@ A successful setup has all of the following:
 4. `tools.alsoAllow` (preferred) or `tools.allow` includes `js-eyes`, so the plugin's optional tools are actually exposed to the model.
 5. The user can run `openclaw js-eyes status`.
 6. The browser extension is connected to `http://<serverHost>:<serverPort>`, the popup **Server Token** field is populated (2.2.0+), and `js_eyes_get_tabs` returns real tabs.
-7. The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add extension skills dynamically, and the main plugin auto-loads installed skills from `{baseDir}/skills` or the configured `skillsDir` (primary), plus any read-only directories listed in `extraSkillDirs` (extras).
+7. The bundled first-party extension skills under `{baseDir}/skills` are enabled by default in the JS Eyes host config, and the main plugin auto-loads enabled skills from `{baseDir}/skills` or the configured `skillsDir` (primary), plus any read-only directories listed in `extraSkillDirs` (extras). The user can later run `js_eyes_discover_skills` / `js_eyes_install_skill` to add more extension skills dynamically.
 8. `js-eyes doctor` reports an acceptable security posture for this skill's deployment (token present, `allowAnonymous=false`, **`allowRawEval=true` in `~/.js-eyes/config/config.json`**, host bound to loopback, skill integrity OK). `doctor` will still label raw eval as insecure — that is expected when following this skill.
 
 ## Deployment Modes
@@ -112,7 +112,7 @@ When the user asks to install, configure, or repair JS Eyes, follow this exact o
      - `serverHost: "localhost"`
      - `serverPort: 18080`
      - `autoStartServer: true`
-   - merge or create the **JS Eyes host config** at `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) with `security.allowRawEval: true` so deployment matches this skill (see `Host security config` below). Restart the js-eyes server after edits (or restart OpenClaw if it auto-starts the server).
+   - merge or create the **JS Eyes host config** at `~/.js-eyes/config/config.json` (Windows: `%USERPROFILE%/.js-eyes/config/config.json`) with `security.allowRawEval: true` and default-enable the bundled first-party skills under `skillsEnabled` so deployment matches this skill (see `Host security config` below). Restart the js-eyes server after edits (or restart OpenClaw if it auto-starts the server).
 6. Restart or refresh OpenClaw so the plugin is reloaded.
 7. Verify with `openclaw js-eyes status`.
 8. Initialize the local server token if this is a fresh 2.2.0+ install: `js-eyes server token init`. Then either (preferred, 2.4.0+) run the local launcher `bin/js-eyes-native-host-install.sh --browser all` (macOS/Linux) / `./bin/js-eyes-native-host-install.ps1 -Browser all` (Windows) — or the equivalent `node apps/cli/bin/js-eyes.js native-host install --browser all` — so the extension auto-syncs the token **without hitting the npm registry**. `npx js-eyes native-host install` remains as a fallback when the operator already has `js-eyes` globally installed. Otherwise run `js-eyes server token show --reveal` and paste the value into the extension popup **Server Token** field under **Advanced**.
@@ -170,13 +170,25 @@ This file is **not** `openclaw.json`. For deployments following this skill, ensu
 
 ```json
 {
+  "skillsEnabled": {
+    "js-bilibili-ops-skill": true,
+    "js-browser-ops-skill": true,
+    "js-github-ops-skill": true,
+    "js-jike-ops-skill": true,
+    "js-reddit-ops-skill": true,
+    "js-wechat-ops-skill": true,
+    "js-x-ops-skill": true,
+    "js-xiaohongshu-ops-skill": true,
+    "js-youtube-ops-skill": true,
+    "js-zhihu-ops-skill": true
+  },
   "security": {
     "allowRawEval": true
   }
 }
 ```
 
-Merge with existing keys (for example `skillsDir`, `skillsEnabled`). Operators who **do not** need raw `execute_script` may set `allowRawEval` to `false` instead; optional plugin tools then still work, but raw JS payloads are rejected until enabled.
+Merge with existing keys (for example `skillsDir`, `skillsEnabled`). The bundled first-party skills above are part of the default install and should be enabled unless the operator explicitly opts out of a platform. Operators who **do not** need raw `execute_script` may set `allowRawEval` to `false` instead; optional plugin tools then still work, but raw JS payloads are rejected until enabled.
 
 Important details:
 
@@ -184,6 +196,7 @@ Important details:
 - On Windows JSON paths, prefer forward slashes such as `C:/Users/name/skills/js-eyes/openclaw-plugin`.
 - If `paths` or `entries` already exist, merge rather than overwrite.
 - `js-eyes` registers its tools as optional plugin tools, so a complete deployment also needs `tools.alsoAllow: ["js-eyes"]` or an equivalent `tools.allow` entry.
+- `skillsEnabled` lives in the JS Eyes host config, not in `openclaw.json`. Enabling a bundled skill registers its extension tools through the main `js-eyes` plugin; disabling it leaves the files on disk but skips loading it.
 - To mount extension skills from outside `{baseDir}/skills` (e.g. a user's private `~/my-skills/js-foo-ops-skill`), either add absolute paths to `plugins.entries["js-eyes"].config.extraSkillDirs: [...]` directly, or let the CLI handle it: `js-eyes skills link <abs-path>` does the dedup append and also triggers an in-memory reload on the running plugin. Entries are read-only to js-eyes (no `install` / `approve` / `verify` / integrity check).
 - Two new optional plugin config booleans control the hot-reload watchers (both default `true`): `watchConfig` (listen on `~/.js-eyes/config/config.json`) and `devWatchSkills` (listen on discovered skill directories). Turn them off only if fs-watch load is a concern or in sandboxed environments.
 
@@ -267,7 +280,20 @@ Do not invent a different layout. Extension skills are discovered only if they s
 
 ## Dynamic Extension Skills
 
-The main `js-eyes` bundle is intentionally minimal. It does not preinstall child skills.
+The main `js-eyes` bundle ships first-party extension skills under `{baseDir}/skills`. A complete default install enables those bundled skills through `~/.js-eyes/config/config.json` → `skillsEnabled`, so they load through the main plugin without separate OpenClaw child-plugin entries.
+
+Bundled first-party skills:
+
+- `js-bilibili-ops-skill`
+- `js-browser-ops-skill`
+- `js-github-ops-skill`
+- `js-jike-ops-skill`
+- `js-reddit-ops-skill`
+- `js-wechat-ops-skill`
+- `js-x-ops-skill`
+- `js-xiaohongshu-ops-skill`
+- `js-youtube-ops-skill`
+- `js-zhihu-ops-skill`
 
 There are two complementary discovery surfaces — pick the right one when the user asks "what skills do I have?":
 
@@ -276,7 +302,8 @@ There are two complementary discovery surfaces — pick the right one when the u
 
 After the base plugin works:
 
-- Use `js_eyes_discover_skills` to list available **first-party** extension skills from the registry.
+- Bundled first-party skills should already be enabled by the default host config above; use `js-eyes skills list` or `js_eyes_reload_skills` to verify they are loaded.
+- Use `js_eyes_discover_skills` to list registry skills when the user wants to install a skill that is not already present in `{baseDir}/skills`, or to compare installed versions with the registry.
 - Use `js_eyes_install_skill` to stage a **plan** — 2.2.0+ downloads the bundle, verifies its `sha256` against `skills.json`, and writes `runtime/pending-skills/<id>.json` without installing.
 - Finalize the plan with `js-eyes skills approve <id>`, then enable it with `js-eyes skills enable <id>`.
 - Use `js-eyes skills verify` (or `js-eyes doctor`) to confirm `.integrity.json` still matches the on-disk skill files.

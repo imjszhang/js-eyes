@@ -51,6 +51,17 @@ function makeLogger(candidate) {
   };
 }
 
+function isBundledPrimarySkill(skill) {
+  if (!skill || skill.source !== 'primary') return false;
+  const sourcePath = skill.sourcePath || '';
+  if (!sourcePath || path.basename(sourcePath) !== 'skills') return false;
+  const bundleRoot = path.dirname(sourcePath);
+  return (
+    fs.existsSync(path.join(bundleRoot, 'openclaw-plugin'))
+    && fs.existsSync(path.join(bundleRoot, 'skills'))
+  );
+}
+
 /**
  * 计算 skillDir 内"驱动热更"的关键文件的指纹（mtime 组合）。
  * 任一文件缺失按 0 处理；出错时退化为空字符串（此时 reload 语义保守：会认为"没变"）。
@@ -475,9 +486,15 @@ function createSkillRegistry(options = {}) {
       return { ok: false };
     }
     if (!integrity.hasIntegrity) {
-      logger.warn(
-        `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy install); load allowed but consider reinstalling`,
-      );
+      if (isBundledPrimarySkill(skill)) {
+        logger.info(
+          `[js-eyes] Skill "${skill.id}" has no .integrity.json because it is loaded from the bundled/source primary skills directory (${skill.sourcePath}); load allowed. Registry-installed primary skills should carry .integrity.json for tamper checks.`,
+        );
+      } else {
+        logger.warn(
+          `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy primary install); load allowed, but reinstall via \`js-eyes skills install ${skill.id}\` to restore tamper-check metadata`,
+        );
+      }
     }
     return { ok: true };
   }
