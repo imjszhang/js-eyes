@@ -94,7 +94,8 @@ function resolvePluginEntry(definition) {
 
 // 模块级单例：防止 OpenClaw host 直接重跑 register() 时 chokidar watcher /
 // skillRegistry / server 被重复创建（老的没关 → listener + fd 持续累积）。
-// 每次 register() 入口会先 await 旧 currentRegistration.teardown()，再装新的。
+// OpenClaw 当前要求 register() 同步返回；如存在上一轮注册，先启动异步清理，
+// 需要绑定端口的 service.start() 再等待它完成，避免 register() 返回 Promise。
 let currentRegistration = null;
 
 // CLI 子进程退出辅助：先 teardown chokidar / skillRegistry / WS bot 让 event loop
@@ -123,17 +124,23 @@ function installCliExitHandlers() {
   });
 }
 
-async function register(api) {
+function register(api) {
+  let previousTeardown = null;
   if (currentRegistration) {
+    const previousRegistration = currentRegistration;
+    currentRegistration = null;
     try {
       api.logger.warn(
         "[js-eyes] register() called while a previous registration is still active; tearing it down first",
       );
-      await currentRegistration.teardown({ logger: api.logger });
+      previousTeardown = Promise.resolve(
+        previousRegistration.teardown({ logger: api.logger }),
+      ).catch((error) => {
+        api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
+      });
     } catch (error) {
       api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
     }
-    currentRegistration = null;
   }
 
   const pluginCfg = api.pluginConfig ?? {};
@@ -322,6 +329,10 @@ async function register(api) {
         return;
       }
       try {
+        if (previousTeardown) {
+          await previousTeardown;
+          previousTeardown = null;
+        }
         const tokenInfo = security.allowAnonymous ? null : ensureToken();
         server = createServer({
           port: serverPort,
@@ -330,6 +341,7 @@ async function register(api) {
           security,
           config: hostConfig,
           requestTimeout,
+          pendingEgressDir: runtimePaths.pendingEgressDir,
           auditLogFile: runtimePaths.auditLogFile,
           logger: {
             info: (msg) => ctx.logger.info(msg),
