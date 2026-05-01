@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-04-26T14:53:49.822Z",
+  "generated": "2026-05-01T19:32:28.044Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
@@ -19,8 +19,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
-      "sha256": "6b9298b26fa371ae7eb3f3466ae0e1227ebcd44170da3e2f22838e41ef863757",
-      "size": 13606,
+      "sha256": "1ee4daded12543e5f0ad5ebbf16131f9488343a36debf94ab25f3832a46a26d8",
+      "size": 13626,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "bilibili_get_video",
@@ -37,7 +37,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     },
     {
@@ -52,8 +52,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "sha256": "e2761f65af19d97d008bfa23636e747ba55be4bcfcae98a182aceb1a5b410ea8",
-      "size": 19613,
+      "sha256": "067c9dd8a81ff300a90ab817d5a8d5552b260c022c05134e37a5e5547d9c6a2c",
+      "size": 19634,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -75,8 +75,63 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
+    },
+    {
+      "id": "js-github-ops-skill",
+      "name": "JS GitHub Ops Skill",
+      "description": "GitHub 仓库与 Issues 只读 + 浏览器导航 skill（REST + PAGE_PROFILES + bridges）。",
+      "version": "0.1.0",
+      "emoji": "⚙",
+      "requires": {
+        "skills": [
+          "js-eyes"
+        ],
+        "bins": [
+          "node"
+        ]
+      },
+      "downloadUrl": "https://js-eyes.com/skills/js-github-ops-skill/js-github-ops-skill-skill.zip",
+      "sha256": "dfde80f16e91fc02e7088b286ebf0bee4a0cdd331ceb24455d144573399d2f86",
+      "size": 34253,
+      "homepage": "https://github.com/imjszhang/js-eyes",
+      "tools": [
+        "github_session_state",
+        "github_get_repo",
+        "github_list_issues",
+        "github_get_issue",
+        "github_navigate_repo",
+        "github_navigate_issues",
+        "github_navigate_issue"
+      ],
+      "commands": [
+        "doctor",
+        "probe",
+        "state",
+        "session-state",
+        "get-repo",
+        "list-issues",
+        "get-issue",
+        "navigate-repo",
+        "navigate-issues",
+        "navigate-issue"
+      ],
+      "runtime": {
+        "requiresServer": true,
+        "requiresBrowserExtension": true,
+        "platforms": [
+          "github.com"
+        ],
+        "pageProfiles": [
+          "repo",
+          "issues",
+          "issue"
+        ]
+      },
+      "minParentVersion": "2.6.1",
+      "releasedAt": "2026-04-29T01:04:22+08:00",
+      "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-github-ops-skill/CHANGELOG.md"
     },
     {
       "id": "js-jike-ops-skill",
@@ -90,8 +145,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
-      "sha256": "22fd960dfdf108c31a565d71e8f1dc1b4ad37f5fe36a2fea8741c5394699d769",
-      "size": 15367,
+      "sha256": "ce8af8e1ae368b50f872cbc228c4fb121f123b9b3cdbcb589a4a538641b7913f",
+      "size": 15389,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
@@ -107,14 +162,14 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-reddit-ops-skill",
       "name": "JS Reddit Ops Skill",
       "description": "Reddit 内容只读 + 浏览器导航 skill：帖子详情 / subreddit 列表 / 搜索 / 用户主页 / 收件箱 / 主 feed，全部走 reddit 公开 JSON 端点，浏览器侧仅 location.assign 改 URL。",
-      "version": "3.4.1",
+      "version": "3.4.2",
       "emoji": "📰",
       "requires": {
         "skills": [
@@ -125,8 +180,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "sha256": "1b8d8acab7be159f20eb2b590e8b96aced0789734ba3cf462f868a390a9872be",
-      "size": 83427,
+      "sha256": "2d29866182588f00cbf64659726a2f3cd1b1696e79ecfccbea3ef7b16d381305",
+      "size": 94088,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post",
@@ -181,7 +236,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-26T18:23:46+08:00",
+      "releasedAt": "2026-04-27T11:05:00+08:00",
       "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-reddit-ops-skill/CHANGELOG.md"
     },
     {
@@ -196,8 +251,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
-      "sha256": "1319325a52fc4127cab756bf62f2046f373494e112d474cbfef12474b8f5cabe",
-      "size": 15612,
+      "sha256": "b0ecb8482c0058aa2598d19b29acb63be607a8fd4c61c23a877a10feed9e8df0",
+      "size": 15635,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "wechat_get_article"
@@ -213,46 +268,74 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-x-ops-skill",
       "name": "JS X Ops Skill",
-      "description": "X.com (Twitter) content operations skill — search content, browse timelines and home feed, read post details, and handle posting workflows via browser automation.",
-      "version": "2.0.1",
+      "description": "X.com (Twitter) 内容只读 + 浏览器导航 + 账号监控 skill：搜索 / 用户主页 / 推文详情 / 首页 Feed 走 X.com 内部 GraphQL 同源端点（DOM 兜底），浏览器侧仅 location.assign 改 URL；内置 monitor 子系统做定时监控 + webhook 通知；写操作（reply/post/quote/thread）保持 v2.0.1 透传，v3.1 将拆到专用工具。",
+      "version": "3.0.6",
       "emoji": "🔍",
       "requires": {
+        "skills": [
+          "js-eyes"
+        ],
         "bins": [
           "node"
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
-      "sha256": "c420290d186daeb2e756b53bc3a96a57a04a78dfe02837b7b899e56e40e2350f",
-      "size": 91740,
+      "sha256": "7092464bbb68cddb72310d3b2856987ab16282bafc86aeea6b8de37b1121357e",
+      "size": 213750,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
         "x_get_profile",
         "x_get_post",
-        "x_get_home_feed"
+        "x_get_home_feed",
+        "x_session_state",
+        "x_navigate_search",
+        "x_navigate_profile",
+        "x_navigate_post",
+        "x_navigate_home",
+        "x_monitor_list_accounts",
+        "x_monitor_get_status",
+        "x_monitor_add_account",
+        "x_monitor_remove_account",
+        "x_monitor_test_account"
       ],
       "commands": [
         "search",
         "profile",
         "post",
-        "home"
+        "home",
+        "session-state",
+        "doctor",
+        "probe",
+        "state",
+        "navigate-search",
+        "navigate-profile",
+        "navigate-post",
+        "navigate-home"
       ],
       "runtime": {
         "requiresServer": true,
         "requiresBrowserExtension": true,
         "requiresLogin": true,
         "platforms": [
-          "x.com"
+          "x.com",
+          "twitter.com"
+        ],
+        "pageProfiles": [
+          "search",
+          "profile",
+          "post",
+          "home"
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-05-02T02:31:18+08:00",
       "changelogUrl": null
     },
     {
@@ -267,8 +350,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "sha256": "b903b2470e43cdc7585022fb6a256b23cc041f3f7d6fd0d2b972f2fd96c9b839",
-      "size": 16879,
+      "sha256": "ee72b3ae6e47027365c099cb7aa45f779f385712ec47bcc7b8ca936347fcb7ac",
+      "size": 16901,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "xhs_get_note"
@@ -284,7 +367,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     },
     {
@@ -299,8 +382,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
-      "sha256": "9fd486e80100f7f7d2518b86b141b53020acbd074073f0d08046f5ba7081a25f",
-      "size": 13829,
+      "sha256": "de7ffaef5db06e2f8575483aecd3641bbc70fddb13bb8c1a4ceb3cac76956093",
+      "size": 13849,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "youtube_get_video",
@@ -317,7 +400,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-19T03:58:35+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     },
     {
@@ -332,8 +415,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
-      "sha256": "3e0659fbed3e3794d8f8f20954707c0e3f183c5859db24cc627a05ae5d21f674",
-      "size": 16321,
+      "sha256": "f612ed46aa9a74fc26aeeb078a5ee5b98be1fdbe5dd0e0ec7c5fa2cf95605f2b",
+      "size": 16345,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "zhihu_get_answer",
@@ -351,7 +434,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-24T00:35:08+08:00",
+      "releasedAt": "2026-04-26T23:09:48+08:00",
       "changelogUrl": null
     }
   ]
