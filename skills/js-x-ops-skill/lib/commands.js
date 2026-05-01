@@ -43,6 +43,15 @@ const COMMANDS = {
     help: '[内部] performance.getEntriesByType("resource") 中匹配 i/api/graphql 的请求；--filter <regex>',
   },
 
+  // monitor 有独立 sub-arg parser（lib/monitor/dispatcher.js），在 cli/index.js 早于 parseArgv 分派
+  monitor: {
+    kind: 'special',
+    argSpec: [],
+    pages: [],
+    defaultPage: null,
+    help: 'X.com 账号监控：init/add/remove/list/status/test/check（详细 subcommand: `monitor --help`）',
+  },
+
   // 写操作 post 入口（v2 行为，spawn scripts/x-post.js）
   // 当 positional[0] 是 URL/ID 且无写参数时，直接走 READ kind=tool 路径（见下面 post）。
   // 当带 --reply/--post/--quote/--thread/--media 等写参数时，cli/index.js 透传给 scripts/x-post.js。
@@ -135,6 +144,8 @@ const COMMANDS = {
     api: 'getPost',
     pages: ['post'],
     defaultPage: 'post',
+    // argSpec 只强约束 index 0；CLI 层额外接受 1..N 个 positional 转交给
+    // lib/api.js::getPost(browser, tweetInputs, options)（它本就支持数组批量）。
     argSpec: [{ name: 'tweetUrl', required: true }],
     toArgs: (opts, positional) => [{
       url: positional[0],
@@ -142,7 +153,7 @@ const COMMANDS = {
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
     }],
     targetUrl: (opts, positional) => targets.postUrl({ url: positional[0] }),
-    help: '推文详情：post <tweetUrl|tweetId> [--with-thread] [--with-replies N]（写操作 --reply/--post/--quote/--thread 走 v2 路径）',
+    help: '推文详情：post <tweetUrl|tweetId> [<tweetUrl|tweetId> ...] [--with-thread] [--with-replies N]（多个 id 批量，单条走 bridge；写操作 --reply/--post/--quote/--thread 走 v2 路径）',
   },
   home: {
     kind: 'tool',

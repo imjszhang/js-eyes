@@ -23,6 +23,8 @@ const { PAGE_PROFILES, DEFAULT_PAGE } = require('../lib/config');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { runTool } = require('../lib/runTool');
+const { runMonitor } = require('../lib/monitor/dispatcher');
+const apiLib = require('../lib/api');
 
 // ---------------------------------------------------------------------------
 // 公共 helpers
@@ -173,6 +175,43 @@ async function runNavigateCommand(commandName, def, opts, positional) {
     return postState.ready ? 0 : 1;
   } finally {
     await session.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// post 多 positional 批量路径：直接走 lib/api.js::getPost（它已原生支持
+// tweetInputs 数组，内部 _postWithBridgeOrFallback 会对每个 id 分别调
+// bridge.getPost 并聚合为统一 response）。保持和单 URL 的 runToolCommand
+// 路径互补：单 URL 仍走 runTool（history / debug bundle 与之前完全一致）。
+// ---------------------------------------------------------------------------
+
+async function runGetPostBatchCommand(opts, positional) {
+  const runtimeConfig = resolveRuntimeConfig({
+    browserServer: opts.wsEndpoint || process.env.JS_EYES_WS_URL,
+    recording: {
+      ...(opts.recordingMode ? { mode: opts.recordingMode } : {}),
+      ...(opts.recordingBaseDir ? { baseDir: opts.recordingBaseDir } : {}),
+    },
+  });
+  const browser = new BrowserAutomation(runtimeConfig.serverUrl, opts.verbose ? {} : {
+    logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
+  });
+  try {
+    const response = await apiLib.getPost(browser, positional.slice(), {
+      withThread: !!opts.withThread,
+      withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
+      recording: runtimeConfig.recording,
+      recordingMode: opts.recordingMode,
+      debugRecording: opts.debugRecording,
+      runId: opts.runId,
+      wsEndpoint: runtimeConfig.serverUrl,
+      verbose: opts.verbose,
+      tab: opts.tab,
+    });
+    printJson(response, opts);
+    return response && response.ok === false ? 1 : 0;
+  } finally {
+    try { browser.disconnect(); } catch (_) {}
   }
 }
 
@@ -369,6 +408,12 @@ async function main(argv) {
     return await runWriteCommand(argv);
   }
 
+  // monitor 命令有独立 sub-arg parser（--channels / --dry-notify / --interval 等），
+  // 早于通用 parseArgv 分派，避免那边对未知选项抛错。
+  if (command0 === 'monitor') {
+    return await runMonitor(argv.slice(1));
+  }
+
   let parsed;
   try {
     parsed = parseArgv(argv);
@@ -392,6 +437,11 @@ async function main(argv) {
   if (command === 'doctor') return runDoctor(opts);
   if (command === 'dom-dump') return runDomDump(opts);
   if (command === 'xhr-log') return runXhrLog(opts);
+  // post 命令 >=2 个 positional 时走 lib/api.js::getPost 批量路径；
+  // 1 个 positional 仍走 runTool（bridge 直调，行为与之前完全一致）。
+  if (command === 'post' && positional.length >= 2) {
+    return runGetPostBatchCommand(opts, positional);
+  }
   if (def.kind === 'call') return runCallCommand(command, def, opts, positional);
   if (def.kind === 'tool') return runToolCommand(command, def, opts, positional);
   if (def.kind === 'navigate') return runNavigateCommand(command, def, opts, positional);
@@ -413,6 +463,7 @@ module.exports = {
   runToolCommand,
   runNavigateCommand,
   runWriteCommand,
+  runGetPostBatchCommand,
   runDoctor,
   runDomDump,
   runXhrLog,

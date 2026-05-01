@@ -24,10 +24,15 @@ const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
 const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require('./lib/api');
 const { runTool } = require('./lib/runTool');
+const { runMonitor } = require('./lib/runMonitor');
 const { Session } = require('./lib/session');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 const { PAGE_PROFILES } = require('./lib/config');
 const targets = require('./lib/toolTargets');
+const monitorConfig = require('./lib/monitor/config');
+const monitorState = require('./lib/monitor/state');
+const monitorPaths = require('./lib/monitor/paths');
+const { fetchAccount } = require('./lib/monitor/fetchAccount');
 
 const CLI_COMMANDS = [
   { name: 'search', description: '搜索 X 平台内容（READ）' },
@@ -129,6 +134,28 @@ function makeBridgeReadExecutor({ pageKey, method, toolName, buildTargetUrl }) {
         reuseAnyXTab: true,
         createUrl: targetUrl || 'https://x.com/',
       },
+    });
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 工厂 3a：Monitor 工具（对 AI 只暴露 5 个受控操作，不会对外发通知）
+//   - 读配置 / 读状态：list_accounts / get_status
+//   - 写本地 config：add_account / remove_account（显式在 description 注明）
+//   - 读 X：test_account（调 fetchAccount，不写 state、不发通知）
+//   全部走 lib/runMonitor.js，history + debug bundle。
+// ---------------------------------------------------------------------------
+
+function makeMonitorToolExecutor({ toolName, handler }) {
+  return async function execute(runtime, params, context = {}) {
+    return runMonitor({
+      toolName,
+      input: params || {},
+      options: {
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
+      },
+      handler: async (ctx) => handler({ runtime, params: params || {}, context, ...ctx }),
     });
   };
 }
@@ -370,7 +397,7 @@ const TOOL_DEFINITIONS = [
   {
     name: 'x_session_state',
     label: 'X Ops: Session State',
-    description: '读取当前浏览器中 X.com 的登录态（home-bridge.sessionState）；未登录回 {loggedIn:false}。',
+    description: '读取当前浏览器中 X.com 的登录态 + whoami（home-bridge.sessionState）；已登录返回 {loggedIn, username, screenName, userId?, displayName?, name(=screen_name)}；未登录回 {loggedIn:false}。',
     parameters: { type: 'object', properties: {}, required: [] },
     optional: true,
     interactive: false,
@@ -452,7 +479,7 @@ const TOOL_DEFINITIONS = [
     parameters: {
       type: 'object',
       properties: {
-        feed: { type: 'string', enum: ['foryou', 'following'], description: 'Feed 类型（信息性，URL 上无差异）' },
+        feed: { type: 'string', enum: ['foryou', 'following'], description: 'Feed 类型（信息性,URL 上无差异）' },
       },
       required: [],
     },
@@ -462,6 +489,207 @@ const TOOL_DEFINITIONS = [
     pageKey: 'home',
     method: 'navigateHome',
     execute: makeNavigateToolExecutor({ toolName: 'x_navigate_home', pageKey: 'home', method: 'navigateHome' }),
+  },
+
+  // ---------- Monitor：5 个受控工具（不暴露 init/check/daemon/stop，后三项会触发外部副作用,仅 CLI） ----------
+  {
+    name: 'x_monitor_list_accounts',
+    label: 'X Ops Monitor: List Accounts',
+    description: '列出当前 monitor 配置中的所有监控账号（读本地 config.json，不访问 X，不产生任何外部副作用）。',
+    parameters: { type: 'object', properties: {}, required: [] },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: makeMonitorToolExecutor({
+      toolName: 'x_monitor_list_accounts',
+      handler: async () => {
+        if (!monitorConfig.exists()) {
+          return { ok: false, error: { code: 'E_MONITOR_NOT_INITIALIZED', message: 'monitor 未初始化，请先在 CLI 运行 `node index.js monitor init`' } };
+        }
+        const config = monitorConfig.loadConfig();
+        const accounts = (config.accounts || []).map((a) => monitorConfig.effectiveAccountSettings(a, config));
+        return {
+          ok: true,
+          configFile: monitorPaths.resolvePaths().configFile,
+          accountsCount: accounts.length,
+          accounts,
+          channels: (config.channels || []).map((c) => ({ name: c.name, type: c.type })),
+          scheduling: config.scheduling || null,
+          deduplication: config.deduplication || null,
+        };
+      },
+    }),
+  },
+  {
+    name: 'x_monitor_get_status',
+    label: 'X Ops Monitor: Get Status',
+    description: '汇总当前 monitor 的运行状态：每个账号的 lastCheck / knownTweetCount / lastError，以及 daemon 进程存活态（读本地 state + pid，不访问 X，不产生副作用）。',
+    parameters: { type: 'object', properties: {}, required: [] },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: makeMonitorToolExecutor({
+      toolName: 'x_monitor_get_status',
+      handler: async () => {
+        if (!monitorConfig.exists()) {
+          return { ok: false, error: { code: 'E_MONITOR_NOT_INITIALIZED', message: 'monitor 未初始化' } };
+        }
+        const config = monitorConfig.loadConfig();
+        const { pidFile, configFile } = monitorPaths.resolvePaths();
+        let daemon = { pidFile, pid: null, alive: false };
+        try {
+          const fs = require('fs');
+          const raw = fs.readFileSync(pidFile, 'utf8').trim();
+          const pid = parseInt(raw, 10);
+          if (pid > 0) {
+            let alive = false;
+            try { process.kill(pid, 0); alive = true; } catch {}
+            daemon = { pidFile, pid, alive };
+          }
+        } catch { /* no pid file */ }
+        const accountsSummary = (config.accounts || []).map((a) => {
+          const st = (() => { try { return monitorState.loadState(a.username); } catch { return null; } })();
+          return {
+            username: a.username,
+            enabled: a.enabled !== false,
+            lastCheck: st?.lastCheck || null,
+            lastError: st?.lastError || null,
+            knownTweetCount: Array.isArray(st?.tweets) ? st.tweets.length : 0,
+          };
+        });
+        return {
+          ok: true,
+          configFile,
+          accountsCount: accountsSummary.length,
+          accounts: accountsSummary,
+          daemon,
+        };
+      },
+    }),
+  },
+  {
+    name: 'x_monitor_add_account',
+    label: 'X Ops Monitor: Add Account',
+    description: '把一个 X 账号加入监控列表。**本工具会写本地配置文件 ~/.js-eyes/skill-data/js-x-ops-skill/monitor/config.json**；不会访问 X，不会对外发通知。若账号已存在则更新其 channels/enabled。',
+    parameters: {
+      type: 'object',
+      properties: {
+        username: { type: 'string', description: 'X 用户名（不带 @）' },
+        channels: { type: 'array', items: { type: 'string' }, description: '账号级通知 channel 名单（引用 config.channels[].name），为空则继承全局' },
+      },
+      required: ['username'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: makeMonitorToolExecutor({
+      toolName: 'x_monitor_add_account',
+      handler: async ({ params }) => {
+        if (!monitorConfig.exists()) {
+          return { ok: false, error: { code: 'E_MONITOR_NOT_INITIALIZED', message: 'monitor 未初始化' } };
+        }
+        const clean = String(params.username || '').replace(/^@/, '').trim();
+        if (!clean) return { ok: false, error: { code: 'E_BAD_ARG', message: 'username 必填' } };
+        const config = monitorConfig.loadConfig();
+        const existing = (config.accounts || []).find((a) => String(a.username).toLowerCase() === clean.toLowerCase());
+        if (existing) {
+          if (Array.isArray(params.channels)) existing.channels = params.channels;
+          existing.enabled = true;
+          monitorConfig.saveConfig(config);
+          return { ok: true, added: false, updated: true, account: existing, accountsCount: config.accounts.length };
+        }
+        const record = { username: clean, enabled: true, addedAt: new Date().toISOString() };
+        if (Array.isArray(params.channels)) record.channels = params.channels;
+        config.accounts.push(record);
+        monitorConfig.saveConfig(config);
+        return { ok: true, added: true, updated: false, account: record, accountsCount: config.accounts.length };
+      },
+    }),
+  },
+  {
+    name: 'x_monitor_remove_account',
+    label: 'X Ops Monitor: Remove Account',
+    description: '从监控列表移除一个 X 账号。**本工具会写本地配置文件**；不会访问 X，不会清除已有 state 文件（保留历史用于调试）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        username: { type: 'string', description: 'X 用户名（不带 @）' },
+      },
+      required: ['username'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: makeMonitorToolExecutor({
+      toolName: 'x_monitor_remove_account',
+      handler: async ({ params }) => {
+        if (!monitorConfig.exists()) {
+          return { ok: false, error: { code: 'E_MONITOR_NOT_INITIALIZED', message: 'monitor 未初始化' } };
+        }
+        const clean = String(params.username || '').replace(/^@/, '').trim();
+        if (!clean) return { ok: false, error: { code: 'E_BAD_ARG', message: 'username 必填' } };
+        const config = monitorConfig.loadConfig();
+        const before = config.accounts.length;
+        config.accounts = (config.accounts || []).filter((a) => String(a.username).toLowerCase() !== clean.toLowerCase());
+        const removed = before - config.accounts.length;
+        monitorConfig.saveConfig(config);
+        return { ok: true, removed, accountsCount: config.accounts.length };
+      },
+    }),
+  },
+  {
+    name: 'x_monitor_test_account',
+    label: 'X Ops Monitor: Test Account',
+    description: '对单个账号跑一次时间线抓取用于配置调试。**对 X 是 READ，不写 state、不发任何通知**；复用 monitor 全局 defaults 或账号级覆盖。返回 sampleSize + 前 3 条预览。',
+    parameters: {
+      type: 'object',
+      properties: {
+        username: { type: 'string', description: 'X 用户名（不带 @）' },
+        maxPages: { type: 'number', description: '翻页数（默认 1）' },
+        includeReplies: { type: 'boolean' },
+        includeRetweets: { type: 'boolean' },
+      },
+      required: ['username'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: makeMonitorToolExecutor({
+      toolName: 'x_monitor_test_account',
+      handler: async ({ runtime, params }) => {
+        const clean = String(params.username || '').replace(/^@/, '').trim();
+        if (!clean) return { ok: false, error: { code: 'E_BAD_ARG', message: 'username 必填' } };
+        let config = null;
+        try { config = monitorConfig.loadConfig(); } catch { /* ok, 用 defaults */ }
+        const baseAccount = (config && (config.accounts || []).find((a) => String(a.username).toLowerCase() === clean.toLowerCase())) || { username: clean, enabled: true };
+        const effectiveBase = config ? monitorConfig.effectiveAccountSettings(baseAccount, config) : {
+          username: clean, enabled: true,
+          includeRetweets: false, includeReplies: false,
+          summaryLength: 100, maxPagesPerCheck: params.maxPages || 1, minLikes: 0,
+          channelNames: [],
+        };
+        const settings = Object.assign({}, effectiveBase, {
+          maxPagesPerCheck: params.maxPages || effectiveBase.maxPagesPerCheck,
+          includeReplies: params.includeReplies != null ? !!params.includeReplies : effectiveBase.includeReplies,
+          includeRetweets: params.includeRetweets != null ? !!params.includeRetweets : effectiveBase.includeRetweets,
+        });
+        const result = await fetchAccount(runtime.ensureBot(), settings, { recording: runtime.config.recording });
+        return {
+          ok: result.ok,
+          username: settings.username,
+          sampleSize: result.tweets.length,
+          rawCount: result.rawCount,
+          meta: result.meta,
+          profile: result.profile ? { screenName: result.profile.screenName, name: result.profile.name } : null,
+          tweets: result.tweets.slice(0, 3).map((t) => ({
+            tweetId: t.tweetId,
+            publishTime: t.publishTime,
+            content: String(t.content || '').slice(0, 120),
+          })),
+          error: result.error || null,
+        };
+      },
+    }),
   },
 ];
 
@@ -515,4 +743,5 @@ module.exports = {
   makeApiToolExecutor,
   makeBridgeReadExecutor,
   makeNavigateToolExecutor,
+  makeMonitorToolExecutor,
 };

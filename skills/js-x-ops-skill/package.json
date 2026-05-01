@@ -1,7 +1,7 @@
 {
   "name": "js-x-ops-skill",
-  "version": "3.0.4",
-  "description": "JS-Eyes 技能：X.com 内容操作，覆盖搜索发现、主页与 Feed 浏览、详情读取以及发帖相关流程",
+  "version": "3.0.6",
+  "description": "JS-Eyes 技能：X.com 内容操作，覆盖搜索发现、主页与 Feed 浏览、详情读取、发帖相关流程，以及账号定时监控（monitor 子系统）",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -9,7 +9,8 @@
     "search": "node index.js search",
     "profile": "node index.js profile",
     "post": "node index.js post",
-    "home": "node index.js home"
+    "home": "node index.js home",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=16.0.0"

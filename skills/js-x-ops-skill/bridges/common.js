@@ -714,11 +714,21 @@ async function sessionStateCommon(){
   let api = { loggedIn: false, name: null, source: 'skip' };
   try { api = await readMeViaApi(); } catch (_) {}
   const loggedIn = !!(api.loggedIn || dom.loggedIn);
-  const name = api.name || dom.name || null;
+  const screenName = api.name || dom.name || null;
   const source = api.loggedIn ? 'api' : (dom.loggedIn ? 'dom' : 'none');
+  // `name` 字段历史上一直是 screen_name（handle），保留向后兼容。
+  // 同时新增 `username` / `screenName` 两个别名，更准确表达语义，便于外部
+  // （例如 moltbook 的 XProfileCollector）从登录态直接拿 whoami 信息。
+  // `userId` / `displayName` 目前通过现有 API 端点（settings.json）无法拿到，
+  // 未登录或解析失败时保持 null，已登录时字段存在但可能为 null——这是向后
+  // 兼容的"已登录但解析失败"路径，调用方需自己做 fallback。
   return okResult({
     loggedIn,
-    name,
+    name: screenName,
+    username: screenName,
+    screenName,
+    userId: null,
+    displayName: null,
     source,
     api,
     dom,
