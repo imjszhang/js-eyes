@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.3] - 2026-05-02
+
+> **Install-time UX release — zero behavioural changes at runtime.** Closes a
+> long-standing first-install footgun where users who registered the Native
+> Messaging host before the JS Eyes server had ever started would click the
+> popup's **Sync Token From Host** / 从本机同步 button and silently get
+> `token-missing` from the host because `~/.js-eyes/runtime/server.token`
+> didn't exist yet. Wire protocol, CLI contract, default config values, every
+> public API, and the entire policy / consent / egress runtime are
+> byte-for-byte compatible with 2.6.2 — `js-eyes skills update js-eyes` is a
+> drop-in upgrade.
+
+### Changed
+
+- **`bin/js-eyes-native-host-install.sh` / `.ps1`** *(2026-05-02)*: After
+  registering the browser native-messaging manifest + launcher, both
+  scripts now also run `node apps/cli/bin/js-eyes.js server token init` —
+  `ensureToken()` is idempotent, so it's a no-op when the token file
+  already exists. New `--skip-token-init` flag (PowerShell:
+  `-SkipTokenInit`) and `JS_EYES_SKIP_TOKEN_INIT=1` env var let operators
+  opt out (e.g. for headless deployments where the token will be set via
+  `JS_EYES_SERVER_TOKEN`). The `node` invocations are no longer `exec`'d
+  so the second command can run after the first; the script's exit status
+  remains the native-host install's exit code on Windows (PowerShell
+  branch preserves `$LASTEXITCODE` from the install step explicitly).
+- **`install.sh` / `install.ps1`** *(2026-05-02)*: One-line installer now
+  runs `npx js-eyes server token init` **before** `npx js-eyes native-host
+  install --browser all`, mirroring the launcher behaviour. Failures in
+  either step downgrade to a `warn` and leave the install in a recoverable
+  state (banner Tip points the user at the manual remediation). New
+  `--skip-token-init` flag and `JS_EYES_SKIP_TOKEN_INIT=1` env var.
+  `docs/install.sh` / `docs/install.ps1` are kept in lockstep via
+  `INSTALL_SCRIPTS` in `packages/devtools/lib/builder.js`.
+- **`SKILL.md` documents the token-first ordering as a hard prerequisite**
+  *(2026-05-02)*: `Setup Workflow` step 8 was rewritten as an explicit
+  three-way choice ("any one is enough: `server token init`, the launcher,
+  or starting OpenClaw / `server start`"). The `Browser Extension
+  Connection` flow gained an explicit "make sure the host has a token to
+  share" step before the native-host install. The
+  `Browser Extension Stays Disconnected` troubleshooting block grew two
+  new entries — `token-missing` from `~/.js-eyes/logs/native-host.log`,
+  and `Could not establish connection` from a stale browser process. The
+  `Deployment Modes` Native Messaging blurb now explicitly contrasts the
+  launcher path (auto-seeds token) and the npx fallback (does not).
+- **`docs/native-messaging.md`** *(2026-05-02)*: Install section makes the
+  npx-vs-launcher token-seeding asymmetry explicit; npx users are told to
+  pair `npx js-eyes native-host install` with `npx js-eyes server token
+  init`. `pong` example bumped to `"version":"2.6.3"`.
+
+### Compatibility
+
+- **Zero behavioural change at runtime**: server, plugin, browser
+  extension, and automation protocol are byte-identical to 2.6.2. Only
+  install-time scripts and documentation moved.
+- **Wire Protocol Unchanged**: native messaging stdio frame format, server
+  WS subprotocol, and the policy engine are untouched.
+- **Upgrade Path**: `js-eyes skills update js-eyes` (or reinstall the
+  bundle). Existing installations that already had a token file see no
+  change. Re-running `bin/js-eyes-native-host-install.sh` on an old install
+  is safe — the new `server token init` step is a no-op when the file
+  already exists.
+
 ## [2.6.2] - 2026-04-24
 
 > **Security hygiene release — zero behavioural changes.** Responds to the

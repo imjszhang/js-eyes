@@ -1,6 +1,6 @@
 # Native Messaging Token 自动注入
 
-> 最后更新: 2026-04-24（2.6.2 安全卫生版本：将本地 launcher 提升为首选安装路径）
+> 最后更新: 2026-05-02（2.6.3：本地 launcher 与 `install.sh`/`install.ps1` 自动顺带跑 `js-eyes server token init`，新装直接可用 Sync Token From Host）
 
 JS Eyes 2.4+ 通过浏览器 Native Messaging 协议，让扩展自动从本机读取 `server.token`
 并注入到扩展存储，消除用户手工复制 token 的环节。
@@ -33,16 +33,23 @@ bin/js-eyes-native-host-install.sh --browser all
 ./bin/js-eyes-native-host-install.ps1 -Browser all
 ```
 
-等价于直接调用 `node apps/cli/bin/js-eyes.js native-host install --browser all`。
+等价于直接调用 `node apps/cli/bin/js-eyes.js native-host install --browser all`，
+**外加** 一次幂等的 `node apps/cli/bin/js-eyes.js server token init`（2.6.3+）——
+后者在 `~/.js-eyes/runtime/server.token` 不存在时自动生成 token，让浏览器
+扩展首次点 **Sync Token From Host / 从本机同步** 就能拿到 token，而不会
+被 host 以 `token-missing` 拒绝。如果你不想顺带初始化 token，加 `--skip-token-init`
+（PowerShell 是 `-SkipTokenInit`）或设置 `JS_EYES_SKIP_TOKEN_INIT=1` 即可。
 
 **Fallback（npx，依赖 npm registry 可达）：**
 
 ```bash
+npx js-eyes server token init     # 2.6.3+ 起：launcher 路径会自动跑这一步，npx 路径需要手动调用
 npx js-eyes native-host install --browser all
 ```
 
 `npx` 路径仅在你已全局安装 `js-eyes` 并且信任 npm 注册表时再使用；首次执行会从远端
-解析/下载 `js-eyes` 包。
+解析/下载 `js-eyes` 包。注意 npx 路径**不会**自动种 token，所以需要显式先跑
+`server token init`，否则首次同步仍会失败。
 
 可选目标: `chrome` / `chrome-canary` / `chromium` / `edge` / `brave` / `firefox` / `chromium` / `all`。
 
@@ -134,7 +141,7 @@ npx js-eyes native-host status
 
 - stdio 帧: 4 字节小端长度 + UTF-8 JSON；单条消息上限 1 MiB。
 - 输入:
-  - `{"type":"ping"}` -> `{"ok":true,"type":"pong","version":"2.6.2"}`
+  - `{"type":"ping"}` -> `{"ok":true,"type":"pong","version":"2.6.3"}`
   - `{"type":"get-config"}` -> `{"ok":true,"serverHost":"localhost","serverPort":18080,"serverUrl":"ws://...","httpUrl":"http://...","serverToken":"..."}`
 - 失败: `{"ok":false,"error":"token-missing"}` 等。
 

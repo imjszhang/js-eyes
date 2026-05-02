@@ -1,5 +1,121 @@
 # Release Notes
 
+## v2.6.3
+
+> **Install-time UX release — zero behavioural changes at runtime.** Closes a
+> long-standing first-install footgun where a brand-new operator who registered
+> the Native Messaging host before the JS Eyes server had ever been started
+> would click the popup's **Sync Token From Host** / 从本机同步 button and
+> silently get `token-missing` from the host (because
+> `~/.js-eyes/runtime/server.token` didn't exist yet, only created by
+> `ensureToken()` during server boot or by an explicit
+> `js-eyes server token init`). 2.6.3 makes the launcher and one-line
+> installers seed the token file as part of the install path, and rewrites
+> the SKILL deployment flow to call out the dependency before the popup is
+> ever clicked.
+>
+> Wire protocol, CLI surface, server policy engine, consent ledger, and every
+> public API are byte-for-byte compatible with 2.6.2. `js-eyes skills update
+> js-eyes` is a drop-in upgrade.
+
+### Highlights
+
+- **Local launcher seeds the token file** *(2026-05-02)*:
+  [`bin/js-eyes-native-host-install.sh`](bin/js-eyes-native-host-install.sh)
+  and [`bin/js-eyes-native-host-install.ps1`](bin/js-eyes-native-host-install.ps1)
+  now run `node apps/cli/bin/js-eyes.js server token init` after the
+  `native-host install` step. `ensureToken()` is idempotent — if the file
+  already exists it's a no-op, so re-running the launcher is safe. The
+  practical effect: a freshly installed machine where the operator has never
+  started OpenClaw yet can still click **Sync Token From Host** the first
+  time and get a populated **Server Token** field. Opt out with
+  `--skip-token-init` (or `-SkipTokenInit` on Windows) / `JS_EYES_SKIP_TOKEN_INIT=1`.
+- **One-line installers seed the token file too** *(2026-05-02)*:
+  [`install.sh`](install.sh) / [`install.ps1`](install.ps1) (and their
+  `docs/`-mirrored copies that the `https://js-eyes.com/install.sh` route
+  serves) now run `npx js-eyes server token init` before the
+  `npx js-eyes native-host install --browser all` step, with the same
+  `--skip-token-init` / env-var opt-out. The closing banner gained a Tip
+  reminding operators to restart the browser before clicking **Sync Token
+  From Host**, and what to do if it still reports `token-missing`.
+- **`SKILL.md` rewritten around the "token must exist first" prerequisite**
+  *(2026-05-02)*:
+  - `Setup Workflow` step 8 is now an explicit three-way choice — any one
+    of (a) `js-eyes server token init`, (b) the local launcher (which now
+    does it for you), or (c) starting OpenClaw / `js-eyes server start` —
+    is enough to satisfy the prerequisite.
+  - `Browser Extension Connection` gained a dedicated "make sure the host
+    has a token to share" step before the launcher invocation.
+  - `Browser Extension Stays Disconnected` troubleshooting grew two new
+    rows: `Sync Token From Host` reporting `token-missing` (with the
+    `~/.js-eyes/logs/native-host.log` smoking-gun line) and `Could not
+    establish connection` from a stale browser process that hadn't seen
+    the freshly registered manifest.
+  - `Deployment Modes` Native Messaging blurb now contrasts the launcher
+    path (auto-seeds token) with the `npx` fallback (does **not** seed,
+    must be paired with `npx js-eyes server token init`).
+- **`docs/native-messaging.md`** *(2026-05-02)*: Install section made the
+  asymmetry between launcher and `npx` paths explicit, `pong` example
+  bumped to `"version":"2.6.3"`. The 排障 / troubleshooting block already
+  covered "token 文件丢失"; that text is unchanged but is now reachable
+  from the new SKILL troubleshooting rows.
+
+### Migration Notes
+
+- **No breaking changes.** Every default is identical to 2.6.2; every
+  public symbol keeps its prior module path; the wire protocol, server
+  WS subprotocol, and policy engine are untouched.
+- **Token file location unchanged.** `~/.js-eyes/runtime/server.token` on
+  POSIX, `%USERPROFILE%/.js-eyes/runtime/server.token` on Windows. Existing
+  installs already have it; the new init step is a no-op for them.
+- **Upgrade path**: `js-eyes skills update js-eyes` or reinstall the parent
+  bundle. Re-running `bin/js-eyes-native-host-install.sh` on an old install
+  is safe — `ensureToken()` will see the existing token and return
+  `created: false`. No restart is required for the runtime behaviour
+  change because there isn't one.
+- **Operators who manage the token themselves** (e.g. via
+  `JS_EYES_SERVER_TOKEN`, an external secrets store, or a CI provisioner)
+  should add `--skip-token-init` to their launcher / installer invocations
+  to avoid the idempotent — but unnecessary — token-file write.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.3/js-eyes-chrome-v2.6.3.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.6.3/js-eyes-firefox-v2.6.3.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.6.3/js-eyes-skill-v2.6.3.zip)
+
+### Installation Instructions
+
+#### npm CLI
+1. `npm install -g js-eyes@2.6.3`
+2. `js-eyes doctor --json` — text and JSON outputs are byte-identical to
+   2.6.2 except for the `version` field; the runtime posture is unchanged.
+
+#### OpenClaw
+1. Upgrade the `js-eyes` bundle (CLI + plugin) to 2.6.3 and run `npm install`
+   in the bundle root.
+2. Restart OpenClaw once so the plugin module reloads. Subsequent
+   `js-eyes skills link/unlink/reload/relink` remain zero-restart.
+3. If you previously hit `token-missing` from the popup on this machine,
+   re-run the local launcher
+   `bin/js-eyes-native-host-install.sh --browser all` (macOS/Linux) /
+   `./bin/js-eyes-native-host-install.ps1 -Browser all` (Windows). 2.6.3
+   will seed `~/.js-eyes/runtime/server.token` if it's still missing, then
+   restart your browser and click **Sync Token From Host**.
+
+#### Chrome / Edge
+1. Download `js-eyes-chrome-v2.6.3.zip`, extract, reload unpacked (or
+   update from the Chrome Web Store once live). No popup or background
+   behaviour change vs 2.6.2.
+
+#### Firefox
+1. Install `js-eyes-firefox-v2.6.3.xpi` (or update from AMO once the
+   listing is live).
+
+---
+
 ## v2.6.2
 
 > **Security hygiene release — zero behavioural changes.** Responds to the
