@@ -4,6 +4,7 @@
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { readPage } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
+const { applyVisualArgs, resolveVisualOptions, VISUAL_HELP_LINES } = require('../lib/cliVisualFlags');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -17,10 +18,19 @@ function parseArgs() {
     noCache: false,
     debugRecording: false,
     runId: null,
+    visual: undefined,
+    visualDetail: null,
+    visualMs: null,
+    visualMode: null,
+    visualTrace: null,
+    visualListStride: null,
+    visualPrefix: null,
   };
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    const consumed = applyVisualArgs(args, i, options);
+    if (consumed > 0) { i += consumed - 1; continue; }
     if (arg === '--pretty') {
       options.pretty = true;
     } else if (arg === '--format' && args[i + 1]) {
@@ -55,6 +65,8 @@ async function main() {
   if (!options.url || options.url === '--help' || options.url === '-h') {
     console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
+    console.log('视觉反馈选项:');
+    VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
   }
 
@@ -66,6 +78,8 @@ async function main() {
     },
   });
 
+  const visual = resolveVisualOptions(options);
+
   const browser = new BrowserAutomation(runtimeConfig.serverUrl);
   try {
     const result = await readPage(browser, {
@@ -76,6 +90,7 @@ async function main() {
       noCache: options.noCache,
       debugRecording: options.debugRecording,
       runId: options.runId,
+      visual,
     });
     console.log(JSON.stringify(result, null, options.pretty ? 2 : 0));
   } finally {

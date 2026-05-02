@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.1.1
+version: 2.2.0
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -83,6 +83,50 @@ node skills/js-browser-ops-skill/index.js interact wait --tab-id 123 --selector 
 node skills/js-browser-ops-skill/index.js interact scroll --tab-id 123 --target bottom
 ```
 
+## 页面内视觉反馈（v2.2.0+）
+
+通过 `@js-eyes/visual-bridge-kit@^0.2.0` 在每次工具调用前后注入一段 DOM overlay：
+**HUD（屏幕右上角状态条）+ flash（在锚点元素周围闪一下黄/绿框）+ jsonl trace**。
+浏览器里直接看到 agent 在点哪、填什么、等什么。业务脚本（`generate*Script`）一行不动。
+
+| 工具 | 视觉演出 |
+|---|---|
+| `browser_click` | selector 命中元素先黄框 → 点击成功后绿框 + HUD "点击 BUTTON" |
+| `browser_fill_form` | input 黄框 → 绿框 + HUD `INPUT ← "hello..."` |
+| `browser_wait_for` | HUD pulse `等待 .results ≤10s`；元素出现后绿框 + HUD `+1234ms` |
+| `browser_scroll` | HUD `滚动 → bottom`；指定 selector 时目标元素绿框 |
+| `browser_read_page` | HUD-only：`读取 example.com` → `"Article Title…"` |
+| `browser_screenshot` | HUD `拍照 视口 1280×720` |
+
+CLI 旋钮（`browser-read.js` / `browser-interact.js` 都支持）：
+
+| flag | 默认 | 说明 |
+|---|---|---|
+| `--visual` / `--no-visual` | 开 | 总开关；关闭后零额外 RTT |
+| `--visual-detail compact\|staged` | `staged` | `compact` 只 HUD，`staged` 全套 |
+| `--visual-ms <n>` | `420` | flash 持续时长（ms，clamp 120–4000） |
+| `--visual-mode auto\|dom\|hud\|both\|off` | `auto` | 锚点解析策略 |
+| `--visual-trace <file.jsonl>` | — | 把视觉事件落 jsonl，供回放 / headless 观测 |
+| `--visual-prefix <p>` | `__jse_browser_visual_` | DOM id 前缀（多 skill 共存防撞） |
+
+```bash
+# click + 视觉反馈 + jsonl 落盘
+node index.js interact click --tab-id 123 --selector "button.submit" \
+  --visual-trace /tmp/click.jsonl --visual-ms 600
+
+# read 通用网页 + 视觉反馈
+node index.js read "https://example.com" --visual-trace /tmp/read.jsonl --pretty
+
+# 关闭视觉（CI / 静默模式）
+node index.js interact click --tab-id 123 --selector "..." --no-visual
+```
+
+技术细节：
+- 每次工具调用 +2 RTT（before+install 合并、after+drain 合并）。`installVisualBridgeKit` 自带 `__installed` 短路锁，重复 inject 接近 0 成本。
+- `--no-visual` 时 `withVisual` 直接 bypass，调用路径与 v2.1.1 完全一致。
+- chrome:// / file:// 等受限页 visual 注入静默失败，业务返回不受影响。
+- skill.contract（openclaw）默认走 `enabled:true`，向后兼容。
+
 ## 工作原理
 
 1. 通过 js-eyes 的 `openUrl` 在浏览器中打开目标页面
@@ -109,14 +153,19 @@ node skills/js-browser-ops-skill/index.js interact scroll --tab-id 123 --target 
 ```text
 skills/js-browser-ops-skill/
 ├── SKILL.md                  # 技能描述（本文件）
+├── CHANGELOG.md              # 版本记录
 ├── package.json
 ├── skill.contract.js         # OpenClaw 契约
 ├── index.js                  # CLI 入口
 ├── cli/index.js              # CLI 封装
+├── bridges/
+│   └── _visual-browser.js    # 站点 anchor resolver（CSS/XPath/text/url）
 ├── lib/
-│   ├── api.js                # 业务 API
+│   ├── api.js                # 业务 API（withVisual 包装）
 │   ├── js-eyes-client.js     # 浏览器控制客户端
-│   ├── browserUtils.js       # 注入脚本模板
+│   ├── browserUtils.js       # 注入脚本模板（业务零侵入）
+│   ├── visualHint.js         # 6 工具的 hint + buildSummary
+│   ├── cliVisualFlags.js     # CLI 视觉旋钮解析
 │   ├── runtimeConfig.js      # 配置合并
 │   └── runContext.js          # Recording 上下文
 └── scripts/

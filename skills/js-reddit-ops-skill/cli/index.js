@@ -7,6 +7,15 @@ const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { getPost } = require('../lib/api');
 const { runTool } = require('../lib/runTool');
+const {
+  parseVisualFlags,
+  wrapCallApi,
+  drainVisualEvents,
+  appendVisualTrace,
+} = require('@js-eyes/visual-bridge-kit');
+const { getVisualHint, buildSummary } = require('../lib/visualHint');
+
+const REDDIT_VISUAL_DEFAULTS = { prefix: '__jse_reddit_visual_' };
 
 function pickPage(commandName, opts) {
   if (opts.page) return opts.page;
@@ -22,6 +31,7 @@ function printJson(value, opts) {
 }
 
 function buildSessionOpts(commandName, opts, extra = {}) {
+  const { config: visualConfig } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
   return {
     page: pickPage(commandName, opts),
     tab: opts.tab,
@@ -29,20 +39,47 @@ function buildSessionOpts(commandName, opts, extra = {}) {
     wsEndpoint: opts.wsEndpoint,
     targetUrl: extra.targetUrl || null,
     createIfMissing: extra.createIfMissing !== false,
+    visualConfig,
   };
 }
 
 async function runCallCommand(commandName, def, opts, positional) {
   const session = new Session({ opts: buildSessionOpts(commandName, opts) });
+  const { tracePath } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  const toolName = def.toolName || `reddit_${def.api}`;
+  const argsObj = (def.toArgs ? (def.toArgs(opts, positional) || []) : (positional || []))[0] || {};
+  const hint = getVisualHint(toolName, argsObj);
+  const startedAt = Date.now();
+  let drainedEvents = [];
+  let response = null;
+  let err = null;
   try {
     await session.connect();
     await session.resolveTarget();
     await session.ensureBridge();
     const args = def.toArgs ? def.toArgs(opts, positional) : (positional || []);
-    const response = await session.callApi(def.api, args);
+    response = await wrapCallApi(session, hint, async () => {
+      return await session.callApi(def.api, args);
+    }, { buildSummary: (r) => buildSummary(r, hint) });
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     printJson(response, opts);
     return response && response.ok === false ? 1 : 0;
+  } catch (e) {
+    err = e;
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
+    throw e;
   } finally {
+    if (tracePath) {
+      appendVisualTrace(tracePath, {
+        toolName,
+        args: argsObj,
+        hint,
+        ok: !err && !!(response && response.ok !== false),
+        error: err ? err.message : null,
+        durationMs: Date.now() - startedAt,
+        events: drainedEvents,
+      });
+    }
     await session.close();
   }
 }
@@ -69,6 +106,7 @@ async function runToolCommand(commandName, def, opts, positional) {
       ...(opts.recordingBaseDir ? { baseDir: opts.recordingBaseDir } : {}),
     },
   });
+  const { config: visualConfig, tracePath: visualTrace } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
   const browser = new BrowserAutomation(runtimeConfig.serverUrl, opts.verbose ? {} : {
     logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
   });
@@ -90,6 +128,8 @@ async function runToolCommand(commandName, def, opts, positional) {
         navigateOnReuse: false,
         reuseAnyRedditTab: true,
         createUrl: targetUrl || 'https://www.reddit.com/',
+        visualConfig,
+        visualTrace,
       },
     });
     printJson(response, opts);
@@ -245,12 +285,22 @@ async function runNavigateCommand(commandName, def, opts, positional) {
   const session = new Session({
     opts: Object.assign(buildSessionOpts(commandName, opts), { createIfMissing: true, navigateOnReuse: false, reuseAnyRedditTab: true, createUrl: 'https://www.reddit.com/' }),
   });
+  const { tracePath } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  const toolName = def.toolName || `reddit_${def.api}`;
+  const hint = getVisualHint(toolName, navArgs);
+  const startedAt = Date.now();
+  let drainedEvents = [];
+  let navResp = null;
+  let err = null;
   try {
     await session.connect();
     await session.resolveTarget();
     await session.ensureBridge();
-    const navResp = await session.callApi(def.api, [navArgs]);
+    navResp = await wrapCallApi(session, hint, async () => {
+      return await session.callApi(def.api, [navArgs]);
+    }, { buildSummary: (r) => buildSummary(r, hint) });
     if (!navResp || !navResp.ok) {
+      try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
       printJson({ ok: false, nav: navResp, postState: null }, opts);
       return 1;
     }
@@ -266,9 +316,25 @@ async function runNavigateCommand(commandName, def, opts, positional) {
           fromUrl: fromUrl || null,
           expectedUrl: expectedUrl || null,
         });
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     printJson({ ok: !!postState.ready, nav: navResp, postState }, opts);
     return postState.ready ? 0 : 1;
+  } catch (e) {
+    err = e;
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
+    throw e;
   } finally {
+    if (tracePath) {
+      appendVisualTrace(tracePath, {
+        toolName,
+        args: navArgs,
+        hint,
+        ok: !err && !!(navResp && navResp.ok !== false),
+        error: err ? err.message : null,
+        durationMs: Date.now() - startedAt,
+        events: drainedEvents,
+      });
+    }
     await session.close();
   }
 }

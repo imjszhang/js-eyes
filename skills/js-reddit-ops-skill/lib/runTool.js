@@ -5,6 +5,12 @@ const { Session } = require('./session');
 const { createRunContext } = require('./runContext');
 const { appendHistory } = require('./history');
 const { writeDebugBundle } = require('./debug');
+const {
+  wrapCallApi,
+  drainVisualEvents,
+  appendVisualTrace,
+} = require('@js-eyes/visual-bridge-kit');
+const { getVisualHint, buildSummary } = require('./visualHint');
 
 const SKILL_ID = pkg.name;
 
@@ -65,19 +71,27 @@ async function runTool(browser, spec) {
       navigateOnReuse: options.navigateOnReuse === true,
       reuseAnyRedditTab: options.reuseAnyRedditTab !== false,
       createUrl: options.createUrl || 'https://www.reddit.com/',
+      visualConfig: options.visualConfig || null,
     },
   });
+
+  const hint = getVisualHint(toolName, args);
+  let drainedEvents = [];
 
   try {
     await session.connect();
     await session.resolveTarget();
     target = session.target;
     bridgeMeta = await session.ensureBridge();
-    resp = await session.callApi(method, [args || {}], {
-      timeoutMs: options.timeoutMs || 90000,
-    });
+    resp = await wrapCallApi(session, hint, async () => {
+      return await session.callApi(method, [args || {}], {
+        timeoutMs: options.timeoutMs || 90000,
+      });
+    }, { buildSummary: (r) => buildSummary(r, hint) });
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) { drainedEvents = []; }
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     if (runContext.recording.debugEnabled) {
       debugBundlePath = writeDebugBundle(runContext, {
         meta: {
@@ -108,6 +122,19 @@ async function runTool(browser, spec) {
       debug_bundle_path: debugBundlePath,
       error_summary: error.message,
     });
+    if (options.visualTrace && (drainedEvents.length || true)) {
+      appendVisualTrace(options.visualTrace, {
+        runId: runContext.runId,
+        skillId: runContext.skillId,
+        toolName,
+        args,
+        hint,
+        ok: false,
+        durationMs,
+        error: error.message,
+        events: drainedEvents,
+      });
+    }
     throw error;
   } finally {
     await session.close();
@@ -169,6 +196,19 @@ async function runTool(browser, spec) {
     debug_bundle_path: debugBundlePath,
     error_summary: ok ? '' : ((response.error && response.error.code) || ''),
   });
+
+  if (options.visualTrace) {
+    appendVisualTrace(options.visualTrace, {
+      runId: runContext.runId,
+      skillId: runContext.skillId,
+      toolName,
+      args,
+      hint,
+      ok,
+      durationMs,
+      events: drainedEvents,
+    });
+  }
 
   return response;
 }

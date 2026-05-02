@@ -162,6 +162,41 @@ node scripts/batch-post.js --file urls.txt --depth 3 --comment-limit 80
 js-eyes skill run js-reddit-ops-skill doctor
 ```
 
+### 页面内视觉反馈（v3.5.0+）
+
+reddit-ops 在调度边界自动给每个工具调用做"屏幕内演出"——这套层位于 `@js-eyes/visual-bridge-kit`，未来其它技能也能复用。bridge 业务函数零侵入。
+
+```bash
+# 默认开启：staged 详细级别，flash + HUD + 列表呼吸感 + 评论树 relation 线
+node index.js list-subreddit AskReddit --limit 8
+
+# 仅 HUD（不在页面 DOM 上画 box）
+node index.js search "nodejs" --visual-mode hud
+
+# 关掉视觉，回到 3.4.x 的纯日志风格
+node index.js my-feed --no-visual
+
+# 把视觉事件流落到 jsonl，CI 可重放
+node index.js expand-more t3_xxx "c1,c2" --visual-trace runs/visual-2026-05-02.jsonl
+```
+
+| flag | 默认 | 说明 |
+|---|---|---|
+| `--visual` / `--no-visual` | 开 | 总开关 |
+| `--visual-detail compact\|staged` | `staged` | `compact` 只 HUD，`staged` 含 flash + relation |
+| `--visual-ms <n>` | `420` | flash 持续 ms |
+| `--visual-mode auto\|dom\|hud\|both\|off` | `auto` | DOM 锚点解析策略；`auto` 找不到就降级 HUD |
+| `--visual-trace <file>` | — | 把事件流写 jsonl |
+| `--visual-list-stride <ms>` | `90` | 列表呼吸感步进 |
+| `--visual-prefix <p>` | `__jse_reddit_visual_` | DOM id 前缀（多 skill 共存防撞） |
+
+防御要点：
+
+- 永远不拦 reddit 自家点击（`pointer-events: none`）。
+- 默认不 `scrollIntoView`：reddit 列表是虚拟滚动，强行滚会让虚表回收别的卡片；元素不在视口自动降级 HUD。
+- z-index 取 `2147483000`，比 reddit dialog 低一档，不挡 site UI。
+- 监听 `pushState`/`replaceState`/`popstate` 自动 `cleanup()`，shreddit SPA 路由切换不留残影。
+
 ## 架构概要
 
 ```text

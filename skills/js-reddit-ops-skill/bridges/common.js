@@ -10,7 +10,14 @@
 // - READ 数据优先走 reddit 公开 JSON 端点（与浏览器同源，复用 cookie）。
 // - DOM 兜底交给 Node 端 cheerio 实现，本 bridge 不再 walk 复杂 DOM。
 // - 双前端探测仅做粗粒度判断（shreddit / old / unknown），决定后续 helper 的取数路径。
+// - 顶部两行 @@include 由 @js-eyes/visual-bridge-kit 的通用展开器处理：
+//     1. 装入共享视觉反馈层 (window.__jse_visual)；
+//     2. 装入 reddit 专属锚点解析（fullname → DOM）。
+//   关闭视觉反馈只需 CLI 加 --no-visual，bridge 体本身不受影响。
 // ---------------------------------------------------------------------------
+
+// @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
+// @@include ./_visual-reddit.js
 
 const __jseRedditCache = {
   frontendHref: null,

@@ -55,6 +55,8 @@ class BrowserAutomation {
     this.serverUrl = this._normalizeWsUrl(serverUrl || 'ws://localhost:18080');
     this.logger = options.logger || console;
     this.defaultTimeout = options.defaultTimeout || 1800;
+    this._explicitToken = options.token || null;
+    this._cachedToken = undefined;
 
     this.requestInterval = options.requestInterval || 200;
     this._lastRequestTime = 0;
@@ -84,6 +86,34 @@ class BrowserAutomation {
     return url;
   }
 
+  /**
+   * 解析 automation 客户端 token。
+   * 优先级：options.token > 环境变量 JS_EYES_TOKEN > ~/.js-eyes/runtime/server.token > ~/.js-eyes/secrets/server-token。
+   * allowAnonymous=false 时必须带 token，否则被服务端 401。
+   */
+  _resolveToken() {
+    if (this._cachedToken !== undefined) return this._cachedToken;
+    if (this._explicitToken) { this._cachedToken = this._explicitToken; return this._cachedToken; }
+    if (process.env.JS_EYES_TOKEN) { this._cachedToken = process.env.JS_EYES_TOKEN; return this._cachedToken; }
+    try {
+      const os = require('os');
+      const path = require('path');
+      const fs = require('fs');
+      const candidates = [
+        path.join(os.homedir(), '.js-eyes', 'runtime', 'server.token'),
+        path.join(os.homedir(), '.js-eyes', 'secrets', 'server-token'),
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const v = fs.readFileSync(p, 'utf8').trim();
+          if (v) { this._cachedToken = v; return this._cachedToken; }
+        }
+      }
+    } catch (_) { /* best-effort */ }
+    this._cachedToken = null;
+    return this._cachedToken;
+  }
+
   // ─── connection management ──────────────────────────────────────────
 
   /**
@@ -101,12 +131,15 @@ class BrowserAutomation {
 
     this._connectPromise = new Promise((resolve, reject) => {
       this._wsState = 'connecting';
-      const wsUrl = `${this.serverUrl}?type=automation`;
+      const token = this._resolveToken();
+      const tokenPart = token ? `&token=${encodeURIComponent(token)}` : '';
+      const wsUrl = `${this.serverUrl}?type=automation${tokenPart}`;
+      const wsOptions = { headers: { Origin: 'http://localhost' } };
 
-      this.logger.info(`[JS-Eyes] 正在连接: ${wsUrl}`);
+      this.logger.info(`[JS-Eyes] 正在连接: ${this.serverUrl}?type=automation${token ? '&token=***' : ''}`);
 
       try {
-        this.ws = new WebSocket(wsUrl);
+        this.ws = new WebSocket(wsUrl, wsOptions);
       } catch (err) {
         this._wsState = 'disconnected';
         this._connectPromise = null;

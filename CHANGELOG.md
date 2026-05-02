@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- **`@js-eyes/visual-bridge-kit@0.2.0`** — adds a second adoption mode for skills
+  that drive the page through one-shot `executeScript` injection (no long-lived
+  bridge), in addition to the existing long-lived bridge mode used by
+  `js-reddit-ops-skill`:
+  - `node/runVisual.js::wrapInjectCall(ctx, hint, fn, hooks)` — same
+    before/after/drain semantics as `wrapCallApi`, but bundles
+    `visual.common.js` + site anchor resolver into the `before` payload so
+    every tool call self-bootstraps. The IIFE's `__installed` short-circuit
+    keeps repeated injection cheap.
+  - `node/loadKit.js::loadVisualKitSource({ siteAnchorPath })` — module-level
+    cache that returns `visual.common.js` (+ optional site-specific
+    `_visual-<site>.js`) as a single string ready to splice into a Node-side
+    expression.
+  - `parseVisualFlags(opts, siteDefaults)` now accepts a per-site default
+    object so each skill can pin a distinct default `prefix` (e.g.
+    `__jse_browser_visual_`, `__jse_reddit_visual_`) without losing user
+    overrides via `--visual-prefix`.
+- **`js-browser-ops-skill@2.2.0`** — first adopter of the one-shot inject
+  pathway, gaining the same HUD + flash + jsonl trace experience as
+  `js-reddit-ops-skill` while leaving its declarative `generate*Script`
+  helpers (read / click / fill / wait / scroll / screenshot) byte-for-byte
+  unchanged. CLI surface mirrors reddit:
+  `--visual / --no-visual / --visual-detail / --visual-ms / --visual-mode /
+  --visual-trace / --visual-list-stride / --visual-prefix`.
+- **`js-reddit-ops-skill@3.5.0`** — original adopter of the long-lived bridge
+  pathway. The kit ships with:
+  - `bridge/visual.common.js` — pure-page IIFE that installs
+    `window.__jse_visual` (config / flashElement / flashRelation / showHud /
+    announceStage / cleanup / before / after / drainEvents).
+  - `node/bridgeIncludes.js::makeBridgeExpander` — generic
+    `// @@include <path>` preprocessor (relative + `@scope/pkg/...` package
+    paths) replacing the bespoke `expandBridgeSource` that each skill had to
+    re-implement.
+  - `node/runVisual.js::wrapCallApi` / `drainVisualEvents` — dispatch-edge
+    hooks so business code stays zero-touch.
+  - `node/visualConfig.js::parseVisualFlags` — single source for the
+    `--visual / --no-visual / --visual-detail / --visual-ms / --visual-mode /
+    --visual-trace / --visual-list-stride / --visual-prefix` CLI surface.
+  - `node/visualTrace.js::appendVisualTrace` — jsonl recorder for replay /
+    headless observability.
+
 ## [2.6.3] - 2026-05-02
 
 > **Install-time UX release — zero behavioural changes at runtime.** Closes a

@@ -42,3 +42,6 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# Local demo / debug runs (visual-bridge-kit jsonl traces, etc.)
+runs/

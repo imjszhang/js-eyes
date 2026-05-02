@@ -5,6 +5,45 @@ All notable changes to `js-reddit-ops-skill` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-05-02
+
+### Added
+
+- **页面内视觉反馈层**：接入新 workspace 包 `@js-eyes/visual-bridge-kit@0.1.0`，
+  在调度边界（`lib/runTool.js` + `cli/index.js` 三个入口）自动给每个工具
+  调用做 HUD + DOM-anchored flash + 列表呼吸感 + 评论树 relation 线，
+  bridge 业务函数零侵入。
+- 新增 7 个 CLI 旋钮：`--visual` / `--no-visual` / `--visual-detail
+  compact|staged` / `--visual-ms <n>` / `--visual-mode auto|dom|hud|both|off` /
+  `--visual-trace <jsonl>` / `--visual-list-stride <ms>` / `--visual-prefix
+  <p>`。默认 `--visual --visual-mode auto --visual-detail staged`。
+- 新增 `lib/visualHint.js`：18 个工具逐个声明 `visualHint`（`kind`/`label`/
+  `anchor`/`target`/`detail`/`tone`），并实现 `buildSummary` 把 bridge 返回
+  翻译成 list/tree 演出参数（前 8 个 `t3_*` flash + 父子 `t1_/t3_` relation 线）。
+- 新增 `bridges/_visual-reddit.js`：reddit fullname (`t3_/t1_/t5_/t2_/t4_`) /
+  CSS selector / reddit URL → DOM 锚点解析，支持 shreddit 与 old reddit 双
+  前端，解析失败自动降级 HUD-only。同时提供 `staggerFlashItems` 给列表
+  类工具用。
+- `bridges/common.js` 顶部新增两条 `// @@include`：先装 `@js-eyes/visual-bridge-kit/bridge/visual.common.js`，再装 `_visual-reddit.js`。
+- `lib/session.js`：`expandBridgeSource` 替换为 `@js-eyes/visual-bridge-kit`
+  的 `makeBridgeExpander`（支持任意 `@@include`，含包路径 `@scope/pkg/...`）。
+  `ensureBridge` 在每次握手末尾下发一次 `__jse_visual.config(...)`，前缀强制
+  使用 `__jse_reddit_visual_` 避免与同浏览器内其它 skill 冲突。
+- 安全护栏：z-index 取 `2147483000`（低于 reddit 自家 dialog），
+  `pointer-events:none`，**不** `scrollIntoView`（虚拟滚动列表友好），
+  ring buffer 上限 200，监听 `pushState`/`replaceState`/`popstate` 自动
+  `cleanup()`。
+
+### Changed
+
+- `bridges/{home,post,listing,search,user,inbox}-bridge.js` 的 `VERSION`
+  全部从 `3.4.1` → `3.5.0`，下次 `ensureBridge` 强制重注入。
+
+### Notes
+
+- 老用户回滚：加 `--no-visual` 完全等价于 3.4.x 行为。
+- 接入指南：见 `packages/visual-bridge-kit/README.md` + `docs/dev/visual-cookbook.md`。
+
 ## [3.4.1] - 2026-04-26
 
 Major architecture overhaul. The skill is now a full Reddit READ + INTERACTIVE

@@ -299,6 +299,13 @@ function parseArgv(argv) {
     clear: false,
     anchors: false,
     filter: null,
+    visual: undefined,
+    visualDetail: null,
+    visualMs: null,
+    visualMode: null,
+    visualTrace: null,
+    visualListStride: null,
+    visualPrefix: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -349,6 +356,20 @@ function parseArgv(argv) {
     else if (a.startsWith('--user-tab=')) eatEq('userTab', '--user-tab=');
     else if (a === '--search-type') eat('searchType');
     else if (a.startsWith('--search-type=')) eatEq('searchType', '--search-type=');
+    else if (a === '--visual') opts.visual = true;
+    else if (a === '--no-visual') opts.visual = false;
+    else if (a === '--visual-detail') eat('visualDetail');
+    else if (a.startsWith('--visual-detail=')) eatEq('visualDetail', '--visual-detail=');
+    else if (a === '--visual-ms') eat('visualMs');
+    else if (a.startsWith('--visual-ms=')) eatEq('visualMs', '--visual-ms=');
+    else if (a === '--visual-mode') eat('visualMode');
+    else if (a.startsWith('--visual-mode=')) eatEq('visualMode', '--visual-mode=');
+    else if (a === '--visual-trace') eat('visualTrace');
+    else if (a.startsWith('--visual-trace=')) eatEq('visualTrace', '--visual-trace=');
+    else if (a === '--visual-list-stride') eat('visualListStride');
+    else if (a.startsWith('--visual-list-stride=')) eatEq('visualListStride', '--visual-list-stride=');
+    else if (a === '--visual-prefix') eat('visualPrefix');
+    else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
     else if (a.startsWith('-')) {
       const err = new Error(
         `unknown option: ${a}（运行 \`node index.js --help\` 查看可用选项）`,
@@ -395,6 +416,14 @@ function printHelp() {
     '  --user-tab <name>        overview|submitted|comments|saved|upvoted|downvoted|hidden',
     '  --pretty                 JSON 缩进 2 空格输出',
     '  -v, --verbose            session 流转日志输出到 stderr',
+    '  --visual                 开启页面内视觉反馈（默认开）',
+    '  --no-visual              关闭页面内视觉反馈',
+    '  --visual-detail <lvl>    compact | staged（默认 staged）',
+    '  --visual-ms <n>          flash 持续时长 ms（默认 420）',
+    '  --visual-mode <m>        auto | dom | hud | both | off（默认 auto）',
+    '  --visual-trace <file>    把视觉事件写入 jsonl（每次工具调用追加一行）',
+    '  --visual-list-stride <ms> 列表呼吸感步进 ms（默认 90）',
+    '  --visual-prefix <p>      DOM id 前缀（默认 __jse_reddit_visual_）',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080，可用 JS_EYES_SERVER_URL 覆盖）',
     '  --recording-mode <mode>  off|history|standard|debug',
     '  --debug-recording        强制写 debug bundle',
