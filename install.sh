@@ -7,9 +7,13 @@ SITE_URL="https://js-eyes.com"
 INSTALL_DIR="${JS_EYES_DIR:-./skills}"
 SUB_SKILL="${JS_EYES_SKILL:-${1:-}}"
 SKIP_NATIVE_HOST="${JS_EYES_SKIP_NATIVE_HOST:-0}"
+SKIP_TOKEN_INIT="${JS_EYES_SKIP_TOKEN_INIT:-0}"
 for arg in "$@"; do
   if [ "$arg" = "--skip-native-host" ]; then
     SKIP_NATIVE_HOST=1
+  fi
+  if [ "$arg" = "--skip-token-init" ]; then
+    SKIP_TOKEN_INIT=1
   fi
 done
 
@@ -406,6 +410,23 @@ PLUGIN_PATH="${ABSOLUTE_TARGET}/openclaw-plugin"
 
 ok "JS Eyes installed to: ${ABSOLUTE_TARGET}"
 
+# Initialize the server token *before* the native-host install so that the
+# host process has something to read on first popup "Sync Token From Host"
+# attempt. `server token init` is idempotent (no-op if file already exists),
+# so re-running install.sh is safe.
+if [ "${SKIP_TOKEN_INIT}" != "1" ]; then
+  if command -v npx >/dev/null 2>&1; then
+    info "Initializing local server token (skip with --skip-token-init)..."
+    if npx --yes js-eyes server token init >/dev/null 2>&1; then
+      ok "Server token initialized at ~/.js-eyes/runtime/server.token."
+    else
+      warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+    fi
+  else
+    warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' (or start OpenClaw) before using Sync Token From Host."
+  fi
+fi
+
 if [ "${SKIP_NATIVE_HOST}" != "1" ]; then
   if command -v npx >/dev/null 2>&1; then
     info "Registering browser native-messaging host (skip with --skip-native-host)..."
@@ -433,4 +454,9 @@ echo "      \"config\": { \"serverPort\": 18080, \"autoStartServer\": true }"
 echo "    }"
 echo ""
 echo "  Then restart OpenClaw."
+echo ""
+echo "  Tip: in the browser extension popup, restart the browser first, then"
+echo "       click \"Sync Token From Host / 从本机同步\" to auto-populate the"
+echo "       server token. If it reports 'token-missing', start OpenClaw or"
+echo "       run \`js-eyes server token init\` so the token file exists."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

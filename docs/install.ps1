@@ -7,8 +7,11 @@ $SiteUrl    = "https://js-eyes.com"
 $InstallDir = if ($env:JS_EYES_DIR) { $env:JS_EYES_DIR } else { ".\skills" }
 $SkipNativeHost = $false
 if ($env:JS_EYES_SKIP_NATIVE_HOST -eq '1') { $SkipNativeHost = $true }
+$SkipTokenInit = $false
+if ($env:JS_EYES_SKIP_TOKEN_INIT -eq '1') { $SkipTokenInit = $true }
 foreach ($argv in $args) {
     if ($argv -eq '--skip-native-host') { $SkipNativeHost = $true }
+    if ($argv -eq '--skip-token-init')  { $SkipTokenInit  = $true }
 }
 
 function Write-Info  ($msg) { Write-Host "[info]  $msg" -ForegroundColor Cyan }
@@ -278,6 +281,29 @@ $PluginPath = (Join-Path $AbsTarget "openclaw-plugin") -replace '\\', '/'
 
 Write-Ok "JS Eyes installed to: $AbsTarget"
 
+# Initialize the server token *before* the native-host install so that the
+# host process has something to read on first popup "Sync Token From Host"
+# attempt. `server token init` is idempotent (no-op if file already exists).
+if (-not $SkipTokenInit) {
+    $HasNpx = $false
+    try { $null = Get-Command npx -ErrorAction Stop; $HasNpx = $true } catch {}
+    if ($HasNpx) {
+        Write-Info "Initializing local server token (skip with --skip-token-init)..."
+        try {
+            & npx --yes js-eyes server token init | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Ok "Server token initialized at $env:USERPROFILE\.js-eyes\runtime\server.token."
+            } else {
+                Write-Warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+            }
+        } catch {
+            Write-Warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+        }
+    } else {
+        Write-Warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' (or start OpenClaw) before using Sync Token From Host."
+    }
+}
+
 if (-not $SkipNativeHost) {
     $HasNpx = $false
     try { $null = Get-Command npx -ErrorAction Stop; $HasNpx = $true } catch {}
@@ -312,4 +338,9 @@ Write-Host '      "config": { "serverPort": 18080, "autoStartServer": true }'
 Write-Host '    }'
 Write-Host ""
 Write-Host "  Then restart OpenClaw."
+Write-Host ""
+Write-Host "  Tip: in the browser extension popup, restart the browser first, then"
+Write-Host "       click `"Sync Token From Host / 从本机同步`" to auto-populate the"
+Write-Host "       server token. If it reports 'token-missing', start OpenClaw or"
+Write-Host "       run ``js-eyes server token init`` so the token file exists."
 Write-Host ([string]::new([char]0x2501, 57))
