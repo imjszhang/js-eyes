@@ -49,9 +49,16 @@ function writeFrameSync(filePath, payload){
  * @param {() => (number | Promise<number>)} opts.getTabId
  * @param {(tabId: number, options?: object) => Promise<{ dataUrl?, skipped?, format? }>} opts.captureScreenshot
  *        - 通常传 BrowserAutomation.captureScreenshot.bind(bot)
+ *        - 调用时会传入 { format, quality, hiDpi }，调用方自行映射到底层
  * @param {object} [opts.throttle]
  * @param {number} [opts.throttle.maxFrames=60]
  * @param {number} [opts.throttle.minIntervalMs=250]
+ * @param {string} [opts.format='jpeg']     'jpeg' | 'png'，影响落盘扩展名 + 默认压缩
+ * @param {number} [opts.quality=82]        JPEG 质量（PNG 忽略）
+ * @param {boolean} [opts.hiDpi=false]      传给底层截图 API（设备像素 vs CSS 像素）
+ * @param {(info, frameMeta) => void} [opts.onWritten]
+ *        每帧成功落盘后回调（同步）。frameMeta = { ts, when, frameRef, viewport,
+ *        bytes, format }，外部可塞进 frame 元数据列表 / 写 events.jsonl。
  * @param {object} [opts.logger]            可选，console.warn 兼容接口
  */
 function makeFrameWriter(opts){
@@ -60,6 +67,10 @@ function makeFrameWriter(opts){
   const getTabId = o.getTabId;
   const captureScreenshot = o.captureScreenshot;
   const throttle = Object.assign({ maxFrames: 60, minIntervalMs: 250 }, o.throttle || {});
+  const format = (typeof o.format === 'string' && o.format.toLowerCase() === 'png') ? 'png' : 'jpeg';
+  const quality = Number.isFinite(o.quality) ? o.quality : 82;
+  const hiDpi = !!o.hiDpi;
+  const onWritten = typeof o.onWritten === 'function' ? o.onWritten : null;
   const logger = o.logger || null;
 
   if (!recordDir || typeof getTabId !== 'function' || typeof captureScreenshot !== 'function') {
@@ -87,7 +98,7 @@ function makeFrameWriter(opts){
 
       let resp;
       try {
-        resp = await captureScreenshot(tabId, { format: 'png' });
+        resp = await captureScreenshot(tabId, { format, quality, hiDpi });
       } catch (_) {
         inFlight = false;
         return;
@@ -104,7 +115,28 @@ function makeFrameWriter(opts){
 
       const filePath = path.join(recordDir, info.frameRef);
       const ok = writeFrameSync(filePath, resp.dataUrl);
-      if (ok) frameCount += 1;
+      if (ok) {
+        frameCount += 1;
+        if (onWritten) {
+          let bytes = 0;
+          try { bytes = fs.statSync(filePath).size; } catch (_) {}
+          // v0.5.0: await onWritten 让 frame 事件能在 drainVisualEvents 之前进入
+          // ring buffer。回调内部失败/超时静默吞错，不阻塞主调用。
+          try {
+            const ret = onWritten(info, {
+              ts: info.ts,
+              when: info.when || 'after',
+              frameRef: info.frameRef,
+              viewport: info.viewport || null,
+              bytes,
+              format,
+            });
+            if (ret && typeof ret.then === 'function') {
+              await ret;
+            }
+          } catch (_) {}
+        }
+      }
     } catch (err) {
       if (logger && typeof logger.warn === 'function') {
         logger.warn('[visual-bridge-kit] captureFrame failed: ' + (err && err.message ? err.message : String(err)));

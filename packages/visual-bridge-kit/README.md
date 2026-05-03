@@ -2,19 +2,56 @@
 
 可复用的浏览器内"视觉反馈层" + 业务数据派发器，让 bridge 类技能（reddit-ops / x-ops / zhihu-ops … 以及外部 newidea-cli-test）共享同一套 HUD + flash overlay + 评论树关系线 + 结构化业务数据落盘 + 离线 HTML 模板回放。
 
-## post-2.7.0 architecture pivot（重要）
+## v0.5.2 设计澄清：bridge HUD 是"执行时反馈"，故意保留
+
+> v0.5.1 一度尝试在 `--visual-record` 时让 bridge "静默"（不渲染 HUD/flash 浮层），
+> 这是**误判**——bridge 端的 in-page HUD/flash 是给人类观察 agent 当下行为用的，
+> 应该和不录制时一致。把它静默掉等于把"执行时反馈"也吃了。
+>
+> v0.5.2 已把 `silentRecord` 配置项**整体撤回**，bridge 行为回到 v0.5.0：
+>
+> - `showHud` / `flashElement` / `flashRelation` 始终在浏览器里画 DOM overlay
+> - 录制时这些 overlay **会被 `captureScreenshot` 拍进 PNG/JPEG 像素**
+> - **这是预期行为**：截图就是当时浏览器看到的样子
+>
+> "录屏不要叠多余视觉"指的是**合成端 (`visual-replay-hyperframes`) 不在已经带
+> HUD 的截图上再叠一层**，由 hyperframes 0.5.2 的 `--effects=auto` 默认值负责
+> （snapshot 模式默认 `effects.hud=false, effects.flash=false`，detail 见
+> `@js-eyes/visual-replay-hyperframes` README）。
+>
+> bridge `VERSION` 仍 bump（0.4.0 → 0.4.2）以驱赶任何 0.4.1 缓存。
+
+## v0.5.0 snapshot mode 主链路升级
+
+> v0.5.0 起 **PNG/JPEG 截图链路重新升回主入口**，与"业务 payload + HTML 数据驱动模板"
+> 共存。`makeFrameWriter` / `buildFrameRef` / `writeFrameSync` /
+> `attachFrameRefsToEvents` 都从顶层 `require('@js-eyes/visual-bridge-kit')` 导出
+> （`/dev` 子路径仍可用作 alias）。
+>
+> 主要变化：
+>
+> - `wrapCallApi` 现在默认 await `hooks.captureFrame`，截图成功后由 `onWritten`
+>   回调把 `{type:'frame', ts, frameRef, viewport}` 事件 emit 进 ring buffer，
+>   下游 `drainVisualEvents` 自然取回。
+> - bridge 暴露 `__jse_visual.viewport()` 返回 `{cssW, cssH, dpr, scrollY}`，
+>   skill 端在 `ensureBridge` 后写到 `meta.json` 的 `viewport` 字段。
+> - 老主链路（events 不写 viewport / anchor.rect / relate rect）保持不变；
+>   新增 `frame` 事件是可选 channel，老下游忽略不读不破坏。
+>
+> hyperframes v0.5.0 默认按 events 是否含 `frame` 自动选 snapshot vs template
+> 模式（详见 `@js-eyes/visual-replay-hyperframes/README.md`）。
+
+## post-2.7.0 architecture pivot（保留）
 
 > 主链路从"PNG 截图 + DOM 测量 + 离线坐标叠层" 切换为 "业务 payload + HTML 数据驱动模板"。
-> kit 包版本 `0.4.x`（不动版本号），主链路换骨。
+> v0.5.0 引入 snapshot mode 后**两路并存**：
 >
-> | 维度 | 之前（PNG 路线） | 现在（A 路线 HTML） |
+> | 维度 | A 路线（HTML 模板） | B 路线（snapshot v0.5.0+） |
 > |---|---|---|
-> | events 内容 | `viewport / anchor.rect / frameRef` | `kind / payload / anchor.spec` |
-> | 离线产物 | `frames/*.png` + 绝对坐标 flash 盒 | reddit-style HTML 卡片 + class 切换式 flash |
-> | 视口耦合 | 1641×885 强写死，缩放后错位 | 响应式 vw/clamp，任意尺寸 0 错位 |
-> | 入口 | `require('@js-eyes/visual-bridge-kit')` 顶层 export `makeFrameWriter` | 顶层不再有；改 `require('@js-eyes/visual-bridge-kit/dev')` |
-
-PNG 路线代码保留（`node/captureFrame.js` + 顶层 dev 子路径），仅供历史 fixture 回归与 dev 调试。任何新接入都应该走 A 路线。
+> | events 内容 | `kind / payload / anchor.spec` | 同 A + `frame` 事件 |
+> | 离线产物 | reddit-style HTML 卡片 + class 切换式 flash | PNG/JPEG `#stage` 背景 + HUD + flash |
+> | 视口耦合 | 响应式 vw/clamp，任意尺寸 0 错位 | 跟随浏览器实际 CSS 像素，配 `viewport` 元数据 |
+> | 入口 | `require('@js-eyes/visual-bridge-kit')` | 同（顶层 export 自 v0.5.0 恢复） |
 
 ## 它解决的问题
 

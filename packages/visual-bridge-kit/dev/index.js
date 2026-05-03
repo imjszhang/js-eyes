@@ -2,36 +2,22 @@
 
 // @js-eyes/visual-bridge-kit/dev
 // ---------------------------------------------------------------------------
-// post-2.7.0 architecture pivot 后，PNG 截图链路（chrome.tabs.captureVisibleTab
-// → frames/<ts>.png）已从主链路下线。但 captureFrame.js 与相关 helpers 代码保留，
-// 通过本子路径暴露给开发 / debug / 历史回归使用：
+// v0.5.0 起，PNG/JPEG 截图链路（makeFrameWriter / buildFrameRef /
+// writeFrameSync / attachFrameRefsToEvents）已升回顶层 index.js 主入口
+// （snapshot mode 默认链路）。本子路径仅作 **历史兼容 alias**，所有
+// 调用直接转发到顶层 export。
 //
-//   const {
-//     makeFrameWriter,
-//     writeFrameSync,
-//     buildFrameRef,
-//     attachFrameRefsToEvents,
-//   } = require('@js-eyes/visual-bridge-kit/dev');
+// 推荐新代码改用：
+//   const { makeFrameWriter } = require('@js-eyes/visual-bridge-kit');
 //
-// 用法示例（手动开 PNG 路线，仅 dev）：
-//   const writer = makeFrameWriter({ outDir: 'runs/dev-frames', tabId, callRaw });
-//   await wrapCallApi(session, hint, () => session.callApi(method, args), {
-//     extractPayload, // 主链路：业务数据
-//     captureFrame: writer, // dev only：仍想留 PNG 底图
-//   });
-//
-// A 路线主链路（HTML 数据驱动 replay）不消费这些 frame，hyperframes translator
-// 也不再读 frames/。这些工具留着仅为：
-//   1) 兼容旧会话 fixture（packages/visual-replay-hyperframes/__fixtures__/sess-firefox-2.7.0/）的回归
-//   2) 为后续可能的混合方案（HTML 卡片 + PNG 缩略叠层）保留实现入口
+// 旧代码的 require('@js-eyes/visual-bridge-kit/dev') 仍能继续工作。
 // ---------------------------------------------------------------------------
 
-const { makeFrameWriter, writeFrameSync } = require('../node/captureFrame');
-const { buildFrameRef, attachFrameRefsToEvents } = require('../node/runVisual');
+const top = require('../index');
 
 module.exports = {
-  makeFrameWriter,
-  writeFrameSync,
-  buildFrameRef,
-  attachFrameRefsToEvents,
+  makeFrameWriter: top.makeFrameWriter,
+  writeFrameSync: top.writeFrameSync,
+  buildFrameRef: top.buildFrameRef,
+  attachFrameRefsToEvents: top.attachFrameRefsToEvents,
 };

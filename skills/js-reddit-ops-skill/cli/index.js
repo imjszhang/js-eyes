@@ -148,6 +148,9 @@ async function runToolCommand(commandName, def, opts, positional) {
         visualTrace,
         visualRecord,
         mode: opts.mode,
+        noFrames: opts.noFrames === true,
+        hiDpi: opts.hiDpi === true,
+        maxFrames: Number.isFinite(opts.maxFrames) ? opts.maxFrames : undefined,
       },
     });
     printJson(response, opts);

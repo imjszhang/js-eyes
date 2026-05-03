@@ -108,8 +108,10 @@ async function callRawSafely(session, expression){
 }
 
 // ----- Phase 2: captureFrame fire-and-forget helpers ------------------------
-function buildFrameRef(ts){
-  return 'frames/' + ts + '.png';
+// v0.5.0: ext 可选（默认 png 兼容旧调用，snapshot mode 主链路传 'jpg'）
+function buildFrameRef(ts, ext){
+  const e = (ext && typeof ext === 'string') ? ext.replace(/^\./, '') : 'png';
+  return 'frames/' + ts + '.' + e;
 }
 
 function safeCaptureFrame(captureFrame, info){
@@ -122,6 +124,32 @@ function safeCaptureFrame(captureFrame, info){
     ret.then(() => {}, () => {});
   }
   return info;
+}
+
+// v0.5.0: snapshot-mode 主链路使用 awaitCaptureFrame，等截图完成 + onWritten
+// 把 frame 事件 emit 进 ring buffer 后再返回，确保 drainVisualEvents 能取到
+// 这一帧。失败/超时静默吞错，不阻塞主流程超过 timeoutMs。
+async function awaitCaptureFrame(captureFrame, info, opts){
+  if (typeof captureFrame !== 'function') return false;
+  const timeoutMs = (opts && Number.isFinite(opts.timeoutMs)) ? opts.timeoutMs : 2500;
+  let ret;
+  try {
+    ret = captureFrame(info);
+  } catch (_) { return false; }
+  if (!ret || typeof ret.then !== 'function') return true;
+  let timer;
+  const timeoutP = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    const result = await Promise.race([
+      ret.then(() => true, () => false),
+      timeoutP,
+    ]);
+    return !!result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function attachFrameRefsToEvents(events, frames){
@@ -194,14 +222,22 @@ async function wrapCallApi(session, hint, fn, hooks){
 
   await callRawSafely(session, buildAfterExpression(hint, summary));
 
-  // dev-only：如显式提供 hooks.captureFrame，仍触发一次 fire-and-forget 截图（不
-  // 影响 events 内容、不收集 frames 元数据；A 路线主链路不消费）
+  // v0.5.0 snapshot mode: 主链路在每个命令边界截一帧。
+  //   - 默认 await，等 onWritten 把 frame 事件 emit 进 ring buffer，
+  //     drainVisualEvents 才能拿到这一帧。
+  //   - 配 hooks.captureFrameAwait === false 退回旧版 fire-and-forget。
+  //   - frameFormat: 'jpg' (默认 snapshot) | 'png' | 自定义扩展名。
   if (hooks && typeof hooks.captureFrame === 'function') {
     try {
       const ts = Date.now();
       const when = err ? 'error' : 'after';
-      const info = { ts, when, frameRef: buildFrameRef(ts), hint, summary };
-      safeCaptureFrame(hooks.captureFrame, info);
+      const ext = (hooks && hooks.frameFormat) ? hooks.frameFormat : 'jpg';
+      const info = { ts, when, frameRef: buildFrameRef(ts, ext), hint, summary };
+      if (hooks.captureFrameAwait === false) {
+        safeCaptureFrame(hooks.captureFrame, info);
+      } else {
+        await awaitCaptureFrame(hooks.captureFrame, info, { timeoutMs: hooks.captureFrameTimeoutMs });
+      }
     } catch (_) {}
   }
 
@@ -316,13 +352,24 @@ async function wrapInjectCall(ctx, hint, fn, hooks){
     if (Array.isArray(drained)) events = drained;
   }
 
-  // dev-only：显式 hooks.captureFrame 仍可触发；events 不再被自动 attach frameRef
+  // v0.5.0 snapshot mode（同 wrapCallApi）：默认 await，让 frame 事件进入 ring
+  // buffer 再返回；inject 模式 events 已经在前面 drain 完，所以这里 emit 后
+  // 直接 push 进调用方收到的 events 数组。
   if (hooks && typeof hooks.captureFrame === 'function' && visualEnabled) {
     try {
       const ts = Date.now();
       const when = err ? 'error' : 'after';
-      const info = { ts, when, frameRef: buildFrameRef(ts), hint, summary };
-      safeCaptureFrame(hooks.captureFrame, info);
+      const ext = (hooks && hooks.frameFormat) ? hooks.frameFormat : 'jpg';
+      const info = { ts, when, frameRef: buildFrameRef(ts, ext), hint, summary };
+      if (hooks.captureFrameAwait === false) {
+        safeCaptureFrame(hooks.captureFrame, info);
+      } else {
+        const ok = await awaitCaptureFrame(hooks.captureFrame, info, { timeoutMs: hooks.captureFrameTimeoutMs });
+        // wrapInjectCall 已经 drain 过事件，frame 事件需要回写进 events 数组
+        if (ok && Array.isArray(events) && hooks.collectFrameEventLocally !== false) {
+          events.push({ type: 'frame', ts, frameRef: info.frameRef });
+        }
+      }
     } catch (_) {}
   }
 

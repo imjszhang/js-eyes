@@ -29,16 +29,32 @@ const RELATION_DURATION_SEC = 0.7;
  * @returns {{ startMs, endMs, durationSec, clips }}
  */
 function buildTimeline(entries){
-  const events = flattenEvents(entries);
+  // v0.5.3：先算出 session 真实起点（=第一个 entry 的 top-level ts）。
+  // bridge 端 ring buffer 是 per-tab 持久化的，上一次 skill 调用如果只 emit 不 drain
+  // （或 drain 失败），下一次 session 启动后 drain 会把那些过期 hud/flash 事件一起
+  // 拉走、混进 events.jsonl 第一批。这些事件 ts 比 session 早几秒到几分钟，
+  // 老逻辑把 events[0].ts 当 t=0，会把整条 timeline 推后到几百秒之后，hyperframes
+  // 打开就是一张死图——直到几分钟后才动。
+  // 现在改成：以 firstEntry.ts 为 sessionStartMs，掉队事件（ts < sessionStartMs - 1s）
+  // 直接丢弃。
+  const allEvents = flattenEvents(entries);
+  const sessionStartMs = computeSessionStartMs(entries, allEvents);
+  const events = allEvents.filter((e) => e.ts >= sessionStartMs - 1000);
   if (events.length === 0) {
     return {
       startMs: 0,
       endMs: 0,
       durationSec: 0,
-      clips: { hud: [], flash: [], relation: [], before: [], after: [], dom: emptyDomClips() },
+      frameCount: 0,
+      clips: {
+        hud: [], flash: [], relation: [], before: [], after: [],
+        dom: emptyDomClips(),
+        frames: [],
+        toolSegments: [],
+      },
     };
   }
-  const startMs = events[0].ts;
+  const startMs = Math.min(events[0].ts, sessionStartMs);
   const lastEvent = events[events.length - 1];
   const endMs = lastEvent.ts + Math.round(HUD_TAIL_SEC * 1000);
 
@@ -48,6 +64,11 @@ function buildTimeline(entries){
   const before = [];
   const after = [];
   const dom = emptyDomClips();
+  const frames = [];
+  // toolSegments：{ toolName, entryRunId, tStart, tEnd, hasFrames, mode } 段记录
+  // 用于 translator/timelineScript 决定每段是 snapshot 还是 template 渲染
+  const toolSegments = [];
+  let lastDomEventType = null;
   // dom_type 单字事件聚合成 typing run（同 selector 连续打字）
   let typingRun = null;
   function flushTypingRun(){
@@ -60,6 +81,41 @@ function buildTimeline(entries){
   for (let i = 0; i < events.length; i += 1) {
     const e = events[i];
     const tStart = (e.ts - startMs) / 1000;
+    // toolSegments 跟踪：每个 entryRunId 切换/toolName 切换都启一段
+    const segId = e.entryRunId || e.toolName || '';
+    const lastSeg = toolSegments.length ? toolSegments[toolSegments.length - 1] : null;
+    if (!lastSeg || lastSeg._segId !== segId) {
+      toolSegments.push({
+        _segId: segId,
+        toolName: e.toolName || '',
+        entryRunId: e.entryRunId || '',
+        tStart,
+        tEnd: tStart,
+        hasFrames: false,
+        frameCount: 0,
+      });
+    } else {
+      lastSeg.tEnd = tStart;
+    }
+    if (e.type === 'frame') {
+      frames.push({
+        id: 'frm-' + i,
+        seqIndex: i,
+        tStart,
+        // tEnd 末尾再补
+        frameRef: e.frameRef || '',
+        viewport: e.viewport || null,
+        when: e.when || 'after',
+        linkedDomEvent: lastDomEventType,
+        toolName: e.toolName || '',
+      });
+      const seg = toolSegments[toolSegments.length - 1];
+      if (seg) {
+        seg.hasFrames = true;
+        seg.frameCount += 1;
+      }
+      continue;
+    }
     if (e.type === 'hud') {
       const next = findNextEventOfType(events, i, 'hud');
       const rawEnd = next ? (next.ts - startMs) / 1000 : tStart + HUD_TAIL_SEC;
@@ -137,6 +193,7 @@ function buildTimeline(entries){
         from: e.from || '',
         to: e.to || '',
       });
+      lastDomEventType = 'dom_navigate';
     } else if (e.type === 'dom_locate') {
       flushTypingRun();
       dom.locate.push({
@@ -147,6 +204,7 @@ function buildTimeline(entries){
         rect: e.rect || null,
         miss: !!e.miss,
       });
+      lastDomEventType = 'dom_locate';
     } else if (e.type === 'dom_hover') {
       flushTypingRun();
       dom.hover.push({
@@ -157,6 +215,7 @@ function buildTimeline(entries){
         selector: e.selector || '',
         rect: e.rect || null,
       });
+      lastDomEventType = 'dom_hover';
     } else if (e.type === 'dom_click') {
       flushTypingRun();
       dom.click.push({
@@ -166,6 +225,7 @@ function buildTimeline(entries){
         selector: e.selector || '',
         rect: e.rect || null,
       });
+      lastDomEventType = 'dom_click';
     } else if (e.type === 'dom_type') {
       const sel = e.selector || '';
       if (typingRun && typingRun.selector === sel && (e.ts - typingRun._lastTs) < 1500) {
@@ -207,6 +267,7 @@ function buildTimeline(entries){
         fromY: Number(e.fromY) || 0,
         toY: Number(e.toY) || 0,
       });
+      lastDomEventType = 'dom_scroll';
     } else if (e.type === 'dom_wait') {
       flushTypingRun();
       dom.wait.push({
@@ -219,6 +280,7 @@ function buildTimeline(entries){
         rect: e.rect || null,
         timeout: !!e.timeout,
       });
+      lastDomEventType = 'dom_wait';
     } else if (e.type === 'dom_extract') {
       flushTypingRun();
       dom.extract.push({
@@ -229,16 +291,33 @@ function buildTimeline(entries){
         count: Number(e.count) || 0,
         sample: Array.isArray(e.sample) ? e.sample.slice(0, 3) : [],
       });
+      lastDomEventType = 'dom_extract';
     }
   }
 
   flushTypingRun();
 
+  // 给每帧补 tEnd = 下一帧 tStart，否则用 timeline endSec
+  const endSec = (endMs - startMs) / 1000;
+  for (let i = 0; i < frames.length; i += 1) {
+    const f = frames[i];
+    const nextF = frames[i + 1];
+    f.tEnd = nextF ? nextF.tStart : endSec;
+  }
+  // toolSegments 末段补 tEnd = endSec
+  if (toolSegments.length) {
+    const last = toolSegments[toolSegments.length - 1];
+    if (last.tEnd < endSec) last.tEnd = endSec;
+    // 清理 _segId 这个内部字段
+    for (const s of toolSegments) delete s._segId;
+  }
+
   return {
     startMs,
     endMs,
-    durationSec: (endMs - startMs) / 1000,
-    clips: { hud, flash, relation, before, after, dom },
+    durationSec: endSec,
+    frameCount: frames.length,
+    clips: { hud, flash, relation, before, after, dom, frames, toolSegments },
   };
 }
 
@@ -276,6 +355,24 @@ function extractAnchorId(anchor){
   if (typeof anchor.user === 'string' && anchor.user) return 'user:' + anchor.user;
   if (typeof anchor.url === 'string' && anchor.url) return 'url:' + anchor.url;
   return '';
+}
+
+/**
+ * computeSessionStartMs - 推算 session 真实起点（毫秒）
+ * 优先用第一个 entry 的 top-level ts（CLI 写入时机=命令开始），
+ * 退化时用第一条事件 ts。
+ */
+function computeSessionStartMs(entries, events){
+  for (const entry of entries || []) {
+    if (!entry) continue;
+    if (typeof entry.ts === 'number' && Number.isFinite(entry.ts)) return entry.ts;
+    if (typeof entry.ts === 'string' && entry.ts) {
+      const parsed = Date.parse(entry.ts);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  if (events && events.length) return events[0].ts;
+  return 0;
 }
 
 function flattenEvents(entries){

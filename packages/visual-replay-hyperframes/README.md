@@ -2,9 +2,34 @@
 
 把 `@js-eyes/visual-bridge-kit` 写出的会话包目录翻译成 [hyperframes](https://github.com/imjszhang/hyperframes) composition.html，并可一键 spawn `npx hyperframes render` 生成 mp4。
 
+## 视觉模式（v0.5.0+）
+
+| mode | 触发条件 | 渲染产物 | 适用场景 |
+|---|---|---|---|
+| **snapshot** | events.jsonl 含 `frame` 事件 | `#stage` 背景为 PNG/JPEG 序列（双缓冲 cross-fade） + HUD + flash | dom-first agent 录制、真实 reddit 截图回放 |
+| **template** | events 无 `frame`（老 session / `--no-frames` / `--no-snapshot`） | reddit shell + HTML 卡片（v0.4.0 行为） | 数据驱动语义重渲、零截图带宽场景 |
+| **enhanced** | snapshot + `--effects=...` | snapshot 之上叠加 cursor / typing / ripple / spinner / scroll | 需要可视化"agent 操作意图"的演示视频 |
+
+CLI 默认（推荐）：`--snapshot=auto --shell=fallback-only --effects=auto`
+
+`--effects=auto` 是 v0.5.2 起的 mode-aware 默认；这个 gate 只决定**合成端要不要再
+画一层 overlay**，对 bridge 录制时画在浏览器里的 HUD/flash（已经被截进 JPEG 像素）
+没影响：
+
+| events 含 frame？ | 默认 effects | 含义 |
+| --- | --- | --- |
+| 是（snapshot mode） | `{ hud: false, flash: false, ... 全 false }` | 截图自带 bridge HUD/flash，合成端不再额外加一层；只显示 stage 上的 PNG/JPEG + 底部水印 |
+| 否（template mode） | `{ hud: true, flash: true }` | 没有截图可"借显"，必须由 composition 来画；跟 v0.4.0 看起来一样 |
+
+任意时刻可手动覆盖：`--effects=hud`（snapshot 模式强制叠 composition HUD，通常不需要）/ `--effects=all`（等价 v0.4.0 完整体验）/ `--no-effects`（强制 0 effects，即使 template）。
+=> 有 frame 走 snapshot；无 frame 自动退模板；不叠加冗余特效。
+
+老 session 重渲零回归——v0.3.0/v0.4.0 fixture 直接通过 template 路径输出 1:1 视觉等价的 HTML。
+
 ## post-2.7.0 architecture pivot
 
 > 本包从 PNG-叠层模式切换到 **HTML 数据驱动模板**。版本号不动，主链路换骨。
+> v0.5.0 起 PNG/JPEG 截图链路重新升回主入口，但保持 effects 默认 opt-out。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

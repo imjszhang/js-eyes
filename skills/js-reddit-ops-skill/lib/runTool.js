@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('path');
 const pkg = require('../package.json');
 const { Session } = require('./session');
 const { createRunContext } = require('./runContext');
@@ -10,6 +11,9 @@ const {
   drainVisualEvents,
   appendVisualTrace,
   appendVisualSession,
+  updateVisualSessionMeta,
+  makeFrameWriter,
+  buildFrameRef,
 } = require('@js-eyes/visual-bridge-kit');
 const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');
 
@@ -120,18 +124,118 @@ async function runTool(browser, spec) {
   let usedMode = null;
   let fellBack = false;
 
+  // v0.5.0 snapshot mode: 当 visualRecord 启用时，构建 captureFrame 写盘 hook。
+  //   - 每条命令 wrapCallApi after 截一帧（fire-and-forget 但 await 到 onWritten）
+  //   - dom_navigation_required retry 跳页前 / 跳页后各额外触发一帧
+  //   - onWritten 回写 frame 事件到 bridge ring buffer，drainVisualEvents 自然取回
+  //   - --no-frames opt-out / --hi-dpi opt-in / --max-frames 覆盖默认 80
+  const recordDir = options.visualRecord ? path.resolve(options.visualRecord) : null;
+  const framesEnabled = !!recordDir && options.noFrames !== true;
+  const hiDpi = !!options.hiDpi;
+  const maxFrames = Number.isFinite(options.maxFrames) ? options.maxFrames : 80;
+  const frameFormat = 'jpg';
+  const captureScreenshotForKit = framesEnabled
+    ? async (tabId, opts) => browser.captureScreenshot(tabId, {
+        format: 'jpeg',
+        quality: opts && opts.hiDpi ? 92 : 82,
+      })
+    : null;
+  const captureFrame = framesEnabled ? makeFrameWriter({
+    recordDir,
+    getTabId: () => (session.target && session.target.id) || null,
+    captureScreenshot: captureScreenshotForKit,
+    format: 'jpeg',
+    quality: hiDpi ? 92 : 82,
+    hiDpi,
+    throttle: { maxFrames, minIntervalMs: 200 },
+    onWritten: async (info, meta) => {
+      if (!session) return;
+      let viewport = null;
+      try {
+        const probe = await session.callRaw(
+          '(window.__jse_visual && window.__jse_visual.viewport()) || null',
+          { timeoutMs: 1500 },
+        );
+        if (probe && typeof probe === 'object') viewport = probe;
+      } catch (_) {}
+      const ts = meta.ts;
+      const frameRef = meta.frameRef;
+      const when = meta.when || 'after';
+      const expr = '(window.__jse_visual && window.__jse_visual.emit({'
+        + `type:'frame',ts:${ts},frameRef:${JSON.stringify(frameRef)},`
+        + `when:${JSON.stringify(when)},`
+        + `viewport:${JSON.stringify(viewport)}`
+        + '})) || null';
+      try { await session.callRaw(expr, { timeoutMs: 1500 }); } catch (_) {}
+    },
+    logger: console,
+  }) : null;
+
   try {
     await session.connect();
     await session.resolveTarget();
     target = session.target;
     bridgeMeta = await session.ensureBridge();
 
-    // post-2.7.0：主链路只挂 buildSummary + extractPayload；captureFrame 已下线
-    // （如需 dev PNG 路线，自行 require('@js-eyes/visual-bridge-kit/dev').makeFrameWriter
-    //  并显式传入 hooks.captureFrame）
+    // v0.5.0/v3.8.1：bridge 注入完成后，先把 ring buffer 里残留的过期事件清掉。
+    // 否则上一次 skill 调用留下来的 hud / flash / dom_* 事件会被这次 drainVisualEvents
+    // 一起拉走，混进 events.jsonl 第一批；过期事件 ts 比本次 session 早几分钟，
+    // buildTimeline 又用 firstEventTs 当 t=0，会把整条 timeline 推后到几百秒之后，
+    // hyperframes 打开就是一张死图。
+    try {
+      await session.callRaw(
+        '(window.__jse_visual && window.__jse_visual.drainEvents()) || []',
+        { timeoutMs: 1500 },
+      );
+    } catch (_) {}
+
+    // v0.5.0: ensureBridge 后探一次视口尺寸写到 meta.json，translator 据此设置
+    // #stage aspect-ratio + 单位换算。
+    if (recordDir) {
+      try {
+        const probe = await session.callRaw(
+          '(window.__jse_visual && window.__jse_visual.viewport()) || null',
+          { timeoutMs: 1500 },
+        );
+        const viewport = (probe && typeof probe === 'object') ? probe : null;
+        updateVisualSessionMeta(recordDir, {
+          viewport,
+          frames: framesEnabled ? {
+            enabled: true,
+            format: 'jpeg',
+            quality: hiDpi ? 92 : 82,
+            hiDpi,
+            maxFrames,
+          } : { enabled: false },
+        });
+      } catch (_) {}
+    }
+
+    // v0.5.0：主链路同时挂 buildSummary + extractPayload + captureFrame。
     // v3.7.0 dom-first：按 tryOrder 依次尝试，失败且属于 FALLBACK_ERRORS 时回退下一个候选；
     // 内层处理 'dom_navigation_required'：bridge 主动报需要先导航，runTool 借现有 api 路径
     // location.assign + awaitBridgeAfterNav + ensureBridge 后重试同一 candidate（最多一次）。
+    const wrapHooks = {
+      buildSummary: (r) => buildSummary(r, hint),
+      extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
+    };
+    if (captureFrame) {
+      wrapHooks.captureFrame = captureFrame;
+      wrapHooks.frameFormat = frameFormat;
+      wrapHooks.captureFrameTimeoutMs = 3000;
+    }
+
+    // 在 dom_navigation_required retry 前后手动触发一帧（绕开 wrapCallApi）
+    async function shootFrame(when) {
+      if (!captureFrame) return;
+      try {
+        const ts = Date.now();
+        const info = { ts, when, frameRef: buildFrameRef(ts, frameFormat) };
+        const r = captureFrame(info);
+        if (r && typeof r.then === 'function') await r;
+      } catch (_) {}
+    }
+
     for (let i = 0; i < tryOrder.length; i++) {
       const candidate = tryOrder[i];
       triedMethods.push(candidate);
@@ -142,10 +246,7 @@ async function runTool(browser, spec) {
           return await session.callApi(candidate, [args || {}], {
             timeoutMs: options.timeoutMs || 90000,
           });
-        }, {
-          buildSummary: (r) => buildSummary(r, hint),
-          extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
-        });
+        }, wrapHooks);
         usedMethod = candidate;
         usedMode = candidate.startsWith('dom_') ? 'dom' : 'api';
         if (resp && resp.ok) break;
@@ -155,6 +256,7 @@ async function runTool(browser, spec) {
           resp.to && navAttempts < 1
         ) {
           navAttempts += 1;
+          await shootFrame('pre-nav');
           // 在 location.assign 卸载页面之前先把 dom_navigate / dom_type 等 emit 收掉
           try {
             const pre = await drainVisualEvents(session);
@@ -181,6 +283,7 @@ async function runTool(browser, spec) {
             bridgeMeta = await session.ensureBridge();
             target = session.target;
           } catch (_) {}
+          await shootFrame('post-nav');
           // 同一 candidate 重试
           continue;
         }

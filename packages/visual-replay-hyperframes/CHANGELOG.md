@@ -7,6 +7,171 @@
 > 绝对像素坐标。模板只吃 `events.jsonl` 里的结构化 `payload`，任何"卡片渲不全"
 > 的根因都要先回到上游 skill 的 `lib/visualHint.js::extractPayload`，模板侧只做
 > "字段缺失也别难看"的兜底。
+>
+> v0.5.0 起 snapshot mode 重新启用 PNG/JPEG 截图作为 #stage 背景；模板路径
+> 仍保留作为 events 无 `frame` 事件时的自动退化路径。
+
+---
+
+## [0.5.2] - 2026-05-04
+
+### Changed — snapshot 模式默认不**额外**叠 HUD/flash overlay
+
+> 设计澄清（一度搞错过一次）：
+>
+> 用户反馈"录屏右上角还有额外的渲染状态"——这里"额外"是关键词。**bridge 端的 in-page
+> HUD pill / flash outline 是给人观察 agent 实时行为的反馈，应该原样保留**；它会随
+> `captureScreenshot` 一起被拍进 PNG/JPEG 像素，那是**预期**的录制结果。
+>
+> 我们不希望的是合成端 (`visual-replay-hyperframes`) 拿到这些已经带 HUD 的截图后
+> **再额外叠一层 composition-side HUD/flash**——那才是"额外"，会变成画面里两个 HUD
+> 互相重叠 / flash 边框打两次的视觉冗余。
+
+把 `hud` / `flash` 也纳入 `effects` gate（**只控制合成端**，不影响 bridge 录制时的
+浮层）：
+
+- **snapshot 模式默认**：`effects = { hud: false, flash: false, ... 全 false }` →
+  composition 不再额外画 HUD `<aside>` / 不再 `addClassByAnchor("flash-active")`，
+  替代地只显示 stage 上的 PNG/JPEG 帧（帧里**自然带着** bridge 当时画的 HUD/flash
+  像素）+ 底部 footer 水印。
+- **template 模式默认**：`effects = { hud: true, flash: true }`（其它仍 false）
+  → 没有截图可以"借显"，必须由 composition 来画 HUD/flash，跟 v0.4.0 看起来一样，
+  老 session 重渲零回归。
+- **任意时刻可显式覆盖**：`--effects=hud` 把 HUD 强制加回（snapshot 模式下会叠在
+  截图本身的 HUD 上面，**通常不需要**）；`--effects=all` 等价 v0.4.0 完整体验；
+  `--effects=none` 强制 0 effects（即使 template 模式也压住 HUD）。
+
+CLI `--effects` 默认值由 `'none'` 改为 `'auto'`（mode-aware）。
+
+- **`lib/translator.js`** `DEFAULT_EFFECTS` / `normalizeEffects` 新增 `hud` / `flash`
+  键；`translate()` 在 `o.effects === undefined || === 'auto'` 时按 `snapshotMode`
+  分发默认值；`buildHtml()` 在 `effects.hud === false` 时跳过 `renderHudClips()`，
+  HTML 完全不输出 `<aside class="jse-hud">` 节点。
+- **`lib/timelineScript.js`** HUD 那段 `tl.fromTo("#hud-...")` tween 用 `if (effects.hud)`
+  包住；flash + relation 的 `addClassByAnchor` 也用 `if (effects.flash)` 包住。
+  对应的 `effects` 对象同步加 `hud: !!effectsCfg.hud, flash: !!effectsCfg.flash`，
+  console log 也跟着多两个键，方便调试时一眼看清当前 gate。
+- **`cli/jse-replay.js`** `--effects` 默认 `'auto'`；help doc 写明 mode-aware 行为。
+
+### Verified
+
+`bash`：
+
+```sh
+# snapshot mode 默认（应为 0 HUD aside）
+node packages/visual-replay-hyperframes/cli/jse-replay.js \
+  skills/js-reddit-ops-skill/runs/sess-ai-self-evolution-snapshot \
+  --no-render --keep-composition
+grep -c 'id="hud-' .../composition/index.html  # → 0
+
+# template mode 默认（零回归，应为 20 HUD aside）
+node packages/visual-replay-hyperframes/cli/jse-replay.js \
+  skills/js-reddit-ops-skill/runs/sess-ai-self-evolution \
+  --no-render --keep-composition
+grep -c 'id="hud-' .../composition/index.html  # → 20
+
+# 显式 --effects=hud 覆盖
+node ... sess-ai-self-evolution-snapshot --effects=hud --no-render --keep-composition
+grep -c 'id="hud-' .../composition/index.html  # → 58
+```
+
+浏览器实测 `http://localhost:8765/index.html`（snapshot 默认）：右上角不再出现状态卡，
+只剩底部 footer 水印 `jse-replay · js-reddit-ops-skill · sess-... · v0.5 snapshot`，
+画面就是真实的 reddit 截图序列。
+
+---
+
+## [0.5.1] - 2026-05-04
+
+### Fixed — snapshot 合成开屏黑屏（SyntaxError + 首帧延迟）
+
+v0.5.0 渲染出来的 `composition/index.html` 在浏览器里直接打开"什么都看不到"。
+
+**根因 1：JS SyntaxError**。`timelineScript.js` 末尾那条 `console.log("[jse-replay]
+timeline registered ...")` 把 `JSON.stringify(effects)`（含未转义的 `"`) 直接拼进
+外层 `"..."` 字符串，浏览器报 `Uncaught SyntaxError: missing ) after argument list`，
+整个 IIFE 直接阻断，timeline 从来没注册过、`tl.play()` 从来没跑过。修法：把整条
+log 文本先在 Node 端拼好再 `JSON.stringify(__logMsg)` 一次性序列化成合法字面量，
+不再担心 payload 内引号撕裂外层字符串。
+
+**根因 2：首帧延迟黑屏**。即便 SyntaxError 修了，timeline 默认 `paused: true`，要
+等 `setTimeout 800ms` 才 `tl.play()`，再加上第一帧 `tStart` 通常 > 0（这次是
+0.407s），用户在前 ~1.2s 看到的是纯黑 `#0e1116`。修法：HTML 同步内联一段把
+`frames[0]` 的 `background-image` 立刻种到 `.jse-frame-img-cur`，并用 `tl.set` 在
+t=0 处把 `.jse-frame-img-next` 透明度复位，使得 timeline `repeat -1` 回到 0 时也
+不会闪一次空白。
+
+- **`lib/timelineScript.js`** snapshot mode 分支：
+  - 修 `console.log` 拼接（用 `JSON.stringify(__logMsg)` 包整条）。
+  - 新增"首帧 seed"块：`if (__frameCur) __frameCur.style.backgroundImage = ...` 同步
+    把第一帧种进 cur 图层，外加 `tl.set("#stage .jse-frame-img-next", { opacity: 0 }, 0)`
+    保证 loop 回 0 时 next 不残留前一帧。
+
+### Verified
+
+`bash`：
+
+```sh
+node packages/visual-replay-hyperframes/cli/jse-replay.js \
+  skills/js-reddit-ops-skill/runs/sess-ai-self-evolution-snapshot \
+  --no-render --keep-composition
+python3 -m http.server 8765 \
+  --directory skills/js-reddit-ops-skill/runs/sess-ai-self-evolution-snapshot/composition
+```
+
+浏览器 `http://localhost:8765/index.html` 现在：page-load 即刻显示第一帧 reddit 截图，
+console 里 `[jse-replay] timeline registered ... frames=51 ...` 正常打印，800ms 后
+`standalone mode: starting loop playback`，cross-fade 切到下一帧。
+
+无 `Uncaught SyntaxError`，无回归。
+
+---
+
+## [0.5.0] - 2026-05-04
+
+### Added — snapshot mode 主链路（PNG/JPEG #stage 背景） + effects gate
+
+引入"视觉模式三档"：snapshot / template / enhanced（详见 README "视觉模式"）。
+events.jsonl 含 `frame` 事件时，translator 自动走 snapshot 模式：把 PNG 序列
+`cp` 到 `composition/frames/`，#stage 用双缓冲 cross-fade 220ms 切图，HUD +
+flash 仍叠在上层；老 session 自动退模板（零回归）。
+
+- **`lib/timeline.js`** `buildTimeline` 新增 `clips.frames[]` 收集 `frame`
+  事件（tStart / tEnd / frameRef / viewport / linkedDomEvent / when），
+  `clips.toolSegments[]` 跟踪每段 toolName 是否含 frame，给后续 shell 分段
+  渲染提供数据。返回值新增 `frameCount` 真实计数。
+- **`lib/timelineScript.js`** 新增 `setStageBackground(url, viewport)` 双缓冲
+  cross-fade（cur + next 两层 div，opacity transition），按时间轴顺序切图；
+  其余 dom_* 渲染分支（cursor / typing / click / ripple / spinner / scroll）
+  全部用 `if (effects.<key>)` 包住，**默认 none 不冗余**，`--effects=all`
+  等价 v0.4.0 行为。
+- **`lib/styleEmbed.js`** 加 `#stage[data-mode="snapshot"]` + `.jse-frame-img-cur`
+  / `.jse-frame-img-next` CSS（绝对定位 + transition opacity 220ms）；
+  `body[data-shell="reddit"][data-frames="present"]` 隐藏 chrome（dom 段全 PNG），
+  `data-frames="absent"` 时正常显示 reddit shell（template / api fallback 段兜底）。
+- **`lib/translator.js`** 新增决策逻辑：
+  - 检测 `tl.clips.frames.length > 0` → `mode="snapshot"`，否则 `mode="template"`
+  - snapshot 模式 `fs.copyFileSync` 把 `<sess>/frames/*.{jpg,png,webp}` 拷到
+    `<sess>/composition/frames/`
+  - 接收 `--effects` / `--shell` / `--snapshot` opts，贯穿到 buildHtml +
+    timelineScript
+- **`cli/jse-replay.js`** 加：
+  - `--snapshot <auto|always|never>` 默认 auto
+  - `--shell <auto|always|never|fallback-only>` 默认 fallback-only
+  - `--effects <none|cursor|typing|click|ripple|spinner|scroll|all>` 默认 none
+  - `--no-effects` / `--all-effects` / `--no-shell` / `--no-snapshot` 速记
+  - 输出 stderr 多打 `mode:`、`frames:`、`effects:` 三行便于调试
+- **`replay-summary.json`** 新增 `frameCount` / `framesCopied` / `snapshotMode` /
+  `shellPolicy` / `effects` 字段。
+
+### Migration
+
+- 没改输入约定。老 fixture（v0.2.0/0.3.0/0.4.0）直接走模板路径 1:1 视觉等价。
+- `--no-render --keep-composition` 推荐做 PR 验证：composition.html 直接打开
+  浏览器即可看到 reddit 真实截图序列 + HUD + flash。
+- 想完全复刻 v0.4.0 视觉：`--all-effects --shell=always`。
+- 验证："frame events 数 ≥ 30 / session 总尺寸 < 50 MB / dom 段 chrome 已隐 /
+  api fallback 段 chrome 显出"。
 
 ---
 

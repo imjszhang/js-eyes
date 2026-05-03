@@ -1,7 +1,7 @@
 ---
 name: js-reddit-ops-skill
 description: Reddit 内容只读 + 浏览器导航 skill：帖子详情 / subreddit 列表 / 搜索 / 用户主页 / 收件箱 / 主 feed，DOM/API 双模式（auto 默认 DOM 优先 fallback API），浏览器侧仅 location.assign 改 URL。
-version: 3.7.0
+version: 3.8.0
 metadata:
   openclaw:
     emoji: "\U0001F4F0"
@@ -219,6 +219,36 @@ selector 漂移诊断：
 node skills/js-reddit-ops-skill/scripts/_dev-probe-dom.js --page subreddit
 node skills/js-reddit-ops-skill/scripts/_dev-probe-dom.js --all
 ```
+
+### snapshot mode 录像（v3.8.0+）
+
+v3.8.0 起 `--visual-record <dir>` 自动启用 PNG/JPEG 截图链路（默认 JPEG q=82
+按浏览器实际视口 CSS 像素），每条命令边界落 1 帧到 `<dir>/frames/<ts>.jpg`，
+对应 `frame` 事件随 `events.jsonl` 一并写出（含 `viewport / when / frameRef`）。
+
+`@js-eyes/visual-replay-hyperframes` v0.5.0 据此把 composition.html 的 `#stage`
+背景换成真实 reddit 截图序列，HUD + flash 仍叠在上层；`cursor / typing /
+ripple / spinner / scroll` 等 v0.4.0 合成特效**默认关闭**（避免视觉冗余），
+通过 `jse-replay --effects=cursor,typing` opt-in。
+
+| flag | 行为 |
+|---|---|
+| `--no-frames` | 关闭截图（CI / 性能敏感）；hyperframes 自动退模板模式 |
+| `--frames` | 显式启用（默认行为） |
+| `--hi-dpi` | 截设备像素（4× 大但 retina 清晰） |
+| `--max-frames N` | 单 session 帧数上限（默认 80；16 步典型 ≈ 50 帧） |
+
+| `jse-replay` flag | 行为 |
+|---|---|
+| `--snapshot=auto`（默认） | events 含 `frame` 走 snapshot；否则退模板 |
+| `--snapshot=never` | 强制走 v0.4.0 模板路径（兼容旧体验） |
+| `--shell=fallback-only`（默认） | snapshot 段隐 reddit chrome / template 段保留 |
+| `--shell=always` | 全程渲 reddit chrome（dom 段叠在 PNG 上） |
+| `--effects=none`（默认） | 不叠任何合成特效 |
+| `--effects=all` 或 `--all-effects` | 叠 cursor + typing + ripple + spinner + scroll，等价 v0.4.0 |
+| `--effects=cursor,typing` | 逗号叠加部分特效 |
+
+性能：每条命令额外 ~200-500 ms 等截图 + 写盘；典型 16 步深度调研 < 50 MB / 总耗时 < 5 min。
 
 ### 页面内视觉反馈（v3.5.0+）
 

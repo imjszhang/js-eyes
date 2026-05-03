@@ -353,6 +353,13 @@ function parseArgv(argv) {
     visualPrefix: null,
     // v3.7.0 dom-first：dom|api|auto；null 时落入 cmdDef.defaultMode || 'auto'
     mode: null,
+    // v3.8.0 snapshot mode：默认 visualRecord 启用 = 自动每命令截 1 帧 JPEG q=82。
+    //   --no-frames     关掉截图（CI / 性能敏感场景）
+    //   --hi-dpi        按设备像素截（4× 大但 retina 清晰，opt-in）
+    //   --max-frames N  覆盖 80 默认上限
+    noFrames: false,
+    hiDpi: false,
+    maxFrames: null,
     // deprecated（post-2.7.0 architecture pivot）：仍解析但不下发，CLI 启动时通过
     // cliVisualFlags.warnDeprecatedFlagsOnce 打一次告警。
     redactRect: null,
@@ -433,6 +440,18 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
     else if (a === '--mode') eat('mode');
     else if (a.startsWith('--mode=')) eatEq('mode', '--mode=');
+    else if (a === '--no-frames') opts.noFrames = true;
+    else if (a === '--frames') opts.noFrames = false;
+    else if (a === '--hi-dpi') opts.hiDpi = true;
+    else if (a === '--no-hi-dpi') opts.hiDpi = false;
+    else if (a === '--max-frames') {
+      const v = Number(argv[++i]);
+      if (Number.isFinite(v) && v > 0) opts.maxFrames = Math.round(v);
+    }
+    else if (a.startsWith('--max-frames=')) {
+      const v = Number(a.slice('--max-frames='.length));
+      if (Number.isFinite(v) && v > 0) opts.maxFrames = Math.round(v);
+    }
     else if (a === '--redact-rect') {
       opts.redactRect = opts.redactRect || [];
       opts.redactRect.push(argv[++i]);
@@ -513,6 +532,9 @@ function printHelp() {
     '  --visual-list-stride <ms> 列表呼吸感步进 ms（默认 90）',
     '  --visual-prefix <p>      DOM id 前缀（默认 __jse_reddit_visual_）',
     '  --mode <dom|api|auto>    执行模式（默认 auto：dom 优先，失败回退 api）；仅在 bridge 暴露 dom_<name> 时生效',
+    '  --no-frames              v3.8.0 snapshot mode：关闭主链路 PNG/JPEG 截图（CI / 性能敏感场景）',
+    '  --hi-dpi                 v3.8.0 snapshot mode：截图按设备像素（默认 CSS 像素 q=82）',
+    '  --max-frames <n>         v3.8.0 snapshot mode：单 session 帧数上限（默认 80）',
     '',
     '  # post-2.7.0 architecture pivot：以下 flag 已废弃（仍接受，不报错也不生效）',
     '  --redact-rect / --redact-selector / --redact-config <path>',

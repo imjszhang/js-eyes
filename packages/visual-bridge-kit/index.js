@@ -19,12 +19,16 @@ const {
   buildDrainExpression,
   buildConfigExpression,
   defaultBuildSummary,
+  buildFrameRef,
+  attachFrameRefsToEvents,
 } = require('./node/runVisual');
+const { makeFrameWriter, writeFrameSync } = require('./node/captureFrame');
 const {
   appendVisualTrace,
   readVisualTrace,
   appendVisualSession,
   readVisualSession,
+  updateVisualSessionMeta,
   KIT_VERSION,
   PAYLOAD_SCHEMA_VERSION,
 } = require('./node/visualTrace');
@@ -73,14 +77,18 @@ module.exports = {
   // session bundle（目录形态，给 visual-replay-hyperframes 等下游消费）
   appendVisualSession,
   readVisualSession,
+  updateVisualSessionMeta,
 
   // shared tone palette（运行时 + 离线消费者共用）
   TONE_MAP,
   TONE_KEYS,
   toneSpec,
 
-  // post-2.7.0：PNG 截图（buildFrameRef / makeFrameWriter / writeFrameSync /
-  // attachFrameRefsToEvents）已从顶层 export 下线，改由
-  //   require('@js-eyes/visual-bridge-kit/dev')
-  // 子路径取用，仅供 dev / debug / 历史回归用。
+  // v0.5.0: PNG/JPEG 截图链路重新升回主入口（snapshot mode 主链路）。
+  // skill 端 wrapCallApi 调用时通过 hooks.captureFrame 接通，hyperframes
+  // 默认渲染 PNG 序列；dev/index.js 仍可用作历史 alias。
+  buildFrameRef,
+  makeFrameWriter,
+  writeFrameSync,
+  attachFrameRefsToEvents,
 };

@@ -142,6 +142,14 @@ function appendVisualSession(dir, entry, opts){
         eventCount: 0,
       };
     }
+    // v0.5.0：updateVisualSessionMeta 可能在 appendVisualSession 之前先写入 viewport
+    // 等字段，导致 skillId/skillVersion 缺失。这里在每次 append 时回填。
+    if (!meta.skillId && (o.skillId || (entry && entry.skillId))) {
+      meta.skillId = o.skillId || entry.skillId;
+    }
+    if (!meta.skillVersion && o.skillVersion) {
+      meta.skillVersion = o.skillVersion;
+    }
     if (meta.payloadSchemaVersion == null) meta.payloadSchemaVersion = PAYLOAD_SCHEMA_VERSION;
     if (entry && entry.toolName && Array.isArray(meta.toolNames) && meta.toolNames.indexOf(entry.toolName) < 0) {
       meta.toolNames.push(entry.toolName);
@@ -177,11 +185,46 @@ function readVisualSession(dir){
   return { meta, entries };
 }
 
+/**
+ * updateVisualSessionMeta - 浅合并写入 meta.json 的字段。如果文件不存在则创建。
+ * v0.5.0 主要用于：snapshot mode 下 runTool 在首次 ensureBridge 后写入
+ *   { viewport, frames: { format, quality, hiDpi, maxFrames } }
+ *
+ * @param {string} dir 会话包目录
+ * @param {object} patch 浅合并对象
+ * @returns {boolean}
+ */
+function updateVisualSessionMeta(dir, patch){
+  if (!dir || !patch || typeof patch !== 'object') return false;
+  try {
+    ensureDirAt(dir);
+    const metaPath = path.join(dir, 'meta.json');
+    let meta = readJsonSafe(metaPath);
+    if (!meta) {
+      meta = {
+        sessionId: makeSessionId(),
+        startedAt: new Date().toISOString(),
+        kitVersion: KIT_VERSION,
+        payloadSchemaVersion: PAYLOAD_SCHEMA_VERSION,
+        toolNames: [],
+        eventCount: 0,
+      };
+    }
+    Object.assign(meta, patch);
+    meta.updatedAt = new Date().toISOString();
+    writeJsonSafe(metaPath, meta);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
   appendVisualTrace,
   readVisualTrace,
   appendVisualSession,
   readVisualSession,
+  updateVisualSessionMeta,
   KIT_VERSION,
   PAYLOAD_SCHEMA_VERSION,
 };

@@ -5,6 +5,54 @@ All notable changes to `js-reddit-ops-skill` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-05-04
+
+### Added — visual-replay snapshot mode（默认录制不叠特效）
+
+`js-reddit-ops-skill` 在 dom-first 之上恢复 PNG/JPEG 截图链路作为录像主背景：
+每个 dom_* 命令 wrapCallApi 边界默认截 1 帧 JPEG q=82（CSS 像素），
+hyperframes v0.5.0 据此把 #stage 背景换成真实 reddit 截图序列；HUD + flash
+仍叠在上层；cursor / typing / ripple / spinner / scroll 等 v0.4.0 合成
+特效全部退到 `--effects=...` opt-in。
+
+- **`lib/runTool.js` 接通 `makeFrameWriter`**：
+  - `options.visualRecord` 启用时构建 `captureFrame` writer（throttle 80 帧 /
+    200ms 间隔，JPEG q=82 默认 / q=92 hi-dpi）
+  - `wrapCallApi` 调用处挂 `hooks.captureFrame` + `frameFormat: 'jpg'`，
+    每条命令完成后自动截一帧
+  - `dom_navigation_required` retry 分支前后各手动触发一次 `shootFrame('pre-nav')`
+    / `shootFrame('post-nav')`，捕获跳页前的最终状态与落地页
+  - `onWritten` 回调把 `{type:'frame', ts, frameRef, when, viewport}` 事件
+    emit 进 bridge ring buffer，drainVisualEvents 自然取回写到 events.jsonl
+  - ensureBridge 后探一次 `__jse_visual.viewport()` 写入 meta.json 的 `viewport`
+    + `frames` 字段（quality / hiDpi / maxFrames）
+- **CLI flag**（`lib/commands.js` parseArgv）：
+  - `--no-frames` / `--frames` opt-out / opt-in 主链路截图
+  - `--hi-dpi` / `--no-hi-dpi` 切换设备像素 vs CSS 像素
+  - `--max-frames N` 覆盖 80 默认上限（16 步典型 ≈ 50 帧 < 50 MB）
+- **`@js-eyes/visual-bridge-kit` v0.5.0** 联动：
+  - `makeFrameWriter` 升回顶层 export（`/dev` 子路径仍兼容）
+  - `wrapCallApi` await `hooks.captureFrame`，`onWritten` 同步回写 ring buffer
+  - bridge VERSION 0.3.0 → 0.4.0，添加 `__jse_visual.viewport()` API
+
+### Verified — 16 步深度调研重录（runs/sess-ai-self-evolution-snapshot）
+
+- 14/16 步 dom 模式直通，2 步（search 限定 sub × 1 + user-profile × 1）落 api fallback
+- events.jsonl 含 51 条 `frame` 事件，frames/ 51 张 .jpg（约 7.3 MB / 总尺寸 7.4 MB）
+- composition.html 默认渲 PNG 序列 + HUD + flash，**无** cursor/typing/ripple
+- `--all-effects --shell=always` 重渲 152 处 effects 调用 → 视觉等价 v0.4.0
+- 老 session（v0.3.0/v0.4.0 fixture）零回归（events 无 frame 自动退模板）
+
+### Migration
+
+- 默认行为变化：`--visual-record <dir>` 现在自动启用截图。如需关闭传 `--no-frames`
+  （CI / 性能敏感场景） — events.jsonl 与 meta.json 仍正常写，只是不写 `frame` 事件
+  + 不落 frames/，hyperframes 自动退模板模式
+- 性能影响：每条命令额外 ~200-500 ms 等截图 + 写盘；可用 `--max-frames` 限制总数
+- 视觉变化：默认录像不再带 cursor 飞点 / 打字机 / 波纹；这些是 agent 操作的
+  "杜撰演绎"，纯录像应直接看真实 reddit 截图序列；想看效果传 `--effects=cursor`
+  等开关
+
 ## [3.7.0] - 2026-05-03
 
 ### Added — DOM-first 重构（参考 `js-newidea-cli-test` 架构）

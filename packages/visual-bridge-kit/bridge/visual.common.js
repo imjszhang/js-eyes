@@ -56,6 +56,11 @@
 //   { type: 'dom_extract',  selector, count, sample }              抓取列表（count 含义为成功 map 项数）
 //   { type: 'dom_navigate', from, to }                             导航意图（实际 location.assign 由 caller 触发）
 //
+//   ── snapshot 类（v0.5.0+，由 skill runTool + visual-bridge-kit makeFrameWriter emit）──
+//   { type: 'frame',        ts, frameRef:'frames/<ts>.jpg',
+//                            viewport:{w,h,dpr}, when:'after'|'pre-nav'|'post-nav' }
+//                                                                    PNG/JPEG 截图落盘成功，hyperframes 用作 #stage 背景
+//
 // emit 实现是 free-form：任何新增 type 仅需要 hyperframes 端 timeline.js + timelineScript.js 知晓即可，
 // bridge / kit 主链路无须改动。
 // ---------------------------------------------------------------------------
@@ -63,11 +68,11 @@
 (function installVisualBridgeKit(){
   if (typeof window === 'undefined' || !window || !window.document) return;
 
-  // post-2.7.0 architecture pivot：emit 主链路不再带 viewport / anchor.rect / relate rect
-  // （DOM 测量结果不再下发到离线 translator）。in-page flash / HUD 视觉效果保留，
-  // 仅作浏览器实时反馈，不被任何录制路径消费。业务数据通过 wrapCallApi 的
-  // hooks.extractPayload 钩子在 Node 端塞进 after event 的 payload 字段。
-  const VERSION = '0.3.0';
+  // v0.5.0 snapshot mode 重新启用 viewport probe：emit/frame/before/after 仍不强制
+  // 注入 viewport（DOM 测量产物），但额外暴露 __jse_visual.viewport() 给 Node 端
+  // wrapCallApi / makeFrameWriter 在截图前后 query 视口尺寸，写到 frame event 的
+  // viewport 字段，让 hyperframes setStageBackground 设置 aspect-ratio。
+  const VERSION = '0.4.2';
 
   // 幂等保护：相同 VERSION 已注入则复用；老版本 / 不同 VERSION 强制重装，
   // 避免 Firefox 长 tab 跨会话缓存了 0.2.x bridge 而仍写 viewport / rect 字段。
@@ -274,6 +279,20 @@
     if (state.events.length > EVENTS_BUFFER_LIMIT) {
       state.events.splice(0, state.events.length - EVENTS_BUFFER_LIMIT);
     }
+  }
+
+  // v0.5.0: query 当前视口（CSS 像素 + dpr + scrollY），给 makeFrameWriter
+  // / wrapCallApi 在截图前调用，附在 frame event 的 viewport 字段。
+  function viewport(){
+    let w = 0, h = 0, dpr = 1, scrollY = 0, scrollX = 0;
+    try {
+      w = Math.max(0, Math.round(window.innerWidth || document.documentElement.clientWidth || 0));
+      h = Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0));
+      dpr = Number(window.devicePixelRatio) || 1;
+      scrollY = Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0));
+      scrollX = Math.max(0, Math.round(window.scrollX || window.pageXOffset || 0));
+    } catch (_) {}
+    return { cssW: w, cssH: h, w, h, dpr, scrollY, scrollX };
   }
 
   function drainEvents(){
@@ -630,6 +649,7 @@
     cleanup,
     emit,
     drainEvents,
+    viewport,
     before,
     after,
     resolveAnchor: defaultResolveAnchor,

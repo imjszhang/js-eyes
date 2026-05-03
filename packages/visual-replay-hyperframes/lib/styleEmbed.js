@@ -228,6 +228,24 @@ function getCompositionExtraCss(){
     '@keyframes jse-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }',
     /* shell search input 在 typing 时显 caret 视觉（不依赖 input native caret） */
     'body[data-shell="reddit"] [data-shell-search]:focus { outline: none; }',
+
+    /* ===========================================================
+       v0.5.0 snapshot mode：#stage[data-mode="snapshot"] PNG 序列舞台。
+       双缓冲层 .jse-frame-img-cur / .jse-frame-img-next cross-fade 220ms。
+       reddit shell 在 body[data-frames="present"] 时隐藏 chrome（dom 段全 PNG），
+       fallback 段（无 frame）仍保留 shell + 卡片。
+       =========================================================== */
+    '#stage[data-mode="snapshot"] { padding: 0; min-height: 100vh; background: #0e1116; display: flex; align-items: stretch; justify-content: center; overflow: hidden; }',
+    '#stage[data-mode="snapshot"]::before { display: none; }',
+    '#stage[data-mode="snapshot"] .jse-frame-img-cur, #stage[data-mode="snapshot"] .jse-frame-img-next { position: absolute; inset: 0; background-color: #0e1116; background-size: contain; background-position: top center; background-repeat: no-repeat; transition: opacity 220ms ease; will-change: opacity, background-image; }',
+    '#stage[data-mode="snapshot"] .jse-frame-img-cur { opacity: 1; z-index: 1; }',
+    '#stage[data-mode="snapshot"] .jse-frame-img-next { opacity: 0; z-index: 2; }',
+    /* snapshot stage 容纳真实 reddit 截图，整张图当背景；卡片层 / shell chrome 默认隐藏 */
+    '#stage[data-mode="snapshot"] > .reddit-stage, #stage[data-mode="snapshot"] > .reddit-info-card, #stage[data-mode="snapshot"] > .reddit-comment-tree, #stage[data-mode="snapshot"] > .card-stage { display: none; }',
+    /* dom 段：frames 存在时把 reddit shell 的 topbar / leftnav 隐掉，舞台占满整屏 */
+    'body[data-shell="reddit"][data-frames="present"] #reddit-shell { grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); grid-template-areas: "content"; }',
+    'body[data-shell="reddit"][data-frames="present"] .reddit-topbar, body[data-shell="reddit"][data-frames="present"] .reddit-leftnav { display: none; }',
+    'body[data-shell="reddit"][data-frames="present"] #stage { grid-area: content; min-height: 100vh; padding: 0; border-left: none; }',
   ].join('\n');
 }
 

@@ -43,12 +43,49 @@ const DEFAULT_TITLE = 'JS-Eyes Visual Replay';
 const CARD_GAP_BEFORE_NEXT = 0.2;
 const CARD_TAIL_AFTER_LAST = 1.6;
 
+// v0.5.1 起 hud / flash 也纳入 effects gate：snapshot 模式默认全关（"录制 = 干净"），
+// template 模式由 translate() 在决定好 snapshotMode 后再把 hud/flash 默认拉满
+// （零回归）。这里 DEFAULT_EFFECTS 仅作为对象 schema 用，所有键都先放 false。
+const DEFAULT_EFFECTS = Object.freeze({
+  cursor: false, typing: false, click: false, ripple: false,
+  spinner: false, scroll: false, shell: false,
+  hud: false, flash: false,
+});
+
+function normalizeEffects(input){
+  if (!input) return Object.assign({}, DEFAULT_EFFECTS);
+  if (input === 'all' || input === true) {
+    return { cursor: true, typing: true, click: true, ripple: true, spinner: true, scroll: true, shell: true, hud: true, flash: true };
+  }
+  if (input === 'none' || input === false) {
+    return Object.assign({}, DEFAULT_EFFECTS);
+  }
+  if (typeof input === 'string') {
+    const out = Object.assign({}, DEFAULT_EFFECTS);
+    input.split(/[\s,]+/).forEach((k) => {
+      const key = k.trim().toLowerCase();
+      if (!key) return;
+      if (key === 'all') Object.keys(out).forEach((kk) => { out[kk] = true; });
+      else if (key === 'none') Object.keys(out).forEach((kk) => { out[kk] = false; });
+      else if (Object.prototype.hasOwnProperty.call(out, key)) out[key] = true;
+    });
+    return out;
+  }
+  if (typeof input === 'object') {
+    return Object.assign({}, DEFAULT_EFFECTS, input);
+  }
+  return Object.assign({}, DEFAULT_EFFECTS);
+}
+
 /**
  * @param {string} sessionDir
  * @param {string} outDir
  * @param {object} [opts]
  * @param {string} [opts.title]
  * @param {string} [opts.skillId] 显式覆盖 meta.skillId（影响模板路由）
+ * @param {object|string} [opts.effects] v0.5.0：'none' | 'all' | 'cursor,typing,...' | { cursor, typing, ... }
+ * @param {'auto'|'always'|'never'|'fallback-only'} [opts.shell='fallback-only'] v0.5.0：reddit 外壳渲染策略
+ * @param {'auto'|'always'|'never'} [opts.snapshot='auto'] v0.5.0：snapshot 模式开关（auto = events 含 frame 即用）
  */
 function translate(sessionDir, outDir, opts){
   const o = opts || {};
@@ -66,7 +103,38 @@ function translate(sessionDir, outDir, opts){
   const title = o.title || DEFAULT_TITLE;
   const compositionId = (session.meta && session.meta.sessionId) || ('replay-' + Date.now().toString(36));
 
+  // v0.5.0: snapshot 决策（先看 events 有 frame，再受 --snapshot flag 调整）
+  const frames = (tl.clips && Array.isArray(tl.clips.frames)) ? tl.clips.frames : [];
+  const snapshotPolicy = o.snapshot || 'auto';
+  let snapshotMode = 'template';
+  if (snapshotPolicy === 'always') snapshotMode = 'snapshot';
+  else if (snapshotPolicy === 'never') snapshotMode = 'template';
+  else snapshotMode = frames.length > 0 ? 'snapshot' : 'template';
+
+  // shell 决策：fallback-only（默认）= 有 frames 时压住 chrome（CSS 已实现）
+  const shellPolicy = o.shell || 'fallback-only';
+
+  // v0.5.1 effects=auto（mode-aware default）：snapshot → none（"录屏=干净"），
+  // template → hud + flash（保留 v0.4.0 两条最显眼 overlay，零回归）。
+  // o.effects === undefined / 'auto' 时走 mode-aware 默认；否则尊重用户传入。
+  let effects;
+  if (o.effects === undefined || o.effects === 'auto') {
+    if (snapshotMode === 'template') {
+      effects = normalizeEffects({ hud: true, flash: true });
+    } else {
+      effects = normalizeEffects('none');
+    }
+  } else {
+    effects = normalizeEffects(o.effects);
+  }
+
   fs.mkdirSync(outDir, { recursive: true });
+
+  // v0.5.0: snapshot 模式拷贝 frames/ 到 composition/frames/
+  let framesCopied = 0;
+  if (snapshotMode === 'snapshot') {
+    framesCopied = copyFramesDir(path.join(sessionDir, 'frames'), path.join(outDir, 'frames'));
+  }
 
   const html = buildHtml({
     title,
@@ -76,6 +144,10 @@ function translate(sessionDir, outDir, opts){
     flash: tl.clips.flash,
     relation: tl.clips.relation,
     dom: tl.clips.dom || null,
+    frames,
+    snapshotMode,
+    shellPolicy,
+    effects,
     cards,
     communities,
     skillId,
@@ -97,11 +169,14 @@ function translate(sessionDir, outDir, opts){
     relationCount: tl.clips.relation.length,
     cardCount: cards.length,
     totalDataItems,
-    frameCount: 0,
+    frameCount: frames.length,
+    framesCopied,
+    snapshotMode,
+    shellPolicy,
+    effects,
     eventEntries: session.entries ? session.entries.length : 0,
     meta: session.meta || null,
-    architecture: 'html-data-driven (post-2.7.0 pivot)',
-    // PR 2 v0.2.0：scaffold CLI 用这个字段反推未注册的 (skillId, kind)
+    architecture: 'snapshot-mode (v0.5.0)',
     templateUsage: buildResult.templateUsage,
     missingTemplates,
   }, null, 2), 'utf8');
@@ -115,11 +190,32 @@ function translate(sessionDir, outDir, opts){
     relationCount: tl.clips.relation.length,
     cardCount: cards.length,
     totalDataItems,
-    frameCount: 0,
-    framesCopied: 0,
+    frameCount: frames.length,
+    framesCopied,
+    snapshotMode,
+    shellPolicy,
+    effects,
     meta: session.meta || null,
     missingTemplates,
   };
+}
+
+function copyFramesDir(srcDir, destDir){
+  let count = 0;
+  let entries = [];
+  try { entries = fs.readdirSync(srcDir); } catch (_) { return 0; }
+  if (!entries.length) return 0;
+  try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
+  for (const name of entries) {
+    if (!/\.(png|jpe?g|webp)$/i.test(name)) continue;
+    const src = path.join(srcDir, name);
+    const dst = path.join(destDir, name);
+    try {
+      fs.copyFileSync(src, dst);
+      count += 1;
+    } catch (_) {}
+  }
+  return count;
 }
 
 /**
@@ -381,15 +477,20 @@ function anchorIdOf(anchor){
 
 function buildHtml(info){
   const styleBlock = buildStyleBlock();
-  const hudHtml = renderHudClips(info.hud);
+  const effects = info.effects || {};
+  // hud DOM 不渲染等于 0 视觉残留（容易被 GSAP set/from 命中也无所谓，无节点）
+  const hudHtml = effects.hud ? renderHudClips(info.hud) : '';
 
   const cardsHtml = (info.cards || []).map(c => c.html).join('\n');
+  const snapshotMode = info.snapshotMode === 'snapshot' ? 'snapshot' : 'template';
+  const shellPolicy = info.shellPolicy || 'fallback-only';
+  const frames = Array.isArray(info.frames) ? info.frames : [];
 
   const watermarkText = [
     'jse-replay',
     info.meta && info.meta.skillId ? '· ' + info.meta.skillId : '',
     info.meta && info.meta.sessionId ? '· ' + info.meta.sessionId.slice(0, 14) : '',
-    'html-pivot',
+    'v0.5 ' + snapshotMode,
   ].filter(Boolean).join(' ');
 
   const tlScript = buildTimelineScript({
@@ -398,16 +499,33 @@ function buildHtml(info){
     flash: info.flash,
     relation: info.relation,
     dom: info.dom || null,
+    frames,
+    snapshotMode,
+    effects,
     cards: info.cards || [],
     durationSec: info.durationSec,
   });
 
-  // PR 0.3.0 reddit page shell：reddit-ops 的 session 包一层 reddit chrome；
-  // 其他 skill 自动跳过 shell（保持 v0.2.0 体验），通过 skillId 判断。
-  const shellEnabled = String(info.skillId || '').toLowerCase().includes('reddit');
+  // PR 0.3.0 reddit page shell：v0.5.0 加 shellPolicy 控制：
+  //   - always:        始终渲 chrome（即使有 frames 也叠在上面，但 CSS 默认隐藏；
+  //                    需要 effects.shell=true 配合）
+  //   - never:         不渲 chrome（dom-only / api-only 都退到 stage 卡片）
+  //   - fallback-only: 默认；有 frames 时渲但 CSS 隐藏，frames 缺时正常显示
+  //                    （即"snapshot 段隐 / template 段显"两不误）
+  //   - auto:          === fallback-only 的别名（兼容老用法）
+  const skillIsReddit = String(info.skillId || '').toLowerCase().includes('reddit');
+  let shellEnabled = skillIsReddit;
+  if (shellPolicy === 'never') shellEnabled = false;
+  else if (shellPolicy === 'always') shellEnabled = true;
+  else shellEnabled = skillIsReddit; // auto / fallback-only
   const shell = shellEnabled ? buildRedditShell({ communities: info.communities || [] }) : null;
 
+  // 当 snapshotMode === 'snapshot' 且有 frames 时，body 标记 data-frames="present"
+  // CSS 据此隐 reddit shell 的 chrome；template 段（非 snapshot）保持原样。
+  const framesPresent = snapshotMode === 'snapshot' && frames.length > 0;
+
   const stageInner = cardsHtml || '<section class="reddit-stage" data-kind="empty"><div class="empty-hint">no events</div></section>';
+  const stageMode = framesPresent ? 'snapshot' : 'template';
   const stageBlock = [
     '<main',
     '  id="stage"',
@@ -415,9 +533,13 @@ function buildHtml(info){
     '  data-start="0"',
     '  data-width="1280"',
     '  data-height="720"',
-    '  data-architecture="html-pivot"',
+    '  data-architecture="snapshot-mode-v0.5"',
+    '  data-mode="' + stageMode + '"',
     '  ' + (shellEnabled ? 'data-shell="reddit"' : 'data-shell="none"'),
     '>',
+    framesPresent
+      ? '<div class="jse-frame-img-cur"></div>\n<div class="jse-frame-img-next"></div>'
+      : '',
     stageInner,
     '</main>',
   ].join('\n');
@@ -432,6 +554,12 @@ function buildHtml(info){
       ].join('\n')
     : stageBlock;
 
+  const bodyAttrs = [
+    'data-shell="' + (shellEnabled ? 'reddit' : 'none') + '"',
+    'data-frames="' + (framesPresent ? 'present' : 'absent') + '"',
+    'data-snapshot="' + snapshotMode + '"',
+  ].join(' ');
+
   return [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
@@ -442,7 +570,7 @@ function buildHtml(info){
     styleBlock,
     '<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>',
     '</head>',
-    '<body data-shell="' + (shellEnabled ? 'reddit' : 'none') + '">',
+    '<body ' + bodyAttrs + '>',
     bodyContent,
     hudHtml,
     '<div class="jse-progress"><div class="bar"></div></div>',
