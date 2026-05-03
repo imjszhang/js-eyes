@@ -16,10 +16,21 @@ function renderList(ctx){
   const sort = String(payload.sort || '').toLowerCase();
   const total = Number.isFinite(payload.totalCount) ? payload.totalCount : items.length;
 
+  // sub-title 优先级：r/<sub> > hint.label（如"搜索 xxx"）> 死值 'reddit'
+  // 全站 search 这种 sub 为空的场景下，需要靠 label 区分多张卡片
+  const fallbackTitle = String(
+    payload.label
+    || (ctx && ctx.label)
+    || (ctx && ctx.hint && ctx.hint.label)
+    || 'reddit'
+  );
+
   return [
     '<section class="reddit-stage" data-kind="list">',
     '  <header class="reddit-stage-head">',
-    sub ? '    <h2 class="sub-title">r/' + escapeHtml(sub) + '</h2>' : '<h2 class="sub-title">reddit</h2>',
+    sub
+      ? '    <h2 class="sub-title">r/' + escapeHtml(sub) + '</h2>'
+      : '    <h2 class="sub-title">' + escapeHtml(fallbackTitle) + '</h2>',
     sort ? '    <span class="sort-tag">' + escapeHtml(sort) + '</span>' : '',
     '    <span class="count-tag">' + escapeHtml(fmtCount(total)) + ' items</span>',
     '  </header>',

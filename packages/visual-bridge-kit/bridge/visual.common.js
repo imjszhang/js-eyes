@@ -37,6 +37,27 @@
 // 调用方约定：
 //   - 业务 bridge 不直接调 window.__jse_visual，由 Node 端 wrapCallApi 触发；
 //   - 站点 _visual-<site>.js 可以覆盖 resolveAnchor / staggerFlashItems。
+//
+// 事件 schema（emit 是 free-form，下列为约定字段，translator 据此渲染）：
+//
+//   ── 视觉反馈类（post-2.7.0 主链路）──
+//   { type: 'flash',  tone, label, anchor }                        语义 flash（被 hyperframes addClassByAnchor）
+//   { type: 'before', kind, label, args, ... }                     wrapCallApi 前置
+//   { type: 'after',  kind, summary, payload, ok, ... }            wrapCallApi 后置
+//
+//   ── DOM-first 类（v3.7.0+，由 skills/js-reddit-ops-skill/bridges/_dom-actions.js emit）──
+//   { type: 'dom_locate',   selector, rect:{x,y,w,h} }             鼠标定位某元素
+//   { type: 'dom_hover',    selector, rect, duration }             鼠标悬停（cursor 短停）
+//   { type: 'dom_click',    selector, rect }                       触发点击 + 波纹
+//   { type: 'dom_type',     selector, char, cursor, text, rect }   typing 一帧（per char）
+//   { type: 'dom_typed',    selector, text, length }               typing 完成
+//   { type: 'dom_scroll',   selector, fromY, toY, duration }       页面/容器滚动
+//   { type: 'dom_wait',     selector, count, duration, timeout? }  等待元素出现 / 超时
+//   { type: 'dom_extract',  selector, count, sample }              抓取列表（count 含义为成功 map 项数）
+//   { type: 'dom_navigate', from, to }                             导航意图（实际 location.assign 由 caller 触发）
+//
+// emit 实现是 free-form：任何新增 type 仅需要 hyperframes 端 timeline.js + timelineScript.js 知晓即可，
+// bridge / kit 主链路无须改动。
 // ---------------------------------------------------------------------------
 
 (function installVisualBridgeKit(){

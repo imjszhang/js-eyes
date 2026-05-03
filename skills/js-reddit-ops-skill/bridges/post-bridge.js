@@ -19,9 +19,10 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.5.1';
+  const VERSION = '3.6.0';
 
   // @@include ./common.js
+  // @@include ./_dom-actions.js
 
   const DEFAULT_DEPTH = 8;
   const MAX_DEPTH = 20;
@@ -287,6 +288,141 @@
     });
   }
 
+  // ---- v3.7.0 dom-first ----------------------------------------------------
+
+  function _targetPostUrl(args){
+    if (typeof args.url === 'string' && args.url) return args.url;
+    const sub = args.sub && String(args.sub).replace(/^\/?r\//i, '').replace(/^\/+|\/+$/g, '');
+    const postId = args.postId && String(args.postId).replace(/^t3_/i, '');
+    if (!postId) return null;
+    return sub
+      ? `https://www.reddit.com/r/${encodeURIComponent(sub)}/comments/${encodeURIComponent(postId)}/`
+      : `https://www.reddit.com/comments/${encodeURIComponent(postId)}/`;
+  }
+
+  function _extractPostBodyDom(){
+    const node = document.querySelector('shreddit-post, article[data-post-id]');
+    if (!node) return null;
+    const get = function(name){
+      try { return node.getAttribute ? node.getAttribute(name) : null; } catch (_) { return null; }
+    };
+    const num = function(v){ const n = Number(v); return Number.isFinite(n) ? n : null; };
+    const titleNode = node.querySelector('[slot="title"], h1, [id$="-post-rtjson-content"] h1');
+    const bodyNode = node.querySelector('[slot="text-body"], [slot="post-rtjson-content"], [id$="-post-rtjson-content"]');
+    return {
+      id: get('id') || (get('post-id') ? 't3_' + get('post-id') : null),
+      title: get('post-title') || (titleNode && titleNode.textContent ? titleNode.textContent.trim() : ''),
+      author: get('author') || '',
+      subreddit: get('subreddit-prefixed-name') || '',
+      score: num(get('score')),
+      numComments: num(get('comment-count')),
+      createdAt: get('created-timestamp') || null,
+      contentHref: get('content-href') || null,
+      permalink: get('permalink') || null,
+      bodyText: bodyNode && bodyNode.textContent ? String(bodyNode.textContent).replace(/\s+/g, ' ').trim().slice(0, 4000) : '',
+    };
+  }
+
+  function _extractCommentsDom(limit){
+    const out = [];
+    const nodes = document.querySelectorAll('shreddit-comment');
+    const max = Math.max(1, Math.min(limit || 200, 500));
+    for (let i = 0; i < nodes.length && out.length < max; i++) {
+      const n = nodes[i];
+      const get = function(name){
+        try { return n.getAttribute ? n.getAttribute(name) : null; } catch (_) { return null; }
+      };
+      const id = get('thingid') || get('id') || '';
+      if (!id) continue;
+      const num = function(v){ const x = Number(v); return Number.isFinite(x) ? x : null; };
+      const bodyEl = n.querySelector('[slot="comment"], [id$="-post-rtjson-content"]');
+      const body = bodyEl && bodyEl.textContent ? String(bodyEl.textContent).replace(/\s+/g, ' ').trim().slice(0, 600) : '';
+      out.push({
+        id,
+        kind: 't1',
+        depth: num(get('depth')),
+        author: get('author') || '',
+        score: num(get('score')),
+        body,
+        createdAt: get('created-timestamp') || null,
+        _domSource: 'shreddit-comment',
+      });
+    }
+    return out;
+  }
+
+  async function dom_getPost(args){
+    args = args || {};
+    const url = _targetPostUrl(args);
+    const here = parsePostUrl(location.href);
+    const targetMeta = url ? parsePostUrl(url) : { postId: args.postId || null, sub: args.sub || null };
+    const onTarget = here.postId && targetMeta.postId
+      ? String(here.postId) === String(targetMeta.postId)
+      : !!here.postId;
+    if (!onTarget) {
+      if (!url) return errResult('invalid_post_url', { args });
+      __jseDomEmitNavigateIntent(url);
+      return errResult('dom_navigation_required', {
+        to: url,
+        navMethod: 'navigatePost',
+        navArgs: { url },
+        retry: true,
+      });
+    }
+
+    const t0 = Date.now();
+    const waitRes = await __jseDomWaitFor(
+      ['shreddit-post', 'article[data-post-id]'],
+      { count: 1, timeoutMs: 9000 }
+    );
+    if (!waitRes.ok) {
+      return errResult('dom_timeout', { stage: 'wait_post', detail: waitRes });
+    }
+    const post = _extractPostBodyDom();
+    if (!post) {
+      return errResult('dom_extract_failed', { stage: 'extract_post' });
+    }
+    // 等评论树（容忍超时；评论可能未加载完就先呈现部分）
+    let commentsResult = null;
+    try {
+      commentsResult = await __jseDomWaitFor(
+        ['shreddit-comment-tree', 'shreddit-comment', '[id*="comment-tree"]'],
+        { count: 1, timeoutMs: 6000 }
+      );
+    } catch (_) {}
+    const limit = clampLimit(args.limit, 200, 500);
+    const comments = _extractCommentsDom(limit);
+    __jseDomEmit('dom_extract', { selector: 'shreddit-comment', count: comments.length, sample: comments.slice(0, 2) });
+
+    const fetchDurationMs = Date.now() - t0;
+    return okResult({
+      data: {
+        title: post.title,
+        content: post.bodyText,
+        author_name: post.author,
+        author_id: post.author,
+        publish_time: post.createdAt || '',
+        upvote_count: post.score != null ? String(post.score) : '0',
+        comment_count: post.numComments != null ? String(post.numComments) : String(comments.length),
+        subreddit_name: (post.subreddit || '').replace(/^r\//, ''),
+        subreddit_url: post.subreddit ? ('https://www.reddit.com/' + post.subreddit) : '',
+        image_urls: [],
+        comments,
+        source_url: location.href,
+      },
+      meta: {
+        bridge: 'post-bridge',
+        version: VERSION,
+        endpoint: location.href,
+        fetchDurationMs,
+        domPostNode: !!post,
+        domCommentCount: comments.length,
+        commentTreeFound: !!(commentsResult && commentsResult.ok),
+        source: 'dom',
+      },
+    });
+  }
+
   function navigatePost(args){
     args = args || {};
     let url = typeof args.url === 'string' && args.url ? args.url : null;
@@ -311,7 +447,12 @@
     getPost,
     expandMore,
     navigatePost,
+    dom_getPost,
   };
+  for (const k of Object.keys(api)) {
+    if (k === '__meta' || k.indexOf('api_') === 0 || k.indexOf('dom_') === 0) continue;
+    if (typeof api[k] === 'function') api['api_' + k] = api[k];
+  }
   window.__jse_reddit_post__ = api;
   return { ok: true, version: VERSION, name: 'post-bridge' };
 })();

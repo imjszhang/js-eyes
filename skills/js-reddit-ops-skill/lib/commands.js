@@ -55,6 +55,9 @@ const COMMANDS = {
     api: 'sessionState',
     pages: ['home'],
     defaultPage: 'home',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [],
     toArgs: () => [{}],
     targetUrl: () => null,
@@ -66,6 +69,10 @@ const COMMANDS = {
     api: 'listSubreddit',
     pages: ['subreddit'],
     defaultPage: 'subreddit',
+    // v3.7.0 dom-first：bridge 同时暴露 dom_listSubreddit / api_listSubreddit
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [{ name: 'sub', required: true }],
     toArgs: (opts, positional) => [{
       sub: positional[0],
@@ -77,12 +84,38 @@ const COMMANDS = {
     targetUrl: (opts, positional) => targets.listSubredditUrl({ sub: positional[0], sort: opts.sort }),
     help: '列出 subreddit 内帖子：list-subreddit <sub> [--sort hot|new|top|rising] [--time-range day|week|...] [--limit N] [--after t3_xxx]',
   },
+  'get-post': {
+    kind: 'tool',
+    toolName: 'reddit_get_post',
+    api: 'getPost',
+    pages: ['post'],
+    defaultPage: 'post',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
+    argSpec: [{ name: 'url', required: true }],
+    toArgs: (opts, positional) => [{
+      url: positional[0],
+      permalink: opts.permalink || undefined,
+      depth: opts.depth ? Number(opts.depth) : undefined,
+      limit: opts.limit ? Number(opts.limit) : undefined,
+      sort: opts.sort || undefined,
+    }],
+    targetUrl: (opts, positional) => targets.postUrl({
+      url: positional[0],
+      permalink: opts.permalink,
+    }),
+    help: '帖子详情（v3.7.0 dom-first 入口，走 runTool dispatch + --mode）：get-post <url> [--depth N] [--limit N] [--sort top|...] [--mode dom|api|auto]',
+  },
   'subreddit-about': {
     kind: 'tool',
     toolName: 'reddit_subreddit_about',
     api: 'subredditAbout',
     pages: ['subreddit'],
     defaultPage: 'subreddit',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [{ name: 'sub', required: true }],
     toArgs: (opts, positional) => [{ sub: positional[0] }],
     targetUrl: (opts, positional) => targets.subredditAboutUrl({ sub: positional[0] }),
@@ -94,6 +127,9 @@ const COMMANDS = {
     api: 'search',
     pages: ['search'],
     defaultPage: 'search',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [{ name: 'q', required: true }],
     toArgs: (opts, positional) => [{
       q: positional[0],
@@ -120,6 +156,9 @@ const COMMANDS = {
     api: 'userProfile',
     pages: ['user'],
     defaultPage: 'user',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [{ name: 'name', required: true }],
     toArgs: (opts, positional) => [{
       name: positional[0],
@@ -138,6 +177,9 @@ const COMMANDS = {
     api: 'inboxList',
     pages: ['inbox'],
     defaultPage: 'inbox',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [],
     toArgs: (opts) => [{
       box: opts.box || 'inbox',
@@ -153,6 +195,9 @@ const COMMANDS = {
     api: 'myFeed',
     pages: ['home'],
     defaultPage: 'home',
+    domSupported: true,
+    apiSupported: true,
+    defaultMode: 'auto',
     argSpec: [],
     toArgs: (opts) => [{
       feed: opts.feed || 'home',
@@ -306,6 +351,8 @@ function parseArgv(argv) {
     visualTrace: null,
     visualListStride: null,
     visualPrefix: null,
+    // v3.7.0 dom-first：dom|api|auto；null 时落入 cmdDef.defaultMode || 'auto'
+    mode: null,
     // deprecated（post-2.7.0 architecture pivot）：仍解析但不下发，CLI 启动时通过
     // cliVisualFlags.warnDeprecatedFlagsOnce 打一次告警。
     redactRect: null,
@@ -384,6 +431,8 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-list-stride=')) eatEq('visualListStride', '--visual-list-stride=');
     else if (a === '--visual-prefix') eat('visualPrefix');
     else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
+    else if (a === '--mode') eat('mode');
+    else if (a.startsWith('--mode=')) eatEq('mode', '--mode=');
     else if (a === '--redact-rect') {
       opts.redactRect = opts.redactRect || [];
       opts.redactRect.push(argv[++i]);
@@ -463,6 +512,7 @@ function printHelp() {
     '  --no-visual-record       显式关闭会话包',
     '  --visual-list-stride <ms> 列表呼吸感步进 ms（默认 90）',
     '  --visual-prefix <p>      DOM id 前缀（默认 __jse_reddit_visual_）',
+    '  --mode <dom|api|auto>    执行模式（默认 auto：dom 优先，失败回退 api）；仅在 bridge 暴露 dom_<name> 时生效',
     '',
     '  # post-2.7.0 architecture pivot：以下 flag 已废弃（仍接受，不报错也不生效）',
     '  --redact-rect / --redact-selector / --redact-config <path>',

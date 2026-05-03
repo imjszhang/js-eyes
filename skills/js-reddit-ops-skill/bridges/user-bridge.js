@@ -15,9 +15,10 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.5.1';
+  const VERSION = '3.6.1';
 
   // @@include ./common.js
+  // @@include ./_dom-actions.js
 
   const DEFAULT_LIMIT = 25;
   const MAX_LIMIT = 100;
@@ -144,6 +145,119 @@
     });
   }
 
+  // ---- v3.7.0 dom-first ----------------------------------------------------
+
+  function _targetUserUrl(name, tab){
+    const t = ALLOWED_TABS.has(tab) ? tab : '';
+    return `https://www.reddit.com/user/${encodeURIComponent(name)}/${t ? t + '/' : ''}`;
+  }
+
+  function _extractUserItemDom(node){
+    if (!node) return null;
+    const tag = String(node.tagName || '').toLowerCase();
+    const get = function(name){
+      try { return node.getAttribute ? node.getAttribute(name) : null; } catch (_) { return null; }
+    };
+    const num = function(v){ const n = Number(v); return Number.isFinite(n) ? n : null; };
+    if (tag === 'shreddit-post') {
+      const id = get('id') || get('post-id') || '';
+      if (!id && !get('post-title')) return null;
+      return {
+        id: id || null,
+        kind: 't3',
+        title: get('post-title') || '',
+        score: num(get('score')),
+        subreddit: get('subreddit-prefixed-name') || '',
+        createdAt: get('created-timestamp') || null,
+        permalink: get('permalink') || null,
+        _domSource: 'shreddit-post',
+      };
+    }
+    if (tag === 'shreddit-comment') {
+      const bodyEl = node.querySelector('[slot="comment"]');
+      const body = bodyEl && bodyEl.textContent ? String(bodyEl.textContent).replace(/\s+/g, ' ').trim().slice(0, 400) : '';
+      return {
+        id: get('thingid') || get('id') || null,
+        kind: 't1',
+        score: num(get('score')),
+        body,
+        createdAt: get('created-timestamp') || null,
+        _domSource: 'shreddit-comment',
+      };
+    }
+    return null;
+  }
+
+  async function dom_userProfile(args){
+    args = args || {};
+    const fromPath = parseUserFromPath();
+    const name = String(args.name || fromPath.name || '').trim();
+    if (!name) return errResult('missing_user_name');
+    const rawTab = String(args.tab || fromPath.tab || 'overview').toLowerCase();
+    const tab = ALLOWED_TABS.has(rawTab) ? rawTab : 'overview';
+    const limit = clampLimit(args.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const targetUrl = _targetUserUrl(name, tab);
+
+    const onTarget = fromPath.name && fromPath.name.toLowerCase() === name.toLowerCase()
+      && (!fromPath.tab || fromPath.tab === tab || (tab === 'overview' && !fromPath.tab));
+    if (!onTarget) {
+      __jseDomEmitNavigateIntent(targetUrl);
+      return errResult('dom_navigation_required', {
+        to: targetUrl,
+        navMethod: 'navigateUser',
+        navArgs: { name, tab },
+        retry: true,
+      });
+    }
+
+    const t0 = Date.now();
+    // reddit 偶发对自动化访问的 user 页插 reputation captcha（shreddit-async-loader[bundlename="reputation_recaptcha"]）
+    // —— 等 1.5s 给页面初始化，提前检测，触发后立即 dom_unstable 让 runTool fallback api，
+    // 而不是干等 9s timeout
+    await new Promise(function(r){ setTimeout(r, 1500); });
+    try {
+      const cap = document.querySelector('shreddit-async-loader[bundlename="reputation_recaptcha"], reputation-recaptcha');
+      if (cap) {
+        return errResult('dom_unstable', { stage: 'captcha_blocked', detail: 'reputation_recaptcha' });
+      }
+    } catch (_) {}
+    const waitRes = await __jseDomWaitFor(
+      ['shreddit-post', 'shreddit-comment', 'article[data-post-id]'],
+      { count: 1, timeoutMs: 9000 }
+    );
+    if (!waitRes.ok) {
+      return errResult('dom_timeout', { stage: 'wait_user_items', detail: waitRes });
+    }
+    const ext = __jseDomExtract(
+      ['shreddit-post, shreddit-comment'],
+      _extractUserItemDom,
+      { limit }
+    );
+    if (!ext.ok) {
+      return errResult('dom_extract_failed', { stage: 'extract_user_items', detail: ext });
+    }
+    const items = ext.items.slice(0, limit);
+    const fetchDurationMs = Date.now() - t0;
+    return okResult({
+      name,
+      tab,
+      sort: args.sort || 'new',
+      t: args.t || 'all',
+      requestedLimit: limit,
+      returnedCount: items.length,
+      items,
+      meta: {
+        bridge: 'user-bridge',
+        version: VERSION,
+        endpoint: location.href,
+        fetchDurationMs,
+        domSelector: ext.selector,
+        truncated: items.length >= limit,
+        source: 'dom',
+      },
+    });
+  }
+
   function navigateUser(args){
     args = args || {};
     const fromPath = parseUserFromPath();
@@ -161,7 +275,12 @@
     sessionState,
     userProfile,
     navigateUser,
+    dom_userProfile,
   };
+  for (const k of Object.keys(api)) {
+    if (k === '__meta' || k.indexOf('api_') === 0 || k.indexOf('dom_') === 0) continue;
+    if (typeof api[k] === 'function') api['api_' + k] = api[k];
+  }
   window.__jse_reddit_user__ = api;
   return { ok: true, version: VERSION, name: 'user-bridge' };
 })();

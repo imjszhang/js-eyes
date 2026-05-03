@@ -30,9 +30,16 @@ function renderItem(ctx){
 }
 
 function renderInfoCard(ctx, payload){
-  const fields = Array.isArray(payload.fields) ? payload.fields.slice(0, 12) : [];
-  const summary = String(payload.summary || '').slice(0, 200);
-  const label = (ctx && ctx.label) || '';
+  const allFields = Array.isArray(payload.fields) ? payload.fields.slice(0, 12) : [];
+  const summary = String(payload.summary || '').slice(0, 240);
+  const label = (ctx && ctx.label) || (ctx && ctx.hint && ctx.hint.label) || '';
+
+  // 抽 hero metric：subscribers / activeUserCount 这种"数字 + 单位"主体指标，
+  // 让 sub-about / session-state 这类信息卡有一眼可见的主数据
+  const HERO_KEYS = /^(subscribers?|subscriberCount|activeUserCount|totalKarma|comment_count|num_comments)$/i;
+  const heroIdx = allFields.findIndex((f) => f && HERO_KEYS.test(f.k));
+  const heroField = heroIdx >= 0 ? allFields[heroIdx] : null;
+  const otherFields = heroField ? allFields.filter((_, i) => i !== heroIdx) : allFields;
 
   return [
     '<section class="reddit-stage" data-kind="item-info">',
@@ -41,12 +48,32 @@ function renderInfoCard(ctx, payload){
     '  </header>',
     '  <article class="reddit-info-card flash-target"' + (ctx && ctx.anchorId ? ' data-anchor-id="' + escapeHtml(ctx.anchorId) + '"' : '') + '>',
     summary ? '    <p class="summary">' + escapeHtml(summary) + '</p>' : '',
-    '    <dl class="kv-grid">',
-    fields.map((f) => '      <div class="kv-row"><dt>' + escapeHtml(f.k) + '</dt><dd>' + escapeHtml(String(f.v).slice(0, 120)) + '</dd></div>').join('\n'),
-    '    </dl>',
+    heroField ? renderHeroMetric(heroField) : '',
+    otherFields.length ? '    <dl class="kv-grid">' : '',
+    otherFields.length ? otherFields.map((f) => '      <div class="kv-row"><dt>' + escapeHtml(f.k) + '</dt><dd>' + escapeHtml(String(f.v).slice(0, 120)) + '</dd></div>').join('\n') : '',
+    otherFields.length ? '    </dl>' : '',
+    !heroField && !otherFields.length && !summary ? '    <p class="empty-hint">payload is empty</p>' : '',
     '  </article>',
     '</section>',
   ].filter(Boolean).join('\n');
+}
+
+function renderHeroMetric(field){
+  return [
+    '    <div class="hero-metric">',
+    '      <span class="hero-num">' + escapeHtml(formatHeroNumber(field.v)) + '</span>',
+    '      <span class="hero-label">' + escapeHtml(field.k) + '</span>',
+    '    </div>',
+  ].join('\n');
+}
+
+function formatHeroNumber(v){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
 }
 
 module.exports = renderItem;

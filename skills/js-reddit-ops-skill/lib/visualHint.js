@@ -337,35 +337,66 @@ function pickSingleItem(data){
   // 顶层 reddit listing：第一项即视为单 item
   const arr = pickItemsArray(data);
   if (Array.isArray(arr) && arr[0]) return arr[0];
+  // reddit-ops 二层 wrap：subreddit_about / session_state 等返回 {sub, data:{真字段}, meta}
+  // 真字段位于 data.data，且不是数组（避免误吞 listing）
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+    return data.data;
+  }
   return null;
 }
 
 function extractGlobalFields(data){
   const out = { summary: '', fields: [] };
   if (!data || typeof data !== 'object') return out;
+
+  // reddit-ops 二层 wrap：subreddit_about 等返回 {sub, data:{真字段}, meta}，
+  // 把 data.data 的字段平铺过来当主源；data 顶层的 sub / meta 仍可作为补充。
+  let primary = data;
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+    primary = data.data;
+  }
+
   const fields = [];
   const seen = new Set();
   const push = (k, v) => {
     if (!k || seen.has(k)) return;
     if (v == null) return;
     if (typeof v === 'object') return;
+    if (typeof v === 'string' && v.length === 0) return;
     seen.add(k);
     fields.push({ k, v: String(v) });
   };
-  // 偏好这几个键的稳定顺序
+  // 偏好这几个键的稳定顺序（同时覆盖 reddit JSON snake_case 与 reddit-ops bridge camelCase）
   const ordered = [
+    // 标识
     'name', 'subreddit', 'user', 'box', 'feed', 'sort',
-    'subscribers', 'active_user_count', 'created_utc',
+    'displayName', 'prefixed',
+    // 数值/统计
+    'subscribers',
+    'active_user_count', 'activeUserCount',
+    'created_utc', 'createdUtc',
+    // sub 元属性
+    'subredditType', 'subreddit_type',
+    'over18', 'over_18', 'lang',
+    // 登录态
     'logged_in', 'is_authenticated', 'username',
-    'title', 'public_description', 'description',
+    // 文本
+    'title', 'public_description', 'publicDescription', 'description',
+    // url / link
+    'url', 'permalink',
   ];
-  for (const k of ordered) push(k, data[k]);
-  // 兜底：再扫一遍其它原子键
-  for (const k of Object.keys(data)) push(k, data[k]);
+  for (const k of ordered) push(k, primary[k]);
+  // 兜底：再扫一遍 primary 自己的原子键（防止漏字段）
+  for (const k of Object.keys(primary)) push(k, primary[k]);
+  // 二层 wrap 时再扫一次外层 data 的原子键（如 sub）
+  if (primary !== data) {
+    for (const k of Object.keys(data)) push(k, data[k]);
+  }
   out.fields = fields.slice(0, 12);
-  out.summary = (typeof data.title === 'string' && data.title)
-    || (typeof data.public_description === 'string' && data.public_description)
-    || (typeof data.description === 'string' && data.description)
+  out.summary = (typeof primary.title === 'string' && primary.title)
+    || (typeof primary.public_description === 'string' && primary.public_description)
+    || (typeof primary.publicDescription === 'string' && primary.publicDescription)
+    || (typeof primary.description === 'string' && primary.description)
     || '';
   return out;
 }

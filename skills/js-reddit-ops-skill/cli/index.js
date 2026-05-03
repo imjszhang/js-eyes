@@ -132,6 +132,7 @@ async function runToolCommand(commandName, def, opts, positional) {
       method: def.api,
       args: (args && args[0]) || {},
       targetUrl,
+      cmdDef: def,
       options: {
         verbose: opts.verbose,
         tab: opts.tab,
@@ -146,6 +147,7 @@ async function runToolCommand(commandName, def, opts, positional) {
         visualConfig,
         visualTrace,
         visualRecord,
+        mode: opts.mode,
       },
     });
     printJson(response, opts);

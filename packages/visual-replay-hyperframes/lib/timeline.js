@@ -35,7 +35,7 @@ function buildTimeline(entries){
       startMs: 0,
       endMs: 0,
       durationSec: 0,
-      clips: { hud: [], flash: [], relation: [], before: [], after: [] },
+      clips: { hud: [], flash: [], relation: [], before: [], after: [], dom: emptyDomClips() },
     };
   }
   const startMs = events[0].ts;
@@ -47,6 +47,15 @@ function buildTimeline(entries){
   const relation = [];
   const before = [];
   const after = [];
+  const dom = emptyDomClips();
+  // dom_type 单字事件聚合成 typing run（同 selector 连续打字）
+  let typingRun = null;
+  function flushTypingRun(){
+    if (!typingRun) return;
+    typingRun.duration = Math.max(0.05, (typingRun._lastTs - typingRun._startTs) / 1000);
+    dom.typing.push(typingRun);
+    typingRun = null;
+  }
 
   for (let i = 0; i < events.length; i += 1) {
     const e = events[i];
@@ -119,14 +128,130 @@ function buildTimeline(entries){
         payload: e.payload || null,
         toolName: e.toolName || '',
       });
+    } else if (e.type === 'dom_navigate') {
+      flushTypingRun();
+      dom.navigate.push({
+        id: 'dnav-' + i,
+        seqIndex: i,
+        tStart,
+        from: e.from || '',
+        to: e.to || '',
+      });
+    } else if (e.type === 'dom_locate') {
+      flushTypingRun();
+      dom.locate.push({
+        id: 'dloc-' + i,
+        seqIndex: i,
+        tStart,
+        selector: e.selector || '',
+        rect: e.rect || null,
+        miss: !!e.miss,
+      });
+    } else if (e.type === 'dom_hover') {
+      flushTypingRun();
+      dom.hover.push({
+        id: 'dhov-' + i,
+        seqIndex: i,
+        tStart,
+        duration: Math.max(0.05, Number(e.duration) / 1000 || 0.12),
+        selector: e.selector || '',
+        rect: e.rect || null,
+      });
+    } else if (e.type === 'dom_click') {
+      flushTypingRun();
+      dom.click.push({
+        id: 'dclk-' + i,
+        seqIndex: i,
+        tStart,
+        selector: e.selector || '',
+        rect: e.rect || null,
+      });
+    } else if (e.type === 'dom_type') {
+      const sel = e.selector || '';
+      if (typingRun && typingRun.selector === sel && (e.ts - typingRun._lastTs) < 1500) {
+        typingRun._lastTs = e.ts;
+        typingRun.text = String(e.text != null ? e.text : (typingRun.text || ''));
+        typingRun.length = Number(e.cursor) || (typingRun.text ? typingRun.text.length : (typingRun.length + 1));
+        if (e.rect && !typingRun.rect) typingRun.rect = e.rect;
+      } else {
+        flushTypingRun();
+        typingRun = {
+          id: 'dtyp-' + i,
+          seqIndex: i,
+          tStart,
+          duration: 0,
+          selector: sel,
+          text: String(e.text != null ? e.text : e.char || ''),
+          length: Number(e.cursor) || 1,
+          rect: e.rect || null,
+          _startTs: e.ts,
+          _lastTs: e.ts,
+        };
+      }
+    } else if (e.type === 'dom_typed') {
+      // bridge 报"打字完成"——刷新当前 run 并附最终 text/length
+      if (typingRun) {
+        typingRun._lastTs = e.ts;
+        typingRun.text = String(e.text != null ? e.text : typingRun.text || '');
+        typingRun.length = Number(e.length) || (typingRun.text ? typingRun.text.length : typingRun.length);
+      }
+      flushTypingRun();
+    } else if (e.type === 'dom_scroll') {
+      flushTypingRun();
+      dom.scroll.push({
+        id: 'dscr-' + i,
+        seqIndex: i,
+        tStart,
+        duration: Math.max(0.1, Number(e.duration) / 1000 || 0.32),
+        selector: e.selector || '',
+        fromY: Number(e.fromY) || 0,
+        toY: Number(e.toY) || 0,
+      });
+    } else if (e.type === 'dom_wait') {
+      flushTypingRun();
+      dom.wait.push({
+        id: 'dwait-' + i,
+        seqIndex: i,
+        tStart,
+        duration: Math.max(0.1, Number(e.duration) / 1000 || 0.4),
+        selector: e.selector || '',
+        count: Number(e.count) || 0,
+        rect: e.rect || null,
+        timeout: !!e.timeout,
+      });
+    } else if (e.type === 'dom_extract') {
+      flushTypingRun();
+      dom.extract.push({
+        id: 'dext-' + i,
+        seqIndex: i,
+        tStart,
+        selector: e.selector || '',
+        count: Number(e.count) || 0,
+        sample: Array.isArray(e.sample) ? e.sample.slice(0, 3) : [],
+      });
     }
   }
+
+  flushTypingRun();
 
   return {
     startMs,
     endMs,
     durationSec: (endMs - startMs) / 1000,
-    clips: { hud, flash, relation, before, after },
+    clips: { hud, flash, relation, before, after, dom },
+  };
+}
+
+function emptyDomClips(){
+  return {
+    navigate: [],
+    locate: [],
+    hover: [],
+    click: [],
+    typing: [],
+    scroll: [],
+    wait: [],
+    extract: [],
   };
 }
 

@@ -26,6 +26,37 @@ const SKILL_ID = pkg.name;
  *
  * @returns {Promise<{ok:boolean, ...}>}
  */
+// v3.7.0 dom-first：当 dom_<method> 主动报这些 error code 时，auto 模式回退 api_<method>
+const FALLBACK_ERRORS = new Set([
+  'dom_unstable',
+  'dom_timeout',
+  'dom_navigation_failed',
+  'dom_navigation_required',
+  'dom_extract_failed',
+  'dom_not_found',
+  'method_not_found',
+  'bridge_not_installed',
+  'bridge_returned_non_object',
+]);
+
+function buildTryOrder(method, mode, cmdDef) {
+  // 兼容老命令：未声明 domSupported/apiSupported 视为 dom=false / api=true
+  const domSupported = !!(cmdDef && cmdDef.domSupported);
+  const apiSupported = cmdDef && cmdDef.apiSupported === false ? false : true;
+  const apiCandidates = apiSupported ? [`api_${method}`, method] : [method];
+  if (mode === 'dom') {
+    return domSupported ? [`dom_${method}`] : apiCandidates;
+  }
+  if (mode === 'api') {
+    return apiCandidates;
+  }
+  // auto：dom 优先，失败回退 api
+  if (domSupported) {
+    return [`dom_${method}`, ...apiCandidates];
+  }
+  return apiCandidates;
+}
+
 async function runTool(browser, spec) {
   const {
     toolName,
@@ -33,12 +64,18 @@ async function runTool(browser, spec) {
     method,
     args = {},
     targetUrl = null,
+    cmdDef = null,
     options = {},
   } = spec || {};
 
   if (!toolName || !pageKey || !method) {
     throw new Error('runTool: toolName/pageKey/method are required');
   }
+
+  const requestedMode = options.mode
+    || (cmdDef && cmdDef.defaultMode)
+    || 'auto';
+  const tryOrder = buildTryOrder(method, requestedMode, cmdDef);
 
   const fakeUrl = `reddit-tool://${toolName}/?args=${encodeURIComponent(JSON.stringify(args || {}))}`;
   const runContext = createRunContext({
@@ -78,6 +115,10 @@ async function runTool(browser, spec) {
 
   const hint = getVisualHint(toolName, args);
   let drainedEvents = [];
+  const triedMethods = [];
+  let usedMethod = null;
+  let usedMode = null;
+  let fellBack = false;
 
   try {
     await session.connect();
@@ -88,18 +129,80 @@ async function runTool(browser, spec) {
     // post-2.7.0：主链路只挂 buildSummary + extractPayload；captureFrame 已下线
     // （如需 dev PNG 路线，自行 require('@js-eyes/visual-bridge-kit/dev').makeFrameWriter
     //  并显式传入 hooks.captureFrame）
-    resp = await wrapCallApi(session, hint, async () => {
-      return await session.callApi(method, [args || {}], {
-        timeoutMs: options.timeoutMs || 90000,
-      });
-    }, {
-      buildSummary: (r) => buildSummary(r, hint),
-      extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
-    });
-    try { drainedEvents = await drainVisualEvents(session); } catch (_) { drainedEvents = []; }
+    // v3.7.0 dom-first：按 tryOrder 依次尝试，失败且属于 FALLBACK_ERRORS 时回退下一个候选；
+    // 内层处理 'dom_navigation_required'：bridge 主动报需要先导航，runTool 借现有 api 路径
+    // location.assign + awaitBridgeAfterNav + ensureBridge 后重试同一 candidate（最多一次）。
+    for (let i = 0; i < tryOrder.length; i++) {
+      const candidate = tryOrder[i];
+      triedMethods.push(candidate);
+
+      let navAttempts = 0;
+      while (true) {
+        resp = await wrapCallApi(session, hint, async () => {
+          return await session.callApi(candidate, [args || {}], {
+            timeoutMs: options.timeoutMs || 90000,
+          });
+        }, {
+          buildSummary: (r) => buildSummary(r, hint),
+          extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
+        });
+        usedMethod = candidate;
+        usedMode = candidate.startsWith('dom_') ? 'dom' : 'api';
+        if (resp && resp.ok) break;
+        if (
+          candidate.indexOf('dom_') === 0 &&
+          resp && resp.error === 'dom_navigation_required' &&
+          resp.to && navAttempts < 1
+        ) {
+          navAttempts += 1;
+          // 在 location.assign 卸载页面之前先把 dom_navigate / dom_type 等 emit 收掉
+          try {
+            const pre = await drainVisualEvents(session);
+            if (Array.isArray(pre) && pre.length) {
+              drainedEvents = drainedEvents.concat(pre);
+            }
+          } catch (_) {}
+          const navMethod = resp.navMethod || null;
+          const navArgs = resp.navArgs || {};
+          const fromUrl = target && target.url ? target.url : null;
+          if (navMethod) {
+            try {
+              await session.callApi(navMethod, [navArgs], { timeoutMs: 12000 });
+            } catch (_) { /* navigation 中断；callApi 可能 timeout，吞掉 */ }
+          }
+          await session.awaitBridgeAfterNav({
+            timeoutMs: 20000,
+            intervalMs: 500,
+            initialDelayMs: 600,
+            fromUrl,
+            expectedUrl: resp.to,
+          });
+          try {
+            bridgeMeta = await session.ensureBridge();
+            target = session.target;
+          } catch (_) {}
+          // 同一 candidate 重试
+          continue;
+        }
+        break;
+      }
+
+      if (resp && resp.ok) break;
+      if (i === tryOrder.length - 1) break;
+      const errCode = resp && resp.error;
+      if (!FALLBACK_ERRORS.has(errCode)) break;
+      fellBack = true;
+    }
+    try {
+      const tail = await drainVisualEvents(session);
+      if (Array.isArray(tail) && tail.length) drainedEvents = drainedEvents.concat(tail);
+    } catch (_) { /* keep accumulated drainedEvents */ }
   } catch (error) {
     const durationMs = Date.now() - startedAt;
-    try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
+    try {
+      const tail = await drainVisualEvents(session);
+      if (Array.isArray(tail) && tail.length) drainedEvents = drainedEvents.concat(tail);
+    } catch (_) {}
     if (runContext.recording.debugEnabled) {
       debugBundlePath = writeDebugBundle(runContext, {
         meta: {
@@ -169,6 +272,11 @@ async function runTool(browser, spec) {
     },
     bridge: bridgeMeta,
     ok,
+    mode: usedMode,
+    requestedMode,
+    fallback: fellBack,
+    triedMethods,
+    usedMethod,
     result: ok ? (resp.data == null ? null : resp.data) : null,
     error: ok ? null : {
       code: (resp && resp.error) || 'unknown',

@@ -27,8 +27,13 @@ const { renderHudClips } = require('./hudClips');
 const { buildStyleBlock } = require('./styleEmbed');
 const { buildTimelineScript } = require('./timelineScript');
 const { escapeHtml } = require('./escape');
+const { buildRedditShell } = require('./shellLayout');
+const { renderPageHeader } = require('../templates/reddit/pageHeader');
 
-// 注册默认模板（reddit）。如未来有其它 skill，自行 require 'templates/<skill>'
+// 注册默认模板：先 _generic（('*','*') 终极兜底），再 reddit（更专 kind 覆盖通配档）。
+// 顺序无关功能正确性（registry 按 tier 优先级查找），但 _generic 先 require 让人
+// 一眼看出"任何卡片都至少有兜底"这一不变量。
+require('../templates/_generic');
 require('../templates/reddit');
 const { getTemplate } = require('../templates/registry');
 
@@ -54,7 +59,9 @@ function translate(sessionDir, outDir, opts){
 
   const tl = buildTimeline(session.entries);
   const skillId = o.skillId || (session.meta && session.meta.skillId) || '';
-  const cards = buildCards(tl, skillId);
+  const buildResult = buildCards(tl, skillId);
+  const cards = buildResult.cards;
+  const communities = buildResult.communities || [];
 
   const title = o.title || DEFAULT_TITLE;
   const compositionId = (session.meta && session.meta.sessionId) || ('replay-' + Date.now().toString(36));
@@ -68,7 +75,10 @@ function translate(sessionDir, outDir, opts){
     hud: tl.clips.hud,
     flash: tl.clips.flash,
     relation: tl.clips.relation,
+    dom: tl.clips.dom || null,
     cards,
+    communities,
+    skillId,
     meta: session.meta,
   });
 
@@ -76,6 +86,7 @@ function translate(sessionDir, outDir, opts){
   fs.writeFileSync(indexPath, html, 'utf8');
 
   const totalDataItems = cards.reduce((acc, c) => acc + (Number.isFinite(c.itemCount) ? c.itemCount : 0), 0);
+  const missingTemplates = aggregateMissing(buildResult.templateUsage);
 
   const summaryPath = path.join(outDir, 'replay-summary.json');
   fs.writeFileSync(summaryPath, JSON.stringify({
@@ -90,6 +101,9 @@ function translate(sessionDir, outDir, opts){
     eventEntries: session.entries ? session.entries.length : 0,
     meta: session.meta || null,
     architecture: 'html-data-driven (post-2.7.0 pivot)',
+    // PR 2 v0.2.0：scaffold CLI 用这个字段反推未注册的 (skillId, kind)
+    templateUsage: buildResult.templateUsage,
+    missingTemplates,
   }, null, 2), 'utf8');
 
   return {
@@ -104,6 +118,7 @@ function translate(sessionDir, outDir, opts){
     frameCount: 0,
     framesCopied: 0,
     meta: session.meta || null,
+    missingTemplates,
   };
 }
 
@@ -119,8 +134,11 @@ function translate(sessionDir, outDir, opts){
  */
 function buildCards(tl, skillId){
   const cards = [];
+  const templateUsage = []; // [{skillId, kind, tier}]
+  const communitiesSet = new Set();
+  const communities = [];
   const events = mergeBeforeAfter(tl);
-  if (events.length === 0) return cards;
+  if (events.length === 0) return { cards, templateUsage, communities };
 
   const totalDur = Math.max(0, tl.durationSec || 0);
   const firstStart = events[0] ? events[0].tStart : 0;
@@ -138,14 +156,17 @@ function buildCards(tl, skillId){
     const ctx = {
       payload: cur.payload || null,
       anchorId: anchorIdOf(cur.anchor),
-      hint: { kind, label: cur.label, target: cur.target || '' },
+      hint: { kind, label: cur.label, target: cur.target || '', skillId, anchor: cur.anchor || null, toolName: cur.toolName || '' },
       label: cur.label || '',
       target: cur.target || '',
+      toolName: cur.toolName || '',
       tone: cur.tone || (cur.ok === false ? 'danger' : 'info'),
       eventIndex: i,
       sequence: { current: i, total: events.length },
+      meta: { skillId },
     };
     let html = '';
+    let usedTier = tpl ? tpl.matchTier : 'none';
     let renderer = tpl && tpl.renderer;
     try {
       if (renderer) html = renderer(ctx);
@@ -153,10 +174,10 @@ function buildCards(tl, skillId){
       html = '';
     }
     if (!html) {
-      // 兜底：用 global 渲染一张空 info 卡
+      // 一级兜底：尝试 (sid, 'global')
       const fb = getTemplate(skillId, 'global');
       if (fb && typeof fb.renderer === 'function') {
-        try { html = fb.renderer(ctx); } catch (_) { html = ''; }
+        try { html = fb.renderer(ctx); usedTier = fb.matchTier + '+global-fallback'; } catch (_) { html = ''; }
       }
     }
     if (!html) {
@@ -164,16 +185,47 @@ function buildCards(tl, skillId){
         + '<header class="reddit-stage-head"><h2 class="sub-title">' + escapeHtml(cur.label || kind) + '</h2></header>'
         + '<div class="empty-hint">no template / no payload</div>'
         + '</section>';
+      usedTier = 'hard-fallback';
     }
+    templateUsage.push({ skillId: skillId || '*', kind, tier: usedTier });
+
+    // PR 0.3.0：page-header（reddit-only；其他 skill 返回空字符串不影响）
+    let pageHeaderHtml = '';
+    try {
+      pageHeaderHtml = renderPageHeader(ctx) || '';
+    } catch (_) {
+      pageHeaderHtml = '';
+    }
+
+    // 推断 page meta，供 timelineScript syncShellState 用
+    const pageMeta = inferPageMeta(cur);
+    if (pageMeta.sub && !communitiesSet.has(pageMeta.sub)) {
+      communitiesSet.add(pageMeta.sub);
+      communities.push(pageMeta.sub);
+    }
+
     const cardId = 'card-stage-' + i;
+    const pageType = String(cur.toolName || '').replace(/[^a-z0-9_]/gi, '') || kind;
+    const pageMetaJson = JSON.stringify(pageMeta).replace(/"/g, '&quot;');
     cards.push({
       id: cardId,
       tStart,
       tEnd,
       kind,
+      toolName: cur.toolName || '',
+      pageMeta,
       itemCount: countItems(cur.payload),
-      // wrap 模板片段，给入场动画用一个稳定 id
-      html: '<div id="' + cardId + '" class="card-stage" data-kind="' + escapeHtml(kind) + '" data-anchor-id="' + escapeHtml(anchorIdOf(cur.anchor) || '') + '">\n' + html + '\n</div>',
+      // wrap 模板片段，给入场动画用一个稳定 id；page-header 在 reddit-stage 之上
+      html: [
+        '<div id="' + cardId + '" class="card-stage"',
+        '  data-kind="' + escapeHtml(kind) + '"',
+        '  data-page-type="' + escapeHtml(pageType) + '"',
+        '  data-page-meta="' + pageMetaJson + '"',
+        '  data-anchor-id="' + escapeHtml(anchorIdOf(cur.anchor) || '') + '">',
+        pageHeaderHtml,
+        html,
+        '</div>',
+      ].filter(Boolean).join('\n'),
     });
   }
 
@@ -185,7 +237,54 @@ function buildCards(tl, skillId){
     cards[cards.length - 1].tEnd = Math.max(cards[cards.length - 1].tStart + 0.5, totalDur);
   }
 
-  return cards;
+  return { cards, templateUsage, communities };
+}
+
+/**
+ * inferPageMeta - 从一条 merged event 抽 sub / sort / query / feed / box，给
+ * timelineScript.syncShellState 用：
+ *   - sub: 当前页面所属 subreddit（list/about/restrict-search 都有）
+ *   - sort: hot/new/top/relevance/best 等
+ *   - query: search query 字符串
+ *   - feed: home/popular/all
+ *   - box: inbox/unread/messages/sent
+ */
+function inferPageMeta(cur){
+  const payload = (cur && cur.payload) || {};
+  const anchor = (cur && cur.anchor) || null;
+  const meta = {};
+
+  // sub：payload.sub > anchor.subreddit > hint.target 解析
+  if (payload.sub) {
+    meta.sub = String(payload.sub).replace(/^r\//, '');
+  } else if (anchor && typeof anchor === 'object' && anchor.subreddit) {
+    meta.sub = String(anchor.subreddit);
+  } else if (cur && cur.target) {
+    const m = /^r\/([\w-]+)/.exec(String(cur.target));
+    if (m) meta.sub = m[1];
+  }
+
+  if (payload.sort) meta.sort = String(payload.sort).toLowerCase();
+  if (payload.target && cur && cur.toolName === 'reddit_search') meta.query = String(payload.target);
+  if (payload.feed) meta.feed = String(payload.feed).toLowerCase();
+  if (payload.box) meta.box = String(payload.box).toLowerCase();
+
+  return meta;
+}
+
+/**
+ * aggregateMissing - 把 templateUsage 折叠成 (skillId, kind) → 计数 + tier，
+ * 仅保留那些走了 generic / hard-fallback 等"未专属注册"档位的条目。
+ */
+function aggregateMissing(usage){
+  const map = new Map();
+  for (const u of (usage || [])) {
+    if (u.tier !== 'generic' && u.tier !== 'hard-fallback' && u.tier !== 'legacy-global' && u.tier !== 'skill-wildcard') continue;
+    const k = (u.skillId || '*') + '::' + (u.kind || 'global');
+    if (!map.has(k)) map.set(k, { skillId: u.skillId || '*', kind: u.kind || 'global', count: 0, tier: u.tier });
+    map.get(k).count += 1;
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -298,9 +397,40 @@ function buildHtml(info){
     hud: info.hud,
     flash: info.flash,
     relation: info.relation,
+    dom: info.dom || null,
     cards: info.cards || [],
     durationSec: info.durationSec,
   });
+
+  // PR 0.3.0 reddit page shell：reddit-ops 的 session 包一层 reddit chrome；
+  // 其他 skill 自动跳过 shell（保持 v0.2.0 体验），通过 skillId 判断。
+  const shellEnabled = String(info.skillId || '').toLowerCase().includes('reddit');
+  const shell = shellEnabled ? buildRedditShell({ communities: info.communities || [] }) : null;
+
+  const stageInner = cardsHtml || '<section class="reddit-stage" data-kind="empty"><div class="empty-hint">no events</div></section>';
+  const stageBlock = [
+    '<main',
+    '  id="stage"',
+    '  data-composition-id="' + escapeHtml(info.compositionId) + '"',
+    '  data-start="0"',
+    '  data-width="1280"',
+    '  data-height="720"',
+    '  data-architecture="html-pivot"',
+    '  ' + (shellEnabled ? 'data-shell="reddit"' : 'data-shell="none"'),
+    '>',
+    stageInner,
+    '</main>',
+  ].join('\n');
+
+  const bodyContent = shell
+    ? [
+        '<div id="reddit-shell" data-shell="reddit">',
+        shell.topbar,
+        shell.leftnav,
+        stageBlock,
+        '</div>',
+      ].join('\n')
+    : stageBlock;
 
   return [
     '<!DOCTYPE html>',
@@ -312,17 +442,8 @@ function buildHtml(info){
     styleBlock,
     '<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>',
     '</head>',
-    '<body>',
-    '<main',
-    '  id="stage"',
-    '  data-composition-id="' + escapeHtml(info.compositionId) + '"',
-    '  data-start="0"',
-    '  data-width="1280"',
-    '  data-height="720"',
-    '  data-architecture="html-pivot"',
-    '>',
-    cardsHtml || '<section class="reddit-stage" data-kind="empty"><div class="empty-hint">no events</div></section>',
-    '</main>',
+    '<body data-shell="' + (shellEnabled ? 'reddit' : 'none') + '">',
+    bodyContent,
     hudHtml,
     '<div class="jse-progress"><div class="bar"></div></div>',
     '<div class="jse-watermark">' + escapeHtml(watermarkText) + '</div>',

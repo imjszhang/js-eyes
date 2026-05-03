@@ -148,6 +148,17 @@ async function readMeViaApi(force){
 
 function readLoginStateDom(){
   try {
+    // shreddit 2025-2026 改版：登录态下，多种自定义元素带 username 属性
+    // （community-author-flair / achievements-entrypoint / after-login-toast-dispatcher
+    // 任意一个命中即可拿到 username）。这是当前 shreddit 最稳定的登录指示。
+    const named = document.querySelector(
+      'community-author-flair[username], achievements-entrypoint[username], after-login-toast-dispatcher[username]'
+    );
+    if (named) {
+      const name = named.getAttribute('username');
+      if (name) return { loggedIn: true, name, source: 'shreddit-username-attr' };
+    }
+
     const userLink = document.querySelector('#header .user a[href^="/user/"]');
     if (userLink) {
       const href = userLink.getAttribute('href') || '';
@@ -160,6 +171,13 @@ function readLoginStateDom(){
     if (drawer) {
       const name = drawer.getAttribute('username') || drawer.getAttribute('user-name') || null;
       return { loggedIn: !!name, name, source: 'shreddit-drawer' };
+    }
+
+    // shreddit 新版用户头像入口按钮：未登录态会渲染成 "Log In" 链接而非这个按钮，
+    // 命中即可确认登录态；name 拿不到，由调用方决定是否再走 API 补全。
+    const drawerBtn = document.querySelector('button#expand-user-drawer-button');
+    if (drawerBtn) {
+      return { loggedIn: true, name: null, source: 'shreddit-drawer-button' };
     }
   } catch (_) {}
   return { loggedIn: false, name: null, source: 'unknown' };
@@ -362,15 +380,36 @@ function summarizeListing(listing, options){
 }
 
 async function sessionStateCommon(){
-  let me = { loggedIn: false, name: null, totalKarma: null, modhash: null, source: 'api' };
-  try { me = await readMeViaApi(false); } catch (_) {}
+  // v3.6.1：DOM fast path 先于 API。
+  // 背景：firefox 扩展 isolated world 里 fetch /api/v1/me.json 经常被 reddit
+  // 当 anonymous 处理（cookie partitioning / 反扩展指纹），response 状态 200 但
+  // body 只含 features 字段、没有 name —— 单走 API 会误报未登录。DOM 上
+  // shreddit 已经渲出 [username] 属性，这是更可靠的登录信号。
   const dom = readLoginStateDom();
+  let me = { loggedIn: false, name: null, totalKarma: null, modhash: null, source: 'api' };
+  if (dom.loggedIn) {
+    // 仍尽力走 API 补全 totalKarma / modhash（拿不到不阻断）
+    try { me = await readMeViaApi(false); } catch (_) {}
+    return okResult({
+      loggedIn: true,
+      name: dom.name || me.name || null,
+      totalKarma: me.totalKarma,
+      modhash: me.modhash,
+      source: dom.source,
+      api: me,
+      dom,
+      url: location.href,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  // DOM 没兜住：走 API 作为后路（处理 shreddit hydrate 中 / 选择器再次过时等）
+  try { me = await readMeViaApi(false); } catch (_) {}
   return okResult({
-    loggedIn: !!(me.loggedIn || dom.loggedIn),
-    name: me.name || dom.name || null,
+    loggedIn: !!me.loggedIn,
+    name: me.name || null,
     totalKarma: me.totalKarma,
     modhash: me.modhash,
-    source: me.loggedIn ? 'api' : (dom.loggedIn ? 'dom' : 'none'),
+    source: me.loggedIn ? 'api' : 'none',
     api: me,
     dom,
     url: location.href,
