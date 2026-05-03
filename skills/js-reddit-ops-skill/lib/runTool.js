@@ -241,6 +241,12 @@ async function runTool(browser, spec) {
       triedMethods.push(candidate);
 
       let navAttempts = 0;
+      // v3.8.1：放宽 navAttempts 上限到 2。原来固定 1 次只能覆盖 "fromPath 不匹配"
+      // 单一场景。新的 user-bridge 可能链式触发 nav：
+      //   step1：fromPath.name 不匹配 → nav 到正确 user
+      //   step2：着陆页是 reddit 自家废弃路径的 404 → bridge 报 page_404 nav 到默认 url
+      // 必须 2 次才能稳定收敛。每个 to URL 不同时才算独立配额，避免 nav 死循环。
+      const navHistory = [];
       while (true) {
         resp = await wrapCallApi(session, hint, async () => {
           return await session.callApi(candidate, [args || {}], {
@@ -250,12 +256,14 @@ async function runTool(browser, spec) {
         usedMethod = candidate;
         usedMode = candidate.startsWith('dom_') ? 'dom' : 'api';
         if (resp && resp.ok) break;
+        const toUrl = resp && resp.to ? String(resp.to) : '';
         if (
           candidate.indexOf('dom_') === 0 &&
           resp && resp.error === 'dom_navigation_required' &&
-          resp.to && navAttempts < 1
+          toUrl && navAttempts < 2 && navHistory.indexOf(toUrl) === -1
         ) {
           navAttempts += 1;
+          navHistory.push(toUrl);
           await shootFrame('pre-nav');
           // 在 location.assign 卸载页面之前先把 dom_navigate / dom_type 等 emit 收掉
           try {

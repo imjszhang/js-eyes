@@ -15,7 +15,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.6.1';
+  const VERSION = '3.6.3';
 
   // @@include ./common.js
   // @@include ./_dom-actions.js
@@ -148,7 +148,10 @@
   // ---- v3.7.0 dom-first ----------------------------------------------------
 
   function _targetUserUrl(name, tab){
-    const t = ALLOWED_TABS.has(tab) ? tab : '';
+    // v3.6.2：reddit 新版 web 已废弃 /user/<name>/overview/ 路径，访问会 404。
+    // overview 现在等同于默认 user 主页 /user/<name>/，所以这里把 'overview' 映射成
+    // 空 subpath。其它 tab（submitted/comments/saved/...）保持子路径。
+    const t = (ALLOWED_TABS.has(tab) && tab !== 'overview') ? tab : '';
     return `https://www.reddit.com/user/${encodeURIComponent(name)}/${t ? t + '/' : ''}`;
   }
 
@@ -211,23 +214,99 @@
     }
 
     const t0 = Date.now();
-    // reddit 偶发对自动化访问的 user 页插 reputation captcha（shreddit-async-loader[bundlename="reputation_recaptcha"]）
-    // —— 等 1.5s 给页面初始化，提前检测，触发后立即 dom_unstable 让 runTool fallback api，
-    // 而不是干等 9s timeout
-    await new Promise(function(r){ setTimeout(r, 1500); });
+    // v3.6.2：reddit 新版 web 对废弃路径（如 /overview/）直接渲染 404 ("Page not found")。
+    // 这种情况返回 dom_navigation_required 让 runTool 重新导到正确 URL（_targetUserUrl
+    // 已经把 'overview' 映射成空 subpath）。
     try {
-      const cap = document.querySelector('shreddit-async-loader[bundlename="reputation_recaptcha"], reputation-recaptcha');
-      if (cap) {
+      const bodyText = (document.body && document.body.innerText) || '';
+      if (/Page not found/i.test(bodyText) && !document.querySelector('shreddit-feed')) {
+        __jseDomEmitNavigateIntent(targetUrl);
+        return errResult('dom_navigation_required', {
+          to: targetUrl,
+          navMethod: 'navigateUser',
+          navArgs: { name, tab },
+          retry: true,
+          reason: 'page_404',
+        });
+      }
+    } catch (_) {}
+    // reddit 偶发对自动化访问的 user 页插 reputation captcha。注意：
+    // shreddit-async-loader[bundlename="reputation_recaptcha"] 这个 stub 元素是
+    // **每个 user 页都常驻的占位**（rect 0×0），不能光看存在与否——必须看它有没有
+    // 真渲染（rect.height>20）或有真 iframe 才算 captcha 实际触发。否则 v3.6.1
+    // 老逻辑会对每个 user 页都误判 captcha_blocked、把 dom 路径直接关掉。
+    await new Promise(function(r){ setTimeout(r, 800); });
+    try {
+      const stubs = document.querySelectorAll('shreddit-async-loader[bundlename="reputation_recaptcha"], reputation-recaptcha');
+      let realCaptcha = false;
+      for (const el of stubs) {
+        let r = null;
+        try { r = el.getBoundingClientRect(); } catch (_) {}
+        const visible = r && (r.height > 20 || r.width > 20);
+        const hasIframe = !!el.querySelector('iframe');
+        const loaded = el.getAttribute && el.getAttribute('loaded');
+        if (visible || hasIframe || (loaded && loaded !== 'false')) { realCaptcha = true; break; }
+      }
+      if (realCaptcha) {
         return errResult('dom_unstable', { stage: 'captcha_blocked', detail: 'reputation_recaptcha' });
       }
     } catch (_) {}
+    // empty profile 早退：reddit 给空账号 / 空 tab 渲染 #empty-feed-content，
+    // 不必再等 9s timeout——直接返回 ok+returnedCount=0。
+    try {
+      if (document.querySelector('shreddit-feed #empty-feed-content, [id="empty-feed-content"]')) {
+        return okResult({
+          name,
+          tab,
+          sort: args.sort || 'new',
+          t: args.t || 'all',
+          requestedLimit: limit,
+          returnedCount: 0,
+          items: [],
+          meta: {
+            bridge: 'user-bridge',
+            version: VERSION,
+            endpoint: location.href,
+            fetchDurationMs: Date.now() - t0,
+            domSelector: 'empty-feed-content',
+            truncated: false,
+            source: 'dom',
+            empty: true,
+          },
+        });
+      }
+    } catch (_) {}
     const waitRes = await __jseDomWaitFor(
-      ['shreddit-post', 'shreddit-comment', 'article[data-post-id]'],
+      ['shreddit-post', 'shreddit-comment', 'article[data-post-id]', 'shreddit-feed #empty-feed-content'],
       { count: 1, timeoutMs: 9000 }
     );
     if (!waitRes.ok) {
       return errResult('dom_timeout', { stage: 'wait_user_items', detail: waitRes });
     }
+    // wait 命中 empty marker 也走空回退
+    try {
+      if (document.querySelector('shreddit-feed #empty-feed-content, [id="empty-feed-content"]')) {
+        return okResult({
+          name,
+          tab,
+          sort: args.sort || 'new',
+          t: args.t || 'all',
+          requestedLimit: limit,
+          returnedCount: 0,
+          items: [],
+          meta: {
+            bridge: 'user-bridge',
+            version: VERSION,
+            endpoint: location.href,
+            fetchDurationMs: Date.now() - t0,
+            domSelector: 'empty-feed-content',
+            truncated: false,
+            source: 'dom',
+            empty: true,
+          },
+        });
+      }
+    } catch (_) {}
     const ext = __jseDomExtract(
       ['shreddit-post, shreddit-comment'],
       _extractUserItemDom,
@@ -264,8 +343,9 @@
     const name = String(args.name || fromPath.name || '').trim();
     if (!name) return errResult('missing_user_name');
     const tab = args.tab && ALLOWED_TABS.has(String(args.tab).toLowerCase()) ? String(args.tab).toLowerCase() : '';
-    const url = `https://www.reddit.com/user/${encodeURIComponent(name)}/${tab ? tab + '/' : ''}`;
-    return navigateLocation(url);
+    // v3.6.2：复用 _targetUserUrl 的映射逻辑（'overview' → 默认 user 页，
+    // 因为 reddit 新版 web 已废弃 /overview/ 路径，会 404）
+    return navigateLocation(_targetUserUrl(name, tab));
   }
 
   const api = {
