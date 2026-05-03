@@ -12,8 +12,14 @@ const {
   wrapCallApi,
   drainVisualEvents,
   appendVisualTrace,
+  appendVisualSession,
 } = require('@js-eyes/visual-bridge-kit');
-const { getVisualHint, buildSummary } = require('../lib/visualHint');
+const { warnDeprecatedFlagsOnce } = require('../lib/cliVisualFlags');
+const { getVisualHint, buildSummary, extractPayload } = require('../lib/visualHint');
+
+const SKILL_PKG = require('../package.json');
+const SKILL_ID = SKILL_PKG.name;
+const SKILL_VERSION = SKILL_PKG.version;
 
 const REDDIT_VISUAL_DEFAULTS = { prefix: '__jse_reddit_visual_' };
 
@@ -45,7 +51,8 @@ function buildSessionOpts(commandName, opts, extra = {}) {
 
 async function runCallCommand(commandName, def, opts, positional) {
   const session = new Session({ opts: buildSessionOpts(commandName, opts) });
-  const { tracePath } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  const { tracePath, recordDir, deprecatedFlags } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  warnDeprecatedFlagsOnce(deprecatedFlags);
   const toolName = def.toolName || `reddit_${def.api}`;
   const argsObj = (def.toArgs ? (def.toArgs(opts, positional) || []) : (positional || []))[0] || {};
   const hint = getVisualHint(toolName, argsObj);
@@ -60,7 +67,10 @@ async function runCallCommand(commandName, def, opts, positional) {
     const args = def.toArgs ? def.toArgs(opts, positional) : (positional || []);
     response = await wrapCallApi(session, hint, async () => {
       return await session.callApi(def.api, args);
-    }, { buildSummary: (r) => buildSummary(r, hint) });
+    }, {
+      buildSummary: (r) => buildSummary(r, hint),
+      extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args: argsObj }), e),
+    });
     try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     printJson(response, opts);
     return response && response.ok === false ? 1 : 0;
@@ -69,16 +79,20 @@ async function runCallCommand(commandName, def, opts, positional) {
     try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     throw e;
   } finally {
+    const traceEntry = {
+      toolName,
+      args: argsObj,
+      hint,
+      ok: !err && !!(response && response.ok !== false),
+      error: err ? err.message : null,
+      durationMs: Date.now() - startedAt,
+      events: drainedEvents,
+    };
     if (tracePath) {
-      appendVisualTrace(tracePath, {
-        toolName,
-        args: argsObj,
-        hint,
-        ok: !err && !!(response && response.ok !== false),
-        error: err ? err.message : null,
-        durationMs: Date.now() - startedAt,
-        events: drainedEvents,
-      });
+      try { appendVisualTrace(tracePath, traceEntry); } catch (_) {}
+    }
+    if (recordDir) {
+      try { appendVisualSession(recordDir, traceEntry, { skillId: SKILL_ID, skillVersion: SKILL_VERSION }); } catch (_) {}
     }
     await session.close();
   }
@@ -106,7 +120,8 @@ async function runToolCommand(commandName, def, opts, positional) {
       ...(opts.recordingBaseDir ? { baseDir: opts.recordingBaseDir } : {}),
     },
   });
-  const { config: visualConfig, tracePath: visualTrace } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  const { config: visualConfig, tracePath: visualTrace, recordDir: visualRecord, deprecatedFlags } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  warnDeprecatedFlagsOnce(deprecatedFlags);
   const browser = new BrowserAutomation(runtimeConfig.serverUrl, opts.verbose ? {} : {
     logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
   });
@@ -130,6 +145,7 @@ async function runToolCommand(commandName, def, opts, positional) {
         createUrl: targetUrl || 'https://www.reddit.com/',
         visualConfig,
         visualTrace,
+        visualRecord,
       },
     });
     printJson(response, opts);
@@ -285,7 +301,8 @@ async function runNavigateCommand(commandName, def, opts, positional) {
   const session = new Session({
     opts: Object.assign(buildSessionOpts(commandName, opts), { createIfMissing: true, navigateOnReuse: false, reuseAnyRedditTab: true, createUrl: 'https://www.reddit.com/' }),
   });
-  const { tracePath } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  const { tracePath, recordDir, deprecatedFlags } = parseVisualFlags(opts, REDDIT_VISUAL_DEFAULTS);
+  warnDeprecatedFlagsOnce(deprecatedFlags);
   const toolName = def.toolName || `reddit_${def.api}`;
   const hint = getVisualHint(toolName, navArgs);
   const startedAt = Date.now();
@@ -298,7 +315,10 @@ async function runNavigateCommand(commandName, def, opts, positional) {
     await session.ensureBridge();
     navResp = await wrapCallApi(session, hint, async () => {
       return await session.callApi(def.api, [navArgs]);
-    }, { buildSummary: (r) => buildSummary(r, hint) });
+    }, {
+      buildSummary: (r) => buildSummary(r, hint),
+      extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args: navArgs }), e),
+    });
     if (!navResp || !navResp.ok) {
       try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
       printJson({ ok: false, nav: navResp, postState: null }, opts);
@@ -324,16 +344,20 @@ async function runNavigateCommand(commandName, def, opts, positional) {
     try { drainedEvents = await drainVisualEvents(session); } catch (_) {}
     throw e;
   } finally {
+    const navEntry = {
+      toolName,
+      args: navArgs,
+      hint,
+      ok: !err && !!(navResp && navResp.ok !== false),
+      error: err ? err.message : null,
+      durationMs: Date.now() - startedAt,
+      events: drainedEvents,
+    };
     if (tracePath) {
-      appendVisualTrace(tracePath, {
-        toolName,
-        args: navArgs,
-        hint,
-        ok: !err && !!(navResp && navResp.ok !== false),
-        error: err ? err.message : null,
-        durationMs: Date.now() - startedAt,
-        events: drainedEvents,
-      });
+      try { appendVisualTrace(tracePath, navEntry); } catch (_) {}
+    }
+    if (recordDir) {
+      try { appendVisualSession(recordDir, navEntry, { skillId: SKILL_ID, skillVersion: SKILL_VERSION }); } catch (_) {}
     }
     await session.close();
   }

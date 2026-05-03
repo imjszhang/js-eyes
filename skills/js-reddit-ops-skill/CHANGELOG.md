@@ -5,6 +5,34 @@ All notable changes to `js-reddit-ops-skill` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-05-02
+
+### Added
+
+- 接入 `@js-eyes/visual-bridge-kit@^0.4.0`，解锁 Phase 2 录像能力：
+  - `cli/index.js` 的 `runCallCommand` / `runNavigateCommand` / `runToolCommand`
+    在 `--visual-record` 启用时构造 `captureFrame` 钩子（`makeFrameWriter`），
+    通过 `session.bot.captureScreenshot` 拉当前激活 tab 的 PNG dataUrl，
+    落到 `<recordDir>/frames/<ts>.png`。非激活 tab 静默 skip。
+  - `lib/runTool.js` 把 kit 返回的 `frames` 元数据写到 trace entry 顶层，
+    并调用 `attachFrameRefsToEvents` 把 frameRef 贴回到匹配的 events。
+  - `lib/commands.js` 新增 `--redact-rect "x,y,w,h"` / `--redact-selector <css>`
+    / `--redact-config <file.json>` 旋钮，`parseVisualFlags` 返回的
+    `redact` 一路透传到 `appendVisualSession`，写入 `meta.json` 的
+    `redact` 段，给离线 replay 端贴马赛克用。
+- `lib/js-eyes-client.js` 新增 `captureScreenshot(tabId, options)` SDK 方法。
+
+### Changed
+
+- `package.json` 升 `@js-eyes/visual-bridge-kit` 到 `^0.4.0`，本 skill 版本 → 3.6.0。
+
+### Notes
+
+- 录像档位需要 chrome extension `@>=2.7.0`（新增 `capture_screenshot` RPC）；
+  用户重新加载扩展后即可启用。
+- bridge 端 `emit()` 现在自带 `viewport` 与 `anchor.rect`，旧消费者（仅看
+  type/tone/label/action 的 cookbook / demo 脚本）零影响。
+
 ## [3.5.0] - 2026-05-02
 
 ### Added

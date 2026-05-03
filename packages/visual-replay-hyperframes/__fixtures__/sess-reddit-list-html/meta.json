@@ -1,0 +1,13 @@
+{
+  "sessionId": "sess-mooxvuhm-1783zi",
+  "startedAt": "2026-05-02T22:54:47.578Z",
+  "kitVersion": "0.4.0",
+  "skillId": "js-reddit-ops-skill",
+  "skillVersion": "3.6.0",
+  "payloadSchemaVersion": 1,
+  "toolNames": [
+    "reddit_list_subreddit"
+  ],
+  "eventCount": 7,
+  "updatedAt": "2026-05-02T22:54:47.579Z"
+}

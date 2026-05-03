@@ -85,9 +85,16 @@ node skills/js-browser-ops-skill/index.js interact scroll --tab-id 123 --target 
 
 ## 页面内视觉反馈（v2.2.0+）
 
-通过 `@js-eyes/visual-bridge-kit@^0.2.0` 在每次工具调用前后注入一段 DOM overlay：
+通过 `@js-eyes/visual-bridge-kit@^0.4.0` 在每次工具调用前后注入一段 DOM overlay：
 **HUD（屏幕右上角状态条）+ flash（在锚点元素周围闪一下黄/绿框）+ jsonl trace**。
 浏览器里直接看到 agent 在点哪、填什么、等什么。业务脚本（`generate*Script`）一行不动。
+
+> **post-2.7.0 architecture pivot 提示**：browser-ops 的 in-page 视觉反馈（HUD/flash）继续工作，
+> 但**离线 HTML 模板这一轮还没接 browser-ops**（reddit 是首个；list/item/tree/global/navigation
+> 模板套都按 `js-reddit-ops-skill` 注册）。`--visual-record` 仍然写出
+> `meta.json + events.jsonl`（不再写 `frames/`），离线 `jse-replay` 会落到 `'*'` 通配模板
+> 渲一份 HUD-only 的 fallback composition。`--redact-rect` / `--redact-selector` /
+> `--redact-config` 仍解析但不会下发，stderr 会打一行 deprecation 提醒。
 
 | 工具 | 视觉演出 |
 |---|---|

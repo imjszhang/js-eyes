@@ -306,6 +306,13 @@ function parseArgv(argv) {
     visualTrace: null,
     visualListStride: null,
     visualPrefix: null,
+    // deprecated（post-2.7.0 architecture pivot）：仍解析但不下发，CLI 启动时通过
+    // cliVisualFlags.warnDeprecatedFlagsOnce 打一次告警。
+    redactRect: null,
+    redactSelector: null,
+    redactConfig: null,
+    visualRecordFrames: null,
+    visualFramesThrottle: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -366,10 +373,40 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-mode=')) eatEq('visualMode', '--visual-mode=');
     else if (a === '--visual-trace') eat('visualTrace');
     else if (a.startsWith('--visual-trace=')) eatEq('visualTrace', '--visual-trace=');
+    else if (a === '--visual-record') {
+      const next = argv[i + 1];
+      if (next != null && !next.startsWith('-')) { opts.visualRecord = next; i += 1; }
+      else { opts.visualRecord = true; }
+    }
+    else if (a.startsWith('--visual-record=')) eatEq('visualRecord', '--visual-record=');
+    else if (a === '--no-visual-record') opts.visualRecord = false;
     else if (a === '--visual-list-stride') eat('visualListStride');
     else if (a.startsWith('--visual-list-stride=')) eatEq('visualListStride', '--visual-list-stride=');
     else if (a === '--visual-prefix') eat('visualPrefix');
     else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
+    else if (a === '--redact-rect') {
+      opts.redactRect = opts.redactRect || [];
+      opts.redactRect.push(argv[++i]);
+    }
+    else if (a.startsWith('--redact-rect=')) {
+      opts.redactRect = opts.redactRect || [];
+      opts.redactRect.push(a.slice('--redact-rect='.length));
+    }
+    else if (a === '--redact-selector') {
+      opts.redactSelector = opts.redactSelector || [];
+      opts.redactSelector.push(argv[++i]);
+    }
+    else if (a.startsWith('--redact-selector=')) {
+      opts.redactSelector = opts.redactSelector || [];
+      opts.redactSelector.push(a.slice('--redact-selector='.length));
+    }
+    else if (a === '--redact-config') eat('redactConfig');
+    else if (a.startsWith('--redact-config=')) eatEq('redactConfig', '--redact-config=');
+    // deprecated PNG-mode toggles：仍解析以兼容历史脚本（不报 unknown option）
+    else if (a === '--visual-record-frames') opts.visualRecordFrames = true;
+    else if (a === '--no-visual-record-frames') opts.visualRecordFrames = false;
+    else if (a === '--visual-frames-throttle') eat('visualFramesThrottle');
+    else if (a.startsWith('--visual-frames-throttle=')) eatEq('visualFramesThrottle', '--visual-frames-throttle=');
     else if (a.startsWith('-')) {
       const err = new Error(
         `unknown option: ${a}（运行 \`node index.js --help\` 查看可用选项）`,
@@ -422,8 +459,14 @@ function printHelp() {
     '  --visual-ms <n>          flash 持续时长 ms（默认 420）',
     '  --visual-mode <m>        auto | dom | hud | both | off（默认 auto）',
     '  --visual-trace <file>    把视觉事件写入 jsonl（每次工具调用追加一行）',
+    '  --visual-record [dir]    把事件落到会话包目录（meta+events+frames，给 hyperframes 渲视频）',
+    '  --no-visual-record       显式关闭会话包',
     '  --visual-list-stride <ms> 列表呼吸感步进 ms（默认 90）',
     '  --visual-prefix <p>      DOM id 前缀（默认 __jse_reddit_visual_）',
+    '',
+    '  # post-2.7.0 architecture pivot：以下 flag 已废弃（仍接受，不报错也不生效）',
+    '  --redact-rect / --redact-selector / --redact-config <path>',
+    '  --visual-record-frames / --visual-frames-throttle <n>',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080，可用 JS_EYES_SERVER_URL 覆盖）',
     '  --recording-mode <mode>  off|history|standard|debug',
     '  --debug-recording        强制写 debug bundle',

@@ -2,9 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [2.7.0] - 2026-05-03
+
+> **Visual-trace → video pipeline (Phase 2) lands.** Visual events now travel
+> with full geometry (`viewport`, `anchor.rect`), optional background frame
+> sequences captured via a new `capture_screenshot` extension RPC, and a
+> built-in PII redaction contract carried through to the offline replay. The
+> `@js-eyes/visual-replay-hyperframes` translator gains four-track output and
+> can drive `npx hyperframes render` end-to-end into MP4. CLI surface, server
+> WS protocol, native-host stdio frame format, and the policy / consent /
+> egress runtime are byte-for-byte compatible with 2.6.3 — `js-eyes skills
+> update js-eyes` is a drop-in upgrade for read-only consumers.
 
 ### Added
+
+- **`@js-eyes/visual-bridge-kit@0.4.0`** — Phase 2 of the visual-trace → video
+  pipeline lands. Visual events now travel with full geometry, optional
+  background frames, and PII-redact metadata, end to end:
+  - `bridge/visual.common.js@0.2.0` — every emit() call now carries
+    `viewport: { w, h, dpr, scrollX, scrollY }` plus `anchor.rect: { x, y, w, h }`
+    on `before`/`flash`/`after`/`relation` events. New `redactSelectors` config
+    suppresses `anchor.rect` for any element whose bounding box overlaps a
+    matched selector — defence in depth so PII rects never reach disk.
+  - `node/runVisual.js` — `wrapCallApi`/`wrapInjectCall` pick up an optional
+    `captureFrame(info)` hook (fire-and-forget) and stash the resulting frame
+    metadata in the result. `attachFrameRefsToEvents` ties each frame to the
+    closest `before`/`after`/`error` event by ts.
+  - `node/captureFrame.js` (new) — `makeFrameWriter({ recordDir, getTabId,
+    captureScreenshot, throttle })` returns a hook that decodes
+    `data:image/png;base64,...` from `chrome.tabs.captureVisibleTab` (via the
+    new `BrowserAutomation.captureScreenshot` SDK method) and writes
+    `<recordDir>/frames/<ts>.png`. Default throttle: max 60 frames / session,
+    min 250 ms between writes.
+  - `node/visualConfig.js` — adds `--redact-rect "x,y,w,h"` /
+    `--redact-selector <css>` / `--redact-config <file.json>` flags. Output
+    surface gains `{ redact: { rects, selectors } }`, written into
+    `meta.json` so the offline replay can paint mosaic over saved frames.
+- **chrome extension `@2.7.0`** — adds the `capture_screenshot` RPC routed
+  through `chrome.tabs.captureVisibleTab(windowId)`. Background tabs return
+  `{ skipped: 'tab_not_active' }` instead of erroring; the field is forwarded
+  through `@js-eyes/server-core` and the per-skill SDK copy.
+- **firefox extension `@2.7.0`** — mirrors the Chrome implementation through
+  `browser.tabs.captureVisibleTab(windowId)`; same `allowedActions` extension
+  in `extensions/firefox/config.js` and same fire-and-forget contract in
+  `extensions/firefox/background/background.js::handleCaptureScreenshot`.
+  Existing `tabs` / `activeTab` / `<all_urls>` permissions in the MV2 manifest
+  already cover the new API — no AMO permission delta vs 2.6.3.
+- **`@js-eyes/server-core@2.7.0`** — `ws-handler.js` forwards the new
+  `capture_screenshot` automation message to the extension and resolves the
+  matching `capture_screenshot_complete` reply (with `tabId`, `windowId`,
+  `format`, `dataUrl`, `width`, `height`, optional `skipped`) back to the
+  caller. Both `BrowserAutomation.captureScreenshot()` (skill-side SDK copy)
+  and `@js-eyes/client-sdk` carry the same shape.
+- **`@js-eyes/visual-replay-hyperframes@0.2.0`** — translator now produces a
+  full multi-track composition:
+  - track 0: PNG frame sequence (background plate; falls back to single
+    gradient clip when no frames are present);
+  - track 1: HUD (existing);
+  - track 2: Flash boxes positioned by `anchor.rect`, tone-driven by the
+    shared palette;
+  - track 3: Relation lines + dots assembled from `relate.from/to.rect`.
+  - Composition copies `<sessionDir>/frames/` into `<outDir>/frames/` so the
+    bundle is self-contained for `npx hyperframes render`. Composition
+    dimensions auto-detect from the first event's `viewport` (falls back to
+    1280×720). Redact rects from `meta.json` are painted as static
+    backdrop-filter mosaic on top of all tracks but below the watermark.
+  - Standalone preview fallback still loops via
+    `tl.repeat(-1).repeatDelay(0.6)` set at runtime — keeps `hyperframes lint`
+    at 0 errors (only non-blocking density / file-size warnings remain).
+- **`js-browser-ops-skill@2.3.0`** & **`js-reddit-ops-skill@3.6.0`** —
+  - both wire the captureFrame writer through their dispatch edges
+    (`withVisual` / `wrapCallApi`) when `--visual-record` is set;
+  - both forward `redact: { rects, selectors }` into `appendVisualSession` so
+    `meta.json` carries the contract for downstream replay;
+  - both bump `@js-eyes/visual-bridge-kit` to `^0.4.0`.
 
 - **`@js-eyes/visual-bridge-kit@0.2.0`** — adds a second adoption mode for skills
   that drive the page through one-shot `executeScript` injection (no long-lived
@@ -46,6 +117,240 @@ All notable changes to this project will be documented in this file.
     --visual-trace / --visual-list-stride / --visual-prefix` CLI surface.
   - `node/visualTrace.js::appendVisualTrace` — jsonl recorder for replay /
     headless observability.
+
+### Changed
+
+- **Platform core packages bumped to `2.7.0`** *(2026-05-03)*: root
+  `package.json`, `apps/{cli,native-host}`, `packages/{config,client-sdk,
+  devtools,protocol,runtime-paths,server-core,skill-recording}`,
+  `openclaw-plugin/`, and `extensions/firefox/popup` move together; their
+  internal `@js-eyes/*` cross-package version pins (`apps/cli`,
+  `apps/native-host`, `packages/{client-sdk,config,server-core,
+  skill-recording}`) are updated in lockstep. `packages/visual-bridge-kit`
+  (`0.4.0`) and `packages/visual-replay-hyperframes` (`0.2.0`) keep their
+  independent 0.x semver cadence; per-platform skills (`reddit@3.6.0`,
+  `browser-ops@2.3.0`, `x-ops@3.0.6`, …) keep their own.
+- **Hero-badge `v2.6.3` → `v2.7.0`** in `src/index.html`, `docs/index.html`,
+  and the four `i18n/locales/{en-US,zh-CN}.js` files (mechanical, via the
+  same regex `bumpHeroBadgeVersions` path the `npm run bump` script uses).
+- **`docs/native-messaging.md`** — `pong` example bumped to
+  `"version":"2.7.0"`. Other "since 2.6.3" prose preserved as historical
+  reference.
+- **`SKILL.md` frontmatter `version`**, **`docs/skills.json` `parentSkill.version`**,
+  **`README.md` Security Posture section title and version table**, and
+  **`SECURITY.md` opening note** all advance to `2.7.0`. Historical "since
+  2.6.3 …" narrative paragraphs are left intact.
+
+### Fixed
+
+- **`packages/visual-replay-hyperframes/lib/translator.js::renderFrameClips`**
+  *(2026-05-03)* — frame-clip inline style had nested double-quotes
+  (`style="background-image: url(\"frames/<ts>.png\");"`) which truncated
+  the HTML `style` attribute at the first inner `"`, causing the background
+  plate to render as a solid black panel. URL is now wrapped in single
+  quotes (with `'` in the URL itself percent-encoded). Verified by the new
+  Firefox 2.7.0 baseline (HUD + frame-plate render together; `npx
+  hyperframes lint` reports `0 errors, 0 warnings`).
+- **`packages/visual-replay-hyperframes/lib/timeline.js::collectFrameClips`**
+  *(2026-05-03)* — when a `wrapCallApi` / `wrapInjectCall` invocation runs
+  against a non-active tab, the extension's `capture_screenshot` RPC
+  returns `{ skipped: 'tab_not_active' }` and `captureFrame.js` correctly
+  refuses to write the PNG, but the **frame metadata** was still being
+  appended to `entry.frames` and forwarded into `events.jsonl`. The
+  translator then placed those orphan frame clips at their original `ts`,
+  which for a session whose first real visual event arrives later (e.g.
+  `navigate-search` → `search` flow) computes to **negative** seconds
+  relative to `events[0].ts`. GSAP happily registers `tl.fromTo(..., -114)`,
+  the standalone preview never paints any frame, and the user sees a fully
+  black stage. Hardened in two layers:
+  1. `collectFrameClips` now drops any frame whose `ts < startMs` (the ts
+     of the first real visual event), so a stale `entry.frames` entry from
+     a previous skipped call cannot contaminate the timeline; and
+  2. when `translate(sessionDir, …)` knows the session directory, it
+     filters frame clips against `fs.existsSync(path.join(sessionDir,
+     frameRef))`, dropping references whose PNG never made it to disk.
+- **`packages/visual-replay-hyperframes/lib/timeline.js`** *(2026-05-03)*
+  — flash clips on track 2 used a fixed `0.6 s` duration. Two flashes
+  emitted within ≤0.6 s of each other (e.g. an `after`-state success
+  flash on the same anchor as the first `staggerFlashItems` step) tripped
+  hyperframes' `overlapping_clips_same_track` lint error. Each flash's
+  duration is now clamped to `min(0.6 s, next_flash.ts − HUD_NUDGE_SEC)`,
+  which preserves the visual rhythm under sparse traces and degrades
+  gracefully under dense `staggerFlashItems` sequences without changing
+  the timeline track count or violating the hyperframes mount-window
+  contract.
+- **`packages/visual-replay-hyperframes/lib/styleEmbed.js`** /
+  `lib/timelineScript.js` *(2026-05-03)* — the standalone HTML preview
+  (opening `composition/index.html` directly in a browser without
+  `npx hyperframes preview`) now sets `body[data-jse-standalone]` from
+  the playback fallback and applies `transform: scale(min(vw/sw, vh/sh))`
+  so that 1641 × 885 reddit / browser-ops captures fit into a regular
+  laptop viewport. `npx hyperframes preview` and `render` never set the
+  attribute, so the deterministic 1:1 stage capture path is unchanged.
+
+### Test fixtures
+
+- `packages/visual-replay-hyperframes/__fixtures__/sess-firefox-2.7.0/` —
+  first regression baseline for the Phase 2 pipeline. Real-tab
+  `events.jsonl` + `meta.json` + `frames/` produced by Firefox 2.7.0 against
+  `https://github.com/imjszhang/hyperframes`. See the fixture's `README.md`
+  for the regenerate / lint workflow. Do not regenerate routinely — schema
+  changes should show up as a diff against this snapshot.
+
+### Compatibility
+
+- **WS / native-host wire protocols unchanged** vs 2.6.3 except for the
+  additive `capture_screenshot` / `capture_screenshot_complete` message
+  pair (and its `skipped: 'tab_not_active'` field). Old extensions still
+  work against a 2.7.0 server and vice versa as long as no caller invokes
+  `capture_screenshot`.
+- **`visualHint` schema is backward-compatible** — Phase 2 fields
+  (`viewport`, `anchor.rect`, `frameRef`, `redact`) default to `null`/absent
+  on Phase 1 sessions; the replay translator falls back to the single-color
+  `bgClip` when no frames are present, and to a 1280 × 720 stage when no
+  `viewport` is observed.
+- **PII redaction is opt-in.** Sessions that don't pass `--redact-rect` /
+  `--redact-selector` / `--redact-config` produce identical bytes to a
+  Phase-2-without-redact output.
+- **Upgrade path**: `js-eyes skills update js-eyes` for read-only
+  consumers; `npm install` in the bundle root for OpenClaw deployments,
+  followed by an OpenClaw restart so the plugin reloads `@js-eyes/server-core`
+  with the new `capture_screenshot` forwarder. `js-eyes skills
+  link/unlink/reload/relink` remain zero-restart.
+
+### Architecture pivot (post-2.7.0, in-place)
+
+> **Visual replay main pipeline switches from "PNG screenshots + DOM-measured
+> coordinate overlays" to "agent payload + HTML-template rendering".** Version
+> numbers stay put (`@js-eyes/visual-bridge-kit@0.4.x`,
+> `@js-eyes/visual-replay-hyperframes@0.2.x`, `js-reddit-ops-skill@3.6.x`,
+> `@js-eyes/server-core@2.7.0`); only the data flow and the offline composition
+> change. Motivation: PNG-mode produced flash overlays that drifted on viewport
+> resize and DOM reflow, and the screenshot intrinsically carried noise (ads /
+> sidebar / decoration) that the video did not need.
+
+#### Data-flow changes
+
+- **`@js-eyes/visual-bridge-kit/bridge/visual.common.js@0.3.0`** — `emit()` no
+  longer injects `viewport` / `anchor.rect` / `relate.from.rect` /
+  `relate.to.rect`. In-page `flashElement` / `flashRelation` / `showHud` still
+  paint live cues (so Firefox-side runtime feedback is unchanged) but the
+  recorded `events.jsonl` shape is now coordinate-free.
+- **`@js-eyes/visual-bridge-kit/node/runVisual.js`** — `wrapCallApi` /
+  `wrapInjectCall` add a new `hooks.extractPayload(resp, hint, err) → payload`
+  hook. Skills attach business data (post titles, scores, comments, …) via this
+  hook; the kit threads `summary.payload` through `bridge.after()` and the
+  result lands as `event.payload` on the `'after'` event in `events.jsonl`.
+  `hooks.captureFrame` is no longer auto-wired — to opt back into PNG capture
+  for dev/debug, import `makeFrameWriter` from
+  `require('@js-eyes/visual-bridge-kit/dev')` (new sub-path) and pass it
+  explicitly.
+- **`@js-eyes/visual-bridge-kit` top-level `index.js`** — drops `makeFrameWriter`,
+  `writeFrameSync`, `buildFrameRef`, `attachFrameRefsToEvents` from the public
+  surface. New sub-path `@js-eyes/visual-bridge-kit/dev` re-exports them for
+  dev / regression use. `package.json` declares the new `exports` map.
+- **`@js-eyes/visual-bridge-kit/node/visualTrace.js`** — `meta.json` gains
+  `payloadSchemaVersion: 1`. Stops writing `meta.redact` / `meta.frameCount`.
+- **`@js-eyes/visual-bridge-kit/node/visualConfig.js`** — `parseVisualFlags`
+  output gains `deprecatedFlags: string[]` for CLI consumers to print a
+  one-shot stderr warning. The flags `--redact-rect`, `--redact-selector`,
+  `--redact-config`, `--visual-record-frames`, `--visual-frames-throttle` are
+  still parsed (no error), but no longer reach the bridge / translator.
+
+#### Offline replay rewrite
+
+- **`@js-eyes/visual-replay-hyperframes/lib/translator.js`** — full rewrite.
+  Removes `pickViewport`, `copyFrames`, `buildRedactBlocks`,
+  `renderFrameClips`, `renderFlashClips` (coordinate-based), `relationGeometry`.
+  New flow: `readVisualSession` → `buildTimeline` → for each
+  `(before, after)` pair, look up `templates/registry.js::getTemplate(skillId,
+  hint.kind)` and render a HTML card. Composition is responsive (`vw` /
+  `clamp` / `max-width`); no fixed pixel dimensions.
+- **`@js-eyes/visual-replay-hyperframes/lib/timeline.js`** — drops
+  `collectFrameClips`, the `sessionDir` parameter, and the `fs` dependency.
+  Output now has `{ hud, flash, relation, before, after }` only. Each `flash`
+  clip carries a stable `anchorId` (e.g. `t3_xxx`, `sub:foo`) extracted from
+  `event.anchor.spec` instead of a pixel `rect`.
+- **`@js-eyes/visual-replay-hyperframes/lib/timelineScript.js`** — drops the
+  GSAP frames track. `flash` clips no longer `fromTo` an absolute-positioned
+  `<div>`; they call `tl.add(() => element.classList.add('flash-active'), t)`
+  on `[data-anchor-id="<spec>"]` nodes. CSS `@keyframes jse-flash-pulse` runs
+  the outline + glow animation. Cards self-position; flash follows the card.
+- **`@js-eyes/visual-replay-hyperframes/lib/styleEmbed.js`** — drops
+  `.jse-vis-clip-frame`, `.jse-vis-redact`, `body[data-jse-standalone]` scale
+  hack. Adds reddit-style card CSS (`.reddit-card`, `.reddit-info-card`,
+  `.reddit-comment-tree`, `.reddit-nav-card`), `.jse-hud` (fixed top-right),
+  flash keyframes, and progress bar.
+- **`@js-eyes/visual-replay-hyperframes/templates/`** (new directory) —
+  - `registry.js` — `register(skillId, kind, renderer)` /
+    `getTemplate(skillId, kind)`.
+  - `reddit/index.js` registers five `kind` renderers under
+    `js-reddit-ops-skill` and the `'*'` wildcard fallback.
+  - `reddit/list.js` renders up to 8 reddit-style post cards.
+  - `reddit/item.js` renders a single post card or a `summary + fields` info
+    card fallback.
+  - `reddit/tree.js` renders an indented comment tree (depth inferred from
+    `payload.relations` or `payload.items[*].depth`).
+  - `reddit/global.js` renders a `summary + key/value` info card.
+  - `reddit/navigation.js` renders a `from → to` URL transition card.
+  - `reddit/cardTemplate.js` shared HTML helpers (`renderCard`,
+    `fmtCount`, `fmtRelativeTime`).
+- **`@js-eyes/visual-replay-hyperframes/cli/jse-replay.js`** — output stats
+  switch to `{ hudCount, flashCount, relationCount, cardCount,
+  totalDataItems, frameCount: 0 }` and stderr now reports `frames: 0 (PNG
+  pipeline deprecated post-2.7.0)`. New `--skill <id>` flag for explicit
+  template routing. `--width / --height / --frames-debug` are accepted for
+  backward-compat but print a deprecated-flag notice.
+
+#### Skill-side updates (`js-reddit-ops-skill@3.6.x`)
+
+- **`lib/visualHint.js`** — adds `extractPayload(resp, hint, err)` plus
+  helpers `extractRedditItemFields`, `extractGlobalFields`. Routes by
+  `hint.kind` and produces the schema described in the kit README.
+- **`lib/runTool.js`** / **`cli/index.js`** — drop `makeFrameWriter` /
+  `__visualFrames` extraction / `redact` propagation. Pass
+  `hooks.extractPayload` to `wrapCallApi`. Print one-shot deprecated-flag
+  warning via `lib/cliVisualFlags.js::warnDeprecatedFlagsOnce`.
+- **`lib/cliVisualFlags.js`** (new) — single source of truth for the
+  deprecated-flag warning helper (`warnDeprecatedFlagsOnce`).
+- **`lib/commands.js`** — `parseArgv` now accepts (and silently ignores)
+  `--visual-record-frames` / `--visual-frames-throttle` so older scripts
+  don't crash with "unknown option". `printHelp` documents the deprecation.
+
+#### Browser-ops skill
+
+- `js-browser-ops-skill@2.3.0` retains its 2.7.0 wiring but is no longer
+  hooked up to a HTML template (no `js-browser-ops-skill` templates registered
+  in this round). Its visual sessions still record correctly but produce a
+  HUD-only composition through the wildcard `'*'` fallback. A dedicated
+  template (open URL preview / scroll / extract preview) is queued for the
+  next minor.
+
+#### Fixtures
+
+- New `packages/visual-replay-hyperframes/__fixtures__/sess-reddit-list-html/`
+  — A-route main-pipeline baseline (`payload`, no `frames/`, no
+  `anchor.rect`). README describes regeneration.
+- Existing `packages/visual-replay-hyperframes/__fixtures__/sess-firefox-2.7.0/`
+  — README updated to "PNG-mode archived baseline (DEPRECATED post-2.7.0)".
+  Fixture is preserved unchanged for dev regression of `captureFrame.js` and
+  `attachFrameRefsToEvents`.
+
+#### Compatibility & migration
+
+- **`events.jsonl` is one-way forward-compatible**: A-route translator falls
+  back to a HUD-only stage when an entry has no `payload`; B-route (PNG)
+  translator no longer exists at the top level (use `dev/index.js` if you
+  need it). Old PNG-mode bundles still load through the new translator —
+  cards just render with empty placeholder content.
+- **CLI surface stays back-compat**: every removed flag is still parsed,
+  prints a one-shot stderr warning, and is otherwise a no-op.
+- **In-page runtime is unchanged**: `--visual` still paints HUD + flash in
+  the live tab. Only the recording / replay path changed.
+- **Versions stay put**: `@js-eyes/visual-bridge-kit@0.4.x`,
+  `@js-eyes/visual-replay-hyperframes@0.2.x`,
+  `js-reddit-ops-skill@3.6.x`, `js-browser-ops-skill@2.3.0`,
+  `@js-eyes/server-core@2.7.0`.
 
 ## [2.6.3] - 2026-05-02
 

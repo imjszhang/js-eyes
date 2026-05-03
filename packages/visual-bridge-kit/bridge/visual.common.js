@@ -1,5 +1,13 @@
 // @js-eyes/visual-bridge-kit · bridge/visual.common.js
 // ---------------------------------------------------------------------------
+// !!! 视觉常量同步声明 !!!
+// TONE_MAP / 关键尺寸（hud / box / badge）与下列两份保持视觉一致：
+//   - node/visualPalette.js          (Node 端共享 tone, 给离线消费者)
+//   - styles/visual-runtime.css      (类名 + data-tone + 变量, 给离线转译器渲染)
+// 修改 TONE_MAP 时请同步上述两份；颜色由 [data-tone] 在 CSS 中驱动，
+// bridge 这里仍用内联 style 是因为运行时注入的是带 prefix 的 ID 选择器，
+// 与离线静态 composition 用的 class+attr 选择器在结构上不同，但视觉等价。
+// ---------------------------------------------------------------------------
 // 这是一份纯浏览器代码，由 makeBridgeExpander 注入到 bridge IIFE 体内：
 //
 //   (() => {
@@ -33,9 +41,20 @@
 
 (function installVisualBridgeKit(){
   if (typeof window === 'undefined' || !window || !window.document) return;
-  if (window.__jse_visual && window.__jse_visual.__installed) return;
 
-  const VERSION = '0.1.0';
+  // post-2.7.0 architecture pivot：emit 主链路不再带 viewport / anchor.rect / relate rect
+  // （DOM 测量结果不再下发到离线 translator）。in-page flash / HUD 视觉效果保留，
+  // 仅作浏览器实时反馈，不被任何录制路径消费。业务数据通过 wrapCallApi 的
+  // hooks.extractPayload 钩子在 Node 端塞进 after event 的 payload 字段。
+  const VERSION = '0.3.0';
+
+  // 幂等保护：相同 VERSION 已注入则复用；老版本 / 不同 VERSION 强制重装，
+  // 避免 Firefox 长 tab 跨会话缓存了 0.2.x bridge 而仍写 viewport / rect 字段。
+  if (window.__jse_visual && window.__jse_visual.__installed) {
+    if (window.__jse_visual.VERSION === VERSION) return;
+    try { if (typeof window.__jse_visual.cleanup === 'function') window.__jse_visual.cleanup(); } catch (_) {}
+    try { delete window.__jse_visual; } catch (_) { window.__jse_visual = undefined; }
+  }
   const EVENTS_BUFFER_LIMIT = 200;
 
   const VISUAL_DEFAULTS = {
@@ -47,6 +66,7 @@
     listStrideMs: 90,
     zIndex: 2147483000,
     label: '',
+    redactSelectors: [],
   };
 
   const TONE_MAP = {
@@ -111,8 +131,37 @@
       if (Number.isFinite(n) && n > 0) next.zIndex = Math.round(n);
     }
     if (typeof opts.label === 'string') next.label = opts.label;
+    if (Array.isArray(opts.redactSelectors)) {
+      next.redactSelectors = opts.redactSelectors.filter((s) => typeof s === 'string' && s.length > 0).slice(0, 64);
+    }
     state.config = next;
     return Object.assign({}, next);
+  }
+
+  function isRectRedacted(rect){
+    const sels = state.config.redactSelectors;
+    if (!Array.isArray(sels) || sels.length === 0 || !rect) return false;
+    let nodes = [];
+    try {
+      for (const sel of sels) {
+        try {
+          const list = document.querySelectorAll(sel);
+          for (const n of list) nodes.push(n);
+        } catch (_) {}
+      }
+    } catch (_) { return false; }
+    if (!nodes.length) return false;
+    for (const n of nodes) {
+      let r;
+      try { r = n.getBoundingClientRect(); } catch (_) { continue; }
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      const ix = Math.max(rect.x, r.left);
+      const iy = Math.max(rect.y, r.top);
+      const ax = Math.min(rect.x + rect.w, r.right);
+      const ay = Math.min(rect.y + rect.h, r.bottom);
+      if (ix < ax && iy < ay) return true;
+    }
+    return false;
   }
 
   function getConfig(){ return Object.assign({}, state.config); }
@@ -192,9 +241,14 @@
 
   function toneSpec(tone){ return TONE_MAP[tone] || TONE_MAP.info; }
 
+  // post-2.7.0 architecture pivot：viewportSnapshot / rectSnapshot 已无 mainline 调用方
+  // （emit 主链路不再注入 viewport / anchor.rect）。如要回到 PNG 模式抓 DOM 坐标，
+  // 改去 dev/index.js 配 makeFrameWriter 即可，本文件保持 in-page 视觉反馈最小依赖。
+
   function emit(evt){
     if (!evt || typeof evt !== 'object') return;
     const e = Object.assign({ ts: Date.now() }, evt);
+    // post-2.7.0：不再注入 viewport（DOM 测量产物，A 路线 translator 不消费）
     state.events.push(e);
     if (state.events.length > EVENTS_BUFFER_LIMIT) {
       state.events.splice(0, state.events.length - EVENTS_BUFFER_LIMIT);
@@ -267,7 +321,11 @@
     }
     layer.appendChild(box);
     removeLater(box, o.durationMs);
-    emit({ type: 'flash', tone: o.tone || 'info', label: o.label || '', anchor: o.anchor || null });
+    // post-2.7.0：emit shape 不再带 anchor.rect（DOM 实测坐标只用于 in-page 视觉，
+    // 不下发到 translator；A 路线翻译器按 hint.kind + payload 还原 HTML 卡片，flash
+    // 通过 anchor 的 id 字段与 HTML data-anchor-id 绑定）。
+    const anchorOut = o.anchor ? Object.assign({}, typeof o.anchor === 'object' ? o.anchor : { spec: o.anchor }) : {};
+    emit({ type: 'flash', tone: o.tone || 'info', label: o.label || '', anchor: anchorOut });
     return true;
   }
 
@@ -319,7 +377,17 @@
     }
     layer.appendChild(group);
     removeLater(group, o.durationMs);
-    emit({ type: 'relation', tone: o.tone || 'info', label: o.label || '' });
+    // post-2.7.0：relation event 不再携带 from/to.rect（DOM 测量产物）。
+    // anchor 的 spec/from/to 字段仍写出来供 translator 与 HTML data-anchor-id 绑定。
+    emit({
+      type: 'relation',
+      tone: o.tone || 'info',
+      label: o.label || '',
+      relate: {
+        from: { spec: o.fromAnchor || null, side: o.fromSide || 'right' },
+        to:   { spec: o.toAnchor   || null, side: o.toSide   || 'left'  },
+      },
+    });
     return true;
   }
 
@@ -422,7 +490,12 @@
       detail: h.detail || '',
       status: tone,
     });
-    emit({ type: 'before', kind: h.kind || 'global', label: action, anchor: h.anchor || null });
+    // post-2.7.0：before/after 不再带 anchor.rect。
+    let beforeAnchor = null;
+    if (h.anchor) {
+      beforeAnchor = Object.assign({}, typeof h.anchor === 'object' ? h.anchor : { spec: h.anchor });
+    }
+    emit({ type: 'before', kind: h.kind || 'global', label: action, anchor: beforeAnchor });
     return true;
   }
 
@@ -456,7 +529,22 @@
         if (fromEl && toEl) flashRelation(fromEl, toEl, { tone, label: r.label || '' });
       }
     }
-    emit({ type: 'after', kind: h.kind || 'global', label: action, ok: s.ok !== false, count: Array.isArray(s.items) ? s.items.length : null });
+    // post-2.7.0：after 不再带 anchor.rect；payload 由 Node 端 wrapCallApi 的
+    // hooks.extractPayload 抽取后透传到 summary.payload，这里 emit 写到 event.payload。
+    let afterAnchor = null;
+    if (h.anchor) {
+      afterAnchor = Object.assign({}, typeof h.anchor === 'object' ? h.anchor : { spec: h.anchor });
+    }
+    const payload = (s && typeof s.payload === 'object' && s.payload !== null) ? s.payload : null;
+    emit({
+      type: 'after',
+      kind: h.kind || 'global',
+      label: action,
+      ok: s.ok !== false,
+      count: Array.isArray(s.items) ? s.items.length : null,
+      anchor: afterAnchor,
+      payload,
+    });
     return true;
   }
 

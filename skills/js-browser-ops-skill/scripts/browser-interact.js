@@ -4,7 +4,12 @@
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { clickElement, fillForm, waitFor, scrollPage } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
-const { applyVisualArgs, resolveVisualOptions, VISUAL_HELP_LINES } = require('../lib/cliVisualFlags');
+const {
+  applyVisualArgs,
+  resolveVisualOptions,
+  warnDeprecatedFlagsOnce,
+  VISUAL_HELP_LINES,
+} = require('../lib/cliVisualFlags');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -27,6 +32,7 @@ function parseArgs() {
     visualMs: null,
     visualMode: null,
     visualTrace: null,
+    visualRecord: undefined,
     visualListStride: null,
     visualPrefix: null,
   };
@@ -101,6 +107,7 @@ async function main() {
   });
 
   const visual = resolveVisualOptions(options);
+  warnDeprecatedFlagsOnce(visual.deprecatedFlags);
   const apiOpts = { visual };
 
   const browser = new BrowserAutomation(runtimeConfig.serverUrl);

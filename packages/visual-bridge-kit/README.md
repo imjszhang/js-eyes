@@ -1,14 +1,28 @@
 # @js-eyes/visual-bridge-kit
 
-可复用的浏览器内"视觉反馈层"，让 bridge 类技能（reddit-ops / x-ops / zhihu-ops … 以及外部 newidea-cli-test）共享同一套 HUD + flash overlay + 评论树关系线 + jsonl 回放。
+可复用的浏览器内"视觉反馈层" + 业务数据派发器，让 bridge 类技能（reddit-ops / x-ops / zhihu-ops … 以及外部 newidea-cli-test）共享同一套 HUD + flash overlay + 评论树关系线 + 结构化业务数据落盘 + 离线 HTML 模板回放。
+
+## post-2.7.0 architecture pivot（重要）
+
+> 主链路从"PNG 截图 + DOM 测量 + 离线坐标叠层" 切换为 "业务 payload + HTML 数据驱动模板"。
+> kit 包版本 `0.4.x`（不动版本号），主链路换骨。
+>
+> | 维度 | 之前（PNG 路线） | 现在（A 路线 HTML） |
+> |---|---|---|
+> | events 内容 | `viewport / anchor.rect / frameRef` | `kind / payload / anchor.spec` |
+> | 离线产物 | `frames/*.png` + 绝对坐标 flash 盒 | reddit-style HTML 卡片 + class 切换式 flash |
+> | 视口耦合 | 1641×885 强写死，缩放后错位 | 响应式 vw/clamp，任意尺寸 0 错位 |
+> | 入口 | `require('@js-eyes/visual-bridge-kit')` 顶层 export `makeFrameWriter` | 顶层不再有；改 `require('@js-eyes/visual-bridge-kit/dev')` |
+
+PNG 路线代码保留（`node/captureFrame.js` + 顶层 dev 子路径），仅供历史 fixture 回归与 dev 调试。任何新接入都应该走 A 路线。
 
 ## 它解决的问题
 
-- **演示效果**：让旁观者直观看到 agent 当前在操作哪个元素 / 哪条数据。
-- **调试**：操作失败时屏幕上直接显示错误码，不必盯 stdout。
-- **回放**：所有视觉事件落到 jsonl，CI 与无头模式也有可观测。
-- **零业务侵入**：bridge 函数体不动，所有视觉副作用在调度边界。
-- **DOM 派 / API 派通吃**：`mode: 'auto'` 找得到 DOM 锚点就 flash 它，找不到自动降级 HUD。
+- **运行时反馈**：bridge 仍在浏览器实时画 HUD + flash，让 agent 操作可见
+- **业务数据派发**：`extractPayload` 钩子把工具响应的业务字段（reddit 帖子标题/作者/分数等）落到 `events.jsonl`
+- **离线视频**：[`@js-eyes/visual-replay-hyperframes`](../visual-replay-hyperframes) 按 `hint.kind` 路由 HTML 模板，渲染成可在任意视口播放的 reddit-style 卡片
+- **零业务侵入**：bridge 函数体不动，视觉与数据抽取都在 dispatch-edge hook
+- **DOM 派 / API 派通吃**：`mode: 'auto'` 找得到 DOM 锚点就 in-page flash，找不到自动降级 HUD
 
 ## 三档反馈
 
@@ -18,32 +32,60 @@
 | **HUD-only** | 解析不到锚点，或 `--visual-mode hud` | 屏幕角 HUD |
 | **Trace-only** | `--no-visual`，但仍写 jsonl | 仅落盘 |
 
-## 架构
+## 架构（A 主路：HTML 数据驱动）
 
 ```
-┌─ Node ────────────────────────────────────────────────────────────┐
-│  parseVisualFlags(opts, siteDefaults?) ─► visualConfig             │
-│  makeBridgeExpander({baseDir}) ─► 处理 // @@include 行              │
-│  applyVisualConfig(session, cfg) ─► 下发到 page                    │
-│  wrapCallApi(session, hint, fn) ─► before / after                  │
-│  drainVisualEvents(session) ─────► 取 ring buffer                  │
-│  appendVisualTrace(path, entry) ─► jsonl 落盘                      │
-└────────────────────────────────────────────────────────────────────┘
-                          │
+┌─ Node ────────────────────────────────────────────────────────────────┐
+│  parseVisualFlags(opts, siteDefaults?) ─► visualConfig                │
+│      └ deprecatedFlags 检测 → CLI 层一次性告警                         │
+│  makeBridgeExpander({baseDir}) ─► 处理 // @@include 行                 │
+│  applyVisualConfig(session, cfg) ─► 下发到 page                       │
+│  wrapCallApi(session, hint, fn, hooks)                                │
+│      ├ buildSummary(resp, hint, err)                                  │
+│      └ extractPayload(resp, hint, err) ★ 主链路                       │
+│  drainVisualEvents(session) ─► 取 ring buffer（含 payload）            │
+│  appendVisualSession(dir, entry, opts) ─► 会话包：events.jsonl + meta  │
+└────────────────────────────────────────────────────────────────────────┘
+                          │ summary.payload 透传
                           ▼  callRaw(...)
-┌─ Page (bridge IIFE) ──────────────────────────────────────────────┐
-│  // @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js   │
-│  // @@include ./_visual-<site>.js                                  │
-│                                                                    │
-│  window.__jse_visual = {                                           │
-│    config / getConfig                                              │
-│    flashElement / flashRelation / showHud / announceStage          │
-│    cleanup / drainEvents / emit                                    │
-│    before / after                                                  │
-│    resolveAnchor / staggerFlashItems   ← _visual-<site>.js 覆盖    │
-│  }                                                                 │
-└────────────────────────────────────────────────────────────────────┘
+┌─ Page (bridge IIFE) ──────────────────────────────────────────────────┐
+│  // @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js       │
+│  // @@include ./_visual-<site>.js                                      │
+│                                                                        │
+│  window.__jse_visual = {                                               │
+│    config / getConfig                                                  │
+│    flashElement / flashRelation / showHud / announceStage              │
+│    cleanup / drainEvents / emit                                        │
+│    before(hint) / after(hint, summary) ─► emit({type, kind, payload})  │
+│    resolveAnchor / staggerFlashItems   ← _visual-<site>.js 覆盖        │
+│  }                                                                     │
+└────────────────────────────────────────────────────────────────────────┘
+                          │ events.jsonl
+                          ▼
+┌─ Offline replay ──────────────────────────────────────────────────────┐
+│  @js-eyes/visual-replay-hyperframes (lib/translator.js)                │
+│      └ readVisualSession(dir) → buildTimeline(entries)                 │
+│        → for each (before/after) pair: getTemplate(skillId, kind)      │
+│        → 渲 HTML reddit-style 卡片 → composition.html                  │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+### B 备用路（dev / debug）：PNG 截图
+
+```js
+// 仅作 dev 调试 / 旧 fixture 回归
+const { makeFrameWriter, attachFrameRefsToEvents } = require('@js-eyes/visual-bridge-kit/dev');
+
+// 显式把 captureFrame 挂回 wrapCallApi（主链路不会自动调）：
+const writer = makeFrameWriter({ recordDir, getTabId, captureScreenshot });
+await wrapCallApi(session, hint, fn, {
+  buildSummary,
+  extractPayload,
+  captureFrame: writer, // dev only
+});
+```
+
+PNG 仍可生成，但 A 路线 translator 不消费它。
 
 ## 三步接入指南
 
@@ -107,24 +149,22 @@ module.exports = { getVisualHint };
 
 ```js
 // lib/runTool.js
-const { wrapCallApi, drainVisualEvents, appendVisualTrace } = require('@js-eyes/visual-bridge-kit');
-const { getVisualHint } = require('./visualHint');
+const { wrapCallApi, drainVisualEvents, appendVisualSession } = require('@js-eyes/visual-bridge-kit');
+const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');
 
-const hint = getVisualHint(toolName, args, null);
+const hint = getVisualHint(toolName, args);
 const resp = await wrapCallApi(session, hint, async () => {
   return await session.callApi(method, [args]);
 }, {
-  buildSummary(resp){
-    if (!resp || resp.ok === false) return { ok: false, errorCode: (resp && resp.error) || '' };
-    const items = (resp.data && Array.isArray(resp.data.items))
-      ? resp.data.items.map((it) => it.id || it.fullname).filter(Boolean)
-      : [];
-    return { ok: true, items };
-  }
+  buildSummary: (r) => buildSummary(r, hint),
+  // ★ 主链路：把响应里的业务字段抽成 payload，下游 translator 按 hint.kind 路由 HTML 模板
+  extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
 });
 
 const events = await drainVisualEvents(session);
-appendVisualTrace(visualConfig.tracePath, { toolName, events });
+appendVisualSession(recordDir, {
+  runId, skillId, toolName, args, hint, ok: resp.ok !== false, durationMs, events,
+}, { skillId, skillVersion });
 ```
 
 ### 7. CLI 旋钮
@@ -174,12 +214,26 @@ type Hint = {
 
 type Summary = {
   ok: boolean;
-  items?: Array<anchorSpec>;            // kind:'list' 时 stagger flash
-  relate?: Array<{from, to, label}>;    // kind:'tree' 时画 relation 线
+  items?: Array<anchorSpec>;            // kind:'list' 时 in-page stagger flash
+  relate?: Array<{from, to, label}>;    // kind:'tree' 时画 in-page relation 线
   errorCode?: string;
   detail?: string;
+  payload?: object | null;              // ★ post-2.7.0：业务数据载荷
 };
 ```
+
+## events.jsonl payload schema (post-2.7.0)
+
+`meta.json` 标 `payloadSchemaVersion: 1`。每条 entry 的 `events[*]` 中，`type === 'after'` 的事件多带一个 `payload` 字段，由 `hint.kind` 决定 shape：
+
+| hint.kind | payload shape |
+|---|---|
+| `list` | `{ items: [{id,title,author,subreddit,score,num_comments,...}], totalCount, sub, sort }` |
+| `item` | 单条 item 的字段（id/title/author/score/...）；或 `{ summary, fields:[{k,v}] }` 兜底 |
+| `tree` | `{ items: [...], relations: [{from,to,depth?}] }` |
+| `global` | `{ summary: string, fields: [{k,v}] }` |
+| `navigation` | `{ from, to, hint: 'page_will_reload', label }` |
+| `write` | 走 `global` 兜底（首版未做精细抽取） |
 
 ## 安全护栏
 
@@ -192,7 +246,8 @@ type Summary = {
 ## 版本
 
 - `0.1.0` 起步：HUD + flash + relation + jsonl trace + auto/dom/hud/both/off mode + SPA 防御。
-- `0.2.x` 计划：写操作的 `MutationObserver` 校正（`kind:'write'` + `expectAnchor`）。
+- `0.4.0` 与 server-core 2.7.0 同步：`appendVisualSession` 会话包目录形态、`makeFrameWriter` 顶层 export。
+- `0.4.x` (post-2.7.0 architecture pivot)：emit 主链路下线 `viewport / anchor.rect / frameRef`；新增 `hooks.extractPayload` 钩子；`makeFrameWriter` 等 PNG helpers 迁到 `@js-eyes/visual-bridge-kit/dev` 子路径；`meta.json` 加 `payloadSchemaVersion: 1`，去掉 `redact / frameCount`。版本号不动。
 
 ## 许可
 

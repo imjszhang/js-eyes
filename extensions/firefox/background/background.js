@@ -48,7 +48,10 @@ class BrowserControl {
           allowedActions: [
             'get_tabs', 'get_html', 'open_url', 'close_tab',
             'execute_script', 'get_cookies', 'get_cookies_by_domain', 'inject_css',
-            'get_page_info', 'upload_file_to_tab'
+            'get_page_info', 'upload_file_to_tab',
+            // Phase 2 (visual replay): capture active tab into PNG dataURL.
+            // Background tabs return { skipped: 'tab_not_active' } instead of erroring.
+            'capture_screenshot'
           ],
           sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
           allowRawEval: false,
@@ -1157,7 +1160,11 @@ class BrowserControl {
         case 'upload_file_to_tab':
           await this.handleUploadFileToTab(payload);
           break;
-          
+
+        case 'capture_screenshot':
+          await this.handleCaptureScreenshot(payload);
+          break;
+
         case 'subscribe_events':
           await this.handleSubscribeEvents(payload);
           break;
@@ -2139,6 +2146,65 @@ class BrowserControl {
         type: 'error',
         message: error.message,
         requestId: message.requestId
+      });
+    }
+  }
+
+  /**
+   * 处理截图请求（browser.tabs.captureVisibleTab）
+   *
+   * 与 Chrome 版镜像：captureVisibleTab 只能截当前激活的 tab；非激活 tab 直接
+   * 返回 { skipped: 'tab_not_active' }，由调用方决定是否回退。fire-and-forget。
+   */
+  async handleCaptureScreenshot(message) {
+    const { tabId, requestId, format, quality } = message || {};
+    try {
+      if (tabId == null) {
+        throw new Error('缺少必要参数: tabId');
+      }
+
+      const tab = await browser.tabs.get(parseInt(tabId));
+      if (!tab) {
+        throw new Error(`未找到 tabId=${tabId}`);
+      }
+
+      if (!tab.active) {
+        this.sendMessage({
+          type: 'capture_screenshot_complete',
+          tabId,
+          skipped: 'tab_not_active',
+          windowId: tab.windowId ?? null,
+          requestId,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const opts = { format: format === 'jpeg' ? 'jpeg' : 'png' };
+      if (opts.format === 'jpeg' && Number.isFinite(quality)) {
+        opts.quality = Math.max(0, Math.min(100, parseInt(quality)));
+      }
+
+      const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, opts);
+
+      this.sendMessage({
+        type: 'capture_screenshot_complete',
+        tabId,
+        windowId: tab.windowId ?? null,
+        format: opts.format,
+        dataUrl,
+        width: tab.width || null,
+        height: tab.height || null,
+        requestId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('处理截图请求时出错:', error);
+      this.sendMessage({
+        type: 'error',
+        message: error.message || String(error),
+        code: 'CAPTURE_SCREENSHOT_FAILED',
+        requestId
       });
     }
   }

@@ -452,6 +452,38 @@ class BrowserAutomation {
     const resp = await this._sendRequest('get_cookies', { tabId: parseInt(tabId) }, options);
     return resp.cookies || [];
   }
+
+  /**
+   * 截取标签页可见区域（chrome.tabs.captureVisibleTab）。
+   *
+   * 仅当标签页处于「激活」状态时浏览器才允许截图，非激活页直接返回
+   * `{ skipped: 'tab_not_active' }`，不抛错。调用方按需处理（visual replay
+   * 把它当作「这一刻没有底图」忽略即可）。
+   *
+   * @param {number} tabId
+   * @param {Object} [options]
+   * @param {('png'|'jpeg')} [options.format='png']
+   * @param {number} [options.quality]  jpeg 时 0-100
+   * @param {number} [options.timeout]  请求超时（秒）
+   * @param {string} [options.target]   目标浏览器 clientId / browserName
+   * @returns {Promise<{ tabId, dataUrl?, width?, height?, format?, skipped?: string }>}
+   */
+  async captureScreenshot(tabId, options = {}) {
+    if (typeof options === 'number') options = { timeout: options };
+    const payload = { tabId: parseInt(tabId) };
+    if (options.format) payload.format = options.format;
+    if (Number.isFinite(options.quality)) payload.quality = options.quality;
+    const resp = await this._sendRequest('capture_screenshot', payload, options);
+    return {
+      tabId: resp.tabId,
+      windowId: resp.windowId ?? null,
+      format: resp.format || null,
+      dataUrl: resp.dataUrl || null,
+      width: resp.width ?? null,
+      height: resp.height ?? null,
+      skipped: resp.skipped || null,
+    };
+  }
 }
 
 module.exports = { BrowserAutomation };

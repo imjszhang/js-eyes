@@ -9,8 +9,9 @@ const {
   wrapCallApi,
   drainVisualEvents,
   appendVisualTrace,
+  appendVisualSession,
 } = require('@js-eyes/visual-bridge-kit');
-const { getVisualHint, buildSummary } = require('./visualHint');
+const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');
 
 const SKILL_ID = pkg.name;
 
@@ -83,11 +84,18 @@ async function runTool(browser, spec) {
     await session.resolveTarget();
     target = session.target;
     bridgeMeta = await session.ensureBridge();
+
+    // post-2.7.0：主链路只挂 buildSummary + extractPayload；captureFrame 已下线
+    // （如需 dev PNG 路线，自行 require('@js-eyes/visual-bridge-kit/dev').makeFrameWriter
+    //  并显式传入 hooks.captureFrame）
     resp = await wrapCallApi(session, hint, async () => {
       return await session.callApi(method, [args || {}], {
         timeoutMs: options.timeoutMs || 90000,
       });
-    }, { buildSummary: (r) => buildSummary(r, hint) });
+    }, {
+      buildSummary: (r) => buildSummary(r, hint),
+      extractPayload: (r, h, e) => extractPayload(r, Object.assign({}, hint, { args }), e),
+    });
     try { drainedEvents = await drainVisualEvents(session); } catch (_) { drainedEvents = []; }
   } catch (error) {
     const durationMs = Date.now() - startedAt;
@@ -122,18 +130,22 @@ async function runTool(browser, spec) {
       debug_bundle_path: debugBundlePath,
       error_summary: error.message,
     });
-    if (options.visualTrace && (drainedEvents.length || true)) {
-      appendVisualTrace(options.visualTrace, {
-        runId: runContext.runId,
-        skillId: runContext.skillId,
-        toolName,
-        args,
-        hint,
-        ok: false,
-        durationMs,
-        error: error.message,
-        events: drainedEvents,
-      });
+    const failedEntry = {
+      runId: runContext.runId,
+      skillId: runContext.skillId,
+      toolName,
+      args,
+      hint,
+      ok: false,
+      durationMs,
+      error: error.message,
+      events: drainedEvents,
+    };
+    if (options.visualTrace) {
+      try { appendVisualTrace(options.visualTrace, failedEntry); } catch (_) {}
+    }
+    if (options.visualRecord) {
+      try { appendVisualSession(options.visualRecord, failedEntry, { skillId: runContext.skillId, skillVersion: pkg.version }); } catch (_) {}
     }
     throw error;
   } finally {
@@ -197,17 +209,21 @@ async function runTool(browser, spec) {
     error_summary: ok ? '' : ((response.error && response.error.code) || ''),
   });
 
+  const successEntry = {
+    runId: runContext.runId,
+    skillId: runContext.skillId,
+    toolName,
+    args,
+    hint,
+    ok,
+    durationMs,
+    events: drainedEvents,
+  };
   if (options.visualTrace) {
-    appendVisualTrace(options.visualTrace, {
-      runId: runContext.runId,
-      skillId: runContext.skillId,
-      toolName,
-      args,
-      hint,
-      ok,
-      durationMs,
-      events: drainedEvents,
-    });
+    try { appendVisualTrace(options.visualTrace, successEntry); } catch (_) {}
+  }
+  if (options.visualRecord) {
+    try { appendVisualSession(options.visualRecord, successEntry, { skillId: runContext.skillId, skillVersion: pkg.version }); } catch (_) {}
   }
 
   return response;

@@ -267,7 +267,177 @@ function extractTreeRelations(data){
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// post-2.7.0 architecture pivot：业务数据 payload 抽取
+// ---------------------------------------------------------------------------
+// extractPayload(resp, hint, err) → payload 透传到 after event.payload，下游
+// hyperframes translator 按 hint.kind 路由到 HTML 模板渲卡片。
+//
+// payload shape（按 hint.kind）：
+//   list       => { items: [redditItem...], totalCount, sub, sort, label, target }
+//   item       => 单条 redditItem（外层不再包 items）
+//   tree       => { items: [redditItem...], relations: [{from,to,depth}] }
+//   global     => { summary, fields: [{k, v}], extra }
+//   navigation => { from, to, hint: 'page_will_reload' }
+//   write      => 走 global 兜底（首版不做精细抽取）
+
+const REDDIT_ITEM_FIELDS = [
+  'id', 'name', 'fullname', 'comment_id',
+  'title', 'author', 'subreddit', 'subreddit_name_prefixed',
+  'score', 'ups', 'downs', 'upvote_ratio',
+  'num_comments', 'created_utc',
+  'link_flair_text', 'flair',
+  'thumbnail', 'preview_url',
+  'permalink', 'url',
+  'selftext', 'body', 'body_md',
+  'is_video', 'is_self', 'over_18', 'spoiler', 'stickied', 'locked',
+  'parent_id', '_parent_id', 'depth',
+];
+
+function extractRedditItemFields(it){
+  if (!it || typeof it !== 'object') return null;
+  const out = {};
+  for (const key of REDDIT_ITEM_FIELDS) {
+    if (it[key] != null) out[key] = it[key];
+  }
+  // 规范化：fullname 选用第一个非空 id
+  out.id = it.id || it.name || it.fullname || it.comment_id || '';
+  // contentPreview：selftext / body / title 截断
+  const previewSrc = (typeof it.selftext === 'string' ? it.selftext : '')
+    || (typeof it.body === 'string' ? it.body : '')
+    || (typeof it.body_md === 'string' ? it.body_md : '')
+    || '';
+  if (previewSrc) {
+    out.contentPreview = previewSrc.length > 240 ? previewSrc.slice(0, 237) + '…' : previewSrc;
+  }
+  // createdAt（人读）
+  if (Number.isFinite(it.created_utc)) {
+    try {
+      const d = new Date(it.created_utc * 1000);
+      out.createdAt = d.toISOString();
+    } catch (_) {}
+  }
+  // subreddit：偏好不带 r/ 的纯名
+  if (typeof it.subreddit === 'string' && it.subreddit) {
+    out.subreddit = it.subreddit;
+  } else if (typeof it.subreddit_name_prefixed === 'string') {
+    out.subreddit = it.subreddit_name_prefixed.replace(/^r\//, '');
+  }
+  return out;
+}
+
+function pickSingleItem(data){
+  if (!data || typeof data !== 'object') return null;
+  if (data.item && typeof data.item === 'object') return data.item;
+  if (data.post && typeof data.post === 'object') return data.post;
+  if (data.about && typeof data.about === 'object') return data.about;
+  if (data.profile && typeof data.profile === 'object') return data.profile;
+  if (data.user && typeof data.user === 'object') return data.user;
+  if (data.subreddit && typeof data.subreddit === 'object') return data.subreddit;
+  // 顶层 reddit listing：第一项即视为单 item
+  const arr = pickItemsArray(data);
+  if (Array.isArray(arr) && arr[0]) return arr[0];
+  return null;
+}
+
+function extractGlobalFields(data){
+  const out = { summary: '', fields: [] };
+  if (!data || typeof data !== 'object') return out;
+  const fields = [];
+  const seen = new Set();
+  const push = (k, v) => {
+    if (!k || seen.has(k)) return;
+    if (v == null) return;
+    if (typeof v === 'object') return;
+    seen.add(k);
+    fields.push({ k, v: String(v) });
+  };
+  // 偏好这几个键的稳定顺序
+  const ordered = [
+    'name', 'subreddit', 'user', 'box', 'feed', 'sort',
+    'subscribers', 'active_user_count', 'created_utc',
+    'logged_in', 'is_authenticated', 'username',
+    'title', 'public_description', 'description',
+  ];
+  for (const k of ordered) push(k, data[k]);
+  // 兜底：再扫一遍其它原子键
+  for (const k of Object.keys(data)) push(k, data[k]);
+  out.fields = fields.slice(0, 12);
+  out.summary = (typeof data.title === 'string' && data.title)
+    || (typeof data.public_description === 'string' && data.public_description)
+    || (typeof data.description === 'string' && data.description)
+    || '';
+  return out;
+}
+
+function extractPayload(resp, hint, err){
+  if (err) {
+    return { error: { message: err && err.message ? String(err.message) : String(err), code: err && err.code ? String(err.code) : '' } };
+  }
+  if (!resp || typeof resp !== 'object') return null;
+  const data = (resp.data && typeof resp.data === 'object') ? resp.data : null;
+  const kind = (hint && hint.kind) || 'global';
+  const toolName = (hint && hint.toolName) || '';
+
+  // navigation 没有标准 data；走 hint.target / resp 字段
+  if (kind === 'navigation') {
+    const to = (resp && (resp.url || resp.to)) || (data && (data.url || data.to)) || (hint && hint.target) || '';
+    const from = (resp && resp.from) || (data && data.from) || '';
+    return {
+      from: typeof from === 'string' ? from : '',
+      to: typeof to === 'string' ? to : '',
+      hint: 'page_will_reload',
+      label: (hint && hint.label) || '',
+    };
+  }
+
+  if (kind === 'list' && data) {
+    const arr = pickItemsArray(data) || [];
+    const items = arr.slice(0, 8).map(extractRedditItemFields).filter(Boolean);
+    return {
+      items,
+      totalCount: arr.length,
+      sub: data.sub || data.subreddit || '',
+      sort: data.sort || '',
+      label: (hint && hint.label) || '',
+      target: (hint && hint.target) || '',
+    };
+  }
+
+  if (kind === 'item' && data) {
+    const it = pickSingleItem(data);
+    const fields = extractRedditItemFields(it);
+    if (fields && fields.id) return fields;
+    // 兜底：subreddit_about / user_profile 等返回结构化非 listing 数据
+    return Object.assign({ id: '' }, extractGlobalFields(data));
+  }
+
+  if (kind === 'tree' && data) {
+    const arr = pickItemsArray(data) || [];
+    const items = arr.slice(0, 24).map(extractRedditItemFields).filter(Boolean);
+    const relations = extractTreeRelations(data);
+    return {
+      items,
+      relations,
+      label: (hint && hint.label) || '',
+    };
+  }
+
+  if (kind === 'global') {
+    return extractGlobalFields(data || resp);
+  }
+
+  if (kind === 'write') {
+    return Object.assign({ ok: resp.ok !== false }, extractGlobalFields(data || resp));
+  }
+
+  return null;
+}
+
 module.exports = {
   getVisualHint,
   buildSummary,
+  extractPayload,
+  extractRedditItemFields,
+  extractGlobalFields,
 };

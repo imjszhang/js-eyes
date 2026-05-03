@@ -11,6 +11,7 @@ const {
   wrapInjectCall,
   loadVisualKitSource,
   appendVisualTrace,
+  appendVisualSession,
 } = require('@js-eyes/visual-bridge-kit');
 
 const { createRunContext } = require('./runContext');
@@ -32,9 +33,11 @@ const SITE_ANCHOR_PATH = path.join(__dirname, '..', 'bridges', '_visual-browser.
 /**
  * withVisual - 6 个 api 函数共用的高阶包装。
  *
- * options.visual = { config, tracePath } | undefined
+ * options.visual = { config, tracePath?, recordDir? } | undefined
  *   - 缺失或 config.enabled === false → 直接 runScript()，零开销
- *   - 否则 → wrapInjectCall（before+install / 业务 / after+drain），可选 appendVisualTrace
+ *   - 否则 → wrapInjectCall（before+install / 业务 / after+drain）
+ *   - tracePath 存在 → appendVisualTrace（单文件 jsonl）
+ *   - recordDir 存在 → appendVisualSession（会话包目录，给 hyperframes 重渲染）
  *
  * @param {string} toolName
  * @param {object} browser - BrowserAutomation 实例
@@ -57,6 +60,11 @@ async function withVisual(toolName, browser, tabId, params, options, runScript){
     visualKitSource: loadVisualKitSource({ siteAnchorPath: SITE_ANCHOR_PATH }),
   };
 
+  // post-2.7.0 architecture pivot：browser-ops 这一轮不接 HTML 模板（list/item/tree 都
+  // 不适用），也不再走 PNG 路线。captureFrame / frames / redact 已经从主链路下线，
+  // 这里走纯 wrapInjectCall + payload-less 录制路径。
+  // 如需 dev/debug PNG 截图，可自行 require('@js-eyes/visual-bridge-kit/dev').makeFrameWriter
+  // 把 captureFrame 显式塞进 hooks 即可，主链路不会自动启用。
   let wrapped;
   let err = null;
   try {
@@ -67,21 +75,36 @@ async function withVisual(toolName, browser, tabId, params, options, runScript){
     err = e;
   }
 
+  const events = wrapped ? wrapped.events : [];
+  const summary = wrapped ? wrapped.summary : null;
+  const durationMs = wrapped ? wrapped.durationMs : null;
+  const ok = !err && !!(summary && summary.ok !== false);
+
   if (visual.tracePath) {
-    const result = wrapped ? wrapped.result : null;
-    const events = wrapped ? wrapped.events : [];
-    const summary = wrapped ? wrapped.summary : null;
-    const durationMs = wrapped ? wrapped.durationMs : null;
     try {
       appendVisualTrace(visual.tracePath, {
         toolName,
         args: params || {},
         hint,
-        ok: !err && !!(summary && summary.ok !== false),
+        ok,
         error: err ? err.message : null,
         durationMs,
         events,
       });
+    } catch (_) {}
+  }
+
+  if (visual.recordDir) {
+    try {
+      appendVisualSession(visual.recordDir, {
+        toolName,
+        args: params || {},
+        hint,
+        ok,
+        error: err ? err.message : null,
+        durationMs,
+        events,
+      }, { skillId: SKILL_ID, skillVersion: SKILL_VERSION });
     } catch (_) {}
   }
 

@@ -1,0 +1,140 @@
+/**
+ * @js-eyes/visual-bridge-kit · styles/visual-runtime.css
+ * ---------------------------------------------------------------------------
+ * 共享视觉样式（HUD + flash 框 + relation 线）。
+ *
+ * 设计要点：
+ *   - 类名以 `jse-vis-*` 为前缀，运行时通过 setProperty('--jse-vis-prefix') 不再变 id；
+ *     运行时仍可注入 site-specific id 前缀避免多 skill 冲突，
+ *     但样式本身用类名 + CSS 变量，**bridge 与转译器共用同一份 CSS**。
+ *   - tone 信息通过 CSS 变量驱动：--jse-vis-border / --jse-vis-fill / --jse-vis-pill / --jse-vis-text。
+ *   - z-index 用 --jse-vis-z 控制（默认 2147483000）。
+ *
+ * Tone palette（与 bridge/visual.common.js TONE_MAP 保持同步；
+ *              请勿在此处直接 hardcode 颜色，统一通过 data-tone 选择器）。
+ * ---------------------------------------------------------------------------
+ */
+
+.jse-vis-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--jse-vis-z, 2147483000);
+  overflow: visible;
+}
+
+.jse-vis-box {
+  position: fixed;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 2px solid var(--jse-vis-border, #1677ff);
+  background: var(--jse-vis-fill, rgba(22, 119, 255, 0.14));
+  box-shadow:
+    0 0 0 1px var(--jse-vis-border, #1677ff)33,
+    0 12px 28px var(--jse-vis-border, #1677ff)22;
+  animation: jse-vis-pulse 0.55s ease-out 1;
+}
+
+.jse-vis-relation {
+  position: fixed;
+  inset: 0;
+  animation: jse-vis-pulse 0.55s ease-out 1;
+}
+
+.jse-vis-line {
+  position: absolute;
+  height: 2px;
+  transform-origin: left center;
+  background: var(--jse-vis-border, #1677ff);
+  color: var(--jse-vis-border, #1677ff);
+  box-shadow: 0 0 0 1px currentColor, 0 8px 24px currentColor;
+  opacity: 0.9;
+}
+
+.jse-vis-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--jse-vis-border, #1677ff);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
+}
+
+.jse-vis-badge {
+  position: absolute;
+  left: 0;
+  top: -28px;
+  max-width: 280px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  background: var(--jse-vis-pill, #0958d9);
+  color: var(--jse-vis-text, #f0f5ff);
+}
+
+.jse-vis-hud {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  max-width: 360px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font: 600 13px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: pre-wrap;
+  pointer-events: none;
+  z-index: calc(var(--jse-vis-z, 2147483000) + 1);
+  border: 1px solid var(--jse-vis-border, #1677ff);
+  background: var(--jse-vis-fill-strong, rgba(22, 119, 255, 0.92));
+  color: var(--jse-vis-pill, #0958d9);
+}
+
+@keyframes jse-vis-pulse {
+  0%   { transform: scale(0.985); opacity: 0.2; }
+  35%  { transform: scale(1.003); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* tone 调色板 - 由 [data-tone] 触发 CSS 变量切换 */
+[data-tone="info"] {
+  --jse-vis-border: #1677ff;
+  --jse-vis-fill: rgba(22, 119, 255, 0.14);
+  --jse-vis-fill-strong: rgba(22, 119, 255, 0.92);
+  --jse-vis-pill: #0958d9;
+  --jse-vis-text: #f0f5ff;
+}
+[data-tone="pending"] {
+  --jse-vis-border: #faad14;
+  --jse-vis-fill: rgba(250, 173, 20, 0.16);
+  --jse-vis-fill-strong: rgba(250, 173, 20, 0.92);
+  --jse-vis-pill: #ad6800;
+  --jse-vis-text: #fffbe6;
+}
+[data-tone="success"] {
+  --jse-vis-border: #52c41a;
+  --jse-vis-fill: rgba(82, 196, 26, 0.14);
+  --jse-vis-fill-strong: rgba(82, 196, 26, 0.92);
+  --jse-vis-pill: #237804;
+  --jse-vis-text: #f6ffed;
+}
+[data-tone="error"],
+[data-tone="danger"] {
+  --jse-vis-border: #ff4d4f;
+  --jse-vis-fill: rgba(255, 77, 79, 0.14);
+  --jse-vis-fill-strong: rgba(255, 77, 79, 0.92);
+  --jse-vis-pill: #a8071a;
+  --jse-vis-text: #fff1f0;
+}
+[data-tone="warn"] {
+  --jse-vis-border: #faad14;
+  --jse-vis-fill: rgba(250, 173, 20, 0.16);
+  --jse-vis-fill-strong: rgba(250, 173, 20, 0.92);
+  --jse-vis-pill: #ad6800;
+  --jse-vis-text: #fffbe6;
+}

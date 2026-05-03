@@ -496,7 +496,7 @@ npm run build:firefox
 # 同步版本号到所有 manifest（注意：bump 刻意跳过 skills/*/package.json —
 # 子技能保留各自的独立版本号，用户可以通过 `js-eyes skills update` 单独升级，
 # 不需要重装父 bundle）
-npm run bump -- 2.6.3
+npm run bump -- 2.7.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。

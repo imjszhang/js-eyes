@@ -45,3 +45,7 @@ logs/
 
 # Local demo / debug runs (visual-bridge-kit jsonl traces, etc.)
 runs/
+
+# Generated replay compositions inside fixture folders (build artefact, large,
+# regenerable via `node packages/visual-replay-hyperframes/cli/jse-replay.js`)
+packages/visual-replay-hyperframes/__fixtures__/**/composition/

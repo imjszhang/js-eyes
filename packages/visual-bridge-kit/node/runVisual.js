@@ -4,12 +4,27 @@
 // ---------------------------------------------------------------------------
 // before/after hook，包在 session.callApi 两端。
 //
-// 用法：
+// 用法（单文件 trace 形态）：
 //   const summary = await wrapCallApi(session, hint, async () => {
 //     return await session.callApi(method, [args]);
 //   });
 //   const events = await drainVisualEvents(session);
 //   appendVisualTrace(tracePath, { runId, toolName, args, hint, summary, events });
+//
+// 用法（会话包目录形态，给离线 hyperframes 重渲染用）：
+//   appendVisualSession(recordDir, { runId, toolName, args, hint, ok, durationMs, events },
+//                       { skillId, skillVersion });
+//
+// post-2.7.0 architecture pivot：
+//   - PNG 截图（captureFrame）已从主链路下线，captureFrame.js 与 hooks.captureFrame
+//     仍可用但仅作 dev / debug 入口，wrapCallApi/wrapInjectCall 不再主动调用。
+//   - 主链路新增 hooks.extractPayload(resp, hint, err) => payload 钩子：
+//       payload 由 skill 端按 hint.kind 抽取业务数据（list 类返回 items + meta，
+//       item 类返回单条字段，tree 类返回 items + relations 等），由 wrapCallApi 写入
+//       after event 的 payload 字段，下游 hyperframes translator 按 hint.kind 路由
+//       到对应的 HTML 模板，渲染响应式卡片。
+//   - 配套：events 不再带 anchor.rect / viewport / frameRef；flash 通过 anchor 的
+//     id 与 HTML data-anchor-id 绑定，实现"卡片自适应 + flash 跟随"的零错位。
 //
 // hint shape:
 //   {
@@ -69,6 +84,8 @@ function buildAfterExpression(hint, summary){
     errorCode: s.errorCode || '',
     detail: s.detail || '',
     target: s.target || '',
+    // post-2.7.0：业务数据 payload，由 hooks.extractPayload 提取
+    payload: (s && typeof s.payload === 'object' && s.payload !== null) ? s.payload : null,
   };
   return '(window.__jse_visual && window.__jse_visual.after(' + SAFE(safeHint) + ',' + SAFE(safeSummary) + ')) || null';
 }
@@ -90,6 +107,46 @@ async function callRawSafely(session, expression){
   }
 }
 
+// ----- Phase 2: captureFrame fire-and-forget helpers ------------------------
+function buildFrameRef(ts){
+  return 'frames/' + ts + '.png';
+}
+
+function safeCaptureFrame(captureFrame, info){
+  if (typeof captureFrame !== 'function') return null;
+  let ret;
+  try {
+    ret = captureFrame(info);
+  } catch (_) { return info; }
+  if (ret && typeof ret.then === 'function') {
+    ret.then(() => {}, () => {});
+  }
+  return info;
+}
+
+function attachFrameRefsToEvents(events, frames){
+  if (!Array.isArray(events) || !Array.isArray(frames) || frames.length === 0) return events;
+  for (const f of frames) {
+    if (!f || !f.ts || !f.when || !f.frameRef) continue;
+    let candidate = null;
+    let bestDelta = Infinity;
+    for (const e of events) {
+      if (!e || e.type !== f.when) continue;
+      const eTs = Number(e.ts);
+      if (!Number.isFinite(eTs)) continue;
+      const delta = Math.abs(eTs - f.ts);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        candidate = e;
+      }
+    }
+    if (candidate && bestDelta <= 1500 && !candidate.frameRef) {
+      candidate.frameRef = f.frameRef;
+    }
+  }
+  return events;
+}
+
 /**
  * applyVisualConfig - 在 ensureBridge 之后下发一次 config。幂等。
  */
@@ -104,11 +161,16 @@ async function applyVisualConfig(session, visualConfig){
  * @param {object} session - reddit-ops Session (必须有 callRaw)
  * @param {object} hint - visualHint
  * @param {(opts?: object) => Promise<any>} fn - 真正的 callApi 调用，接收 derivedHint
- * @param {object} [hooks] - { buildSummary(resp, hint) => summary }
+ * @param {object} [hooks]
+ * @param {(resp, hint, err) => object} [hooks.buildSummary] - 默认 defaultBuildSummary
+ * @param {(resp, hint, err) => object|null} [hooks.extractPayload] - **post-2.7.0 主链路**：
+ *     抽业务数据塞到 after event 的 payload 字段，给 HTML translator 重渲卡片用
+ * @param {Function} [hooks.captureFrame] - **dev only**：保留入口，但主链路不主动触发；
+ *     如需 PNG 路线，自行从 dev/index.js 引入 makeFrameWriter 并显式传入此 hook
  */
 async function wrapCallApi(session, hint, fn, hooks){
-  const before = buildBeforeExpression(hint);
-  await callRawSafely(session, before);
+  await callRawSafely(session, buildBeforeExpression(hint));
+
   let resp = null;
   let err = null;
   try {
@@ -118,7 +180,31 @@ async function wrapCallApi(session, hint, fn, hooks){
   }
   const buildSummary = hooks && typeof hooks.buildSummary === 'function' ? hooks.buildSummary : defaultBuildSummary;
   const summary = buildSummary(resp, hint, err);
+
+  // post-2.7.0：抽业务数据 payload 塞进 summary（由 buildAfterExpression 透传到
+  // bridge.after，bridge.after emit 时把 payload 写到 after event）
+  if (hooks && typeof hooks.extractPayload === 'function') {
+    try {
+      const payload = hooks.extractPayload(resp, hint, err);
+      if (payload && typeof payload === 'object') {
+        summary.payload = payload;
+      }
+    } catch (_) { /* extractPayload 失败不阻断主流程 */ }
+  }
+
   await callRawSafely(session, buildAfterExpression(hint, summary));
+
+  // dev-only：如显式提供 hooks.captureFrame，仍触发一次 fire-and-forget 截图（不
+  // 影响 events 内容、不收集 frames 元数据；A 路线主链路不消费）
+  if (hooks && typeof hooks.captureFrame === 'function') {
+    try {
+      const ts = Date.now();
+      const when = err ? 'error' : 'after';
+      const info = { ts, when, frameRef: buildFrameRef(ts), hint, summary };
+      safeCaptureFrame(hooks.captureFrame, info);
+    } catch (_) {}
+  }
+
   if (err) throw err;
   return resp;
 }
@@ -210,6 +296,16 @@ async function wrapInjectCall(ctx, hint, fn, hooks){
     : defaultBuildSummary;
   const summary = buildSummary(result, hint, err);
 
+  // post-2.7.0：业务数据 payload 走 summary.payload 透传到 bridge.after emit
+  if (hooks && typeof hooks.extractPayload === 'function') {
+    try {
+      const payload = hooks.extractPayload(result, hint, err);
+      if (payload && typeof payload === 'object') {
+        summary.payload = payload;
+      }
+    } catch (_) {}
+  }
+
   let events = [];
   if (visualEnabled) {
     const afterBundle = '(function(){'
@@ -218,6 +314,16 @@ async function wrapInjectCall(ctx, hint, fn, hooks){
       + '})()';
     const drained = await safeRaw(afterBundle);
     if (Array.isArray(drained)) events = drained;
+  }
+
+  // dev-only：显式 hooks.captureFrame 仍可触发；events 不再被自动 attach frameRef
+  if (hooks && typeof hooks.captureFrame === 'function' && visualEnabled) {
+    try {
+      const ts = Date.now();
+      const when = err ? 'error' : 'after';
+      const info = { ts, when, frameRef: buildFrameRef(ts), hint, summary };
+      safeCaptureFrame(hooks.captureFrame, info);
+    } catch (_) {}
   }
 
   if (err) throw err;
@@ -234,4 +340,7 @@ module.exports = {
   buildDrainExpression,
   buildConfigExpression,
   defaultBuildSummary,
+  // Phase 2 capture-frame helpers
+  buildFrameRef,
+  attachFrameRefsToEvents,
 };

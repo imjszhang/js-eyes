@@ -166,6 +166,15 @@ js-eyes skill run js-reddit-ops-skill doctor
 
 reddit-ops 在调度边界自动给每个工具调用做"屏幕内演出"——这套层位于 `@js-eyes/visual-bridge-kit`，未来其它技能也能复用。bridge 业务函数零侵入。
 
+> **post-2.7.0 architecture pivot**：在线视觉反馈（HUD / flash / relation）保持不变；
+> 离线 `--visual-record` 已切到 HTML 数据驱动模式：`events.jsonl` 不再带
+> `viewport / anchor.rect / frameRef`，而是按 `hint.kind` 在 `after` event 上挂 `payload`
+> （list/item/tree/global/navigation 五种 shape）。`@js-eyes/visual-replay-hyperframes`
+> 按 `payload` 渲 reddit-style 卡片视频。详见
+> [`docs/dev/visual-cookbook.md`](docs/dev/visual-cookbook.md)。
+> `--redact-rect / --redact-selector / --redact-config / --visual-record-frames /
+> --visual-frames-throttle` 仍解析但**不会下发**，stderr 会打一行 deprecation 提醒。
+
 ```bash
 # 默认开启：staged 详细级别，flash + HUD + 列表呼吸感 + 评论树 relation 线
 node index.js list-subreddit AskReddit --limit 8
@@ -178,6 +187,9 @@ node index.js my-feed --no-visual
 
 # 把视觉事件流落到 jsonl，CI 可重放
 node index.js expand-more t3_xxx "c1,c2" --visual-trace runs/visual-2026-05-02.jsonl
+
+# 写会话包目录（meta.json + events.jsonl + payload）→ jse-replay 渲视频
+node index.js list-subreddit MachineLearning --limit 8 --visual-record runs/pivot-list
 ```
 
 | flag | 默认 | 说明 |

@@ -67,6 +67,7 @@ const DEFAULT_CONFIG = {
       'inject_css',         // 注入 CSS
       'get_page_info',      // 获取页面信息
       'upload_file_to_tab', // 上传文件到标签页
+      'capture_screenshot', // Phase 2: 截当前激活 tab 的可见区为 PNG（用于 visual replay）
       'subscribe_events',   // 订阅事件
       'unsubscribe_events'  // 取消订阅事件
     ],

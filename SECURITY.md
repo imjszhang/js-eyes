@@ -1,12 +1,12 @@
 # Security and Network Behavior
 
-> **2.6.3 note**: This document covers the runtime security posture (network
+> **2.7.0 note**: This document covers the runtime security posture (network
 > behavior, token handling, policy engine, consent ledger, supply-chain
 > hardening since 2.2.0). For the per-finding response to the
 > [ClawHub Security Scan](https://clawhub.ai/imjszhang/js-eyes) of v2.6.1,
 > see [`SECURITY_SCAN_NOTES.md`](./SECURITY_SCAN_NOTES.md); for the one-screen
 > operator summary (risk item / current default / how to tighten / config
-> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-263).
+> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-270).
 > A local reproduction of the ClawHub static heuristic is available via
 > `npm run scan:security` (zero unexpected findings on 2.6.3 — the 2.6.3
 > changes are install-time UX only and do not touch the runtime callsites

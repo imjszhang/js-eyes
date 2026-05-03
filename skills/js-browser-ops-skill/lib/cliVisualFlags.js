@@ -10,18 +10,43 @@
 //   --visual-detail compact|staged
 //   --visual-ms <n>          flash 持续时长（默认 420，clamp 120–4000）
 //   --visual-mode auto|dom|hud|both|off
-//   --visual-trace <file>    把事件写入 jsonl
+//   --visual-trace <file>    把事件写入 jsonl（单文件形态）
+//   --visual-record <dir>    把事件写入会话包目录（meta.json + events.jsonl）
+//                            给离线 hyperframes 重渲染用
+//   --no-visual-record       显式关闭会话包写入
 //   --visual-list-stride <ms>
 //   --visual-prefix <p>      DOM id 前缀（默认 __jse_browser_visual_）
+//
+// post-2.7.0 architecture pivot：
+//   --redact-rect / --redact-selector / --redact-config 仍解析（不会报错），
+//   但已下线，主链路不再消费；parseVisualFlags 返回 deprecatedFlags，统一
+//   通过 warnDeprecatedFlagsOnce 打 stderr 一次性告警。
 //
 // 提供两个 helper：
 //   - applyVisualArgs(args, i, options)  在 parseArgs 循环里识别 visual flag，
 //                                          返回消耗的 argv 步数（0 表示不是 visual flag）
 //   - resolveVisualOptions(options)      把 options.visual* 字段过 parseVisualFlags，
-//                                          返回 { visual: { config, tracePath } } 透传给 api
+//                                          返回 { visual: { config, tracePath, recordDir } }
+//                                          + deprecatedFlags 数组
 // ---------------------------------------------------------------------------
 
 const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
+
+const _warnedFlags = new Set();
+function warnDeprecatedFlagsOnce(deprecatedFlags){
+  if (!Array.isArray(deprecatedFlags) || deprecatedFlags.length === 0) return;
+  const fresh = deprecatedFlags.filter((f) => !_warnedFlags.has(f));
+  if (fresh.length === 0) return;
+  for (const f of fresh) _warnedFlags.add(f);
+  try {
+    process.stderr.write(
+      '[js-browser-ops-skill] deprecated visual flag(s) ignored: '
+      + fresh.join(', ')
+      + ' (post-2.7.0 architecture pivot — main pipeline no longer consumes PNG/redact;'
+      + ' use require("@js-eyes/visual-bridge-kit/dev").makeFrameWriter for the legacy PNG path)\n'
+    );
+  } catch (_) {}
+}
 
 const BROWSER_VISUAL_DEFAULTS = { prefix: '__jse_browser_visual_' };
 
@@ -41,21 +66,57 @@ function applyVisualArgs(args, i, options){
   if (a.startsWith('--visual-mode=')) { options.visualMode = a.slice('--visual-mode='.length); return 1; }
   if (a === '--visual-trace' && args[i + 1]) { options.visualTrace = args[i + 1]; return 2; }
   if (a.startsWith('--visual-trace=')) { options.visualTrace = a.slice('--visual-trace='.length); return 1; }
+  if (a === '--visual-record') {
+    if (args[i + 1] && !args[i + 1].startsWith('-')) { options.visualRecord = args[i + 1]; return 2; }
+    options.visualRecord = true; return 1;
+  }
+  if (a.startsWith('--visual-record=')) { options.visualRecord = a.slice('--visual-record='.length); return 1; }
+  if (a === '--no-visual-record') { options.visualRecord = false; return 1; }
   if (a === '--visual-list-stride' && args[i + 1]) { options.visualListStride = args[i + 1]; return 2; }
   if (a.startsWith('--visual-list-stride=')) { options.visualListStride = a.slice('--visual-list-stride='.length); return 1; }
   if (a === '--visual-prefix' && args[i + 1]) { options.visualPrefix = args[i + 1]; return 2; }
   if (a.startsWith('--visual-prefix=')) { options.visualPrefix = a.slice('--visual-prefix='.length); return 1; }
+  if (a === '--redact-rect' && args[i + 1]) {
+    options.redactRect = options.redactRect || [];
+    options.redactRect.push(args[i + 1]);
+    return 2;
+  }
+  if (a.startsWith('--redact-rect=')) {
+    options.redactRect = options.redactRect || [];
+    options.redactRect.push(a.slice('--redact-rect='.length));
+    return 1;
+  }
+  if (a === '--redact-selector' && args[i + 1]) {
+    options.redactSelector = options.redactSelector || [];
+    options.redactSelector.push(args[i + 1]);
+    return 2;
+  }
+  if (a.startsWith('--redact-selector=')) {
+    options.redactSelector = options.redactSelector || [];
+    options.redactSelector.push(a.slice('--redact-selector='.length));
+    return 1;
+  }
+  if (a === '--redact-config' && args[i + 1]) { options.redactConfig = args[i + 1]; return 2; }
+  if (a.startsWith('--redact-config=')) { options.redactConfig = a.slice('--redact-config='.length); return 1; }
+  // post-2.7.0 deprecated frame-related flags: parse but don't act on them.
+  // parseVisualFlags will detect their presence on `options` and surface them via
+  // deprecatedFlags so warnDeprecatedFlagsOnce can warn the user once on stderr.
+  if (a === '--visual-record-frames' && args[i + 1]) { options.visualRecordFrames = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-record-frames=')) { options.visualRecordFrames = a.slice('--visual-record-frames='.length); return 1; }
+  if (a === '--no-visual-record-frames') { options.visualRecordFrames = false; return 1; }
+  if (a === '--visual-frames-throttle' && args[i + 1]) { options.visualFramesThrottle = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-frames-throttle=')) { options.visualFramesThrottle = a.slice('--visual-frames-throttle='.length); return 1; }
   return 0;
 }
 
 /**
  * 把 options.visual* 字段过 parseVisualFlags，返回透传给 api 的 visual 选项。
  * @param {object} options - parseArgs 输出
- * @returns {{ config: object, tracePath: string|null }}
+ * @returns {{ config, tracePath, recordDir, deprecatedFlags }}
  */
 function resolveVisualOptions(options){
-  const { config, tracePath } = parseVisualFlags(options || {}, BROWSER_VISUAL_DEFAULTS);
-  return { config, tracePath };
+  const { config, tracePath, recordDir, deprecatedFlags } = parseVisualFlags(options || {}, BROWSER_VISUAL_DEFAULTS);
+  return { config, tracePath, recordDir, deprecatedFlags: deprecatedFlags || [] };
 }
 
 const VISUAL_HELP_LINES = [
@@ -63,14 +124,24 @@ const VISUAL_HELP_LINES = [
   '  --visual-detail compact|staged   反馈细节级别（默认 staged）',
   '  --visual-ms <n>                  flash 持续时长 ms（默认 420，120-4000）',
   '  --visual-mode auto|dom|hud|both|off  锚点解析策略（默认 auto）',
-  '  --visual-trace <file.jsonl>      把视觉事件落 jsonl',
+  '  --visual-trace <file.jsonl>      把视觉事件落 jsonl（单文件）',
+  '  --visual-record [dir]            把事件落到会话包目录（meta+events.jsonl，给 hyperframes 渲视频）',
+  '  --no-visual-record               显式关闭会话包',
   '  --visual-list-stride <ms>        列表呼吸感步进（默认 90）',
   '  --visual-prefix <p>              DOM id 前缀（默认 __jse_browser_visual_）',
+  '',
+  'Deprecated (post-2.7.0 architecture pivot — parsed but ignored):',
+  '  --redact-rect / --redact-selector / --redact-config (PNG / 马赛克 链路下线)',
+  '  --visual-record-frames / --visual-frames-throttle  (frames/ 目录不再写)',
 ];
+
+function _resetWarnedFlagsForTesting(){ _warnedFlags.clear(); }
 
 module.exports = {
   applyVisualArgs,
   resolveVisualOptions,
+  warnDeprecatedFlagsOnce,
   BROWSER_VISUAL_DEFAULTS,
   VISUAL_HELP_LINES,
+  _resetWarnedFlagsForTesting,
 };

@@ -1,0 +1,12 @@
+{
+  "sessionId": "sess-mooo46v3-dpu71b",
+  "startedAt": "2026-05-02T18:21:20.703Z",
+  "kitVersion": "0.4.0",
+  "skillId": "js-browser-ops-skill",
+  "skillVersion": "2.3.0",
+  "toolNames": [
+    "browser_read_page"
+  ],
+  "eventCount": 4,
+  "updatedAt": "2026-05-02T18:21:20.703Z"
+}

@@ -1,12 +1,22 @@
 {
   "name": "@js-eyes/visual-bridge-kit",
-  "version": "0.2.0",
-  "description": "Reusable in-page visual feedback (HUD + flash overlays + jsonl trace) for js-eyes bridge skills",
+  "version": "0.4.0",
+  "description": "Reusable in-page visual feedback (HUD + flash overlays + jsonl trace + session bundles) for js-eyes bridge skills",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./dev": "./dev/index.js",
+    "./bridge/*": "./bridge/*",
+    "./styles/*": "./styles/*",
+    "./node/*": "./node/*",
+    "./package.json": "./package.json"
+  },
   "files": [
     "index.js",
     "bridge",
-    "node"
+    "dev",
+    "node",
+    "styles"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

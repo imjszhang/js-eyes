@@ -1,0 +1,32 @@
+{
+  "name": "@js-eyes/visual-replay-hyperframes",
+  "version": "0.1.0",
+  "description": "Translate js-eyes visual session bundle into hyperframes composition; spawn `npx hyperframes` to render MP4",
+  "private": true,
+  "main": "index.js",
+  "bin": {
+    "jse-replay": "cli/jse-replay.js"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cli",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@js-eyes/visual-bridge-kit": "^0.3.0"
+  },
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "keywords": [
+    "js-eyes",
+    "visual",
+    "replay",
+    "hyperframes",
+    "video"
+  ]
+}
