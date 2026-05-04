@@ -186,86 +186,10 @@
     return null;
   }
 
-  function staggerFlashItems(opts){
-    const o = opts || {};
-    const items = Array.isArray(o.items) ? o.items.slice(0, 12) : [];
-    const cfg = window.__jse_visual.getConfig();
-    const stride = typeof o.stride === 'number' ? Math.max(0, o.stride) : cfg.listStrideMs;
-    const tone = o.tone || 'info';
-    const label = o.label || '';
-    const v = window.__jse_visual;
-
-    // post-2.7.0 解耦原则：
-    //   - "在线视觉 flash"（flashElement 在页面上画 outline）依赖 DOM/viewport，
-    //     reddit-ops 大部分 READ 命令用 fetch 不导航页面，搜出来的 t3_xxx 在当前
-    //     页 DOM 里 0 命中是常态；探针实测：登录态 r/<sub>/hot 即使 selector 命
-    //     中也会 5/6 在首屏外被 isInViewport reject。
-    //   - "离线 composition flash"（hyperframes 用 data-anchor-id 加 .flash-active）
-    //     只需要 anchor 的语义 id，不依赖 DOM 是否能选中。
-    //
-    // 修复策略 C（语义 flash 降级 + emit 同步化）：
-    //   v3.6.3 第二轮修：firefox 后台 tab setTimeout 被节流到 1Hz，原 stagger 用
-    //   90ms*N 间隔 setTimeout 安排 emit 几乎全漂到下次 drain 之后。这里把"语义
-    //   flash 事件 emit"提前到同步 for-loop（事件立刻进 ring buffer，drain 时
-    //   一次性取走，零 timing drift），仅"视觉 outline + scrollIntoView"留在
-    //   setTimeout 里散布——离线 events.jsonl 总数 100% 准确，在线视觉照常。
-    //
-    //   双 emit 现象：当 DOM 能命中 + inVP，flashElement 内部还会 emit 一次同 anchor
-    //   的 flash（与同步 emit 重复）。timeline.js 把它们处理成"两次 .flash-active
-    //   动画"，视觉上是"语义入场 + 单帧聚焦"的加强效果，不算 bug。
-    let scheduled = 0;
-
-    // 阶段 1：同步立刻 emit 全部语义 flash 到 ring buffer。
-    items.forEach((item) => {
-      try {
-        if (v && typeof v.emit === 'function') {
-          const anchorObj = (item && typeof item === 'object')
-            ? Object.assign({}, item)
-            : { spec: String(item || '') };
-          v.emit({ type: 'flash', tone, label, anchor: anchorObj });
-          scheduled++;
-        }
-      } catch (_) {}
-    });
-
-    // 阶段 2：setTimeout 内做 scrollIntoView + 在线 outline。后台 tab 被节流也不
-    // 影响离线事件流（已在阶段 1 全部入 buffer）。
-    items.forEach((item, idx) => {
-      window.setTimeout(() => {
-        const el = resolveAnchor(item);
-        if (!el) return;
-        try {
-          const rect0 = el.getBoundingClientRect && el.getBoundingClientRect();
-          const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-          const inVP = rect0
-            && rect0.width > 4
-            && rect0.height > 4
-            && rect0.top < vh - 80
-            && rect0.bottom > 80;
-          if (!inVP && typeof el.scrollIntoView === 'function') {
-            try { el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }); }
-            catch (_) { try { el.scrollIntoView(true); } catch (__) {} }
-          }
-        } catch (_) {}
-        window.__jse_visual.flashElement(el, {
-          tone,
-          label,
-          anchor: item,
-        });
-      }, idx * stride);
-    });
-
-    if (items.length > 0) {
-      const dur = typeof cfg.durationMs === 'number' ? cfg.durationMs : 420;
-      const lastSlot = (items.length - 1) * stride;
-      if (typeof v.bumpCaptureSettleRelative === 'function') {
-        v.bumpCaptureSettleRelative(lastSlot + Math.floor(dur * 0.55) + 80);
-      }
-    }
-
-    return scheduled;
-  }
+  // v0.7: site staggerFlashItems 已下沉到 kit defaultStaggerFlashItems（三阶段：
+  // 规划→批量调度→可选呼吸）。X / Reddit 共用同一份 stagger 实现，行为对齐。
+  // 说明：原同步-emit 对抗 firefox 后台节流的设计仍然保留在 kit phase A，本文
+  // 件只剩 anchor 解析。
 
   window.__jse_visual.setSiteAnchorResolver(resolveAnchor);
-  window.__jse_visual.setSiteStaggerFlashItems(staggerFlashItems);
 })();

@@ -30,6 +30,12 @@ function parseArgs() {
     visual: undefined,
     visualDetail: null,
     visualMs: null,
+    visualFlashMs: null,
+    visualLingerMs: null,
+    visualPinnedHold: null,
+    visualErrorPin: undefined,
+    visualScrollSettleMs: null,
+    visualStaggerFadein: undefined,
     visualHud: undefined,
     visualFlash: undefined,
     // visualMode 仅在用户传旧 --visual-mode 时由 applyVisualArgs 写入，让

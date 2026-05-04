@@ -72,7 +72,11 @@
   // 注入 viewport（DOM 测量产物），但额外暴露 __jse_visual.viewport() 给 Node 端
   // wrapCallApi / makeFrameWriter 在截图前后 query 视口尺寸，写到 frame event 的
   // viewport 字段，让 hyperframes setStageBackground 设置 aspect-ratio。
-  const VERSION = '0.6.0';
+  //
+  // v0.7.0: 引入 overlay 三档生命周期（flash / linger / pinned）+ 重写列表 stagger
+  // 为「规划→批量调度→可选呼吸」三阶段（不再每条 item 各自 setTimeout 触发独立
+  // scrollIntoView，避免互抢页面位置）。详见 plan: visual-pinned-stagger-rewrite。
+  const VERSION = '0.7.0';
 
   // 幂等保护：相同 VERSION 已注入则复用；老版本 / 不同 VERSION 强制重装，
   // 避免 Firefox 长 tab 跨会话缓存了 0.2.x bridge 而仍写 viewport / rect 字段。
@@ -92,12 +96,18 @@
   // CLI/Node 侧旧 --visual-mode 已硬切，传入会进 deprecatedFlags 并被忽略。
   const VISUAL_DEFAULTS = {
     enabled: true,
-    durationMs: 420,
+    durationMs: 420,        // v0.7+ alias of flashMs（pending 一闪），保留兼容字段名
+    flashMs: 420,           // v0.7: lifetime='flash' 的 timeout（pending tone）
+    lingerMs: 5000,         // v0.7: lifetime='linger' 的 timeout（success tone 默认）
+    pinnedHold: 'next-call', // v0.7: 'next-call' | 'manual'，pinned 何时被清
+    errorAsPinned: true,    // v0.7: error tone 是否自动升级到 pinned
+    scrollSettleMs: 80,     // v0.7: stagger phase B 滚动后等 layout settle
+    staggerFadeIn: false,   // v0.7: phase C 呼吸感（CSS animation-delay）
     detailLevel: 'staged',  // 'compact' | 'staged'
     hud: true,              // 是否显示右上角 HUD 卡片（含 announceStage / before / after 的 hud）
     flash: true,            // 是否在元素上画 flash overlay / flashRelation 连线
     prefix: '__jse_visual_',
-    listStrideMs: 90,
+    listStrideMs: 90,       // v0.7: 仅在 staggerFadeIn=true 时作为 CSS animation-delay 步进
     zIndex: 2147483000,
     label: '',
     redactSelectors: [],
@@ -122,10 +132,18 @@
   const state = {
     config: Object.assign({}, VISUAL_DEFAULTS),
     hudTimer: null,
+    /** v0.7: 当前 HUD 节点的 lifetime（'flash' | 'linger' | 'pinned'），cleanup 用 */
+    hudLifetime: 'flash',
     events: [],
     listenersInstalled: false,
     /** 异步 stagger flash 全部画完前，JPEG 截图不应触发；由 bumpCaptureSettleRelative 推进 */
     captureSettleDeadlineMs: 0,
+    /**
+     * v0.7: 已挂在 layer 上的 overlay 元素登记表，每条 { el, lifetime, timer? }。
+     * pinned 元素 timer=null（不自动消失）；linger 的 timer 在 hover 时被清掉、
+     * leave 时重新挂；cleanup({scope}) 按 lifetime 区别处理。
+     */
+    activeOverlays: [],
   };
 
   /**
@@ -162,10 +180,32 @@
   function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
 
   function normalizeDuration(ms, fallback){
-    const base = typeof fallback === 'number' ? fallback : state.config.durationMs;
+    const base = typeof fallback === 'number' ? fallback : state.config.flashMs;
     const n = Number(ms);
     if (!Number.isFinite(n) || n <= 0) return base;
-    return clamp(Math.round(n), 120, 4000);
+    // 上限放宽到 60s 以容纳 lifetime='linger'（默认 5s，可配 60s 上限）；
+    // flash tone 自身仍由 caller 用 flashMs (默认 420ms) 喂进来，并不会自动跑到上限。
+    return clamp(Math.round(n), 120, 60000);
+  }
+
+  // v0.7: 给 lifetime 派生 timeout（单位 ms，pinned 返回 0 表示"不挂 setTimeout"）
+  function lifetimeMs(lifetime){
+    const cfg = state.config;
+    if (lifetime === 'pinned') return 0;
+    if (lifetime === 'linger') return Math.max(0, Number(cfg.lingerMs) || 0);
+    return Math.max(0, Number(cfg.flashMs) || 0);
+  }
+
+  // v0.7: 由 tone 派生 lifetime；errorAsPinned=false 时 error 降级 linger
+  function lifetimeFromTone(tone, opts){
+    if (opts && (opts.lifetime === 'flash' || opts.lifetime === 'linger' || opts.lifetime === 'pinned')) {
+      return opts.lifetime;
+    }
+    if (tone === 'error' || tone === 'danger') {
+      return state.config.errorAsPinned ? 'pinned' : 'linger';
+    }
+    if (tone === 'success' || tone === 'info' || tone === 'warn') return 'linger';
+    return 'flash';
   }
 
   function normalizeDetailLevel(value, fallback){
@@ -180,7 +220,29 @@
       return Object.assign({}, next);
     }
     if (typeof opts.enabled === 'boolean') next.enabled = opts.enabled;
-    if (opts.durationMs != null) next.durationMs = normalizeDuration(opts.durationMs, next.durationMs);
+    if (opts.durationMs != null) {
+      const d = normalizeDuration(opts.durationMs, next.flashMs);
+      next.durationMs = d;
+      next.flashMs = d;
+    }
+    if (opts.flashMs != null) {
+      const d = normalizeDuration(opts.flashMs, next.flashMs);
+      next.flashMs = d;
+      next.durationMs = d;
+    }
+    if (opts.lingerMs != null) {
+      const n = Number(opts.lingerMs);
+      if (Number.isFinite(n) && n >= 0) next.lingerMs = clamp(Math.round(n), 0, 60000);
+    }
+    if (opts.pinnedHold === 'next-call' || opts.pinnedHold === 'manual') {
+      next.pinnedHold = opts.pinnedHold;
+    }
+    if (typeof opts.errorAsPinned === 'boolean') next.errorAsPinned = opts.errorAsPinned;
+    if (opts.scrollSettleMs != null) {
+      const n = Number(opts.scrollSettleMs);
+      if (Number.isFinite(n) && n >= 0) next.scrollSettleMs = clamp(Math.round(n), 0, 2000);
+    }
+    if (typeof opts.staggerFadeIn === 'boolean') next.staggerFadeIn = opts.staggerFadeIn;
     if (opts.detailLevel != null) next.detailLevel = normalizeDetailLevel(opts.detailLevel, next.detailLevel);
     if (typeof opts.hud === 'boolean') next.hud = opts.hud;
     if (typeof opts.flash === 'boolean') next.flash = opts.flash;
@@ -241,6 +303,8 @@
       dot:   p + 'dot',
       badge: p + 'badge',
       pulse: p + 'pulse',
+      close: p + 'close',
+      fadein: p + 'fadein',
     };
   }
 
@@ -261,6 +325,13 @@
           'position:fixed;box-sizing:border-box;border-radius:8px;' +
           'animation:' + id.pulse + ' .55s ease-out 1;' +
         '}' +
+        // v0.7: pinned overlay 接收鼠标事件以支持 hover 延长 + × 关闭
+        '.' + id.box + '[data-lifetime="pinned"], .' + id.box + '[data-lifetime="linger"]{' +
+          'pointer-events:auto;' +
+        '}' +
+        '.' + id.box + '[data-fadein="1"]{' +
+          'animation:' + id.pulse + ' .55s ease-out 1, ' + id.fadein + ' .35s ease-out var(--' + id.fadein + '-delay,0ms) 1 both;' +
+        '}' +
         '.' + id.relation + '{' +
           'position:fixed;inset:0;' +
           'animation:' + id.pulse + ' .55s ease-out 1;' +
@@ -279,16 +350,35 @@
           'letter-spacing:.01em;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;' +
           'box-shadow:0 8px 24px rgba(0,0,0,.18);' +
         '}' +
+        // v0.7: pinned overlay 右上角 × 关闭按钮
+        '.' + id.close + '{' +
+          'position:absolute;top:-10px;right:-10px;width:22px;height:22px;border-radius:999px;' +
+          'background:#fff;color:#222;border:1px solid rgba(0,0,0,.25);' +
+          'font:700 14px/20px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+          'text-align:center;cursor:pointer;pointer-events:auto;' +
+          'box-shadow:0 4px 12px rgba(0,0,0,.18);user-select:none;' +
+        '}' +
         '#' + id.hud + '{' +
           'position:fixed;top:16px;right:16px;max-width:360px;padding:10px 14px;' +
           'border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22);' +
           'font:600 13px/1.35 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
-          'white-space:pre-wrap;pointer-events:none;z-index:' + (state.config.zIndex + 1) + ';' +
+          'white-space:pre-wrap;z-index:' + (state.config.zIndex + 1) + ';' +
+          'pointer-events:none;' +
+        '}' +
+        '#' + id.hud + '[data-lifetime="linger"], #' + id.hud + '[data-lifetime="pinned"]{' +
+          'pointer-events:auto;' +
+        '}' +
+        '#' + id.hud + ' .' + id.close + '{' +
+          'top:6px;right:6px;' +
         '}' +
         '@keyframes ' + id.pulse + '{' +
           '0%{transform:scale(.985);opacity:.2}' +
           '35%{transform:scale(1.003);opacity:1}' +
           '100%{transform:scale(1);opacity:1}' +
+        '}' +
+        '@keyframes ' + id.fadein + '{' +
+          '0%{opacity:0}' +
+          '100%{opacity:1}' +
         '}';
       (document.head || document.documentElement).appendChild(style);
     }
@@ -359,10 +449,65 @@
     return                       { x: rect.left + rect.width / 2,      y: rect.top + rect.height / 2 };
   }
 
-  function removeLater(el, durationMs){
-    if (!el) return;
-    const ms = normalizeDuration(durationMs);
-    window.setTimeout(() => { if (el && el.parentNode) el.remove(); }, ms);
+  // v0.7: removeLater 升级为 lifetime-aware 版本
+  //   - lifetime='flash'  : 老行为，setTimeout(remove, flashMs)
+  //   - lifetime='linger' : setTimeout(remove, lingerMs)；hover 进入清 timer，hover 离开重挂
+  //   - lifetime='pinned' : 不挂 timer，登记到 state.activeOverlays，由 cleanup({scope}) 主动清
+  //   返回内部记录对象，调用方可读它的 .lifetime 字段。
+  function removeLater(el, opts){
+    if (!el) return null;
+    const o = (opts && typeof opts === 'object') ? opts : { durationMs: opts };
+    const lifetime = (o.lifetime === 'pinned' || o.lifetime === 'linger' || o.lifetime === 'flash')
+      ? o.lifetime
+      : 'flash';
+    const baseMs = lifetimeMs(lifetime);
+    const explicit = (o.durationMs != null) ? Number(o.durationMs) : null;
+    const ms = (Number.isFinite(explicit) && explicit > 0)
+      ? clamp(Math.round(explicit), 0, 60000)
+      : baseMs;
+
+    const record = { el: el, lifetime: lifetime, timer: null };
+    state.activeOverlays.push(record);
+
+    function detach(){
+      const idx = state.activeOverlays.indexOf(record);
+      if (idx >= 0) state.activeOverlays.splice(idx, 1);
+      if (record.timer) { clearTimeout(record.timer); record.timer = null; }
+      if (record.el && record.el.parentNode) record.el.remove();
+    }
+    record.dismiss = detach;
+
+    if (lifetime !== 'pinned') {
+      record.timer = window.setTimeout(detach, ms);
+      // linger：鼠标悬停清 timer；离开重挂 —— 让用户能停下来看
+      if (lifetime === 'linger') {
+        try {
+          el.addEventListener('mouseenter', function(){
+            if (record.timer) { clearTimeout(record.timer); record.timer = null; }
+          });
+          el.addEventListener('mouseleave', function(){
+            if (!record.timer) record.timer = window.setTimeout(detach, ms);
+          });
+        } catch (_) {}
+      }
+    }
+    return record;
+  }
+
+  // v0.7: pinned 元素右上角 × 关闭按钮
+  function attachCloseButton(host, record){
+    if (!host || !record) return;
+    const id = ids();
+    const btn = document.createElement('div');
+    btn.className = id.close;
+    btn.textContent = '\u00d7';
+    btn.title = 'dismiss';
+    btn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      ev.preventDefault();
+      try { record.dismiss && record.dismiss(); } catch (_) {}
+    });
+    host.appendChild(btn);
   }
 
   function flashElement(el, opts){
@@ -373,12 +518,16 @@
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
     if (!isInViewport(rect)) return false;
     const o = opts || {};
+    const tone = o.tone || 'info';
+    const lifetime = lifetimeFromTone(tone, o);
     const layer = ensureRoot();
     const id = ids();
-    const spec = toneSpec(o.tone || 'info');
+    const spec = toneSpec(tone);
     const inset = typeof o.inset === 'number' ? o.inset : 0;
     const box = document.createElement('div');
     box.className = id.box;
+    box.setAttribute('data-tone', tone);
+    box.setAttribute('data-lifetime', lifetime);
     box.style.left   = Math.max(4, rect.left - inset) + 'px';
     box.style.top    = Math.max(4, rect.top  - inset) + 'px';
     box.style.width  = Math.max(18, rect.width  + inset * 2) + 'px';
@@ -386,6 +535,10 @@
     box.style.border = '2px solid ' + spec.border;
     box.style.background = spec.fill;
     box.style.boxShadow = '0 0 0 1px ' + spec.border + '33, 0 12px 28px ' + spec.border + '22';
+    if (o.fadeInDelayMs != null && Number.isFinite(Number(o.fadeInDelayMs))) {
+      box.setAttribute('data-fadein', '1');
+      box.style.setProperty('--' + id.fadein + '-delay', Math.max(0, Math.round(Number(o.fadeInDelayMs))) + 'ms');
+    }
     if (o.label) {
       const badge = document.createElement('div');
       badge.className = id.badge;
@@ -397,12 +550,14 @@
       box.appendChild(badge);
     }
     layer.appendChild(box);
-    removeLater(box, o.durationMs);
+    const record = removeLater(box, { lifetime: lifetime, durationMs: o.durationMs });
+    if (lifetime === 'pinned' && record) attachCloseButton(box, record);
     // post-2.7.0：emit shape 不再带 anchor.rect（DOM 实测坐标只用于 in-page 视觉，
     // 不下发到 translator；A 路线翻译器按 hint.kind + payload 还原 HTML 卡片，flash
     // 通过 anchor 的 id 字段与 HTML data-anchor-id 绑定）。
+    // v0.7: emit 增加 lifetime 字段，hyperframes / 老消费者忽略即可。
     const anchorOut = o.anchor ? Object.assign({}, typeof o.anchor === 'object' ? o.anchor : { spec: o.anchor }) : {};
-    emit({ type: 'flash', tone: o.tone || 'info', label: o.label || '', anchor: anchorOut });
+    emit({ type: 'flash', tone: tone, label: o.label || '', anchor: anchorOut, lifetime: lifetime });
     return true;
   }
 
@@ -453,7 +608,8 @@
       group.appendChild(badge);
     }
     layer.appendChild(group);
-    removeLater(group, o.durationMs);
+    // v0.7: relation 永远走 flash lifetime（连线只是瞬时反馈，不需要 linger/pinned）
+    removeLater(group, { lifetime: 'flash', durationMs: o.durationMs });
     // post-2.7.0：relation event 不再携带 from/to.rect（DOM 测量产物）。
     // anchor 的 spec/from/to 字段仍写出来供 translator 与 HTML data-anchor-id 绑定。
     emit({
@@ -474,28 +630,72 @@
     const o = opts || {};
     ensureRoot();
     const id = ids();
+    const tone = o.status || o.tone || 'info';
+    const lifetime = lifetimeFromTone(tone, o);
     let hud = document.getElementById(id.hud);
     if (!hud) {
       hud = document.createElement('div');
       hud.id = id.hud;
       (document.body || document.documentElement).appendChild(hud);
     }
-    const spec = toneSpec(o.status || o.tone || 'info');
+    const spec = toneSpec(tone);
+    // 清空旧内容（含上一次的 close button），重建 textContent
+    while (hud.firstChild) hud.removeChild(hud.firstChild);
     const lines = [];
     if (o.action) lines.push(String(o.action));
     if (o.target) lines.push(String(o.target));
     if (o.detail) lines.push(String(o.detail));
-    hud.textContent = lines.join('\n');
+    hud.appendChild(document.createTextNode(lines.join('\n')));
+    hud.setAttribute('data-tone', tone);
+    hud.setAttribute('data-lifetime', lifetime);
     hud.style.border = '1px solid ' + spec.border;
     hud.style.background = spec.fill.replace(/0\.\d+\)$/, '0.92)');
     hud.style.color = spec.pill;
-    if (state.hudTimer) clearTimeout(state.hudTimer);
-    const dur = normalizeDuration(o.durationMs, Math.max(900, state.config.durationMs * 2));
-    state.hudTimer = window.setTimeout(() => {
-      if (hud && hud.parentNode) hud.remove();
-      state.hudTimer = null;
-    }, dur);
-    emit({ type: 'hud', tone: o.status || o.tone || 'info', action: o.action || '', target: o.target || '', detail: o.detail || '' });
+    // 旧 timer 必须先清；HUD 是单例，不进 activeOverlays（lifetime 只用于决策定时器/pointerEvents）
+    if (state.hudTimer) { clearTimeout(state.hudTimer); state.hudTimer = null; }
+    state.hudLifetime = lifetime;
+    if (lifetime === 'pinned') {
+      // 给 pinned HUD 也挂个 × 关闭按钮
+      const btn = document.createElement('div');
+      btn.className = id.close;
+      btn.textContent = '\u00d7';
+      btn.title = 'dismiss';
+      btn.addEventListener('click', function(ev){
+        ev.stopPropagation(); ev.preventDefault();
+        if (hud && hud.parentNode) hud.remove();
+        state.hudLifetime = 'flash';
+      });
+      hud.appendChild(btn);
+    } else {
+      const dur = lifetimeMs(lifetime);
+      const explicit = (o.durationMs != null) ? Number(o.durationMs) : null;
+      const ms = (Number.isFinite(explicit) && explicit > 0)
+        ? clamp(Math.round(explicit), 0, 60000)
+        : dur;
+      state.hudTimer = window.setTimeout(() => {
+        if (hud && hud.parentNode) hud.remove();
+        state.hudTimer = null;
+        state.hudLifetime = 'flash';
+      }, ms);
+      // linger HUD：hover 暂停倒计时
+      if (lifetime === 'linger') {
+        try {
+          hud.addEventListener('mouseenter', function(){
+            if (state.hudTimer) { clearTimeout(state.hudTimer); state.hudTimer = null; }
+          });
+          hud.addEventListener('mouseleave', function(){
+            if (!state.hudTimer && hud.parentNode) {
+              state.hudTimer = window.setTimeout(() => {
+                if (hud && hud.parentNode) hud.remove();
+                state.hudTimer = null;
+                state.hudLifetime = 'flash';
+              }, ms);
+            }
+          });
+        } catch (_) {}
+      }
+    }
+    emit({ type: 'hud', tone: tone, action: o.action || '', target: o.target || '', detail: o.detail || '', lifetime: lifetime });
     return true;
   }
 
@@ -532,21 +732,66 @@
     return true;
   }
 
-  function cleanup(){
+  // v0.7: cleanup({ scope }) 区分 lifetime
+  //   scope='all'        : 强制清所有 overlay + HUD（路由切换/手动 dismiss/cleanup 时用）
+  //   scope='non-pinned' : 清 flash + linger overlay；保留 pinned；HUD 仅 lifetime!=pinned 时清
+  //                        before() 默认走这条 → 让 error pinned 能跨工具调用残留
+  //   scope='flash'      : 仅清 flash overlay
+  //   scope=undefined    : 老语义，等价 'all'（保持 router popstate 等老调用方行为）
+  function cleanup(opts){
+    const scope = (opts && typeof opts === 'object' && opts.scope)
+      ? opts.scope
+      : (typeof opts === 'string' ? opts : 'all');
     const id = ids();
     const layer = document.getElementById(id.layer);
-    if (layer) {
-      Array.from(layer.querySelectorAll('.' + id.box)).forEach((el) => el.remove());
+
+    // 1. 清 activeOverlays 里 lifetime 命中 scope 的元素
+    const keep = [];
+    for (const rec of state.activeOverlays) {
+      let drop = false;
+      if (scope === 'all') drop = true;
+      else if (scope === 'non-pinned') drop = (rec.lifetime !== 'pinned');
+      else if (scope === 'flash') drop = (rec.lifetime === 'flash');
+      else if (scope === rec.lifetime) drop = true;
+      if (drop) {
+        if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+        if (rec.el && rec.el.parentNode) rec.el.remove();
+      } else {
+        keep.push(rec);
+      }
+    }
+    state.activeOverlays = keep;
+
+    // 2. 兜底：layer 里残留的、不在 activeOverlays 的 box/relation 节点（极少发生，
+    //    比如老路径直接 createElement 没走 removeLater；only 'all' / 'non-pinned' 兜）
+    if (layer && (scope === 'all' || scope === 'non-pinned' || scope === 'flash')) {
+      Array.from(layer.querySelectorAll('.' + id.box)).forEach((el) => {
+        const lt = el.getAttribute('data-lifetime') || 'flash';
+        if (scope === 'all') { el.remove(); return; }
+        if (scope === 'non-pinned' && lt !== 'pinned') { el.remove(); return; }
+        if (scope === 'flash' && lt === 'flash') { el.remove(); return; }
+      });
       Array.from(layer.querySelectorAll('.' + id.relation)).forEach((el) => el.remove());
     }
+
+    // 3. HUD：scope='all' 一定清；scope='non-pinned' 仅当 hudLifetime != pinned 时清
     const hud = document.getElementById(id.hud);
-    if (hud) hud.remove();
-    if (state.hudTimer) {
-      clearTimeout(state.hudTimer);
-      state.hudTimer = null;
+    if (hud) {
+      const shouldClearHud = (scope === 'all')
+        || (scope === 'non-pinned' && state.hudLifetime !== 'pinned')
+        || (scope === 'flash' && state.hudLifetime === 'flash');
+      if (shouldClearHud) {
+        hud.remove();
+        if (state.hudTimer) { clearTimeout(state.hudTimer); state.hudTimer = null; }
+        state.hudLifetime = 'flash';
+      }
     }
-    state.captureSettleDeadlineMs = 0;
+
+    if (scope === 'all') state.captureSettleDeadlineMs = 0;
   }
+
+  // v0.7: 公共 API，强制清所有 overlay（含 pinned）+ HUD
+  function dismissAll(){ cleanup({ scope: 'all' }); }
 
   // ---- 调度层 hook：Node 端 wrapCallApi 在 callApi 前后调用 ----
   // hint = { kind, label, anchor, target, detail, tone, items, relate }
@@ -555,11 +800,20 @@
     const h = hint || {};
     const tone = h.tone || 'pending';
     const action = h.label || h.action || h.toolName || '';
+    // v0.7: 新工具调用开始时，按 pinnedHold 决定是否保留上一次的 pinned overlay
+    //   - 'next-call'：清掉 pinned（这是"下一次调用"的语义边界）
+    //   - 'manual'   ：保留 pinned，只清 non-pinned
+    if (state.config.pinnedHold === 'next-call') {
+      cleanup({ scope: 'all' });
+    } else {
+      cleanup({ scope: 'non-pinned' });
+    }
     let element = null;
     if (h.anchor && state.config.flash) {
       element = api.resolveAnchor(h.anchor);
     }
     if (element) {
+      // pending tone 自动派生 lifetime='flash'
       flashElement(element, { tone, label: action, anchor: h.anchor });
     }
     showHud({
@@ -641,24 +895,113 @@
     return null;
   }
 
+  // v0.7: 列表 stagger 三阶段重写
+  //   phase A (sync)  : 遍历 items，sync emit 全部语义 flash event 进 ring buffer
+  //                     （后台 tab Firefox setTimeout 节流到 1Hz 也不漏 event），
+  //                     同时 resolveAnchor + measure，得到 [{item, el, rect, inViewport}]。
+  //   phase B (decide): 在视口内的 → 立即并发 flashElement（不 stagger，全部一帧画完）
+  //                     视口外但 DOM 在的 → 选最近的一桶，一次 scrollIntoView（block:'center'）+
+  //                     等 scrollSettleMs 让 layout settle，然后批量 flashElement
+  //                     （不再每条 item 各自 setTimeout 触发独立 scrollIntoView，避免互抢）
+  //   phase C (breathe, optional): 若 cfg.staggerFadeIn=true，给每个 box 加 CSS animation-delay
+  //                     做纯 CSS 呼吸感，无 JS 时序漂移。
+  //   注：item 命中不到 DOM（虚拟列表卸载）时只在 phase A emit 语义 event；
+  //   离线 hyperframes 仍可完整回放，在线肉眼跳过即可。
   function defaultStaggerFlashItems(opts){
     const o = opts || {};
     const items = Array.isArray(o.items) ? o.items.slice(0, 12) : [];
-    const stride = typeof o.stride === 'number' ? Math.max(0, o.stride) : state.config.listStrideMs;
     const tone = o.tone || 'info';
-    items.forEach((item, idx) => {
-      window.setTimeout(() => {
-        const el = api.resolveAnchor(item);
-        if (el) flashElement(el, { tone, label: o.label || '' , anchor: item });
-      }, idx * stride);
+    const label = o.label || '';
+    const cfg = state.config;
+    const lifetime = lifetimeFromTone(tone, o);
+    const fadeIn = !!cfg.staggerFadeIn;
+    const fadeStride = (typeof o.stride === 'number') ? Math.max(0, o.stride) : cfg.listStrideMs;
+    const scrollSettleMs = Math.max(0, Number(cfg.scrollSettleMs) || 0);
+
+    if (!items.length) return 0;
+
+    // ---- phase A：sync emit + measure ----
+    // 离线 events.jsonl 总数 100% 准确（哪怕后台 tab 节流），在线 outline 由 phase B 异步画。
+    const plan = [];
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    items.forEach(function(item){
+      let el = null;
+      try { el = api.resolveAnchor(item); } catch (_) { el = null; }
+      let rect = null;
+      let inViewport = false;
+      let distance = Number.POSITIVE_INFINITY;
+      if (el) {
+        try { rect = el.getBoundingClientRect(); } catch (_) { rect = null; }
+        if (rect && rect.width > 4 && rect.height > 4) {
+          inViewport = (rect.top < vh - 80 && rect.bottom > 80);
+          if (!inViewport) {
+            // 距离视口中心的绝对距离，phase B 取最近的一桶滚一次
+            const center = (rect.top + rect.bottom) / 2;
+            distance = Math.abs(center - vh / 2);
+          }
+        }
+      }
+      // phase A: 同步 emit 语义 flash（不画 outline，仅入 ring buffer）
+      const anchorObj = (item && typeof item === 'object')
+        ? Object.assign({}, item)
+        : { spec: String(item || '') };
+      emit({ type: 'flash', tone: tone, label: label, anchor: anchorObj, lifetime: lifetime });
+
+      plan.push({ item: item, el: el, rect: rect, inViewport: inViewport, distance: distance });
     });
-    if (items.length > 0) {
-      const lastSlot = (items.length - 1) * stride;
-      const dur = normalizeDuration(undefined, state.config.durationMs);
-      // 在「最后一条 stagger 已画出 outline」之后、removeLater 撤框之前截 JPEG
-      bumpCaptureSettleRelative(lastSlot + Math.floor(dur * 0.55) + 80);
+
+    // ---- phase B：分桶画 outline ----
+    let scheduled = 0;
+    const inVPItems = plan.filter(function(p){ return p.el && p.inViewport; });
+    const offVPItems = plan.filter(function(p){ return p.el && !p.inViewport; });
+
+    function drawOne(p, idx){
+      try {
+        flashElement(p.el, {
+          tone: tone,
+          label: label,
+          anchor: p.item,
+          lifetime: lifetime,
+          fadeInDelayMs: fadeIn ? (idx * fadeStride) : null,
+        });
+        scheduled++;
+      } catch (_) {}
     }
-    return items.length;
+
+    // B-1：在视口内的，立刻并发画（同一 tick 内全部 outline 入 layer，无互抢）
+    inVPItems.forEach(function(p, i){ drawOne(p, i); });
+
+    // B-2：视口外的，选距离最近的一桶（取首条），一次 scrollIntoView，等 settle 后批量画
+    if (offVPItems.length) {
+      offVPItems.sort(function(a, b){ return a.distance - b.distance; });
+      const anchor = offVPItems[0];
+      try {
+        if (anchor.el && typeof anchor.el.scrollIntoView === 'function') {
+          try { anchor.el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }); }
+          catch (_) { try { anchor.el.scrollIntoView(true); } catch (__) {} }
+        }
+      } catch (_) {}
+      window.setTimeout(function(){
+        // 滚动后重新测量：把这桶里 still-visible 的全部画出来
+        const baseIdx = inVPItems.length;
+        const vh2 = window.innerHeight || document.documentElement.clientHeight || 0;
+        offVPItems.forEach(function(p, i){
+          let r = null;
+          try { r = p.el.getBoundingClientRect(); } catch (_) { r = null; }
+          if (r && r.width > 4 && r.height > 4 && r.top < vh2 - 40 && r.bottom > 40) {
+            drawOne(p, baseIdx + i);
+          }
+        });
+      }, scrollSettleMs);
+    }
+
+    // ---- 截屏窗口推迟 ----
+    // 同步部分一帧画完；异步部分 = scrollSettleMs + 一次绘制 + flashMs 一半 + 兜底 80ms
+    const dur = lifetimeMs(lifetime) || cfg.flashMs || 420;
+    const settleEdge = (offVPItems.length ? scrollSettleMs : 0) + Math.floor(dur * 0.55) + 80;
+    bumpCaptureSettleRelative(settleEdge);
+
+    return plan.length;
   }
 
   function installRouterListeners(){
@@ -668,16 +1011,16 @@
       const origPush = history.pushState;
       const origReplace = history.replaceState;
       history.pushState = function(){
-        try { cleanup(); } catch (_) {}
+        try { cleanup({ scope: 'all' }); } catch (_) {}
         return origPush.apply(this, arguments);
       };
       history.replaceState = function(){
-        try { cleanup(); } catch (_) {}
+        try { cleanup({ scope: 'all' }); } catch (_) {}
         return origReplace.apply(this, arguments);
       };
     } catch (_) {}
     try {
-      window.addEventListener('popstate', () => { try { cleanup(); } catch (_) {} });
+      window.addEventListener('popstate', () => { try { cleanup({ scope: 'all' }); } catch (_) {} });
     } catch (_) {}
   }
 
@@ -691,6 +1034,7 @@
     showHud,
     announceStage,
     cleanup,
+    dismissAll,
     emit,
     drainEvents,
     viewport,

@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.1.0';
+  const VERSION = '3.2.0';
 
   // @@include ./common.js
 

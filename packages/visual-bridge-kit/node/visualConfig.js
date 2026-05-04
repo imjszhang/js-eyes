@@ -10,13 +10,19 @@ const path = require('path');
 // 输入：
 //   opts.visual              boolean? 显式开/关（总开关，落到 config.enabled）
 //   opts.visualDetail        'compact' | 'staged'
-//   opts.visualMs            number 毫秒
+//   opts.visualMs            number 毫秒（v0.7 deprecated，改名 visualFlashMs；仍接收并映射）
+//   opts.visualFlashMs       number 毫秒（v0.7+，pending tone 的 flash timeout）
+//   opts.visualLingerMs      number 毫秒（v0.7+，success/info/warn tone 的 linger timeout）
+//   opts.visualPinnedHold    'next-call' | 'manual'（v0.7+，pinned 何时被清）
+//   opts.visualErrorPin      boolean? error tone 是否自动升级到 pinned（默认 true）
+//   opts.visualStaggerFadein boolean? 列表 stagger 是否走 CSS animation-delay 呼吸感
+//   opts.visualScrollSettleMs number 毫秒（v0.7+，stagger phase B scrollIntoView 后等 settle）
 //   opts.visualHud           boolean? 是否显示右上角 HUD 卡片（默认 true）
 //   opts.visualFlash         boolean? 是否在元素上画 flash overlay/relation（默认 true）
 //   opts.visualTrace         string 文件路径，启用 jsonl trace（单文件）
 //   opts.visualRecord        string 目录路径，启用会话包（events.jsonl + meta.json）
 //                            布尔 true 时使用默认目录 runs/sess-<ts>-<rand>/
-//   opts.visualListStride    number 列表呼吸感步进 ms
+//   opts.visualListStride    number 列表呼吸感步进 ms（仅 staggerFadeIn=true 时生效）
 //   opts.visualPrefix        string DOM id 前缀（便于多 skill 共存）
 //
 // !! deprecated（post-2.7.0 architecture pivot）!!
@@ -47,12 +53,18 @@ const path = require('path');
 
 const DEFAULTS = Object.freeze({
   enabled: true,
-  durationMs: 420,
+  durationMs: 420,         // v0.7+ alias of flashMs（保持向后兼容字段名）
+  flashMs: 420,            // v0.7: lifetime='flash' timeout（pending tone 一闪）
+  lingerMs: 5000,          // v0.7: lifetime='linger' timeout（success tone 默认）
+  pinnedHold: 'next-call', // v0.7: 'next-call' | 'manual'，pinned 何时被清
+  errorAsPinned: true,     // v0.7: error tone 是否自动升级到 pinned
+  scrollSettleMs: 80,      // v0.7: stagger phase B scrollIntoView 后等 layout settle
+  staggerFadeIn: false,    // v0.7: phase C 呼吸感（CSS animation-delay）
   detailLevel: 'staged',
   hud: true,
   flash: true,
   prefix: '__jse_visual_',
-  listStrideMs: 90,
+  listStrideMs: 90,        // v0.7: 仅在 staggerFadeIn=true 时作为 CSS animation-delay 步进
 });
 
 function clamp(n, lo, hi){
@@ -128,6 +140,8 @@ function collectRedact(opts){
   return { rects: dedupRect, selectors: dedupSel };
 }
 
+// v0.7: profile 预设入口（占位，下一版引入 demo/observe/debug 三档）
+//   parseVisualFlags(opts, siteDefaults) 仍是主 API；siteDefaults 之上叠 opts。
 function parseVisualFlags(opts, siteDefaults){
   const o = opts || {};
   const out = Object.assign({}, DEFAULTS, siteDefaults || {});
@@ -138,10 +152,37 @@ function parseVisualFlags(opts, siteDefaults){
     out.detailLevel = o.visualDetail;
   }
 
+  // v0.7: visualFlashMs 是新名字；visualMs 仍接收（CLI 层会单独打 deprecation hint）
+  // 两者写到同一个字段（durationMs / flashMs），bridge 端 setConfig 会同步两个 alias。
+  let flashMs = null;
   if (o.visualMs != null) {
     const n = Number(o.visualMs);
-    if (Number.isFinite(n) && n > 0) out.durationMs = clamp(Math.round(n), 120, 4000);
+    if (Number.isFinite(n) && n > 0) flashMs = clamp(Math.round(n), 120, 4000);
   }
+  if (o.visualFlashMs != null) {
+    const n = Number(o.visualFlashMs);
+    if (Number.isFinite(n) && n > 0) flashMs = clamp(Math.round(n), 120, 4000);
+  }
+  if (flashMs != null) {
+    out.durationMs = flashMs;
+    out.flashMs = flashMs;
+  }
+
+  if (o.visualLingerMs != null) {
+    const n = Number(o.visualLingerMs);
+    if (Number.isFinite(n) && n >= 0) out.lingerMs = clamp(Math.round(n), 0, 60000);
+  }
+
+  if (o.visualPinnedHold === 'next-call' || o.visualPinnedHold === 'manual') {
+    out.pinnedHold = o.visualPinnedHold;
+  }
+  if (typeof o.visualErrorPin === 'boolean') out.errorAsPinned = o.visualErrorPin;
+
+  if (o.visualScrollSettleMs != null) {
+    const n = Number(o.visualScrollSettleMs);
+    if (Number.isFinite(n) && n >= 0) out.scrollSettleMs = clamp(Math.round(n), 0, 2000);
+  }
+  if (typeof o.visualStaggerFadein === 'boolean') out.staggerFadeIn = o.visualStaggerFadein;
 
   if (typeof o.visualHud === 'boolean') out.hud = o.visualHud;
   if (typeof o.visualFlash === 'boolean') out.flash = o.visualFlash;
@@ -181,6 +222,8 @@ function parseVisualFlags(opts, siteDefaults){
   if (o.visualFramesThrottle != null) deprecatedFlags.push('--visual-frames-throttle');
   // v0.6.0 BREAKING：--visual-mode 已拆成 --visual-hud / --visual-flash
   if (o.visualMode != null) deprecatedFlags.push('--visual-mode');
+  // v0.7.0 soft-deprecated：--visual-ms 改名 --visual-flash-ms（仍接收，仅打 hint）
+  if (o.visualMs != null && o.visualFlashMs == null) deprecatedFlags.push('--visual-ms');
 
   return {
     config: out,

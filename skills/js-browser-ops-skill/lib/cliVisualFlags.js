@@ -63,6 +63,19 @@ function applyVisualArgs(args, i, options){
   if (a.startsWith('--visual-detail=')) { options.visualDetail = a.slice('--visual-detail='.length); return 1; }
   if (a === '--visual-ms' && args[i + 1]) { options.visualMs = args[i + 1]; return 2; }
   if (a.startsWith('--visual-ms=')) { options.visualMs = a.slice('--visual-ms='.length); return 1; }
+  // v0.7: 新 lifetime 旋钮
+  if (a === '--visual-flash-ms' && args[i + 1]) { options.visualFlashMs = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-flash-ms=')) { options.visualFlashMs = a.slice('--visual-flash-ms='.length); return 1; }
+  if (a === '--visual-linger-ms' && args[i + 1]) { options.visualLingerMs = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-linger-ms=')) { options.visualLingerMs = a.slice('--visual-linger-ms='.length); return 1; }
+  if (a === '--visual-pinned-hold' && args[i + 1]) { options.visualPinnedHold = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-pinned-hold=')) { options.visualPinnedHold = a.slice('--visual-pinned-hold='.length); return 1; }
+  if (a === '--visual-no-error-pin') { options.visualErrorPin = false; return 1; }
+  if (a === '--visual-error-pin') { options.visualErrorPin = true; return 1; }
+  if (a === '--visual-scroll-settle-ms' && args[i + 1]) { options.visualScrollSettleMs = args[i + 1]; return 2; }
+  if (a.startsWith('--visual-scroll-settle-ms=')) { options.visualScrollSettleMs = a.slice('--visual-scroll-settle-ms='.length); return 1; }
+  if (a === '--visual-stagger-fadein') { options.visualStaggerFadein = true; return 1; }
+  if (a === '--no-visual-stagger-fadein') { options.visualStaggerFadein = false; return 1; }
   if (a === '--visual-hud') { options.visualHud = true; return 1; }
   if (a === '--no-visual-hud') { options.visualHud = false; return 1; }
   if (a === '--visual-flash') { options.visualFlash = true; return 1; }
@@ -127,18 +140,24 @@ function resolveVisualOptions(options){
 }
 
 const VISUAL_HELP_LINES = [
-  '  --visual / --no-visual           开/关页面内视觉反馈（默认开）',
-  '  --visual-detail compact|staged   反馈细节级别（默认 staged）',
-  '  --visual-ms <n>                  flash 持续时长 ms（默认 420，120-4000）',
-  '  --visual-hud / --no-visual-hud   右上角 HUD 卡片（默认开；v0.6.0 取代 --visual-mode hud/dom）',
-  '  --visual-flash / --no-visual-flash 元素 flash overlay/relation（默认开）',
-  '  --visual-trace <file.jsonl>      把视觉事件落 jsonl（单文件）',
-  '  --visual-record [dir]            把事件落到会话包目录（meta+events.jsonl，给 hyperframes 渲视频）',
-  '  --no-visual-record               显式关闭会话包',
-  '  --visual-list-stride <ms>        列表呼吸感步进（默认 90）',
-  '  --visual-prefix <p>              DOM id 前缀（默认 __jse_browser_visual_）',
+  '  --visual / --no-visual              开/关页面内视觉反馈（默认开）',
+  '  --visual-detail compact|staged      反馈细节级别（默认 staged）',
+  '  --visual-flash-ms <n>               pending tone flash 持续时长 ms（默认 420，120-4000）',
+  '  --visual-linger-ms <n>              success/info tone linger 持续时长 ms（默认 5000，0-60000，hover 暂停倒计时）',
+  '  --visual-pinned-hold next-call|manual  pinned overlay 何时被清（默认 next-call）',
+  '  --visual-no-error-pin               关掉 error→pinned 自动升级（默认开）',
+  '  --visual-scroll-settle-ms <n>       stagger 滚动后等 layout settle ms（默认 80）',
+  '  --visual-stagger-fadein             列表呼吸感（CSS animation-delay 步进，默认关）',
+  '  --visual-hud / --no-visual-hud      右上角 HUD 卡片（默认开）',
+  '  --visual-flash / --no-visual-flash  元素 flash overlay/relation（默认开）',
+  '  --visual-trace <file.jsonl>         把视觉事件落 jsonl（单文件）',
+  '  --visual-record [dir]               把事件落到会话包目录（meta+events.jsonl，给 hyperframes 渲视频）',
+  '  --no-visual-record                  显式关闭会话包',
+  '  --visual-list-stride <ms>           CSS 呼吸感步进（默认 90，仅 --visual-stagger-fadein 启用时生效）',
+  '  --visual-prefix <p>                 DOM id 前缀（默认 __jse_browser_visual_）',
   '',
-  'Deprecated (post-2.7.0 architecture pivot — parsed but ignored):',
+  'Deprecated (parsed but ignored):',
+  '  --visual-ms <n>                  改名 --visual-flash-ms（v0.7 仍接收，会打 hint）',
   '  --redact-rect / --redact-selector / --redact-config (PNG / 马赛克 链路下线)',
   '  --visual-record-frames / --visual-frames-throttle  (frames/ 目录不再写)',
   '  --visual-mode auto|dom|hud|both|off  (v0.6.0 拆成 --visual-hud / --visual-flash)',

@@ -19,7 +19,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.6.0';
+  const VERSION = '3.7.0';
 
   // @@include ./common.js
   // @@include ./_dom-actions.js

@@ -347,6 +347,12 @@ function parseArgv(argv) {
     visual: undefined,
     visualDetail: null,
     visualMs: null,
+    visualFlashMs: null,
+    visualLingerMs: null,
+    visualPinnedHold: null,
+    visualErrorPin: undefined,
+    visualScrollSettleMs: null,
+    visualStaggerFadein: undefined,
     visualMode: null,
     visualHud: undefined,
     visualFlash: undefined,
@@ -425,6 +431,19 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-detail=')) eatEq('visualDetail', '--visual-detail=');
     else if (a === '--visual-ms') eat('visualMs');
     else if (a.startsWith('--visual-ms=')) eatEq('visualMs', '--visual-ms=');
+    // v0.7: 新 lifetime 旋钮（kit/visual-bridge-kit@0.7+）
+    else if (a === '--visual-flash-ms') eat('visualFlashMs');
+    else if (a.startsWith('--visual-flash-ms=')) eatEq('visualFlashMs', '--visual-flash-ms=');
+    else if (a === '--visual-linger-ms') eat('visualLingerMs');
+    else if (a.startsWith('--visual-linger-ms=')) eatEq('visualLingerMs', '--visual-linger-ms=');
+    else if (a === '--visual-pinned-hold') eat('visualPinnedHold');
+    else if (a.startsWith('--visual-pinned-hold=')) eatEq('visualPinnedHold', '--visual-pinned-hold=');
+    else if (a === '--visual-no-error-pin') opts.visualErrorPin = false;
+    else if (a === '--visual-error-pin') opts.visualErrorPin = true;
+    else if (a === '--visual-scroll-settle-ms') eat('visualScrollSettleMs');
+    else if (a.startsWith('--visual-scroll-settle-ms=')) eatEq('visualScrollSettleMs', '--visual-scroll-settle-ms=');
+    else if (a === '--visual-stagger-fadein') opts.visualStaggerFadein = true;
+    else if (a === '--no-visual-stagger-fadein') opts.visualStaggerFadein = false;
     else if (a === '--visual-hud') opts.visualHud = true;
     else if (a === '--no-visual-hud') opts.visualHud = false;
     else if (a === '--visual-flash') opts.visualFlash = true;
