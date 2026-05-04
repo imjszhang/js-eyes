@@ -19,6 +19,21 @@
 
 ---
 
+## [0.7.2] - 2026-05-04
+
+### Breaking — Reddit `list` / `item` 模板迁出引擎包
+
+站点/技能专属 HTML 卡片不再放在 `packages/visual-replay-hyperframes/templates/reddit/`。
+引擎只保留 `templates/_generic` + `templates/registry`。Reddit 卡片现由 **`js-reddit-ops-skill/replay-templates/`** 分发，并在 `translate()` 开始时通过 **template bootstrap** 注册。
+
+- **`translate(opts)`** 新增 `opts.templateBootstrap`（入口 `.js`，副作用 `register`）
+- **探测顺序**：`opts.templateBootstrap` → 环境变量 `JSE_REPLAY_TEMPLATE_BOOTSTRAP` → `<sessionDir>/../../replay-templates/index.js`（适用于 `<skill>/runs/<sess>/` 布局）
+- **`jse-replay`**：`--template-bootstrap <path>`（`=path` 同义）
+
+仅依赖已发布的 `@js-eyes/visual-replay-hyperframes`、且会话不在上述目录布局内的调用方，需显式传入 bootstrap 路径或环境变量，否则 `list`/`item` 会落到 `_generic` 兜底卡。
+
+---
+
 ## [0.7.1] - 2026-05-04
 
 ### Breaking — CLI：`--effects` 不再承载 hud/flash/all

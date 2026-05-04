@@ -13,8 +13,8 @@
 // 顺序：
 //   - registry.getTemplate 查找链：
 //     (sid,k) → (*,k) → (sid,*) → (*,*) → (*,'global')
-//   - 这里只用 '*' skill；reddit/index.js 注册 (sid, 'list'/'item') 优先级更高
-//   - reddit/index.js 同时注册 ('*','list') / ('*','item')，命中比 ('*','*') 早
+//   - 这里只用 '*' skill；技能 replay-templates 注册 (sid, 'list'/'item') 优先级更高，
+//     并常同时注册 ('*','list') / ('*','item')，命中比 ('*','*') 早
 // ---------------------------------------------------------------------------
 
 const { register } = require('../registry');

@@ -1,13 +1,9 @@
 'use strict';
 
-// templates/reddit/cardTemplate.js
-// ---------------------------------------------------------------------------
-// reddit post 卡片公共片段。卡片整体是 <article class="reddit-card">，根节点带
-// data-anchor-id="<fullname>"，让 timelineScript 在 flash 时刻通过 class 切换
-// 实现 outline 动画（不依赖 DOM 实测坐标）。
+// replay-templates/cardTemplate.js — Reddit list/item 卡片段（随 js-reddit-ops-skill 分发）
 // ---------------------------------------------------------------------------
 
-const { escapeHtml } = require('../../lib/escape');
+const { escapeHtml } = require('@js-eyes/visual-replay-hyperframes/lib/escape');
 
 function fmtCount(n){
   const num = Number(n);
@@ -37,11 +33,6 @@ function safeAvatarChar(name){
   return escapeHtml(s.slice(0, 1).toUpperCase());
 }
 
-/**
- * @param {object} item - extractRedditItemFields 输出
- * @param {object} [opts]
- * @param {number} [opts.index] - 在卡片列表中的序号（0-based），用于 staggered 入场动画
- */
 function renderCard(item, opts){
   const o = opts || {};
   const it = item || {};

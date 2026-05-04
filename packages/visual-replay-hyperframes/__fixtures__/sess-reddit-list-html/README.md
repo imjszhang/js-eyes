@@ -159,7 +159,8 @@ build artefact and large (550+ lines of inline CSS + GSAP cards).
 - Schema: events drop runtime DOM measurements; payload carries data.
 - Skill side: `extractPayload` correctly normalises `result.data.items`
   into `payload.items[*]` with the documented shape.
-- Translator side: `templates/reddit/list.js` renders 8 reddit-style
+- Translator side: `js-reddit-ops-skill/replay-templates/list.js`（经
+  `--template-bootstrap` 或 `JSE_REPLAY_TEMPLATE_BOOTSTRAP`）renders 8 reddit-style
   cards (HUD, flash anchors, fullname `t3_xxx` badges).
 - Lint side: composition is responsive (`vw` / `clamp`), declares
   `data-width` / `data-height`, and HUD aside elements carry

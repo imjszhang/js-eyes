@@ -1,6 +1,6 @@
 'use strict';
 
-const { escapeHtml } = require('../../lib/escape');
+const { escapeHtml } = require('@js-eyes/visual-replay-hyperframes/lib/escape');
 const { renderCard, fmtCount } = require('./cardTemplate');
 
 /**
@@ -16,8 +16,6 @@ function renderList(ctx){
   const sort = String(payload.sort || '').toLowerCase();
   const total = Number.isFinite(payload.totalCount) ? payload.totalCount : items.length;
 
-  // sub-title 优先级：r/<sub> > hint.label（如"搜索 xxx"）> 死值 'reddit'
-  // 全站 search 这种 sub 为空的场景下，需要靠 label 区分多张卡片
   const fallbackTitle = String(
     payload.label
     || (ctx && ctx.label)

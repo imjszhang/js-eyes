@@ -1,7 +1,7 @@
 'use strict';
 
-const { escapeHtml } = require('../../lib/escape');
-const { renderCard, fmtCount } = require('./cardTemplate');
+const { escapeHtml } = require('@js-eyes/visual-replay-hyperframes/lib/escape');
+const { renderCard } = require('./cardTemplate');
 
 /**
  * reddit item 模板：单 item 渲成大卡片 + 元信息。
@@ -11,7 +11,6 @@ function renderItem(ctx){
   const payload = (ctx && ctx.payload) || {};
   const fullname = String(payload.id || payload.name || payload.fullname || '');
 
-  // 兜底：subreddit_about / user_profile 走 global-style fields 列表
   if (!fullname && Array.isArray(payload.fields) && payload.fields.length) {
     return renderInfoCard(ctx, payload);
   }
@@ -34,8 +33,6 @@ function renderInfoCard(ctx, payload){
   const summary = String(payload.summary || '').slice(0, 240);
   const label = (ctx && ctx.label) || (ctx && ctx.hint && ctx.hint.label) || '';
 
-  // 抽 hero metric：subscribers / activeUserCount 这种"数字 + 单位"主体指标，
-  // 让 sub-about / session-state 这类信息卡有一眼可见的主数据
   const HERO_KEYS = /^(subscribers?|subscriberCount|activeUserCount|totalKarma|comment_count|num_comments)$/i;
   const heroIdx = allFields.findIndex((f) => f && HERO_KEYS.test(f.k));
   const heroField = heroIdx >= 0 ? allFields[heroIdx] : null;

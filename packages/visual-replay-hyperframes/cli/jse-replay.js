@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// jse-replay CLI（v0.7.1 plugin-system）
+// jse-replay CLI（v0.7.2 plugin-system + 技能 template bootstrap）
 // ---------------------------------------------------------------------------
 // 用法：
 //   jse-replay <session-dir> [--out <video.mp4>] [--preview] [--keep-composition]
@@ -54,6 +54,7 @@ function parseArgs(argv){
     plugins: [],              // ['<id>', ...]，按出现顺序去重
     pluginConfigs: {},        // { '<id>': {...} }
     effectsExplicit: false,   // 用户是否显式传过 --effects/--no-effects
+    templateBootstrap: null,  // 可选 .js，register 技能模板；省略则走环境变量 / session 旁探测
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -81,6 +82,8 @@ function parseArgs(argv){
     if (a.startsWith('--plugin=')) { opts.plugins.push(a.slice('--plugin='.length)); continue; }
     if (a === '--plugin-config' && argv[i + 1]) { applyPluginConfig(opts.pluginConfigs, argv[++i]); continue; }
     if (a.startsWith('--plugin-config=')) { applyPluginConfig(opts.pluginConfigs, a.slice('--plugin-config='.length)); continue; }
+    if (a === '--template-bootstrap' && argv[i + 1]) { opts.templateBootstrap = argv[++i]; continue; }
+    if (a.startsWith('--template-bootstrap=')) { opts.templateBootstrap = a.slice('--template-bootstrap='.length); continue; }
     if (a.startsWith('-')) { throw new Error('未知参数: ' + a); }
     if (!opts.sessionDir) { opts.sessionDir = a; continue; }
     throw new Error('多余的位置参数: ' + a);
@@ -140,7 +143,7 @@ function applyPluginConfig(target, raw){
 
 function printHelp(){
   const lines = [
-    'jse-replay (v0.7.1) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
+    'jse-replay (v0.7.2) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
     '                      events 含 frame → snapshot 双缓冲背景图；否则 list/item 模板兑底',
     '',
     'Usage:',
@@ -153,6 +156,11 @@ function printHelp(){
     '  --keep-composition          渲染完保留 composition/ 目录',
     '  --title <s>                 页面 title',
     '  --skill <id>                显式指定 skillId 以路由模板（默认从 meta.json 读）',
+    '',
+    '  Template bootstrap（v0.7.2+，list/item 等技能模板不再随引擎包分发）：',
+    '  --template-bootstrap <path>  入口 .js（副作用 register）；也可设环境变量',
+    '                                 JSE_REPLAY_TEMPLATE_BOOTSTRAP。省略时若会话在',
+    '                                 <skill>/runs/<sess>/ 则自动加载 <skill>/replay-templates/index.js',
     '',
     '  Snapshot mode:',
     '  --snapshot <mode>           auto (默认，events 含 frame 即用) | always | never',
@@ -245,6 +253,7 @@ async function main(argv){
       plugins: pluginIds,
       pluginConfigs: opts.pluginConfigs,
       cwd: process.cwd(),
+      templateBootstrap: opts.templateBootstrap || undefined,
     });
   } catch (err) {
     process.stderr.write('ERROR: translate failed: ' + err.message + '\n');
@@ -314,7 +323,7 @@ function stripMeta(r){
     plugins: r.plugins || [],
     sessionId: r.meta && r.meta.sessionId,
     skillId: r.meta && r.meta.skillId,
-    architecture: 'plugin-system (v0.7.1)',
+    architecture: 'plugin-system (v0.7.2)',
   };
 }
 

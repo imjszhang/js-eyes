@@ -31,12 +31,59 @@ const { escapeHtml } = require('./escape');
 const { resolveList, runHooks } = require('./pluginHost');
 const { createPluginContext } = require('./pluginContext');
 
-// 注册默认模板：先 _generic（('*','*') 终极兜底 + tree/global/navigation/write 显式
-// 兜底注册），再 reddit（list/item 专属覆盖）。顺序无关功能正确性（registry 按
-// tier 优先级查找），但 _generic 先 require 让人一眼看出"任何 kind 都至少有兜底"。
+// 注册引擎内置兜底模板（('*','*') 与 tree/global/navigation/write）。站点/技能
+// 专属 list/item 等由 translate() 在跑 buildCards 之前加载 templateBootstrap（见
+// loadTemplateBootstrap）；默认尝试 <sessionDir>/../../replay-templates/index.js
+//（技能仓库 runs/sess-xxx 布局）。
 require('../templates/_generic');
-require('../templates/reddit');
 const { getTemplate } = require('../templates/registry');
+
+/**
+ * 解析 template bootstrap 脚本路径（注册到 templates/registry）：
+ * 1) opts.templateBootstrap（相对 opts.cwd 或 sessionDir）
+ * 2) 环境变量 JSE_REPLAY_TEMPLATE_BOOTSTRAP
+ * 3) sessionDir/../../replay-templates/index.js（技能根下的 replay-templates/）
+ *
+ * @param {string} sessionDirAbs
+ * @param {object} o translate opts
+ * @returns {string|null}
+ */
+function resolveTemplateBootstrapPath(sessionDirAbs, o){
+  const tryList = (arr) => {
+    for (const p of arr) {
+      if (p && fs.existsSync(p)) return p;
+    }
+    return null;
+  };
+  if (o && o.templateBootstrap) {
+    const raw = String(o.templateBootstrap);
+    const base = o.cwd || process.cwd();
+    const paths = [];
+    if (path.isAbsolute(raw)) paths.push(raw);
+    else {
+      paths.push(path.resolve(base, raw));
+      paths.push(path.resolve(sessionDirAbs, raw));
+    }
+    const hit = tryList(paths);
+    if (hit) return hit;
+    throw new Error('translate: templateBootstrap not found: ' + raw);
+  }
+  const env = process.env.JSE_REPLAY_TEMPLATE_BOOTSTRAP;
+  if (env && String(env).trim()) {
+    const e = String(env).trim();
+    const hit = path.isAbsolute(e) ? e : path.resolve(o && o.cwd ? o.cwd : process.cwd(), e);
+    if (fs.existsSync(hit)) return hit;
+    throw new Error('translate: JSE_REPLAY_TEMPLATE_BOOTSTRAP not found: ' + e);
+  }
+  const guessed = path.join(sessionDirAbs, '..', '..', 'replay-templates', 'index.js');
+  if (fs.existsSync(guessed)) return guessed;
+  return null;
+}
+
+function loadTemplateBootstrap(sessionDirAbs, o){
+  const boot = resolveTemplateBootstrapPath(sessionDirAbs, o);
+  if (boot) require(boot);
+}
 
 const DEFAULT_TITLE = 'JS-Eyes Visual Replay';
 
@@ -96,10 +143,13 @@ const EFFECT_TO_PLUGIN = Object.freeze({
  * @param {Array<string>} [opts.plugins] 显式 plugin id 列表（按出现顺序）
  * @param {object} [opts.pluginConfigs] { '<plugin-id>': {...} } 给对应 plugin 的私有配置
  * @param {'auto'|'always'|'never'} [opts.snapshot='auto'] snapshot 模式开关（auto = events 含 frame 即用）
- * @param {string} [opts.cwd] 解析本地路径 plugin 时的基准目录（默认 process.cwd()）
+ * @param {string} [opts.cwd] 解析本地路径 plugin / templateBootstrap 时的基准目录（默认 process.cwd()）
+ * @param {string} [opts.templateBootstrap] 技能模板入口 .js（副作用 register）；不设则按环境变量或 session 旁路径探测
  */
 function translate(sessionDir, outDir, opts){
   const o = opts || {};
+  const sessionDirAbs = path.resolve(sessionDir);
+  loadTemplateBootstrap(sessionDirAbs, o);
   const session = readVisualSession(sessionDir);
   if (!session.meta && (!session.entries || session.entries.length === 0)) {
     throw new Error('translate: empty or missing session bundle at ' + sessionDir);
@@ -242,7 +292,7 @@ function translate(sessionDir, outDir, opts){
     pluginAssets: assetsCopied,
     eventEntries: session.entries ? session.entries.length : 0,
     meta: session.meta || null,
-    architecture: 'plugin-system (v0.7.1)',
+    architecture: 'plugin-system (v0.7.2)',
     templateUsage: buildResult.templateUsage,
     missingTemplates,
   }, null, 2), 'utf8');
@@ -515,7 +565,7 @@ function buildHtml(info){
     'jse-replay',
     info.meta && info.meta.skillId ? '· ' + info.meta.skillId : '',
     info.meta && info.meta.sessionId ? '· ' + info.meta.sessionId.slice(0, 14) : '',
-    'v0.7.1 ' + snapshotMode,
+    'v0.7.2 ' + snapshotMode,
   ].filter(Boolean).join(' ');
 
   const tlScript = buildTimelineScript({
@@ -535,7 +585,7 @@ function buildHtml(info){
     '<main',
     '  id="stage"',
     '  data-composition-id="' + escapeHtml(info.compositionId) + '"',
-    '  data-architecture="plugin-system-v0.7.1"',
+    '  data-architecture="plugin-system-v0.7.2"',
     '  data-mode="' + stageMode + '"',
     '>',
     framesPresent
