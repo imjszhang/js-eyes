@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.4';
+  const VERSION = '3.1.0';
 
   // @@include ./common.js
 
@@ -72,6 +72,38 @@
   }
 
   function sessionState(){ return sessionStateCommon(); }
+
+  async function dom_getPost(args){
+    args = args || {};
+    const tweetIdInput = args.tweetId != null ? args.tweetId : (args.url || null);
+    const tweetId = extractTweetId(tweetIdInput);
+    if (!tweetId) return errResult('missing_tweetId');
+    const parsed = parsePostFromPath();
+    const pathId = parsed && parsed.tweetId;
+    if (!pathId || String(pathId) !== String(tweetId)) {
+      const username = args.username && String(args.username).replace(/^@/, '');
+      const url = 'https://x.com/' + (username || 'i') + '/status/' + tweetId;
+      return {
+        ok: false,
+        error: 'dom_navigation_required',
+        to: url,
+        navMethod: 'navigatePost',
+        navArgs: { tweetId, username: username || undefined, url },
+      };
+    }
+    const main = document.querySelector('article[data-testid="tweet"]');
+    if (!main) return errResult('dom_extract_failed', { hint: 'no_tweet_article' });
+    const tw = parseTweetArticle(main);
+    if (!tw) return errResult('dom_extract_failed', { hint: 'parse_failed' });
+    return okResult({
+      tweetId,
+      tweet: tw,
+      thread: [],
+      replies: [],
+      replyCursor: null,
+      meta: { bridge: 'post-bridge', version: VERSION, path: 'dom_getPost', note: 'dom_only_no_thread' },
+    });
+  }
 
   function navigatePost(args){
     args = args || {};
@@ -141,7 +173,7 @@
     return focal;
   }
 
-  async function getPost(args){
+  async function api_getPost(args){
     args = args || {};
     const tweetIdInput = args.tweetId != null ? args.tweetId : (args.url || null);
     const tweetId = extractTweetId(tweetIdInput);
@@ -372,6 +404,18 @@
     });
   }
 
+  async function getPost(args){
+    const gql = await api_getPost(args);
+    if (gql.ok) return gql;
+    const tryDom = gql.error === 'graphql_discover_failed' || gql.error === 'all_paths_failed';
+    if (tryDom) {
+      const dom = await dom_getPost(args);
+      if (dom.ok) return dom;
+      return dom;
+    }
+    return gql;
+  }
+
   const api = {
     __meta: { version: VERSION, name: 'post-bridge' },
     probe,
@@ -379,6 +423,8 @@
     sessionState,
     navigatePost,
     getPost,
+    api_getPost,
+    dom_getPost,
   };
   window.__jse_x_post__ = api;
   return { ok: true, version: VERSION, name: 'post-bridge' };

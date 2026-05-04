@@ -2,6 +2,11 @@
 
 `js-x-ops-skill` 内置的监控子系统，复用 skill 的 v3 GraphQL 数据层，独立做：**定时拉时间线 + 去重 + webhook 通知**。
 
+## READ 路径约束（与主技能 `runTool` 对齐）
+
+- **强制 `readMode='graphql'`**（v3.2 由 `mode` 改名）：`lib/monitor/fetchAccount.js` 调用 `getProfileTweets` 时固定传入，**不用 DOM 兜底、不经 `dom_*` bridge**，降低长驻 daemon 的页面依赖与突变面。
+- **不要对 monitor 开 `visualRecord` / 帧采集**：监控走 `lib/runMonitor.js` + `fetchAccount`，**不经过** `lib/runTool.js` 的 visual 钩子；若在别处把 monitor 与 CLI `--visual-record` 混用，会徒增磁盘与扩展消息负载。手动调试推文列表请直接用 `node index.js profile …` 或 OpenClaw 工具，而非 `monitor check`。
+
 不依赖 OpenClaw，不依赖 `openclaw cron` / `openclaw_send_message`；调度有两种模式（外部 cron 单次 / 本地 daemon），通知走内置 webhook adapter（feishu / discord / generic_webhook）。
 
 ## 目录与文件

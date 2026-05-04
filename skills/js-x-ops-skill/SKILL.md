@@ -1,7 +1,7 @@
 ---
 name: js-x-ops-skill
 description: X.com (Twitter) 内容只读 + 浏览器导航 + 账号监控 skill：搜索 / 用户主页 / 推文详情 / 首页 Feed 走 X.com 内部 GraphQL 同源端点（DOM 兜底），浏览器侧仅 location.assign 改 URL；内置 monitor 子系统做定时监控 + webhook 通知；写操作（reply/post/quote/thread）保持 v2.0.1 透传，v3.1 将拆到专用工具。
-version: 3.0.5
+version: 3.2.0
 metadata:
   openclaw:
     emoji: "\U0001F50D"
@@ -156,7 +156,33 @@ node scripts/batch-search.js --query "AI agent|top|2" --query "MCP|latest|1"
 
 # 也可通过 js-eyes 统一入口
 js-eyes skill run js-x-ops-skill doctor
+
+# DOM 探针（开发者）：关键选择器存活检测
+node scripts/_dev-probe-dom.js --page search
 ```
+
+## READ 调度：`readMode`、visual 与重放（v3.2）
+
+READ 单一管道为 **`lib/runTool.js`**：四座 bridge 同时注册 **`api_*`（同源 GraphQL）** 与 **`dom_*`（DOM 抽取）**，`wrapCallApi` / `drainVisualEvents` 由 **`@js-eyes/visual-bridge-kit`** 提供（与 reddit-ops 同主线）。
+
+> v3.2 把原来的 `--mode` 重命名为 `--read-mode`，把 visual-bridge-kit 那边的 `--visual-mode` 拆成 `--visual-hud` / `--visual-flash`。两层概念彻底解耦，旧 flag 已硬切（`--mode` 抛错，`--visual-mode` 被 `parseVisualFlags` 忽略并 stderr 告警）。
+
+| `--read-mode` | 行为 |
+|---|---|
+| **`auto`（默认）** | **`api_*`（GraphQL）优先**，仅在失败码落入兜底集合时再试 `dom_*`。**与 Reddit 文档里可能出现的「DOM 优先」表述不同**：X skill 在此处写死为 **GraphQL 优先**。 |
+| `graphql` / `api` | 仅 GraphQL |
+| `dom` | 仅 DOM（不可用时会走兼容入口 `search` / `getProfile` 等） |
+
+- **OpenClaw / `skill.contract`**：各 READ 工具的 schema 可选 `readMode`，与 CLI `--read-mode` 一致。
+- **编程 API**（`lib/api.js`）：`useBridge` 未关闭时内部 **`require('./runTool')`**，可传 `readMode`、`visualRecord`、`visualTrace`、`noFrames` 等与 CLI 对齐的选项。
+- **`runToolAudit`** 字段：`readMode` / `requestedReadMode` / `fallback` / `triedMethods` / `usedMethod`（v3.2 由 `mode` / `requestedMode` 改名）。
+- **visual 旋钮**（来自 `@js-eyes/visual-bridge-kit@0.6.0+`）：
+  - `--visual` / `--no-visual`：总开关
+  - `--visual-hud` / `--no-visual-hud`：右上角 HUD 卡片（默认开）
+  - `--visual-flash` / `--no-visual-flash`：元素 flash overlay + relation（默认开）
+  - 旧 `--visual-mode auto/dom/hud/both/off` 已硬切；映射：`auto`/`both` → 都开；`dom` → 关 hud；`hud` → 关 flash；`off` → `--no-visual`。
+- **快照 / 录像目录**：由 `visual-bridge-kit` 写出会话包；可用 workspace 包 **`@js-eyes/visual-replay-hyperframes`** 的 **`jse-replay`** 生成 hyperframes composition，再按该包 README 调用 `npx hyperframes render` 导出 mp4。**hyperframes 与本 skill 版本号独立**，升级请以 `packages/visual-replay-hyperframes` 的说明为准。
+- **Monitor**：只经 `getProfileTweets(..., { readMode: 'graphql' })`，不走 DOM、不经 `visual-record`（见 [`docs/dev/monitor.md`](docs/dev/monitor.md)）。
 
 ## 编程 API
 
@@ -197,10 +223,10 @@ const feed = await getHomeFeed(browser, { feed: 'foryou', maxPages: 5 });
 ```text
 CLI / AI Tool call
   └── skill.contract.js (createRuntime / TOOL_DEFINITIONS)
-        ├── lib/api.js          兼容入口（4 个 READ + bridge-first with fallback）
-        │     ├── lib/bridgeAdapter.js  调 bridge + 失败兜底回 scripts/x-*.js
-        │     └── scripts/x-*.js        老 DOM 主路径（fallback only）
-        ├── lib/runTool.js      新 READ 工具入口（history + debug bundle）
+        ├── lib/api.js          编程入口（4 个 READ；bridge 分支同样经 runTool，与 CLI 对齐）
+        │     ├── lib/runTool.js        api_* / dom_* + visual kit + 兜底错误码
+        │     └── scripts/x-*.js        `JS_X_DISABLE_BRIDGE=1` 时老路径（纯 GraphQL+DOM scripts）
+        ├── lib/runTool.js      READ AI 工具 + CLI `kind=tool`（history + debug + 可选 visual-record）
         └── lib/session.js      Session（connect → resolveTarget → ensureBridge → callApi）
               ├── lib/config.js          PAGE_PROFILES + DEFAULT_WS_ENDPOINT
               ├── lib/js-eyes-client.js  BrowserAutomation
@@ -343,7 +369,7 @@ skills/js-x-ops-skill/
 ├── cli/
 │   └── index.js              # CLI dispatcher（按 lib/commands.js）
 ├── lib/
-│   ├── api.js                # 编程 API（4 个 READ，bridge-first with fallback）
+│   ├── api.js                # 编程 API（useBridge→runTool；禁用时 scripts/x-*）
 │   ├── session.js            # 主调度器
 │   ├── config.js             # PAGE_PROFILES
 │   ├── runTool.js            # READ 工具通用 dispatcher（history + debug bundle）

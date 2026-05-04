@@ -18,7 +18,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@js-eyes/visual-bridge-kit": "^0.3.0"
+    "@js-eyes/visual-bridge-kit": "file:../visual-bridge-kit"
   },
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

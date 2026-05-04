@@ -452,6 +452,26 @@ class BrowserAutomation {
     const resp = await this._sendRequest('get_cookies', { tabId: parseInt(tabId) }, options);
     return resp.cookies || [];
   }
+
+  /**
+   * 可视区域截图（与 js-reddit-ops-skill 对齐，供 visual-record / snapshot）。
+   */
+  async captureScreenshot(tabId, options = {}) {
+    if (typeof options === 'number') options = { timeout: options };
+    const payload = { tabId: parseInt(tabId) };
+    if (options.format) payload.format = options.format;
+    if (Number.isFinite(options.quality)) payload.quality = options.quality;
+    const resp = await this._sendRequest('capture_screenshot', payload, options);
+    return {
+      tabId: resp.tabId,
+      windowId: resp.windowId ?? null,
+      format: resp.format || null,
+      dataUrl: resp.dataUrl || null,
+      width: resp.width ?? null,
+      height: resp.height ?? null,
+      skipped: resp.skipped || null,
+    };
+  }
 }
 
 module.exports = { BrowserAutomation };

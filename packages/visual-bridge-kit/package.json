@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/visual-bridge-kit",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Reusable in-page visual feedback (HUD + flash overlays + jsonl trace + session bundles) for js-eyes bridge skills",
   "main": "index.js",
   "exports": {

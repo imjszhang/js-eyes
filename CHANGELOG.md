@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - visualMode 简化 + read-mode 改名
+
+### `@js-eyes/visual-bridge-kit@0.6.0` (BREAKING)
+
+- 删除 `visualMode: 'auto'|'dom'|'hud'|'both'|'off'` 五值枚举，拆成两个正交布尔位
+  `hud` / `flash`（顶层 `enabled` 仍是总开关）。
+- CLI 新增 `--visual-hud` / `--no-visual-hud` / `--visual-flash` / `--no-visual-flash`，
+  默认都开。旧 `--visual-mode` 命中即列入 `deprecatedFlags`，`parseVisualFlags` 不再
+  把它下发到 bridge `config()`，CLI 层 stderr 一次性告警。
+- 旧值迁移（caller 手动展开，**不留 alias**）：`auto`/`both` → 都开；`dom` → 关 hud；
+  `hud` → 关 flash；`off` → `--no-visual`。
+
+### Skills (BREAKING) — `runTool` 路径轴改名
+
+- `js-x-ops-skill` 3.1.0 → 3.2.0、`js-reddit-ops-skill` 3.8.1 → 3.9.0：
+  - CLI `--mode auto|graphql|dom` (x) / `--mode auto|api|dom` (reddit) → `--read-mode ...`；
+    旧 `--mode` 抛 `E_BAD_ARG`。
+  - `runTool` API：`options.mode` → `options.readMode`，`cmdDef.defaultMode` →
+    `cmdDef.defaultReadMode`，返回 `mode` / `requestedMode` → `readMode` /
+    `requestedReadMode`。
+  - `skill.contract` 各 READ 工具 schema：`mode` 字段改名 `readMode`。
+  - `runToolAudit.{mode, requestedMode}` → `{readMode, requestedReadMode}`。
+- `js-browser-ops-skill` 2.3.0 → 2.4.0：仅跟随 visual-bridge-kit 0.6.0 拆 hud/flash。
+
+迁移成本：搜替 `--mode` → `--read-mode`、`--visual-mode hud` → `--no-visual-flash`、
+`--visual-mode dom` → `--no-visual-hud`、`--visual-mode off` → `--no-visual`、
+代码里 `mode:` 字段（runTool 调用 / cmdDef defaults）→ `readMode:` / `defaultReadMode:`。
+
 ## [2.7.0] - 2026-05-03
 
 > **Visual-trace → video pipeline (Phase 2) lands.** Visual events now travel

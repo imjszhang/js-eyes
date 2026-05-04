@@ -59,14 +59,14 @@
 - **业务数据派发**：`extractPayload` 钩子把工具响应的业务字段（reddit 帖子标题/作者/分数等）落到 `events.jsonl`
 - **离线视频**：[`@js-eyes/visual-replay-hyperframes`](../visual-replay-hyperframes) 按 `hint.kind` 路由 HTML 模板，渲染成可在任意视口播放的 reddit-style 卡片
 - **零业务侵入**：bridge 函数体不动，视觉与数据抽取都在 dispatch-edge hook
-- **DOM 派 / API 派通吃**：`mode: 'auto'` 找得到 DOM 锚点就 in-page flash，找不到自动降级 HUD
+- **DOM 派 / API 派通吃**：默认 `flash + hud` 全开，找得到 DOM 锚点就 in-page flash，找不到自动只剩 HUD（v0.6.0+ 用 `--no-visual-flash` / `--no-visual-hud` 单独关）
 
 ## 三档反馈
 
 | 强度 | 触发条件 | 表现 |
 |---|---|---|
 | **DOM-anchored** | hint 带 `anchor`，`resolveAnchor()` 命中可见元素 | flash 元素 + HUD |
-| **HUD-only** | 解析不到锚点，或 `--visual-mode hud` | 屏幕角 HUD |
+| **HUD-only** | 解析不到锚点，或 `--no-visual-flash` | 屏幕角 HUD |
 | **Trace-only** | `--no-visual`，但仍写 jsonl | 仅落盘 |
 
 ## 架构（A 主路：HTML 数据驱动）
@@ -214,7 +214,10 @@ function parseArgv(argv){
   else if (a === '--no-visual') opts.visual = false;
   else if (a === '--visual-detail') opts.visualDetail = argv[++i];
   else if (a === '--visual-ms') opts.visualMs = argv[++i];
-  else if (a === '--visual-mode') opts.visualMode = argv[++i];
+  else if (a === '--visual-hud') opts.visualHud = true;
+  else if (a === '--no-visual-hud') opts.visualHud = false;
+  else if (a === '--visual-flash') opts.visualFlash = true;
+  else if (a === '--no-visual-flash') opts.visualFlash = false;
   else if (a === '--visual-trace') opts.visualTrace = argv[++i];
   else if (a === '--visual-list-stride') opts.visualListStride = argv[++i];
   else if (a === '--visual-prefix') opts.visualPrefix = argv[++i];
@@ -231,7 +234,8 @@ function parseArgv(argv){
 | `--visual` / `--no-visual` | 开 | 总开关 |
 | `--visual-detail compact\|staged` | `staged` | `compact` 只 HUD，`staged` 全套（含 relation） |
 | `--visual-ms <n>` | `420` | flash 持续时长（ms） |
-| `--visual-mode auto\|dom\|hud\|both\|off` | `auto` | 锚点解析策略 |
+| `--visual-hud` / `--no-visual-hud` | 开 | 右上角 HUD 卡片（v0.6.0 取代 `--visual-mode hud/dom`） |
+| `--visual-flash` / `--no-visual-flash` | 开 | 元素 flash overlay + relation（v0.6.0 取代 `--visual-mode hud/dom`） |
 | `--visual-trace <file>` | — | 把事件落到 jsonl |
 | `--visual-list-stride <ms>` | `90` | 列表呼吸感的步进 |
 | `--visual-prefix <p>` | `__jse_visual_` | DOM id 前缀（站点可用 `siteDefaults` 改默认值） |
@@ -285,6 +289,9 @@ type Summary = {
 - `0.1.0` 起步：HUD + flash + relation + jsonl trace + auto/dom/hud/both/off mode + SPA 防御。
 - `0.4.0` 与 server-core 2.7.0 同步：`appendVisualSession` 会话包目录形态、`makeFrameWriter` 顶层 export。
 - `0.4.x` (post-2.7.0 architecture pivot)：emit 主链路下线 `viewport / anchor.rect / frameRef`；新增 `hooks.extractPayload` 钩子；`makeFrameWriter` 等 PNG helpers 迁到 `@js-eyes/visual-bridge-kit/dev` 子路径；`meta.json` 加 `payloadSchemaVersion: 1`，去掉 `redact / frameCount`。版本号不动。
+- `0.5.0` snapshot mode 主链路升级：`makeFrameWriter` 回到顶层 export；`wrapCallApi` 在每个命令边界截一帧 JPEG 写入会话包；新增 `viewport()` 给 frame event 带视口元数据。
+- `0.5.3` 引入 `bumpCaptureSettleRelative` / `awaitCaptureSettle`：让 `wrapCallApi` 等到 in-page stagger flash 真的画完再触发 `chrome.tabs.captureVisibleTab`。
+- `0.6.0` **BREAKING**：删除 `visualMode` 五值枚举（`auto|dom|hud|both|off`），拆为两个正交布尔位 `hud` / `flash` + 顶层 `enabled` 总开关。CLI 旧 `--visual-mode` 命中即列入 `deprecatedFlags` 并被忽略；caller 需自行展开为 `--visual-hud` / `--visual-flash` 组合（auto/both → 都 on；dom → flash on；hud → hud on；off → `--no-visual`）。
 
 ## 许可
 

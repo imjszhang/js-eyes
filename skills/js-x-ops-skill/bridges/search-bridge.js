@@ -15,7 +15,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.4';
+  const VERSION = '3.1.0';
 
   // @@include ./common.js
 
@@ -117,6 +117,29 @@
 
   function sessionState(){ return sessionStateCommon(); }
 
+  function domNavigationToSearch(args){
+    args = args || {};
+    const keyword = String(args.keyword || args.q || '').trim();
+    if (!keyword) return errResult('missing_query');
+    const sortRaw = String(args.sort || 'top').toLowerCase();
+    const sort = ALLOWED_SORTS.has(sortRaw) ? sortRaw : 'top';
+    const url = buildXSearchUrl({
+      keyword,
+      sort,
+      from: args.from, to: args.to,
+      since: args.since, until: args.until,
+      lang: args.lang,
+      minLikes: args.minLikes, minRetweets: args.minRetweets, minReplies: args.minReplies,
+      excludeReplies: args.excludeReplies, excludeRetweets: args.excludeRetweets,
+      hasLinks: args.hasLinks,
+    });
+    return { ok: false, error: 'dom_navigation_required', to: url, navMethod: 'navigateSearch', navArgs: {
+      keyword, sort, from: args.from, to: args.to, since: args.since, until: args.until,
+      lang: args.lang, minLikes: args.minLikes, minRetweets: args.minRetweets, minReplies: args.minReplies,
+      excludeReplies: args.excludeReplies, excludeRetweets: args.excludeRetweets, hasLinks: args.hasLinks,
+    } };
+  }
+
   function navigateSearch(args){
     args = args || {};
     const keyword = String(args.keyword || args.q || '').trim();
@@ -178,7 +201,7 @@
     }
     if (!contentReady) {
       if (!isOnSearchPath()) return notOnSearchPageError({ stage: 'wait_for_articles' });
-      return errResult('content_not_ready', { hint: 'no_tweet_articles_in_dom' });
+      return errResult('dom_extract_failed', { hint: 'no_tweet_articles_in_dom' });
     }
 
     const initial = _extractTweetsFromDom(seenIds);
@@ -220,11 +243,46 @@
     });
   }
 
-  async function search(args){
+  async function dom_search(args){
     args = args || {};
     const keyword = String(args.keyword || args.q || '').trim();
     if (!keyword) return errResult('missing_query');
-    if (!isOnSearchPath()) return notOnSearchPageError();
+    if (!isOnSearchPath()) return domNavigationToSearch(args);
+    const sortRaw = String(args.sort || 'top').toLowerCase();
+    const sort = ALLOWED_SORTS.has(sortRaw) ? sortRaw : 'top';
+    const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
+    const fullQuery = (function(){
+      const o = {
+        keyword, sort,
+        from: args.from, to: args.to,
+        since: args.since, until: args.until,
+        lang: args.lang,
+        minLikes: args.minLikes, minRetweets: args.minRetweets, minReplies: args.minReplies,
+        excludeReplies: args.excludeReplies, excludeRetweets: args.excludeRetweets,
+        hasLinks: args.hasLinks,
+      };
+      const ops = [];
+      if (o.from) ops.push('from:' + o.from);
+      if (o.to) ops.push('to:' + o.to);
+      if (o.since) ops.push('since:' + o.since);
+      if (o.until) ops.push('until:' + o.until);
+      if (o.lang) ops.push('lang:' + o.lang);
+      if (typeof o.minLikes === 'number' && o.minLikes > 0) ops.push('min_faves:' + o.minLikes);
+      if (typeof o.minRetweets === 'number' && o.minRetweets > 0) ops.push('min_retweets:' + o.minRetweets);
+      if (typeof o.minReplies === 'number' && o.minReplies > 0) ops.push('min_replies:' + o.minReplies);
+      if (o.excludeReplies) ops.push('-filter:replies');
+      if (o.excludeRetweets) ops.push('-filter:retweets');
+      if (o.hasLinks) ops.push('filter:links');
+      return ops.length ? (keyword + ' ' + ops.join(' ')).trim() : keyword;
+    })();
+    return await searchViaDom({ keyword, sort, fullQuery, maxPages });
+  }
+
+  async function api_search(args){
+    args = args || {};
+    const keyword = String(args.keyword || args.q || '').trim();
+    if (!keyword) return errResult('missing_query');
+    if (!isOnSearchPath()) return domNavigationToSearch(args);
     const sortRaw = String(args.sort || 'top').toLowerCase();
     const sort = ALLOWED_SORTS.has(sortRaw) ? sortRaw : 'top';
     const product = sortToProduct(sort);
@@ -255,13 +313,13 @@
     })();
 
     if (!ENABLE_GRAPHQL) {
-      return await searchViaDom({ keyword, sort, fullQuery, maxPages });
+      return errResult('graphql_disabled', { hint: 'search_api_path_off' });
     }
 
     let disc = await discoverGraphQLParams(['SearchTimeline']);
     let meta = (disc.data && disc.data.SearchTimeline) || null;
     if (!meta || !meta.queryId) {
-      return await searchViaDom({ keyword, sort, fullQuery, maxPages });
+      return errResult('graphql_discovery_failed', { opName: 'SearchTimeline' });
     }
     let features = meta.features || DEFAULT_GRAPHQL_FEATURES;
     let variablesTemplate = meta.variables || null;
@@ -322,7 +380,7 @@
       }
       if (!resp.ok) {
         if (page === 1 && (resp.statusCode === 400 || resp.statusCode === 404)) {
-          return await searchViaDom({ keyword, sort, fullQuery, maxPages });
+          return errResult('graphql_fallback', { statusCode: resp.statusCode, stage: 'first_page' });
         }
         pageMeta.push({ page, ok: false, error: resp.error, statusCode: resp.statusCode || null, durMs });
         break;
@@ -372,8 +430,23 @@
         graphqlSource: meta.source || 'unknown',
         pausedOn429: pausedOnce,
         endedReason: cursor ? 'reached_max_pages' : 'no_cursor',
+        path: 'api_search',
       },
     });
+  }
+
+  async function search(args){
+    const api = await api_search(args);
+    if (api.ok) return api;
+    const tryDom = api.error === 'graphql_fallback'
+      || api.error === 'graphql_discovery_failed'
+      || api.error === 'graphql_disabled';
+    if (tryDom) {
+      const dom = await dom_search(args);
+      if (dom.ok) return dom;
+      return dom;
+    }
+    return api;
   }
 
   const api = {
@@ -383,6 +456,8 @@
     sessionState,
     navigateSearch,
     search,
+    api_search,
+    dom_search,
   };
   window.__jse_x_search__ = api;
   return { ok: true, version: VERSION, name: 'search-bridge' };

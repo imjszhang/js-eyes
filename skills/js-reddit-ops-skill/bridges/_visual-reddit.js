@@ -255,6 +255,14 @@
       }, idx * stride);
     });
 
+    if (items.length > 0) {
+      const dur = typeof cfg.durationMs === 'number' ? cfg.durationMs : 420;
+      const lastSlot = (items.length - 1) * stride;
+      if (typeof v.bumpCaptureSettleRelative === 'function') {
+        v.bumpCaptureSettleRelative(lastSlot + Math.floor(dur * 0.55) + 80);
+      }
+    }
+
     return scheduled;
   }
 

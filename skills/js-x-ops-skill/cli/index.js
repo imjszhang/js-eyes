@@ -22,9 +22,11 @@ const { COMMANDS, parseArgv, printHelp, hasWriteFlags } = require('../lib/comman
 const { PAGE_PROFILES, DEFAULT_PAGE } = require('../lib/config');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
 const { runTool } = require('../lib/runTool');
 const { runMonitor } = require('../lib/monitor/dispatcher');
 const apiLib = require('../lib/api');
+const { warnDeprecatedFlagsOnce } = require('../lib/cliVisualFlags');
 
 // ---------------------------------------------------------------------------
 // 公共 helpers
@@ -109,10 +111,13 @@ async function runToolCommand(commandName, def, opts, positional) {
     logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
   });
   try {
+    const vp = parseVisualFlags(opts);
+    warnDeprecatedFlagsOnce(vp.deprecatedFlags);
     const response = await runTool(browser, {
       toolName: def.toolName,
       pageKey: pickPage(commandName, opts),
       method: def.api,
+      cmdDef: def.cmdDef || null,
       args: (args && args[0]) || {},
       targetUrl,
       options: {
@@ -126,6 +131,13 @@ async function runToolCommand(commandName, def, opts, positional) {
         navigateOnReuse: false,
         reuseAnyXTab: true,
         createUrl: targetUrl || 'https://x.com/',
+        readMode: opts.readMode || 'auto',
+        visualConfig: vp.config,
+        visualTrace: vp.tracePath || undefined,
+        visualRecord: vp.recordDir || undefined,
+        noFrames: opts.noFrames === true,
+        hiDpi: opts.hiDpi === true,
+        maxFrames: opts.maxFrames != null ? Number(opts.maxFrames) : undefined,
       },
     });
     printJson(response, opts);

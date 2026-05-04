@@ -11,7 +11,11 @@
 // - GraphQL queryId / features / variables 通过 performance API + JS bundle 动态发现并缓存。
 // - DOM fallback 仅在 GraphQL 失败时启用。
 // - navigateLocation 严格限制 *.x.com / *.twitter.com 同源，绝不跨站跳转。
+// - 顶部两行 @@include 由 makeBridgeExpander 展开：装入 window.__jse_visual + X 锚点解析。
 // ---------------------------------------------------------------------------
+
+// @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
+// @@include ./_visual-x.js
 
 const __jseXCache = {
   graphqlByOp: Object.create(null),  // { [opName]: { queryId, features, variables, savedAt } }

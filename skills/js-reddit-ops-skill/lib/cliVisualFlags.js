@@ -16,8 +16,11 @@
 //   --visual-frames-throttle <n>       PNG 截图节流
 //
 // 仍生效的 visual flag 见 README / commands.printHelp（--visual / --visual-detail /
-// --visual-ms / --visual-mode / --visual-trace / --visual-record [dir] /
+// --visual-ms / --visual-hud / --visual-flash / --visual-trace / --visual-record [dir] /
 // --visual-list-stride / --visual-prefix）。
+//
+// v0.6.0 BREAKING：旧 `--visual-mode auto|dom|hud|both|off` 已硬切，命中即列入
+// deprecatedFlags 并被忽略；caller 应改用 --visual-hud / --visual-flash 组合。
 // ---------------------------------------------------------------------------
 
 const _warnedFlags = new Set();

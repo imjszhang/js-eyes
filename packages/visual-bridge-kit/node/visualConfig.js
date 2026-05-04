@@ -8,10 +8,11 @@ const path = require('path');
 // 把 CLI 旋钮（已 parseArgv 过的 opts 对象）转成 bridge 能理解的 config。
 //
 // 输入：
-//   opts.visual              boolean? 显式开/关
+//   opts.visual              boolean? 显式开/关（总开关，落到 config.enabled）
 //   opts.visualDetail        'compact' | 'staged'
 //   opts.visualMs            number 毫秒
-//   opts.visualMode          'auto' | 'dom' | 'hud' | 'both' | 'off'
+//   opts.visualHud           boolean? 是否显示右上角 HUD 卡片（默认 true）
+//   opts.visualFlash         boolean? 是否在元素上画 flash overlay/relation（默认 true）
 //   opts.visualTrace         string 文件路径，启用 jsonl trace（单文件）
 //   opts.visualRecord        string 目录路径，启用会话包（events.jsonl + meta.json）
 //                            布尔 true 时使用默认目录 runs/sess-<ts>-<rand>/
@@ -23,6 +24,14 @@ const path = require('path');
 //   opts.redactSelector / redactSelectors 曾用于裁掉敏感选择器
 //   opts.redactConfig                     曾用于从 JSON 文件载入 redact 规则
 //   opts.visualRecordFrames / opts.visualFramesThrottle 曾用于控制 PNG 节流
+//
+// !! BREAKING（v0.6.0）!!
+//   opts.visualMode  'auto'|'dom'|'hud'|'both'|'off' 已硬切；命中即列入 deprecatedFlags 并忽略。
+//                    旧映射请由 caller 自行展开为 visual / visualHud / visualFlash 组合：
+//                      auto / both → visualHud=true,  visualFlash=true   (默认)
+//                      dom         → visualHud=false, visualFlash=true
+//                      hud         → visualHud=true,  visualFlash=false
+//                      off         → visual=false
 // 仍解析（不报错）但不下发：
 //   - 主链路不再走 chrome.tabs.captureVisibleTab → frames/<ts>.png 路径
 //   - bridge.config 不再注入 redactSelectors（emit 也不带 anchor.rect 了）
@@ -40,7 +49,8 @@ const DEFAULTS = Object.freeze({
   enabled: true,
   durationMs: 420,
   detailLevel: 'staged',
-  mode: 'auto',
+  hud: true,
+  flash: true,
   prefix: '__jse_visual_',
   listStrideMs: 90,
 });
@@ -133,12 +143,8 @@ function parseVisualFlags(opts, siteDefaults){
     if (Number.isFinite(n) && n > 0) out.durationMs = clamp(Math.round(n), 120, 4000);
   }
 
-  if (typeof o.visualMode === 'string') {
-    const m = o.visualMode.toLowerCase();
-    if (m === 'auto' || m === 'dom' || m === 'hud' || m === 'both' || m === 'off') {
-      out.mode = m;
-    }
-  }
+  if (typeof o.visualHud === 'boolean') out.hud = o.visualHud;
+  if (typeof o.visualFlash === 'boolean') out.flash = o.visualFlash;
 
   if (o.visualListStride != null) {
     const n = Number(o.visualListStride);
@@ -173,6 +179,8 @@ function parseVisualFlags(opts, siteDefaults){
   if (typeof o.redactConfig === 'string' && o.redactConfig.length > 0) deprecatedFlags.push('--redact-config');
   if (o.visualRecordFrames != null) deprecatedFlags.push('--visual-record-frames');
   if (o.visualFramesThrottle != null) deprecatedFlags.push('--visual-frames-throttle');
+  // v0.6.0 BREAKING：--visual-mode 已拆成 --visual-hud / --visual-flash
+  if (o.visualMode != null) deprecatedFlags.push('--visual-mode');
 
   return {
     config: out,

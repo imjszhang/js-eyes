@@ -5,6 +5,28 @@ All notable changes to `js-reddit-ops-skill` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-05-04
+
+### BREAKING — visualMode 拆解 + runTool 路径轴改名
+
+跟随 `@js-eyes/visual-bridge-kit@0.6.0` 把 `visualMode` 五值枚举拆成两个正交布尔位，
+并把 `runTool` 的"READ 路径轴"从 `--mode` 重命名为 `--read-mode`，与 `--visual-*`
+彻底解耦：
+
+- CLI：
+  - `--mode auto|api|dom` → `--read-mode auto|api|dom`；旧 `--mode` 抛错（`E_BAD_ARG`）。
+  - `--visual-mode auto|dom|hud|both|off` → `--visual-hud` / `--no-visual-hud` /
+    `--visual-flash` / `--no-visual-flash`（默认都开）。旧 `--visual-mode` 仍解析，
+    但 `parseVisualFlags` 会把它列入 `deprecatedFlags` 并 stderr 一次性告警，**不再下发**。
+- `runTool` 入参 / 返回字段：`options.mode` → `options.readMode`；
+  `cmdDef.defaultMode` → `cmdDef.defaultReadMode`；返回 `mode` / `requestedMode`
+  → `readMode` / `requestedReadMode`。
+- 旧值映射（caller 自行展开，不留 alias）：`auto`/`both` → 都开；`dom` → 关 hud；
+  `hud` → 关 flash；`off` → `--no-visual`。
+
+迁移成本：直接搜替 `--mode` → `--read-mode`、`--visual-mode hud` → `--no-visual-flash`、
+`--visual-mode dom` → `--no-visual-hud`、`--visual-mode off` → `--no-visual`。
+
 ## [3.8.1] - 2026-05-04
 
 ### Notes — visual-replay-hyperframes v0.6.0 联动（仅文档同步，代码不动）

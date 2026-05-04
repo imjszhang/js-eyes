@@ -30,6 +30,10 @@ function parseArgs() {
     visual: undefined,
     visualDetail: null,
     visualMs: null,
+    visualHud: undefined,
+    visualFlash: undefined,
+    // visualMode 仅在用户传旧 --visual-mode 时由 applyVisualArgs 写入，让
+    // parseVisualFlags 把它收进 deprecatedFlags 走 stderr 一次性告警（v0.6.0 BREAKING）。
     visualMode: null,
     visualTrace: null,
     visualRecord: undefined,

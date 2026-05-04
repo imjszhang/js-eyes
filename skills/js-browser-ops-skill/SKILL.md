@@ -112,7 +112,8 @@ CLI 旋钮（`browser-read.js` / `browser-interact.js` 都支持）：
 | `--visual` / `--no-visual` | 开 | 总开关；关闭后零额外 RTT |
 | `--visual-detail compact\|staged` | `staged` | `compact` 只 HUD，`staged` 全套 |
 | `--visual-ms <n>` | `420` | flash 持续时长（ms，clamp 120–4000） |
-| `--visual-mode auto\|dom\|hud\|both\|off` | `auto` | 锚点解析策略 |
+| `--visual-hud` / `--no-visual-hud` | 开 | 右上角 HUD 卡片（v0.6.0 取代 `--visual-mode hud/dom`） |
+| `--visual-flash` / `--no-visual-flash` | 开 | 元素 flash overlay/relation（v0.6.0 取代 `--visual-mode hud/dom`） |
 | `--visual-trace <file.jsonl>` | — | 把视觉事件落 jsonl，供回放 / headless 观测 |
 | `--visual-prefix <p>` | `__jse_browser_visual_` | DOM id 前缀（多 skill 共存防撞） |
 

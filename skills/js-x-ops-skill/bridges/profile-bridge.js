@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.4';
+  const VERSION = '3.1.0';
 
   // @@include ./common.js
 
@@ -69,6 +69,21 @@
   }
 
   function sessionState(){ return sessionStateCommon(); }
+
+  function domNavigationToProfile(args){
+    args = args || {};
+    const username = String(args.username || '').replace(/^@/, '').trim();
+    if (!username) return errResult('missing_username');
+    let path = '/' + encodeURIComponent(username);
+    if (args.includeReplies) path += '/with_replies';
+    return {
+      ok: false,
+      error: 'dom_navigation_required',
+      to: 'https://x.com' + path,
+      navMethod: 'navigateProfile',
+      navArgs: { username, tab: args.includeReplies ? 'with_replies' : undefined },
+    };
+  }
 
   function navigateProfile(args){
     args = args || {};
@@ -290,7 +305,81 @@
     };
   }
 
-  async function getProfile(args){
+  async function dom_getProfile(args){
+    args = args || {};
+    const username = String(args.username || '').replace(/^@/, '').trim();
+    if (!username) return errResult('missing_username');
+    const pathUser = parseUsernameFromPath();
+    if (!pathUser || pathUser.toLowerCase() !== username.toLowerCase()) {
+      return domNavigationToProfile(args);
+    }
+    if (args.includeReplies && parseTabFromPath() !== 'with_replies') {
+      return domNavigationToProfile(args);
+    }
+    const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
+    const tweets = [];
+    const seenIds = new Set();
+    const pageMeta = [];
+    function extractOnce(){
+      let added = 0;
+      document.querySelectorAll('article[data-testid="tweet"]').forEach(function(article){
+        try {
+          const tw = parseTweetArticle(article);
+          if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
+            seenIds.add(tw.tweetId);
+            tweets.push(tw);
+            added++;
+          }
+        } catch (_) {}
+      });
+      return added;
+    }
+    let ready = false;
+    for (let i = 0; i < 10; i++) {
+      if (extractOnce() > 0) { ready = true; break; }
+      await delay(800);
+    }
+    if (!ready) return errResult('dom_extract_failed', { hint: 'profile_no_tweets' });
+
+    const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
+    let noNew = 0;
+    for (let round = 1; round < maxScrollRounds; round++) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await delay(PAGE_DELAY_MS);
+      const more = extractOnce();
+      pageMeta.push({ page: round + 1, added: more });
+      if (more === 0) {
+        noNew++;
+        if (noNew >= 2) break;
+      } else {
+        noNew = 0;
+      }
+    }
+
+    return okResult({
+      username,
+      includeReplies: !!args.includeReplies,
+      profile: {
+        name: username,
+        screenName: username,
+        bio: '',
+        followersCount: 0,
+        followingCount: 0,
+        tweetCount: tweets.length,
+      },
+      total: tweets.length,
+      tweets,
+      pages: pageMeta,
+      meta: {
+        bridge: 'profile-bridge',
+        version: VERSION,
+        path: 'dom_getProfile',
+        domOnlyProfile: true,
+      },
+    });
+  }
+
+  async function api_getProfile(args){
     args = args || {};
     const username = String(args.username || '').replace(/^@/, '').trim();
     if (!username) return errResult('missing_username');
@@ -394,6 +483,18 @@
     });
   }
 
+  async function getProfile(args){
+    const gql = await api_getProfile(args);
+    if (gql.ok) return gql;
+    const tryDom = gql.error === 'graphql_discover_failed' || gql.error === 'graphql_fallback';
+    if (tryDom) {
+      const dom = await dom_getProfile(args);
+      if (dom.ok) return dom;
+      return dom;
+    }
+    return gql;
+  }
+
   const api = {
     __meta: { version: VERSION, name: 'profile-bridge' },
     probe,
@@ -401,6 +502,8 @@
     sessionState,
     navigateProfile,
     getProfile,
+    api_getProfile,
+    dom_getProfile,
   };
   window.__jse_x_profile__ = api;
   return { ok: true, version: VERSION, name: 'profile-bridge' };

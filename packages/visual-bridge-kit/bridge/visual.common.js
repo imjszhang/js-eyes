@@ -18,7 +18,7 @@
 //
 // 副作用：在 page world 创建 window.__jse_visual 单例（幂等）。
 // 单例之上挂：
-//   - config(opts)        运行期改 enabled / durationMs / detailLevel / mode / prefix / listStrideMs
+//   - config(opts)        运行期改 enabled / durationMs / detailLevel / hud / flash / prefix / listStrideMs (v0.6.0+ 不再有 mode)
 //   - getConfig()
 //   - flashElement(el, o)
 //   - flashRelation(from, to, o)
@@ -72,7 +72,7 @@
   // 注入 viewport（DOM 测量产物），但额外暴露 __jse_visual.viewport() 给 Node 端
   // wrapCallApi / makeFrameWriter 在截图前后 query 视口尺寸，写到 frame event 的
   // viewport 字段，让 hyperframes setStageBackground 设置 aspect-ratio。
-  const VERSION = '0.4.2';
+  const VERSION = '0.6.0';
 
   // 幂等保护：相同 VERSION 已注入则复用；老版本 / 不同 VERSION 强制重装，
   // 避免 Firefox 长 tab 跨会话缓存了 0.2.x bridge 而仍写 viewport / rect 字段。
@@ -83,11 +83,19 @@
   }
   const EVENTS_BUFFER_LIMIT = 200;
 
+  // v0.6.0 BREAKING：旧 `mode: 'auto'|'dom'|'hud'|'both'|'off'` 已拆成两个正交布尔位 +
+  // 顶层 `enabled` 总开关。映射：
+  //   auto / both → hud=true,  flash=true
+  //   dom         → hud=false, flash=true
+  //   hud         → hud=true,  flash=false
+  //   off         → enabled=false (等价 --no-visual)
+  // CLI/Node 侧旧 --visual-mode 已硬切，传入会进 deprecatedFlags 并被忽略。
   const VISUAL_DEFAULTS = {
     enabled: true,
     durationMs: 420,
     detailLevel: 'staged',  // 'compact' | 'staged'
-    mode: 'auto',           // 'auto' | 'dom' | 'hud' | 'both'
+    hud: true,              // 是否显示右上角 HUD 卡片（含 announceStage / before / after 的 hud）
+    flash: true,            // 是否在元素上画 flash overlay / flashRelation 连线
     prefix: '__jse_visual_',
     listStrideMs: 90,
     zIndex: 2147483000,
@@ -116,7 +124,40 @@
     hudTimer: null,
     events: [],
     listenersInstalled: false,
+    /** 异步 stagger flash 全部画完前，JPEG 截图不应触发；由 bumpCaptureSettleRelative 推进 */
+    captureSettleDeadlineMs: 0,
   };
+
+  /**
+   * 由 defaultStaggerFlashItems / 站点 setSiteStaggerFlashItems 调用：
+   *   在「当前时刻」之后至少再等 deltaMs 毫秒，才允许 captureVisibleTab。
+   * Node 端 wrapCallApi 会在 hooks.captureFrame 之前 await awaitCaptureSettle()。
+   */
+  function bumpCaptureSettleRelative(deltaMs){
+    const add = Math.max(0, Math.round(Number(deltaMs) || 0));
+    if (!add) return;
+    const edge = Date.now() + add;
+    state.captureSettleDeadlineMs = Math.max(state.captureSettleDeadlineMs || 0, edge);
+  }
+
+  /**
+   * Promise：等到 captureSettleDeadlineMs（相对「当前时刻」的 scheduling edge）。
+   * 无待定 stagger 时仍会 requestAnimationFrame + 0ms，给同步 HUD/outline 一帧绘制时间。
+   */
+  function awaitCaptureSettle(){
+    const deadline = state.captureSettleDeadlineMs || 0;
+    state.captureSettleDeadlineMs = 0;
+    const ms = Math.max(0, deadline - Date.now());
+    return new Promise(function(resolve){
+      try {
+        requestAnimationFrame(function(){
+          setTimeout(resolve, ms);
+        });
+      } catch (_) {
+        setTimeout(resolve, ms);
+      }
+    });
+  }
 
   function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
 
@@ -132,11 +173,6 @@
     return fallback || state.config.detailLevel;
   }
 
-  function normalizeMode(value, fallback){
-    if (value === 'auto' || value === 'dom' || value === 'hud' || value === 'both' || value === 'off') return value;
-    return fallback || state.config.mode;
-  }
-
   function setConfig(opts){
     const next = Object.assign({}, state.config);
     if (!opts || typeof opts !== 'object') {
@@ -146,7 +182,8 @@
     if (typeof opts.enabled === 'boolean') next.enabled = opts.enabled;
     if (opts.durationMs != null) next.durationMs = normalizeDuration(opts.durationMs, next.durationMs);
     if (opts.detailLevel != null) next.detailLevel = normalizeDetailLevel(opts.detailLevel, next.detailLevel);
-    if (opts.mode != null) next.mode = normalizeMode(opts.mode, next.mode);
+    if (typeof opts.hud === 'boolean') next.hud = opts.hud;
+    if (typeof opts.flash === 'boolean') next.flash = opts.flash;
     if (typeof opts.prefix === 'string' && opts.prefix.length > 0 && opts.prefix.length < 64) next.prefix = opts.prefix;
     if (opts.listStrideMs != null) {
       const n = Number(opts.listStrideMs);
@@ -330,7 +367,7 @@
 
   function flashElement(el, opts){
     if (!state.config.enabled) return false;
-    if (state.config.mode === 'hud' || state.config.mode === 'off') return false;
+    if (!state.config.flash) return false;
     if (!el) return false;
     let rect; try { rect = el.getBoundingClientRect(); } catch (_) { rect = null; }
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
@@ -371,7 +408,7 @@
 
   function flashRelation(fromEl, toEl, opts){
     if (!state.config.enabled) return false;
-    if (state.config.mode === 'hud' || state.config.mode === 'off') return false;
+    if (!state.config.flash) return false;
     if (!fromEl || !toEl) return false;
     if (!isStaged()) return false;
     const o = opts || {};
@@ -433,7 +470,7 @@
 
   function showHud(opts){
     if (!state.config.enabled) return false;
-    if (state.config.mode === 'dom' || state.config.mode === 'off') return false;
+    if (!state.config.hud) return false;
     const o = opts || {};
     ensureRoot();
     const id = ids();
@@ -508,6 +545,7 @@
       clearTimeout(state.hudTimer);
       state.hudTimer = null;
     }
+    state.captureSettleDeadlineMs = 0;
   }
 
   // ---- 调度层 hook：Node 端 wrapCallApi 在 callApi 前后调用 ----
@@ -518,7 +556,7 @@
     const tone = h.tone || 'pending';
     const action = h.label || h.action || h.toolName || '';
     let element = null;
-    if (h.anchor && (state.config.mode === 'auto' || state.config.mode === 'dom' || state.config.mode === 'both')) {
+    if (h.anchor && state.config.flash) {
       element = api.resolveAnchor(h.anchor);
     }
     if (element) {
@@ -547,7 +585,7 @@
     const action = h.label || h.action || h.toolName || '';
     const detail = s.detail || (s.ok === false ? (s.errorCode || 'failed') : '');
     let element = null;
-    if (h.anchor && (state.config.mode === 'auto' || state.config.mode === 'dom' || state.config.mode === 'both')) {
+    if (h.anchor && state.config.flash) {
       element = api.resolveAnchor(h.anchor);
     }
     if (element) {
@@ -614,6 +652,12 @@
         if (el) flashElement(el, { tone, label: o.label || '' , anchor: item });
       }, idx * stride);
     });
+    if (items.length > 0) {
+      const lastSlot = (items.length - 1) * stride;
+      const dur = normalizeDuration(undefined, state.config.durationMs);
+      // 在「最后一条 stagger 已画出 outline」之后、removeLater 撤框之前截 JPEG
+      bumpCaptureSettleRelative(lastSlot + Math.floor(dur * 0.55) + 80);
+    }
     return items.length;
   }
 
@@ -661,6 +705,8 @@
     setSiteStaggerFlashItems(fn){
       if (typeof fn === 'function') api.staggerFlashItems = fn;
     },
+    bumpCaptureSettleRelative,
+    awaitCaptureSettle,
   };
 
   window.__jse_visual = api;

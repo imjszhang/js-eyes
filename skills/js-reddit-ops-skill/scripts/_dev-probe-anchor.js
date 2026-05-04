@@ -335,7 +335,7 @@ function renderMarkdown(p, nav, ctx){
   lines.push('## 根因判读建议');
   lines.push('');
   lines.push('- 如果 `shreddit-post` count=0、但 `article[id^="t3_"]` 或 `[data-fullname^="t3_"]` 有命中 → 走 PR3 修复策略 A（更新 selector 链）');
-  lines.push('- 如果 `shreddit-post` count>0 且每个 t3_ 都 OK✓ 但录像 0 flash → 检查 jseVisual.config.mode / staggerFlashItems 调用链路');
+  lines.push('- 如果 `shreddit-post` count>0 且每个 t3_ 都 OK✓ 但录像 0 flash → 检查 jseVisual.config.flash（v0.6.0 由 mode 拆出）/ staggerFlashItems 调用链路');
   lines.push('- 如果所有 selector 都 miss、但 shadowProbe.innerPosts > 0 → 走策略 E（shadow piercing）');
   lines.push('- 如果有命中但 inVP=no（offVP）很多 → 走策略 B（scrollIntoView retry）');
   return lines.join('\n');

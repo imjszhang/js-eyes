@@ -222,6 +222,18 @@ async function wrapCallApi(session, hint, fn, hooks){
 
   await callRawSafely(session, buildAfterExpression(hint, summary));
 
+  // JPEG snapshot：等 stagger flash outline 画完再 captureVisibleTab（否则帧里只有静态页面）。
+  // 无 hooks.captureFrame 时不阻塞主链路。
+  if (hooks && typeof hooks.captureFrame === 'function'
+      && session && typeof session.callRaw === 'function') {
+    try {
+      await session.callRaw(
+        '(window.__jse_visual && window.__jse_visual.awaitCaptureSettle && window.__jse_visual.awaitCaptureSettle()) || Promise.resolve()',
+        { timeoutMs: 12000 },
+      );
+    } catch (_) {}
+  }
+
   // v0.5.0 snapshot mode: 主链路在每个命令边界截一帧。
   //   - 默认 await，等 onWritten 把 frame 事件 emit 进 ring buffer，
   //     drainVisualEvents 才能拿到这一帧。
@@ -344,11 +356,16 @@ async function wrapInjectCall(ctx, hint, fn, hooks){
 
   let events = [];
   if (visualEnabled) {
-    const afterBundle = '(function(){'
-      + buildAfterExpression(hint, summary) + ';'
-      + 'return ' + buildDrainExpression() + ';'
-      + '})()';
-    const drained = await safeRaw(afterBundle);
+    await safeRaw(buildAfterExpression(hint, summary));
+    if (hooks && typeof hooks.captureFrame === 'function') {
+      try {
+        await ctx.callRaw(
+          '(window.__jse_visual && window.__jse_visual.awaitCaptureSettle && window.__jse_visual.awaitCaptureSettle()) || Promise.resolve()',
+          { timeoutMs: 12000 },
+        );
+      } catch (_) {}
+    }
+    const drained = await safeRaw(buildDrainExpression());
     if (Array.isArray(drained)) events = drained;
   }
 

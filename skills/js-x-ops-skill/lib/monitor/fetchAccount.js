@@ -24,6 +24,8 @@ async function fetchAccount(browser, settings, options = {}) {
       minLikes: settings.minLikes || 0,
       recording: options.recording,
       logger: options.logger,
+      /** monitor：仅 GraphQL，避免 DOM/visual 与 daemon 写盘放大（见 docs/dev/monitor.md） */
+      readMode: 'graphql',
     });
 
     const rawTweets = Array.isArray(resp.results) ? resp.results : [];

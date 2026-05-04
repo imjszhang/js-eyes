@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.0.2';
+  const VERSION = '3.1.0';
 
   // @@include ./common.js
 
@@ -62,6 +62,17 @@
 
   function sessionState(){ return sessionStateCommon(); }
 
+  function domNavigationToHome(args){
+    args = args || {};
+    return {
+      ok: false,
+      error: 'dom_navigation_required',
+      to: 'https://x.com/home',
+      navMethod: 'navigateHome',
+      navArgs: { feed: args.feed || 'foryou' },
+    };
+  }
+
   function navigateHome(args){
     args = args || {};
     const feed = args.feed && ALLOWED_FEEDS.has(String(args.feed).toLowerCase())
@@ -70,17 +81,85 @@
     return navigateLocation('https://x.com/home');
   }
 
-  async function getHome(args){
+  async function dom_getHome(args){
+    args = args || {};
+    const feedRaw = String(args.feed || inferFeedFromPath()).toLowerCase();
+    const feed = ALLOWED_FEEDS.has(feedRaw) ? feedRaw : 'foryou';
+    const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
+    const onHome = /^\/(?:home\/?)?$/.test(location.pathname || '');
+    if (!onHome) return domNavigationToHome(args);
+
+    const allTweets = [];
+    const seenIds = new Set();
+    const pageMeta = [];
+    function extractOnce(){
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      let added = 0;
+      articles.forEach(function(article){
+        try {
+          const tw = parseTweetArticle(article);
+          if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
+            seenIds.add(tw.tweetId);
+            allTweets.push(tw);
+            added++;
+          }
+        } catch (_) {}
+      });
+      return added;
+    }
+
+    let contentReady = false;
+    for (let i = 0; i < 10; i++) {
+      if (extractOnce() > 0) { contentReady = true; break; }
+      await delay(800);
+    }
+    if (!contentReady) {
+      return errResult('dom_extract_failed', { hint: 'home_no_tweets_in_dom' });
+    }
+
+    const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
+    let noNewCount = 0;
+    for (let round = 1; round < maxScrollRounds; round++) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await delay(PAGE_DELAY_MS);
+      const more = extractOnce();
+      pageMeta.push({ page: round + 1, ok: true, added: more, scrollRound: round });
+      if (more === 0) {
+        noNewCount++;
+        if (noNewCount >= 2) break;
+      } else {
+        noNewCount = 0;
+      }
+    }
+
+    return okResult({
+      feed,
+      total: allTweets.length,
+      tweets: allTweets,
+      pages: pageMeta,
+      meta: {
+        bridge: 'home-bridge',
+        version: VERSION,
+        opName: 'DOM_HOME',
+        path: 'dom_getHome',
+        endedReason: 'dom_extracted',
+      },
+    });
+  }
+
+  async function api_getHome(args){
     args = args || {};
     const feedRaw = String(args.feed || inferFeedFromPath()).toLowerCase();
     const feed = ALLOWED_FEEDS.has(feedRaw) ? feedRaw : 'foryou';
     const maxPages = clampLimit(args.maxPages, DEFAULT_MAX_PAGES, MAX_MAX_PAGES);
     const opName = feedToOp(feed);
+    const onHome = /^\/(?:home\/?)?$/.test(location.pathname || '');
+    if (!onHome) return domNavigationToHome(args);
 
     let disc = await discoverGraphQLParams([opName]);
     let meta = disc.data && disc.data[opName];
     if (!meta || !meta.queryId) {
-      return errResult('graphql_discover_failed', { opName });
+      return errResult('graphql_discovery_failed', { opName });
     }
     let features = meta.features || DEFAULT_GRAPHQL_FEATURES;
     let variablesTemplate = meta.variables || null;
@@ -138,6 +217,9 @@
         }
       }
       if (!resp.ok) {
+        if (page === 1) {
+          return errResult('graphql_fallback', { opName, statusCode: resp.statusCode || null });
+        }
         pageMeta.push({ page, ok: false, error: resp.error, statusCode: resp.statusCode || null, durMs });
         break;
       }
@@ -181,18 +263,33 @@
         graphqlSource: meta.source || 'unknown',
         pausedOn429: pausedOnce,
         endedReason: cursor ? 'reached_max_pages' : 'no_cursor',
+        path: 'api_getHome',
       },
     });
   }
 
-  const api = {
+  async function getHome(args){
+    const gql = await api_getHome(args);
+    if (gql.ok) return gql;
+    const tryDom = gql.error === 'graphql_fallback' || gql.error === 'graphql_discovery_failed';
+    if (tryDom) {
+      const dom = await dom_getHome(args);
+      if (dom.ok) return dom;
+      return dom;
+    }
+    return gql;
+  }
+
+  const apiExport = {
     __meta: { version: VERSION, name: 'home-bridge' },
     probe,
     state,
     sessionState,
     navigateHome,
     getHome,
+    api_getHome,
+    dom_getHome,
   };
-  window.__jse_x_home__ = api;
+  window.__jse_x_home__ = apiExport;
   return { ok: true, version: VERSION, name: 'home-bridge' };
 })();

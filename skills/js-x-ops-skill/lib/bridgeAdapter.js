@@ -3,14 +3,12 @@
 /**
  * lib/bridgeAdapter.js
  *
- * 把 4 个 READ bridge（search/profile/post/home）的输出适配成
- * 与 lib/api.js 里 runSearchTweets / runGetProfileTweets / runGetPost / runGetHomeFeed
- * 字段级一致的结构，方便 lib/api.js 把内部实现切到 bridge 时外部签名零变化。
+ * 把 4 个 READ bridge 的 **单次** `session.callApi(method)` 输出适配成
+ * 与 lib/api.js 里 legacy `runSearchTweets` / … 字段级一致的结构。
  *
- * 4 个 viaBridge 函数都接受调用方现成的 BrowserAutomation 实例（不重复 connect/close），
- * 内部各自构造 Session（仅借 bot 不接管），结束时只清 Session 自身状态。
- *
- * 失败时抛 Error，code 字段方便上层用 FALLBACK_REASON 分类。
+ * v3.1：`lib/api.js` 在启用 bridge 时已改为统一走 `lib/runTool.js`；
+ * 本文件仍导出 `searchViaBridge` 等供外部直接复用或测试，并以
+ * `classifyBridgeError` / `FALLBACK_REASON` 服务 `api.js` 的兜底分类。
  */
 
 const { Session } = require('./session');

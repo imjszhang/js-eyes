@@ -4,8 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const { BrowserAutomation } = require('./js-eyes-client');
 const { getPageProfile, DEFAULT_WS_ENDPOINT } = require('./config');
+const {
+  makeBridgeExpander,
+  injectBridgeConfigSnippet,
+} = require('@js-eyes/visual-bridge-kit');
 
-const COMMON_BRIDGE_PATH = path.join(__dirname, '..', 'bridges', 'common.js');
+const BRIDGES_DIR = path.join(__dirname, '..', 'bridges');
+const expandBridgeSource = makeBridgeExpander({ baseDir: BRIDGES_DIR });
 
 function parseMaybeJson(value){
   if (typeof value !== 'string') return value;
@@ -13,12 +18,6 @@ function parseMaybeJson(value){
   if (!trimmed) return value;
   if (!/^[\[{"]/.test(trimmed) && !/^(true|false|null|-?\d)/.test(trimmed)) return value;
   try { return JSON.parse(trimmed); } catch { return value; }
-}
-
-function expandBridgeSource(src){
-  return src.replace(/^[ \t]*\/\/\s*@@include\s+\.\/common\.js\s*$/m, () => {
-    return fs.readFileSync(COMMON_BRIDGE_PATH, 'utf8');
-  });
 }
 
 /**
@@ -94,6 +93,8 @@ class Session {
     this.target = null;
     this._bridgeSrcCache = null;
     this._bridgeVersionCache = null;
+    this.visualConfig = opts.visualConfig || null;
+    this._visualConfigApplied = false;
   }
 
   log(msg){
@@ -311,6 +312,7 @@ class Session {
     }
     if (cur === version) {
       this.log(`bridge up-to-date (${version})`);
+      await this._applyVisualConfig();
       return { version, reinstalled: false };
     }
     this.log(`bridge ${cur ? `stale ${cur}` : 'missing'}, installing ${version}...`);
@@ -322,7 +324,20 @@ class Session {
       throw err;
     }
     this.log(`bridge installed: version=${installResult.version}`);
+    this._visualConfigApplied = false;
+    await this._applyVisualConfig();
     return { version, reinstalled: true };
+  }
+
+  async _applyVisualConfig(){
+    if (this._visualConfigApplied) return;
+    if (!this.visualConfig) return;
+    try {
+      await this.callRaw(injectBridgeConfigSnippet(this.visualConfig));
+      this._visualConfigApplied = true;
+    } catch (err) {
+      this.log(`visual config inject failed: ${err && err.message}`);
+    }
   }
 
   async callApi(method, args = [], options = {}){

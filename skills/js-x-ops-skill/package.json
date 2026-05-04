@@ -1,6 +1,6 @@
 {
   "name": "js-x-ops-skill",
-  "version": "3.0.6",
+  "version": "3.2.0",
   "description": "JS-Eyes 技能：X.com 内容操作，覆盖搜索发现、主页与 Feed 浏览、详情读取、发帖相关流程，以及账号定时监控（monitor 子系统）",
   "private": true,
   "main": "index.js",
@@ -21,6 +21,7 @@
   "dependencies": {
     "@js-eyes/config": "^2.0.0",
     "@js-eyes/skill-recording": "^2.0.0",
+    "@js-eyes/visual-bridge-kit": "file:../../packages/visual-bridge-kit",
     "ws": "^8.18.0"
   }
 }

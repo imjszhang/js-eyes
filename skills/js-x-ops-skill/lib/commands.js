@@ -3,6 +3,33 @@
 const { PAGE_PROFILES, DEFAULT_PAGE } = require('./config');
 const targets = require('./toolTargets');
 
+const READ_CMD_DEF = {
+  search: {
+    methodBase: 'search',
+    domSupported: true,
+    apiSupported: true,
+    defaultReadMode: 'auto',
+  },
+  profile: {
+    methodBase: 'getProfile',
+    domSupported: true,
+    apiSupported: true,
+    defaultReadMode: 'auto',
+  },
+  post: {
+    methodBase: 'getPost',
+    domSupported: true,
+    apiSupported: true,
+    defaultReadMode: 'auto',
+  },
+  home: {
+    methodBase: 'getHome',
+    domSupported: true,
+    apiSupported: true,
+    defaultReadMode: 'auto',
+  },
+};
+
 /**
  * COMMANDS 表（声明式）
  *
@@ -87,6 +114,7 @@ const COMMANDS = {
     api: 'sessionState',
     pages: ['home'],
     defaultPage: 'home',
+    cmdDef: { legacyOnly: true },
     argSpec: [],
     toArgs: () => [{}],
     targetUrl: () => null,
@@ -96,12 +124,14 @@ const COMMANDS = {
     kind: 'tool',
     toolName: 'x_search_tweets',
     api: 'search',
+    cmdDef: READ_CMD_DEF.search,
     pages: ['search'],
     defaultPage: 'search',
     argSpec: [{ name: 'keyword', required: true }],
     toArgs: (opts, positional) => [{
       keyword: positional[0],
       sort: opts.sort || 'top',
+      readMode: opts.readMode || undefined,
       maxPages: opts.maxPages ? Number(opts.maxPages) : 1,
       lang: opts.lang || undefined,
       from: opts.from || undefined,
@@ -121,11 +151,13 @@ const COMMANDS = {
     kind: 'tool',
     toolName: 'x_get_profile',
     api: 'getProfile',
+    cmdDef: READ_CMD_DEF.profile,
     pages: ['profile'],
     defaultPage: 'profile',
     argSpec: [{ name: 'username', required: true }],
     toArgs: (opts, positional) => [{
       username: positional[0],
+      readMode: opts.readMode || undefined,
       maxPages: opts.maxPages ? Number(opts.maxPages) : 50,
       maxTweets: opts.maxTweets ? Number(opts.maxTweets) : 0,
       since: opts.since || undefined,
@@ -142,6 +174,7 @@ const COMMANDS = {
     kind: 'tool',
     toolName: 'x_get_post',
     api: 'getPost',
+    cmdDef: READ_CMD_DEF.post,
     pages: ['post'],
     defaultPage: 'post',
     // argSpec 只强约束 index 0；CLI 层额外接受 1..N 个 positional 转交给
@@ -149,6 +182,7 @@ const COMMANDS = {
     argSpec: [{ name: 'tweetUrl', required: true }],
     toArgs: (opts, positional) => [{
       url: positional[0],
+      readMode: opts.readMode || undefined,
       withThread: !!opts.withThread,
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
     }],
@@ -159,11 +193,13 @@ const COMMANDS = {
     kind: 'tool',
     toolName: 'x_get_home_feed',
     api: 'getHome',
+    cmdDef: READ_CMD_DEF.home,
     pages: ['home'],
     defaultPage: 'home',
     argSpec: [],
     toArgs: (opts) => [{
       feed: opts.feed || 'foryou',
+      readMode: opts.readMode || undefined,
       maxPages: opts.maxPages ? Number(opts.maxPages) : 5,
       maxTweets: opts.maxTweets ? Number(opts.maxTweets) : 0,
       minLikes: opts.minLikes ? Number(opts.minLikes) : 0,
@@ -263,6 +299,24 @@ function parseArgv(argv) {
     anchors: false,
     filter: null,
     limit: null,
+    readMode: null,
+    visual: undefined,
+    visualDetail: null,
+    visualMs: null,
+    visualHud: undefined,
+    visualFlash: undefined,
+    visualMode: null,
+    visualTrace: null,
+    visualRecord: undefined,
+    visualListStride: null,
+    visualPrefix: null,
+    noFrames: false,
+    hiDpi: false,
+    maxFrames: null,
+    visualRecordFrames: null,
+    visualFramesThrottle: null,
+    redactRect: null,
+    redactConfig: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -284,6 +338,49 @@ function parseArgv(argv) {
     else if (a === '--anchors') opts.anchors = true;
     else if (a === '--filter') eat('filter');
     else if (a.startsWith('--filter=')) eatEq('filter', '--filter=');
+    else if (a === '--read-mode') eat('readMode');
+    else if (a.startsWith('--read-mode=')) eatEq('readMode', '--read-mode=');
+    else if (a === '--mode' || a.startsWith('--mode=')) {
+      // v3.2 BREAKING：runTool 路径选择 flag 重命名为 --read-mode（与 visual 的 --visual-* 解耦）。
+      const err = new Error('--mode 已在 v3.2 重命名为 --read-mode（避免与 --visual-mode 概念混淆）');
+      err.code = 'E_BAD_ARG';
+      throw err;
+    }
+    else if (a === '--visual') opts.visual = true;
+    else if (a === '--no-visual') opts.visual = false;
+    else if (a === '--visual-detail') eat('visualDetail');
+    else if (a.startsWith('--visual-detail=')) eatEq('visualDetail', '--visual-detail=');
+    else if (a === '--visual-ms') eat('visualMs');
+    else if (a.startsWith('--visual-ms=')) eatEq('visualMs', '--visual-ms=');
+    else if (a === '--visual-hud') opts.visualHud = true;
+    else if (a === '--no-visual-hud') opts.visualHud = false;
+    else if (a === '--visual-flash') opts.visualFlash = true;
+    else if (a === '--no-visual-flash') opts.visualFlash = false;
+    // v0.6.0 BREAKING：--visual-mode 仍记录到 opts，让 parseVisualFlags 进 deprecatedFlags
+    // 走 stderr 一次性告警；不再下发到 bridge config。
+    else if (a === '--visual-mode') eat('visualMode');
+    else if (a.startsWith('--visual-mode=')) eatEq('visualMode', '--visual-mode=');
+    else if (a === '--visual-trace') eat('visualTrace');
+    else if (a.startsWith('--visual-trace=')) eatEq('visualTrace', '--visual-trace=');
+    else if (a === '--visual-record') {
+      const next = argv[i + 1];
+      if (next != null && !next.startsWith('-')) { opts.visualRecord = next; i += 1; }
+      else { opts.visualRecord = true; }
+    }
+    else if (a.startsWith('--visual-record=')) eatEq('visualRecord', '--visual-record=');
+    else if (a === '--no-visual-record') opts.visualRecord = false;
+    else if (a === '--no-frames') opts.noFrames = true;
+    else if (a === '--hi-dpi') opts.hiDpi = true;
+    else if (a === '--max-frames') eat('maxFrames');
+    else if (a.startsWith('--max-frames=')) eatEq('maxFrames', '--max-frames=');
+    else if (a === '--visual-list-stride') eat('visualListStride');
+    else if (a.startsWith('--visual-list-stride=')) eatEq('visualListStride', '--visual-list-stride=');
+    else if (a === '--visual-prefix') eat('visualPrefix');
+    else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
+    else if (a === '--visual-record-frames') opts.visualRecordFrames = true;
+    else if (a === '--no-visual-record-frames') opts.visualRecordFrames = false;
+    else if (a === '--visual-frames-throttle') eat('visualFramesThrottle');
+    else if (a.startsWith('--visual-frames-throttle=')) eatEq('visualFramesThrottle', '--visual-frames-throttle=');
     else if (a === '--tab') eat('tab');
     else if (a.startsWith('--tab=')) eatEq('tab', '--tab=');
     else if (a === '--page') eat('page');
@@ -369,6 +466,8 @@ function printHelp() {
     '  --min-likes/--min-retweets/--min-replies <n>  互动数过滤',
     '  --exclude-replies/--exclude-retweets/--include-replies/--include-retweets',
     '  --with-thread / --with-replies <n>            post 命令选项',
+    '  --read-mode auto|graphql|dom   READ：auto=GraphQL 优先再 DOM（v3.2 由 --mode 重命名而来，与 visual-* 解耦）',
+    '  --visual / --no-visual / --visual-hud / --visual-flash / --visual-record / --visual-trace …  见 visual-bridge-kit',
     '  --pretty                 JSON 缩进 2 空格输出',
     '  -v, --verbose            session 流转日志输出到 stderr',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
@@ -419,4 +518,4 @@ function hasWriteFlags(argv) {
   return false;
 }
 
-module.exports = { COMMANDS, parseArgv, printHelp, hasWriteFlags };
+module.exports = { COMMANDS, READ_CMD_DEF, parseArgv, printHelp, hasWriteFlags };

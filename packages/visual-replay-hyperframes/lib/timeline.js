@@ -351,6 +351,12 @@ function extractAnchorId(anchor){
   if (typeof anchor.spec === 'string' && anchor.spec) return anchor.spec;
   if (typeof anchor.fullname === 'string' && anchor.fullname) return anchor.fullname;
   if (typeof anchor.id === 'string' && anchor.id) return anchor.id;
+  // x-ops 命名空间：与 translator.js::anchorIdOf 必须保持一致，否则 flash event
+  // 的 anchorId 与 HTML 卡片的 data-anchor-id 对不上，builtin-flash plugin 因
+  // anchorId 为空 `if (!f.anchorId) continue` → 整段 timeline 调用被跳过 → 离线
+  // composition 完全看不到 .flash-active 高亮（reddit 的 fullname 无此问题）。
+  if (anchor.tweetId != null && String(anchor.tweetId)) return 'tweet:' + String(anchor.tweetId);
+  if (typeof anchor.username === 'string' && anchor.username) return 'user:' + anchor.username;
   if (typeof anchor.subreddit === 'string' && anchor.subreddit) return 'sub:' + anchor.subreddit;
   if (typeof anchor.user === 'string' && anchor.user) return 'user:' + anchor.user;
   if (typeof anchor.url === 'string' && anchor.url) return 'url:' + anchor.url;

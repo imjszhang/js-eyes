@@ -76,10 +76,10 @@ async function runTool(browser, spec) {
     throw new Error('runTool: toolName/pageKey/method are required');
   }
 
-  const requestedMode = options.mode
-    || (cmdDef && cmdDef.defaultMode)
+  const requestedReadMode = options.readMode
+    || (cmdDef && cmdDef.defaultReadMode)
     || 'auto';
-  const tryOrder = buildTryOrder(method, requestedMode, cmdDef);
+  const tryOrder = buildTryOrder(method, requestedReadMode, cmdDef);
 
   const fakeUrl = `reddit-tool://${toolName}/?args=${encodeURIComponent(JSON.stringify(args || {}))}`;
   const runContext = createRunContext({
@@ -383,8 +383,8 @@ async function runTool(browser, spec) {
     },
     bridge: bridgeMeta,
     ok,
-    mode: usedMode,
-    requestedMode,
+    readMode: usedMode,
+    requestedReadMode,
     fallback: fellBack,
     triedMethods,
     usedMethod,

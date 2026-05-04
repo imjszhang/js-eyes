@@ -14,7 +14,7 @@
  * 用法：
  *   node scripts/_dev/visual-demo.js                        # 默认 r/AskReddit + nodejs
  *   node scripts/_dev/visual-demo.js --sub science --query react
- *   node scripts/_dev/visual-demo.js --visual-mode hud      # 仅 HUD
+ *   node scripts/_dev/visual-demo.js --no-visual-flash      # 仅 HUD（v0.6.0 取代 --visual-mode hud）
  *   node scripts/_dev/visual-demo.js --visual-trace runs/visual-demo.jsonl
  *
  * 注意：

@@ -57,7 +57,7 @@ const COMMANDS = {
     defaultPage: 'home',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [],
     toArgs: () => [{}],
     targetUrl: () => null,
@@ -72,7 +72,7 @@ const COMMANDS = {
     // v3.7.0 dom-first：bridge 同时暴露 dom_listSubreddit / api_listSubreddit
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [{ name: 'sub', required: true }],
     toArgs: (opts, positional) => [{
       sub: positional[0],
@@ -92,7 +92,7 @@ const COMMANDS = {
     defaultPage: 'post',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [{ name: 'url', required: true }],
     toArgs: (opts, positional) => [{
       url: positional[0],
@@ -105,7 +105,7 @@ const COMMANDS = {
       url: positional[0],
       permalink: opts.permalink,
     }),
-    help: '帖子详情（v3.7.0 dom-first 入口，走 runTool dispatch + --mode）：get-post <url> [--depth N] [--limit N] [--sort top|...] [--mode dom|api|auto]',
+    help: '帖子详情（v3.7.0 dom-first 入口，走 runTool dispatch）：get-post <url> [--depth N] [--limit N] [--sort top|...] [--read-mode dom|api|auto]',
   },
   'subreddit-about': {
     kind: 'tool',
@@ -115,7 +115,7 @@ const COMMANDS = {
     defaultPage: 'subreddit',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [{ name: 'sub', required: true }],
     toArgs: (opts, positional) => [{ sub: positional[0] }],
     targetUrl: (opts, positional) => targets.subredditAboutUrl({ sub: positional[0] }),
@@ -129,7 +129,7 @@ const COMMANDS = {
     defaultPage: 'search',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [{ name: 'q', required: true }],
     toArgs: (opts, positional) => [{
       q: positional[0],
@@ -158,7 +158,7 @@ const COMMANDS = {
     defaultPage: 'user',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [{ name: 'name', required: true }],
     toArgs: (opts, positional) => [{
       name: positional[0],
@@ -179,7 +179,7 @@ const COMMANDS = {
     defaultPage: 'inbox',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [],
     toArgs: (opts) => [{
       box: opts.box || 'inbox',
@@ -197,7 +197,7 @@ const COMMANDS = {
     defaultPage: 'home',
     domSupported: true,
     apiSupported: true,
-    defaultMode: 'auto',
+    defaultReadMode: 'auto',
     argSpec: [],
     toArgs: (opts) => [{
       feed: opts.feed || 'home',
@@ -348,11 +348,13 @@ function parseArgv(argv) {
     visualDetail: null,
     visualMs: null,
     visualMode: null,
+    visualHud: undefined,
+    visualFlash: undefined,
     visualTrace: null,
     visualListStride: null,
     visualPrefix: null,
-    // v3.7.0 dom-first：dom|api|auto；null 时落入 cmdDef.defaultMode || 'auto'
-    mode: null,
+    // v3.7.0 dom-first（v3.8 由 mode → readMode）：dom|api|auto；null 时落入 cmdDef.defaultReadMode || 'auto'
+    readMode: null,
     // v3.8.0 snapshot mode：默认 visualRecord 启用 = 自动每命令截 1 帧 JPEG q=82。
     //   --no-frames     关掉截图（CI / 性能敏感场景）
     //   --hi-dpi        按设备像素截（4× 大但 retina 清晰，opt-in）
@@ -423,6 +425,11 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-detail=')) eatEq('visualDetail', '--visual-detail=');
     else if (a === '--visual-ms') eat('visualMs');
     else if (a.startsWith('--visual-ms=')) eatEq('visualMs', '--visual-ms=');
+    else if (a === '--visual-hud') opts.visualHud = true;
+    else if (a === '--no-visual-hud') opts.visualHud = false;
+    else if (a === '--visual-flash') opts.visualFlash = true;
+    else if (a === '--no-visual-flash') opts.visualFlash = false;
+    // v0.6.0 BREAKING：--visual-mode 仍记录到 opts，让 parseVisualFlags 进 deprecatedFlags。
     else if (a === '--visual-mode') eat('visualMode');
     else if (a.startsWith('--visual-mode=')) eatEq('visualMode', '--visual-mode=');
     else if (a === '--visual-trace') eat('visualTrace');
@@ -438,8 +445,13 @@ function parseArgv(argv) {
     else if (a.startsWith('--visual-list-stride=')) eatEq('visualListStride', '--visual-list-stride=');
     else if (a === '--visual-prefix') eat('visualPrefix');
     else if (a.startsWith('--visual-prefix=')) eatEq('visualPrefix', '--visual-prefix=');
-    else if (a === '--mode') eat('mode');
-    else if (a.startsWith('--mode=')) eatEq('mode', '--mode=');
+    else if (a === '--read-mode') eat('readMode');
+    else if (a.startsWith('--read-mode=')) eatEq('readMode', '--read-mode=');
+    else if (a === '--mode' || a.startsWith('--mode=')) {
+      const err = new Error('--mode 已重命名为 --read-mode（避免与 visual-* 概念混淆）');
+      err.code = 'E_BAD_ARG';
+      throw err;
+    }
     else if (a === '--no-frames') opts.noFrames = true;
     else if (a === '--frames') opts.noFrames = false;
     else if (a === '--hi-dpi') opts.hiDpi = true;
@@ -531,7 +543,8 @@ function printHelp() {
     '  --no-visual-record       显式关闭会话包',
     '  --visual-list-stride <ms> 列表呼吸感步进 ms（默认 90）',
     '  --visual-prefix <p>      DOM id 前缀（默认 __jse_reddit_visual_）',
-    '  --mode <dom|api|auto>    执行模式（默认 auto：dom 优先，失败回退 api）；仅在 bridge 暴露 dom_<name> 时生效',
+    '  --read-mode <dom|api|auto>  READ 路径选择（默认 auto：dom 优先，失败回退 api）；仅在 bridge 暴露 dom_<name> 时生效。v3.8 由 --mode 重命名而来。',
+    '  --visual-hud / --no-visual-hud / --visual-flash / --no-visual-flash  v0.6.0 取代 --visual-mode hud/dom',
     '  --no-frames              v3.8.0 snapshot mode：关闭主链路 PNG/JPEG 截图（CI / 性能敏感场景）',
     '  --hi-dpi                 v3.8.0 snapshot mode：截图按设备像素（默认 CSS 像素 q=82）',
     '  --max-frames <n>         v3.8.0 snapshot mode：单 session 帧数上限（默认 80）',

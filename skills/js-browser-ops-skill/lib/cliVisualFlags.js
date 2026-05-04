@@ -9,7 +9,8 @@
 //   --no-visual              关闭视觉反馈（trace 也不写）
 //   --visual-detail compact|staged
 //   --visual-ms <n>          flash 持续时长（默认 420，clamp 120–4000）
-//   --visual-mode auto|dom|hud|both|off
+//   --visual-hud / --no-visual-hud      右上角 HUD 卡片（默认开；v0.6.0 取代 --visual-mode hud/dom）
+//   --visual-flash / --no-visual-flash  元素 flash overlay + relation（默认开）
 //   --visual-trace <file>    把事件写入 jsonl（单文件形态）
 //   --visual-record <dir>    把事件写入会话包目录（meta.json + events.jsonl）
 //                            给离线 hyperframes 重渲染用
@@ -62,6 +63,12 @@ function applyVisualArgs(args, i, options){
   if (a.startsWith('--visual-detail=')) { options.visualDetail = a.slice('--visual-detail='.length); return 1; }
   if (a === '--visual-ms' && args[i + 1]) { options.visualMs = args[i + 1]; return 2; }
   if (a.startsWith('--visual-ms=')) { options.visualMs = a.slice('--visual-ms='.length); return 1; }
+  if (a === '--visual-hud') { options.visualHud = true; return 1; }
+  if (a === '--no-visual-hud') { options.visualHud = false; return 1; }
+  if (a === '--visual-flash') { options.visualFlash = true; return 1; }
+  if (a === '--no-visual-flash') { options.visualFlash = false; return 1; }
+  // v0.6.0 BREAKING：--visual-mode 已硬切；仍解析记录到 options 让 parseVisualFlags
+  // 把它收进 deprecatedFlags 给 stderr 打告警，但不再下发到 bridge config。
   if (a === '--visual-mode' && args[i + 1]) { options.visualMode = args[i + 1]; return 2; }
   if (a.startsWith('--visual-mode=')) { options.visualMode = a.slice('--visual-mode='.length); return 1; }
   if (a === '--visual-trace' && args[i + 1]) { options.visualTrace = args[i + 1]; return 2; }
@@ -123,7 +130,8 @@ const VISUAL_HELP_LINES = [
   '  --visual / --no-visual           开/关页面内视觉反馈（默认开）',
   '  --visual-detail compact|staged   反馈细节级别（默认 staged）',
   '  --visual-ms <n>                  flash 持续时长 ms（默认 420，120-4000）',
-  '  --visual-mode auto|dom|hud|both|off  锚点解析策略（默认 auto）',
+  '  --visual-hud / --no-visual-hud   右上角 HUD 卡片（默认开；v0.6.0 取代 --visual-mode hud/dom）',
+  '  --visual-flash / --no-visual-flash 元素 flash overlay/relation（默认开）',
   '  --visual-trace <file.jsonl>      把视觉事件落 jsonl（单文件）',
   '  --visual-record [dir]            把事件落到会话包目录（meta+events.jsonl，给 hyperframes 渲视频）',
   '  --no-visual-record               显式关闭会话包',
@@ -133,6 +141,7 @@ const VISUAL_HELP_LINES = [
   'Deprecated (post-2.7.0 architecture pivot — parsed but ignored):',
   '  --redact-rect / --redact-selector / --redact-config (PNG / 马赛克 链路下线)',
   '  --visual-record-frames / --visual-frames-throttle  (frames/ 目录不再写)',
+  '  --visual-mode auto|dom|hud|both|off  (v0.6.0 拆成 --visual-hud / --visual-flash)',
 ];
 
 function _resetWarnedFlagsForTesting(){ _warnedFlags.clear(); }

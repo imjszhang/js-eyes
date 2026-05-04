@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.0 — 2026-05-04
+
+### BREAKING — visualMode 拆解（同 visual-bridge-kit@0.6.0）
+
+- `--visual-mode auto|dom|hud|both|off` 拆成 `--visual-hud` / `--no-visual-hud` /
+  `--visual-flash` / `--no-visual-flash`（默认都开）。旧 flag 仍解析，但 `parseVisualFlags`
+  把它列入 `deprecatedFlags` 并 stderr 告警一次，不再下发到 bridge config。
+- 旧值映射（caller 自行展开）：`auto`/`both` → 都开；`dom` → 关 hud；`hud` → 关 flash；
+  `off` → `--no-visual`。
+
 ## 2.3.0 — 2026-05-02
 
 ### Added

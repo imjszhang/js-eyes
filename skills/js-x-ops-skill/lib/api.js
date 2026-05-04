@@ -6,6 +6,10 @@
  * 提供 4 个纯函数接口，由调用者传入 BrowserAutomation 实例，
  * 返回结构化数据，不做 process.exit、不写文件。
  *
+ * READ 且 `useBridge` 未被关闭时：**与 CLI / skill.contract 一致**，经由
+ * `lib/runTool.js`（`api_*`/`dom_*`、auto 降级、audit 字段在内部用于抛错，
+ * 成功路径结果形状仍与历史 `bridgeAdapter` 输出一致）。
+ *
  * 用法:
  *   const { BrowserAutomation } = require('./js-eyes-client');
  *   const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require('./lib/api');
@@ -37,15 +41,336 @@ const {
     appendPartialTweets,
 } = require('./xUtils');
 const {
-    searchViaBridge,
-    profileViaBridge,
-    postViaBridge,
-    homeViaBridge,
     classifyBridgeError,
     FALLBACK_REASON,
 } = require('./bridgeAdapter');
+const { runTool } = require('./runTool');
+const { READ_CMD_DEF } = require('./commands');
 
 const SKILL_ID = pkg.name;
+
+/** @param {import('./js-eyes-client').BrowserAutomation} browser */
+function commonRunToolOptions(browser, opts, targetUrl) {
+    const o = {
+        wsEndpoint: browser && browser.serverUrl,
+        recording: opts.recording,
+        runId: opts.runId,
+        navigateOnReuse: false,
+        reuseAnyXTab: true,
+        createUrl: targetUrl || 'https://x.com/',
+        timeoutMs: opts.bridgeTimeoutMs || 120000,
+        readMode: opts.readMode,
+    };
+    if (opts.visualRecord != null) o.visualRecord = opts.visualRecord;
+    if (opts.visualTrace != null) o.visualTrace = opts.visualTrace;
+    if (opts.noFrames != null) o.noFrames = opts.noFrames;
+    if (opts.hiDpi != null) o.hiDpi = opts.hiDpi;
+    if (opts.maxFrames != null) o.maxFrames = opts.maxFrames;
+    if (opts.verbose != null) o.verbose = opts.verbose;
+    if (opts.visualConfig != null) o.visualConfig = opts.visualConfig;
+    return o;
+}
+
+function errFromRunTool(rt) {
+    const e = new Error(`bridge 失败: ${(rt.error && rt.error.code) || 'unknown'}`);
+    e.code = 'BRIDGE_RETURN_NOT_OK';
+    e.detail = rt;
+    return e;
+}
+
+async function searchViaRunTool(browser, keyword, options) {
+    const opts = {
+        maxPages: 1, sort: 'top',
+        minLikes: 0, minRetweets: 0, minReplies: 0,
+        lang: null, from: null, to: null, since: null, until: null,
+        excludeReplies: false, excludeRetweets: false, hasLinks: false,
+        ...options,
+    };
+    const S = getSearch();
+    const searchUrl = S.buildSearchUrl(keyword, opts);
+    const args = {
+        keyword,
+        sort: opts.sort,
+        maxPages: opts.maxPages,
+        from: opts.from, to: opts.to,
+        since: opts.since, until: opts.until,
+        lang: opts.lang,
+        minLikes: opts.minLikes, minRetweets: opts.minRetweets, minReplies: opts.minReplies,
+        excludeReplies: opts.excludeReplies, excludeRetweets: opts.excludeRetweets,
+        hasLinks: opts.hasLinks,
+    };
+    const rt = await runTool(browser, {
+        toolName: 'x_search_tweets',
+        pageKey: 'search',
+        method: 'search',
+        cmdDef: READ_CMD_DEF.search,
+        args,
+        targetUrl: searchUrl,
+        options: commonRunToolOptions(browser, opts, searchUrl),
+    });
+    if (!rt.ok) throw errFromRunTool(rt);
+    const data = rt.result || {};
+    let results = Array.isArray(data.tweets) ? data.tweets : [];
+    if (opts.minLikes > 0 || opts.minRetweets > 0 || opts.minReplies > 0) {
+        results = results.filter((t) =>
+            (t.stats?.likes || 0) >= opts.minLikes &&
+            (t.stats?.retweets || 0) >= opts.minRetweets &&
+            (t.stats?.replies || 0) >= opts.minReplies,
+        );
+    }
+    return {
+        searchKeyword: keyword,
+        searchUrl,
+        searchOptions: {
+            sort: opts.sort, maxPages: opts.maxPages,
+            minLikes: opts.minLikes, minRetweets: opts.minRetweets, minReplies: opts.minReplies,
+            lang: opts.lang, from: opts.from, to: opts.to,
+            since: opts.since, until: opts.until,
+            excludeReplies: opts.excludeReplies, excludeRetweets: opts.excludeRetweets,
+            hasLinks: opts.hasLinks,
+        },
+        timestamp: new Date().toISOString(),
+        totalResults: results.length,
+        results,
+        runToolAudit: {
+            readMode: rt.readMode,
+            requestedReadMode: rt.requestedReadMode,
+            fallback: rt.fallback,
+            triedMethods: rt.triedMethods,
+            usedMethod: rt.usedMethod,
+        },
+        _bridge: {
+            target: rt.run && rt.run.target,
+            bridge: rt.bridge,
+            meta: data.meta || null,
+            pages: data.pages || [],
+            fullQuery: data.fullQuery || null,
+        },
+    };
+}
+
+async function profileViaRunTool(browser, username, options) {
+    const opts = {
+        maxPages: 50, maxTweets: 0,
+        since: null, until: null,
+        includeReplies: false, includeRetweets: false,
+        minLikes: 0, minRetweets: 0,
+        ...options,
+    };
+    const cleanUsername = String(username || '').replace(/^@/, '').trim();
+    if (!cleanUsername) throw new Error('profileViaRunTool: username is required');
+    const profileUrl = `https://x.com/${cleanUsername}` + (opts.includeReplies ? '/with_replies' : '');
+    const args = {
+        username: cleanUsername,
+        maxPages: opts.maxPages,
+        includeReplies: opts.includeReplies,
+    };
+    const rt = await runTool(browser, {
+        toolName: 'x_get_profile',
+        pageKey: 'profile',
+        method: 'getProfile',
+        cmdDef: READ_CMD_DEF.profile,
+        args,
+        targetUrl: profileUrl,
+        options: commonRunToolOptions(browser, opts, profileUrl),
+    });
+    if (!rt.ok) throw errFromRunTool(rt);
+    const P = getProfile();
+    const data = rt.result || {};
+    const rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+    const { filtered } = P.filterTweets(rawTweets, opts);
+    let results = filtered;
+    if (opts.minLikes > 0 || opts.minRetweets > 0) {
+        results = results.filter((t) =>
+            (t.stats?.likes || 0) >= opts.minLikes &&
+            (t.stats?.retweets || 0) >= opts.minRetweets,
+        );
+    }
+    if (opts.maxTweets > 0 && results.length > opts.maxTweets) {
+        results = results.slice(0, opts.maxTweets);
+    }
+    return {
+        username: cleanUsername,
+        profile: data.profile || null,
+        scrapeOptions: {
+            maxPages: opts.maxPages, maxTweets: opts.maxTweets,
+            since: opts.since, until: opts.until,
+            includeReplies: opts.includeReplies, includeRetweets: opts.includeRetweets,
+            minLikes: opts.minLikes, minRetweets: opts.minRetweets,
+        },
+        timestamp: new Date().toISOString(),
+        totalResults: results.length,
+        results,
+        runToolAudit: {
+            readMode: rt.readMode,
+            requestedReadMode: rt.requestedReadMode,
+            fallback: rt.fallback,
+            triedMethods: rt.triedMethods,
+            usedMethod: rt.usedMethod,
+        },
+        _bridge: {
+            target: rt.run && rt.run.target,
+            bridge: rt.bridge,
+            meta: data.meta || null,
+            pages: data.pages || [],
+        },
+    };
+}
+
+async function homeViaRunTool(browser, options) {
+    const opts = {
+        feed: 'foryou', maxPages: 5, maxTweets: 0,
+        minLikes: 0, minRetweets: 0,
+        excludeReplies: false, excludeRetweets: false,
+        ...options,
+    };
+    const args = {
+        feed: opts.feed,
+        maxPages: opts.maxPages,
+    };
+    const targetUrl = 'https://x.com/home';
+    const rt = await runTool(browser, {
+        toolName: 'x_get_home_feed',
+        pageKey: 'home',
+        method: 'getHome',
+        cmdDef: READ_CMD_DEF.home,
+        args,
+        targetUrl,
+        options: commonRunToolOptions(browser, opts, targetUrl),
+    });
+    if (!rt.ok) throw errFromRunTool(rt);
+    const H = getHome();
+    const data = rt.result || {};
+    let rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+    if (opts.maxTweets > 0 && rawTweets.length > opts.maxTweets) {
+        rawTweets = rawTweets.slice(0, opts.maxTweets);
+    }
+    let results = H.filterTweets(rawTweets, opts);
+    if (opts.minLikes > 0 || opts.minRetweets > 0) {
+        results = results.filter((t) =>
+            (t.stats?.likes || 0) >= opts.minLikes &&
+            (t.stats?.retweets || 0) >= opts.minRetweets,
+        );
+    }
+    if (opts.maxTweets > 0 && results.length > opts.maxTweets) {
+        results = results.slice(0, opts.maxTweets);
+    }
+    return {
+        feed: data.feed || opts.feed,
+        scrapeOptions: {
+            feed: opts.feed, maxPages: opts.maxPages, maxTweets: opts.maxTweets,
+            minLikes: opts.minLikes, minRetweets: opts.minRetweets,
+            excludeReplies: opts.excludeReplies, excludeRetweets: opts.excludeRetweets,
+        },
+        timestamp: new Date().toISOString(),
+        totalResults: results.length,
+        results,
+        runToolAudit: {
+            readMode: rt.readMode,
+            requestedReadMode: rt.requestedReadMode,
+            fallback: rt.fallback,
+            triedMethods: rt.triedMethods,
+            usedMethod: rt.usedMethod,
+        },
+        _bridge: {
+            target: rt.run && rt.run.target,
+            bridge: rt.bridge,
+            meta: data.meta || null,
+            pages: data.pages || [],
+        },
+    };
+}
+
+async function postViaRunTool(browser, tweetInputs, options) {
+    const opts = { withThread: false, withReplies: 0, ...options };
+    const inputs = Array.isArray(tweetInputs) ? tweetInputs : [tweetInputs];
+    const T = getPost_();
+    const tweetIds = inputs.map((inp) => {
+        const id = T.extractTweetId(inp);
+        if (!id) throw new Error(`无法解析推文 ID: "${inp}"`);
+        return id;
+    });
+    let lastTarget = null;
+    let lastBridge = null;
+    const allResults = [];
+
+    for (let i = 0; i < tweetIds.length; i++) {
+        const tweetId = tweetIds[i];
+        const rawInput = inputs[i];
+        const rawStr = String(rawInput || '').trim();
+        const bridgeArgs = {
+            tweetId: /^\d{6,}$/.test(rawStr) ? rawStr : null,
+            url: /^\d{6,}$/.test(rawStr) ? null : rawStr,
+            withThread: !!opts.withThread,
+            withReplies: !!(opts.withReplies && opts.withReplies > 0),
+        };
+        let targetUrl = null;
+        if (!/^\d{6,}$/.test(rawStr)) {
+            try {
+                const u = new URL(rawStr.includes('http') ? rawStr : `https://${rawStr}`);
+                if (/(^|\.)x\.com$|(^|\.)twitter\.com$/i.test(u.hostname)) targetUrl = u.href;
+            } catch (_) {}
+        }
+        if (!targetUrl) targetUrl = `https://x.com/i/status/${tweetId}`;
+
+        const rt = await runTool(browser, {
+            toolName: 'x_get_post',
+            pageKey: 'post',
+            method: 'getPost',
+            cmdDef: READ_CMD_DEF.post,
+            args: bridgeArgs,
+            targetUrl,
+            options: commonRunToolOptions(browser, opts, targetUrl),
+        });
+        lastTarget = rt.run && rt.run.target;
+        lastBridge = rt.bridge;
+
+        if (!rt.ok) {
+            allResults.push({
+                tweetId,
+                success: false,
+                error: (rt.error && rt.error.code) || 'runTool_failed',
+            });
+        } else {
+            const data = rt.result || {};
+            if (!data.tweet) {
+                allResults.push({ tweetId, success: false, error: 'no_focal_tweet' });
+            } else {
+                const postData = { tweetId, success: true, ...data.tweet };
+                if (Array.isArray(data.thread) && data.thread.length > 0 && opts.withThread) {
+                    postData.threadTweets = data.thread;
+                }
+                if (Array.isArray(data.replies) && data.replies.length > 0 && opts.withReplies > 0) {
+                    postData.replies = data.replies.slice(0, opts.withReplies);
+                }
+                if (data.meta) {
+                    if (data.meta.timedOut) postData.timedOut = true;
+                    if (data.meta.partial) postData.partial = true;
+                    if (typeof data.meta.collectedReplyPages === 'number') {
+                        postData.collectedReplyPages = data.meta.collectedReplyPages;
+                    }
+                    if (typeof data.meta.durationMs === 'number') postData.durationMs = data.meta.durationMs;
+                }
+                allResults.push(postData);
+            }
+        }
+        if (i < tweetIds.length - 1) await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    return {
+        scrapeType: 'x_post',
+        scrapeOptions: { withThread: !!opts.withThread, withReplies: opts.withReplies || 0 },
+        timestamp: new Date().toISOString(),
+        totalRequested: tweetIds.length,
+        totalSuccess: allResults.filter((r) => r.success).length,
+        totalFailed: allResults.filter((r) => !r.success).length,
+        results: allResults,
+        _bridge: {
+            target: lastTarget,
+            bridge: lastBridge,
+        },
+    };
+}
 
 /**
  * 内部双轨开关：
@@ -1125,7 +1450,7 @@ async function _profileWithBridgeOrFallback(browser, username, options) {
         });
     }
     try {
-        const result = await profileViaBridge(browser, username, options);
+        const result = await profileViaRunTool(browser, username, options);
         const route = result._bridge || {};
         delete result._bridge;
         return _attachBridgeMetrics(result, {
@@ -1162,7 +1487,7 @@ async function _homeWithBridgeOrFallback(browser, options) {
         });
     }
     try {
-        const result = await homeViaBridge(browser, options);
+        const result = await homeViaRunTool(browser, options);
         const route = result._bridge || {};
         delete result._bridge;
         return _attachBridgeMetrics(result, {
@@ -1207,7 +1532,7 @@ async function _postWithBridgeOrFallback(browser, tweetInputs, options) {
         });
     }
     try {
-        const result = await postViaBridge(browser, tweetInputs, options);
+        const result = await postViaRunTool(browser, tweetInputs, options);
         const route = result._bridge || {};
         delete result._bridge;
         return _attachBridgeMetrics(result, {
@@ -1246,7 +1571,7 @@ async function _searchWithBridgeOrFallback(browser, keyword, options) {
         });
     }
     try {
-        const result = await searchViaBridge(browser, keyword, options);
+        const result = await searchViaRunTool(browser, keyword, options);
         const route = result._bridge || {};
         delete result._bridge;
         return _attachBridgeMetrics(result, {

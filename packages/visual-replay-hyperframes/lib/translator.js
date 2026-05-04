@@ -548,6 +548,9 @@ function anchorIdOf(anchor){
   if (typeof anchor.spec === 'string' && anchor.spec) return anchor.spec;
   if (typeof anchor.fullname === 'string' && anchor.fullname) return anchor.fullname;
   if (typeof anchor.id === 'string' && anchor.id) return anchor.id;
+  // x-ops：tweet / username 命名空间，避免与 reddit fullname (`t3_xxx`) 冲突
+  if (anchor.tweetId != null && String(anchor.tweetId)) return 'tweet:' + String(anchor.tweetId);
+  if (typeof anchor.username === 'string' && anchor.username) return 'user:' + anchor.username;
   if (typeof anchor.subreddit === 'string') return 'sub:' + anchor.subreddit;
   if (typeof anchor.user === 'string') return 'user:' + anchor.user;
   if (typeof anchor.url === 'string') return 'url:' + anchor.url;

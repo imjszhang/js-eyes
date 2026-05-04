@@ -4,8 +4,8 @@
  * js-x-ops-skill skill contract（v3.0）
  *
  * 按 reddit 模板抽工厂：
- *   - makeApiToolExecutor:      4 个老 READ 工具（搜索/profile/post/home）继续走 lib/api.js（自带 bridge-first + fallback）
- *   - makeBridgeReadExecutor:   x_session_state 走 lib/runTool.js -> bridge.sessionState（不进 cache）
+ *   - makeBridgeReadExecutor: x_session_state
+ *   - makeReadToolExecutor: 4 主 READ → lib/runTool.js（api_* / dom_* + 审计字段）
  *   - makeNavigateToolExecutor: 4 个 INTERACTIVE 导航工具，仅 location.assign，不模拟点击
  *
  * 安全分级（每个 tool 都标了 interactive/destructive 两个 flag）：
@@ -22,7 +22,7 @@
 
 const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
-const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require('./lib/api');
+const { getPost } = require('./lib/api');
 const { runTool } = require('./lib/runTool');
 const { runMonitor } = require('./lib/runMonitor');
 const { Session } = require('./lib/session');
@@ -94,7 +94,7 @@ function createRuntime(config = {}, logger) {
 }
 
 // ---------------------------------------------------------------------------
-// 工厂 1：API 直连（4 个主 READ 工具走 lib/api.js，享受 bridge-first + fallback）
+// 工厂 1：API 直连（保留给 x_get_post 多 ID / 写参数透传 v2 path）
 // ---------------------------------------------------------------------------
 
 function makeApiToolExecutor({ apiFn, paramsToOptions, paramsToInputs }) {
@@ -112,18 +112,213 @@ function makeApiToolExecutor({ apiFn, paramsToOptions, paramsToInputs }) {
   };
 }
 
+function omitReadMode(raw) {
+  const p = Object.assign({}, raw || {});
+  delete p.readMode;
+  return p;
+}
+
+function buildContractSearchTargetUrl(params) {
+  const p = params || {};
+  const keyword = String(p.keyword || '').trim();
+  if (!keyword) return null;
+  const u = new URL('https://x.com/search');
+  u.searchParams.set('q', keyword);
+  u.searchParams.set('src', 'typed_query');
+  const sortRaw = String(p.sort || 'top').toLowerCase();
+  if (sortRaw === 'latest') u.searchParams.set('f', 'live');
+  else if (sortRaw === 'media') u.searchParams.set('f', 'image');
+  return u.toString();
+}
+
+function buildContractProfileTargetUrl(p) {
+  const u = String((p && p.username) || '').replace(/^@/, '').trim();
+  if (!u) return null;
+  let path = 'https://x.com/' + encodeURIComponent(u);
+  if (p && p.includeReplies) path += '/with_replies';
+  return path;
+}
+
+function buildContractPostTargetUrl(p) {
+  const raw = (p && p.tweetUrl) ? String(p.tweetUrl).split(',')[0].trim() : '';
+  if (!raw) return null;
+  if (/^\d{6,}$/.test(raw)) return null;
+  try {
+    const u = new URL(raw.includes('http') ? raw : 'https://' + raw);
+    if (/(^|\.)x\.com$|(^|\.)twitter\.com$/i.test(u.hostname)) return u.href;
+  } catch (_) {}
+  return null;
+}
+
+function enrichRunToolResult(toolKey, rt) {
+  if (!rt || !rt.ok) {
+    return {
+      ok: false,
+      error: (rt && rt.error) || { code: 'unknown', message: 'runTool failed' },
+      runToolAudit: rt ? {
+        triedMethods: rt.triedMethods,
+        usedMethod: rt.usedMethod,
+        readMode: rt.readMode,
+        fallback: rt.fallback,
+        requestedReadMode: rt.requestedReadMode,
+      } : null,
+    };
+  }
+  const data = rt.result || {};
+  const envelope = {
+    runToolAudit: {
+      readMode: rt.readMode,
+      requestedReadMode: rt.requestedReadMode,
+      fallback: rt.fallback,
+      triedMethods: rt.triedMethods,
+      usedMethod: rt.usedMethod,
+    },
+  };
+  if (toolKey === 'x_search_tweets') {
+    return Object.assign({ ok: true }, data, envelope);
+  }
+  if (toolKey === 'x_get_profile') {
+    return Object.assign({ ok: true }, data, envelope);
+  }
+  if (toolKey === 'x_get_home_feed') {
+    return Object.assign({ ok: true }, data, envelope);
+  }
+  if (toolKey === 'x_get_post') {
+    return Object.assign({ ok: true }, data, envelope);
+  }
+  if (toolKey === 'x_session_state') {
+    return Object.assign({ ok: true }, data, envelope);
+  }
+  return Object.assign({ ok: true }, data, envelope);
+}
+
+function makeReadToolExecutor({ toolName, toolKey, pageKey, method, cmdDef, buildTargetUrl }) {
+  return async function execute(runtime, params, context = {}) {
+    const p = params || {};
+    const targetUrl = typeof buildTargetUrl === 'function' ? buildTargetUrl(p) : null;
+    let args = omitReadMode(p);
+    if ((method === 'search' || method === 'getProfile' || method === 'getHome')
+      && (args.maxPages == null || args.maxPages === undefined)
+      && runtime.config.defaultMaxPages != null) {
+      args = Object.assign({}, args, { maxPages: runtime.config.defaultMaxPages });
+    }
+    let rt = await runTool(runtime.ensureBot(), {
+      toolName,
+      pageKey,
+      method,
+      cmdDef,
+      args,
+      targetUrl,
+      options: {
+        wsEndpoint: runtime.config.serverUrl,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
+        navigateOnReuse: false,
+        reuseAnyXTab: true,
+        createUrl: targetUrl || 'https://x.com/',
+        timeoutMs: (runtime.config.requestTimeout || 90) * 1000,
+        readMode: p.readMode,
+      },
+    });
+    if (rt.ok && rt.result && typeof rt.result === 'object') {
+      const mt = Number(args.maxTweets);
+      if (toolKey === 'x_get_profile' && mt > 0 && Array.isArray(rt.result.tweets)) {
+        const sliced = rt.result.tweets.slice(0, mt);
+        rt = Object.assign({}, rt, {
+          result: Object.assign({}, rt.result, {
+            tweets: sliced,
+            total: sliced.length,
+          }),
+        });
+      }
+      if (toolKey === 'x_get_home_feed' && mt > 0 && Array.isArray(rt.result.tweets)) {
+        const sliced = rt.result.tweets.slice(0, mt);
+        rt = Object.assign({}, rt, {
+          result: Object.assign({}, rt.result, {
+            tweets: sliced,
+            total: sliced.length,
+          }),
+        });
+      }
+    }
+    return enrichRunToolResult(toolKey, rt);
+  };
+}
+
+function makeXGetPostReadOrLegacyExecutor() {
+  const legacy = makeApiToolExecutor({
+    apiFn: getPost,
+    paramsToInputs: (p) => {
+      const inputs = String(p.tweetUrl || '').split(',').map((item) => item.trim()).filter(Boolean);
+      return [inputs];
+    },
+    paramsToOptions: (p) => ({
+      withThread: p.withThread || false,
+      withReplies: p.withReplies || 0,
+      reply: p.reply,
+      post: p.post,
+      quote: p.quote,
+      thread: p.thread,
+      dryRun: p.dryRun,
+      confirm: p.confirm,
+    }),
+  });
+  return async function execute(runtime, params, context = {}) {
+    const p = params || {};
+    if (p.reply || p.post || p.quote || (Array.isArray(p.thread) && p.thread.length)) {
+      return legacy(runtime, params, context);
+    }
+    const ids = String(p.tweetUrl || '').split(',').map((item) => item.trim()).filter(Boolean);
+    if (ids.length !== 1) {
+      return legacy(runtime, params, context);
+    }
+    const one = ids[0];
+    const targetUrl = buildContractPostTargetUrl({ tweetUrl: one });
+    const bridgeArgs = {
+      tweetId: /^\d{6,}$/.test(one) ? one : null,
+      url: /^\d{6,}$/.test(one) ? null : one,
+      withThread: !!p.withThread,
+      withReplies: p.withReplies || 0,
+    };
+    const rt = await runTool(runtime.ensureBot(), {
+      toolName: 'x_get_post',
+      pageKey: 'post',
+      method: 'getPost',
+      cmdDef: {
+        methodBase: 'getPost',
+        domSupported: true,
+        apiSupported: true,
+        defaultReadMode: 'auto',
+      },
+      args: bridgeArgs,
+      targetUrl,
+      options: {
+        wsEndpoint: runtime.config.serverUrl,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
+        navigateOnReuse: false,
+        reuseAnyXTab: true,
+        createUrl: targetUrl || 'https://x.com/',
+        timeoutMs: (runtime.config.requestTimeout || 90) * 1000,
+        readMode: p.readMode,
+      },
+    });
+    return enrichRunToolResult('x_get_post', rt);
+  };
+}
+
 // ---------------------------------------------------------------------------
-// 工厂 2：bridge 直连（READ 不可枚举的轻量工具，例如 x_session_state）
-//   走 lib/runTool.js → Session.callApi(bridge.method)，不进 cache，仅 history。
+// 工厂 2：bridge 直连（x_session_state）
 // ---------------------------------------------------------------------------
 
 function makeBridgeReadExecutor({ pageKey, method, toolName, buildTargetUrl }) {
   return async function execute(runtime, params, context = {}) {
     const targetUrl = typeof buildTargetUrl === 'function' ? buildTargetUrl(params || {}) : null;
-    return runTool(runtime.ensureBot(), {
+    const rt = await runTool(runtime.ensureBot(), {
       toolName,
       pageKey,
       method,
+      cmdDef: { legacyOnly: true },
       args: params || {},
       targetUrl,
       options: {
@@ -135,6 +330,7 @@ function makeBridgeReadExecutor({ pageKey, method, toolName, buildTargetUrl }) {
         createUrl: targetUrl || 'https://x.com/',
       },
     });
+    return enrichRunToolResult('x_session_state', rt);
   };
 }
 
@@ -252,6 +448,11 @@ const TOOL_DEFINITIONS = [
         minRetweets: { type: 'number', description: '最低转发数过滤' },
         excludeReplies: { type: 'boolean', description: '排除回复' },
         excludeRetweets: { type: 'boolean', description: '排除转推' },
+        readMode: {
+          type: 'string',
+          enum: ['auto', 'graphql', 'dom'],
+          description: 'READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来，与 visual-* 解耦。',
+        },
       },
       required: ['keyword'],
     },
@@ -260,21 +461,18 @@ const TOOL_DEFINITIONS = [
     destructive: false,
     pageKey: 'search',
     method: 'search',
-    execute: makeApiToolExecutor({
-      apiFn: searchTweets,
-      paramsToInputs: (p) => [p.keyword],
-      paramsToOptions: (p, runtimeConfig) => ({
-        maxPages: p.maxPages || runtimeConfig.defaultMaxPages,
-        sort: p.sort || 'top',
-        lang: p.lang,
-        from: p.from,
-        since: p.since,
-        until: p.until,
-        minLikes: p.minLikes || 0,
-        minRetweets: p.minRetweets || 0,
-        excludeReplies: p.excludeReplies || false,
-        excludeRetweets: p.excludeRetweets || false,
-      }),
+    execute: makeReadToolExecutor({
+      toolName: 'x_search_tweets',
+      toolKey: 'x_search_tweets',
+      pageKey: 'search',
+      method: 'search',
+      cmdDef: {
+        methodBase: 'search',
+        domSupported: true,
+        apiSupported: true,
+        defaultReadMode: 'auto',
+      },
+      buildTargetUrl: buildContractSearchTargetUrl,
     }),
   },
   {
@@ -292,6 +490,11 @@ const TOOL_DEFINITIONS = [
         includeReplies: { type: 'boolean', description: '是否包含回复' },
         includeRetweets: { type: 'boolean', description: '是否包含转推' },
         minLikes: { type: 'number', description: '最低点赞数过滤' },
+        readMode: {
+          type: 'string',
+          enum: ['auto', 'graphql', 'dom'],
+          description: 'READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来，与 visual-* 解耦。',
+        },
       },
       required: ['username'],
     },
@@ -300,18 +503,18 @@ const TOOL_DEFINITIONS = [
     destructive: false,
     pageKey: 'profile',
     method: 'getProfile',
-    execute: makeApiToolExecutor({
-      apiFn: getProfileTweets,
-      paramsToInputs: (p) => [p.username],
-      paramsToOptions: (p, runtimeConfig) => ({
-        maxPages: p.maxPages || runtimeConfig.defaultMaxPages,
-        maxTweets: p.maxTweets || 0,
-        since: p.since,
-        until: p.until,
-        includeReplies: p.includeReplies || false,
-        includeRetweets: p.includeRetweets || false,
-        minLikes: p.minLikes || 0,
-      }),
+    execute: makeReadToolExecutor({
+      toolName: 'x_get_profile',
+      toolKey: 'x_get_profile',
+      pageKey: 'profile',
+      method: 'getProfile',
+      cmdDef: {
+        methodBase: 'getProfile',
+        domSupported: true,
+        apiSupported: true,
+        defaultReadMode: 'auto',
+      },
+      buildTargetUrl: buildContractProfileTargetUrl,
     }),
   },
   {
@@ -333,6 +536,11 @@ const TOOL_DEFINITIONS = [
         thread: { type: 'array', items: { type: 'string' }, description: '【deprecated, v3.1 移到 x_create_thread】串推数组' },
         dryRun: { type: 'boolean', description: '【deprecated】仅校验输入，不实际发布' },
         confirm: { type: 'boolean', description: '【deprecated】写操作必须显式 confirm=true 才会真发' },
+        readMode: {
+          type: 'string',
+          enum: ['auto', 'graphql', 'dom'],
+          description: 'READ 单条时：auto=GraphQL 优先失败再 DOM；graphql/dom=强制单一路径（写参数时忽略）。v3.2 由 mode 重命名而来。',
+        },
       },
       required: ['tweetUrl'],
     },
@@ -341,23 +549,7 @@ const TOOL_DEFINITIONS = [
     destructive: false,
     pageKey: 'post',
     method: 'getPost',
-    execute: makeApiToolExecutor({
-      apiFn: getPost,
-      paramsToInputs: (p) => {
-        const inputs = String(p.tweetUrl || '').split(',').map((item) => item.trim()).filter(Boolean);
-        return [inputs];
-      },
-      paramsToOptions: (p) => ({
-        withThread: p.withThread || false,
-        withReplies: p.withReplies || 0,
-        reply: p.reply,
-        post: p.post,
-        quote: p.quote,
-        thread: p.thread,
-        dryRun: p.dryRun,
-        confirm: p.confirm,
-      }),
-    }),
+    execute: makeXGetPostReadOrLegacyExecutor(),
   },
   {
     name: 'x_get_home_feed',
@@ -372,6 +564,11 @@ const TOOL_DEFINITIONS = [
         minLikes: { type: 'number', description: '最低点赞数过滤' },
         excludeReplies: { type: 'boolean', description: '排除回复' },
         excludeRetweets: { type: 'boolean', description: '排除转推' },
+        readMode: {
+          type: 'string',
+          enum: ['auto', 'graphql', 'dom'],
+          description: 'READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来。',
+        },
       },
     },
     optional: true,
@@ -379,17 +576,18 @@ const TOOL_DEFINITIONS = [
     destructive: false,
     pageKey: 'home',
     method: 'getHome',
-    execute: makeApiToolExecutor({
-      apiFn: getHomeFeed,
-      paramsToInputs: () => [],
-      paramsToOptions: (p, runtimeConfig) => ({
-        feed: p.feed || 'foryou',
-        maxPages: p.maxPages || runtimeConfig.defaultMaxPages,
-        maxTweets: p.maxTweets || 0,
-        minLikes: p.minLikes || 0,
-        excludeReplies: p.excludeReplies || false,
-        excludeRetweets: p.excludeRetweets || false,
-      }),
+    execute: makeReadToolExecutor({
+      toolName: 'x_get_home_feed',
+      toolKey: 'x_get_home_feed',
+      pageKey: 'home',
+      method: 'getHome',
+      cmdDef: {
+        methodBase: 'getHome',
+        domSupported: true,
+        apiSupported: true,
+        defaultReadMode: 'auto',
+      },
+      buildTargetUrl: () => 'https://x.com/home',
     }),
   },
 
@@ -740,8 +938,8 @@ module.exports = {
   createRuntime,
   createOpenClawAdapter,
   // 工厂导出供测试 / 业务脚本复用
-  makeApiToolExecutor,
-  makeBridgeReadExecutor,
+  makeReadToolExecutor,
+  makeXGetPostReadOrLegacyExecutor,
   makeNavigateToolExecutor,
   makeMonitorToolExecutor,
 };

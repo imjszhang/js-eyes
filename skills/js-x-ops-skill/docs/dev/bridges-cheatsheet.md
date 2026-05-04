@@ -35,6 +35,8 @@
 
 > **设计取舍**：READ 数据优先走 X.com 内部 GraphQL（同源，复用 cookie + bearer）；queryId / features / variables 通过 performance API 动态发现并缓存；DOM fallback 仅在 GraphQL 失败时启用。
 
+**v3.1 `runTool` 命名**：各 bridge 对外仍保留合并入口（`search` / `getProfile` / …），编排侧优先尝试 **`api_<base>`**（GraphQL），其次 **`dom_<base>`**（DOM）。`auto` 模式下 **`api_*` 先于 `dom_*`**（与 Reddit SKILL 里部分「dom 优先」描述不对称，以本仓库 `SKILL.md` 表格为准）。
+
 ---
 
 ### bridges/search-bridge.js（v3.0.4，page=`search`，global=`__jse_x_search__`）
@@ -71,7 +73,7 @@
 | `getPost(args)`       | `TweetDetail` → `TweetResultByRestId` 兜底 | 单帖正文 + 串推 + 回复树。`withThread`/`withReplies` 控制深度；`parseSingleTweetResult` 完整覆盖 author/stats/mediaDetails/quoted/cardUrls/visibility/isVerified/quotes |
 | `navigatePost(args)`  | -                            | INTERACTIVE：`https://x.com/i/status/<id>`（不需要 username）                                   |
 
-注：v3.0.4 起加了 wall-clock budget（`args.budgetMs` 覆盖，缺省 60s）；超出预算后停止新请求，把当前已收集的 thread / replies 子集带 `meta.timedOut/partial/collectedReplyPages/durationMs/budgetMs` 返回。`fetchXGraphQL` 单次 timeout 显式 25s（缺省 15s）。`lib/bridgeAdapter.js::postViaBridge` 的 `session.callApi` timeout 默认从 120s 降到 70s（10s buffer 让 wall-clock 优先触发）。
+注：v3.0.4 起加了 wall-clock budget（`args.budgetMs` 覆盖，缺省 60s）；超出预算后停止新请求，把当前已收集的 thread / replies 子集带 `meta.timedOut/partial/collectedReplyPages/durationMs/budgetMs` 返回。`fetchXGraphQL` 单次 timeout 显式 25s（缺省 15s）。**v3.1**：编程侧读帖经由 `lib/runTool.js`，`timeoutMs` 与 bridge 预算仍建议保留以上缓冲。**DOM 路径**（`dom_getPost`）：仅抽取当前视窗内推文节点，不做全列表 `scrollIntoView` 扫荡；超长虚拟列表请以 GraphQL (`api_*`) 为主路径。
 
 ---
 

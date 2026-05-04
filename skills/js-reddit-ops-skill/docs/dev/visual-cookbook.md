@@ -166,7 +166,8 @@ node packages/visual-replay-hyperframes/cli/jse-replay.js runs/pivot-list --out 
 --visual / --no-visual                  开关 in-page 视觉
 --visual-detail compact|staged          演出强度
 --visual-ms <n>                         flash 持续 ms
---visual-mode auto|dom|hud|both|off     in-page 锚点策略
+--visual-hud / --no-visual-hud          右上角 HUD 卡片（默认开；v0.6.0 取代 --visual-mode hud/dom）
+--visual-flash / --no-visual-flash      元素 flash overlay/relation（默认开）
 --visual-trace <file>                   单文件 jsonl trace
 --visual-record [<dir>]                 会话包目录（A 路线主链路）
 --visual-list-stride <ms>               in-page 列表呼吸感
@@ -267,7 +268,7 @@ node scripts/_dev/visual-demo.js
 # 录到目录
 node scripts/_dev/visual-demo.js --visual-record runs/dev-visual
 # 仅 HUD
-node scripts/_dev/visual-demo.js --visual-mode hud
+node scripts/_dev/visual-demo.js --no-visual-flash
 ```
 
 ## 10. 复用到其它 ops skill
