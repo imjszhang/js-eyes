@@ -292,7 +292,7 @@ function translate(sessionDir, outDir, opts){
     pluginAssets: assetsCopied,
     eventEntries: session.entries ? session.entries.length : 0,
     meta: session.meta || null,
-    architecture: 'plugin-system (v0.7.2)',
+    architecture: 'plugin-system (v0.7.5)',
     templateUsage: buildResult.templateUsage,
     missingTemplates,
   }, null, 2), 'utf8');
@@ -565,7 +565,7 @@ function buildHtml(info){
     'jse-replay',
     info.meta && info.meta.skillId ? '· ' + info.meta.skillId : '',
     info.meta && info.meta.sessionId ? '· ' + info.meta.sessionId.slice(0, 14) : '',
-    'v0.7.2 ' + snapshotMode,
+    'v0.7.5 ' + snapshotMode,
   ].filter(Boolean).join(' ');
 
   const tlScript = buildTimelineScript({
@@ -585,11 +585,11 @@ function buildHtml(info){
     '<main',
     '  id="stage"',
     '  data-composition-id="' + escapeHtml(info.compositionId) + '"',
-    '  data-architecture="plugin-system-v0.7.2"',
+    '  data-architecture="plugin-system-v0.7.5"',
     '  data-mode="' + stageMode + '"',
     '>',
     framesPresent
-      ? '<div class="jse-frame-img-cur"></div>\n<div class="jse-frame-img-next"></div>'
+      ? '<div class="jse-frame-img-cur"></div>'
       : '',
     stageInner,
     '</main>',

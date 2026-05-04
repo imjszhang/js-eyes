@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// jse-replay CLI（v0.7.2 plugin-system + 技能 template bootstrap）
+// jse-replay CLI（v0.7.5：snapshot 截屏硬切 + 技能 template bootstrap）
 // ---------------------------------------------------------------------------
 // 用法：
 //   jse-replay <session-dir> [--out <video.mp4>] [--preview] [--keep-composition]
@@ -143,7 +143,7 @@ function applyPluginConfig(target, raw){
 
 function printHelp(){
   const lines = [
-    'jse-replay (v0.7.2) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
+    'jse-replay (v0.7.5) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
     '                      events 含 frame → snapshot 双缓冲背景图；否则 list/item 模板兑底',
     '',
     'Usage:',
@@ -323,7 +323,7 @@ function stripMeta(r){
     plugins: r.plugins || [],
     sessionId: r.meta && r.meta.sessionId,
     skillId: r.meta && r.meta.skillId,
-    architecture: 'plugin-system (v0.7.2)',
+    architecture: 'plugin-system (v0.7.5)',
   };
 }
 

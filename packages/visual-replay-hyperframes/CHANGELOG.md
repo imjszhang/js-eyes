@@ -19,6 +19,34 @@
 
 ---
 
+## [0.7.5] - 2026-05-04
+
+### snapshot：去掉淡入淡出，改为硬切
+
+回放更接近真实浏览器：**单图层** `.jse-frame-img-cur`，按 `frame` 事件 **立即**换 `background-image`；移除 `.jse-frame-img-next`、opacity transition、cross-fade 与 `lib/snapshotConstants.js`。
+
+---
+
+## [0.7.4] - 2026-05-04
+
+### snapshot：减轻截图切换「闪一下」
+
+- **根因**：`next` 先 CSS 淡入一轮，再在 timeout 里把 `opacity:0`，又会触发 **第二轮** opacity transition；相邻 `frame` 间隔 < ~2×fade 时多个 `setTimeout` 叠化 **抢同一对图层**，易出现明显闪烁。
+- **改法**：`setStageBackground` 支持 **clearTimeout + 先瞬态对齐**（`transition:none` + `__commitUrl`）；**提交**时不再对 `next` 做第二次淡出动画，改为瞬间藏 `next`、更新 `cur`。同 URL 的重复切换直接跳过。
+- **CSS**：双缓冲层加 `backface-visibility:hidden` + `translateZ(0)`，`will-change` 只保留 `opacity`（`background-image` 不参与 transition）。
+
+---
+
+## [0.7.3] - 2026-05-04
+
+### snapshot 回放观感：更顺的截图切换
+
+- **cross-fade** 由固定 220ms / `ease` 改为 **420ms** + `cubic-bezier(0.33, 0, 0.2, 1)`，截图之间过渡更柔和（exported MP4 仍与 `setTimeout` 对齐，见 `lib/snapshotConstants.js` 单一真相源）。
+- **跳过首帧重复关键帧**：首张截图已在 page-load 种入 `.jse-frame-img-cur`，不再在 `t≈0` 再跑一遍 `setStageBackground`，避免开场无意义闪一下。
+- 涉及：`lib/snapshotConstants.js`（新）、`lib/timelineScript.js`、`lib/styleEmbed.js`、`lib/translator.js` metadata。
+
+---
+
 ## [0.7.2] - 2026-05-04
 
 ### Breaking — Reddit `list` / `item` 模板迁出引擎包

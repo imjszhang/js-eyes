@@ -41,7 +41,7 @@
     "@js-eyes/skill-recording": "^2.0.0",
     "@js-eyes/runtime-paths": "^2.0.0",
     "@js-eyes/visual-bridge-kit": "^0.4.0",
-    "@js-eyes/visual-replay-hyperframes": "^0.7.2",
+    "@js-eyes/visual-replay-hyperframes": "^0.7.5",
     "cheerio": "^1.1.2",
     "ws": "^8.18.0"
   }

@@ -13,7 +13,7 @@ function loadRuntimeCss(){
 
 /**
  * v0.7.0 plugin-system：composition 样式只保留两条主链路。
- *   - snapshot 主链路：#stage[data-mode="snapshot"] 双缓冲背景图
+ *   - snapshot 主链路：#stage[data-mode="snapshot"] 单图层截屏硬切
  *   - template 兜底：list / item 卡片（_generic + reddit/{list,item} 还会用）
  *
  * 已删除的 CSS（v0.6.x 有，v0.7.0 起搬到对应 plugin）：
@@ -90,14 +90,12 @@ function getCompositionExtraCss(){
     '@media (max-width: 700px) { #stage { padding: 3vh 4vw 6vh; } .reddit-card { padding: 10px 12px; } }',
 
     /* ===========================================================
-       snapshot mode：#stage[data-mode="snapshot"] PNG/JPEG 序列舞台。
-       双缓冲层 .jse-frame-img-cur / .jse-frame-img-next cross-fade 220ms。
+       snapshot mode：单图层 .jse-frame-img-cur，按时间轴硬切 background-image
+       （无淡入淡出，贴近真实浏览器）。
        =========================================================== */
     '#stage[data-mode="snapshot"] { padding: 0; min-height: 100vh; background: #0e1116; display: flex; align-items: stretch; justify-content: center; overflow: hidden; }',
     '#stage[data-mode="snapshot"]::before { display: none; }',
-    '#stage[data-mode="snapshot"] .jse-frame-img-cur, #stage[data-mode="snapshot"] .jse-frame-img-next { position: absolute; inset: 0; background-color: #0e1116; background-size: contain; background-position: top center; background-repeat: no-repeat; transition: opacity 220ms ease; will-change: opacity, background-image; }',
-    '#stage[data-mode="snapshot"] .jse-frame-img-cur { opacity: 1; z-index: 1; }',
-    '#stage[data-mode="snapshot"] .jse-frame-img-next { opacity: 0; z-index: 2; }',
+    '#stage[data-mode="snapshot"] .jse-frame-img-cur { position: absolute; inset: 0; background-color: #0e1116; background-size: contain; background-position: top center; background-repeat: no-repeat; }',
     /* snapshot stage 容纳真实 reddit 截图，整张图当背景；卡片层默认隐藏 */
     '#stage[data-mode="snapshot"] > .reddit-stage, #stage[data-mode="snapshot"] > .reddit-info-card, #stage[data-mode="snapshot"] > .card-stage { display: none; }',
   ].join('\n');

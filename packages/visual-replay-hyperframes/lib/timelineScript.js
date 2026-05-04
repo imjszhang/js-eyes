@@ -5,7 +5,7 @@
  *
  * v0.7.0：plugin 系统化重构。HUD / flash 段从 hardcoded 抽到
  * `plugins/builtin-hud` / `plugins/builtin-flash`。本文件只剩两条主链路：
- *   - snapshot mode：#stage 双缓冲背景图 cross-fade（主链路）
+ *   - snapshot mode：#stage 截屏序列 **硬切**换图（无淡入淡出，贴近真实标签页/导航）
  *   - template mode：每张卡片 fromTo 入场（list/item 兜底用）
  * helpers（addClassByAnchor / removeClassByAnchor / $ / $all）仍由本脚本顶部
  * 提供，plugin 端 timeline 段拼接到 helpers 之后即可直接使用。
@@ -68,10 +68,7 @@ function buildTimelineScript(info){
     }
   }
 
-  // ---- snapshot mode：#stage 背景图 cross-fade ----
-  // 双缓冲：cur + next 两层 div，next 先 fade-in 再 cur 切图 next fade-out。
-  // page-load 时立即把第一帧种到 .jse-frame-img-cur，避免 timeline play 延迟
-  // 期间的"黑屏"；timeline 重播 (repeat -1) 时也用 first frame 复位。
+  // ---- snapshot mode：#stage 截图硬切（无 CSS opacity 动画） ----
   if (snapshotMode === 'snapshot' && frames.length) {
     const firstFrame = frames[0];
     const firstUrl = 'frames/' + (firstFrame.frameRef || '').replace(/^frames\//, '');
@@ -79,29 +76,21 @@ function buildTimelineScript(info){
     lines.push('  var __stage = document.getElementById("stage");');
     lines.push('  if (__stage) __stage.setAttribute("data-mode", "snapshot");');
     lines.push('  var __frameCur = __stage ? __stage.querySelector(".jse-frame-img-cur") : null;');
-    lines.push('  var __frameNext = __stage ? __stage.querySelector(".jse-frame-img-next") : null;');
     lines.push('  if (__stage && !__frameCur) {');
     lines.push('    __frameCur = document.createElement("div");');
     lines.push('    __frameCur.className = "jse-frame-img-cur";');
     lines.push('    __stage.appendChild(__frameCur);');
     lines.push('  }');
-    lines.push('  if (__stage && !__frameNext) {');
-    lines.push('    __frameNext = document.createElement("div");');
-    lines.push('    __frameNext.className = "jse-frame-img-next";');
-    lines.push('    __stage.appendChild(__frameNext);');
-    lines.push('  }');
+    lines.push('  var __commitUrl = ' + JSON.stringify(firstUrl) + ';');
     lines.push('  var setStageBackground = function(url, viewport){');
-    lines.push('    if (!__stage || !__frameCur || !__frameNext) return;');
+    lines.push('    if (!__stage || !__frameCur) return;');
+    lines.push('    if (url === __commitUrl) return;');
     lines.push('    if (viewport && viewport.cssW && viewport.cssH) {');
     lines.push('      __stage.style.setProperty("--snapshot-vp-w", viewport.cssW + "px");');
     lines.push('      __stage.style.setProperty("--snapshot-aspect", viewport.cssW + "/" + viewport.cssH);');
     lines.push('    }');
-    lines.push('    __frameNext.style.backgroundImage = "url(\'" + url + "\')";');
-    lines.push('    __frameNext.style.opacity = "1";');
-    lines.push('    setTimeout(function(){');
-    lines.push('      __frameCur.style.backgroundImage = "url(\'" + url + "\')";');
-    lines.push('      __frameNext.style.opacity = "0";');
-    lines.push('    }, 220);');
+    lines.push('    __frameCur.style.backgroundImage = "url(\'" + url + "\')";');
+    lines.push('    __commitUrl = url;');
     lines.push('  };');
     lines.push('  if (__frameCur) {');
     lines.push('    __frameCur.style.backgroundImage = "url(\'" + ' + JSON.stringify(firstUrl) + ' + "\')";');
@@ -112,11 +101,12 @@ function buildTimelineScript(info){
       lines.push('    }');
     }
     lines.push('  }');
-    lines.push('  tl.set("#stage .jse-frame-img-next", { opacity: 0 }, 0);');
-    for (const f of frames) {
+    for (let fi = 0; fi < frames.length; fi += 1) {
+      const f = frames[fi];
       if (!f.frameRef) continue;
       const t = Math.max(0, Number(f.tStart) || 0);
       const url = 'frames/' + f.frameRef.replace(/^frames\//, '');
+      if (fi === 0 && url === firstUrl) continue;
       lines.push('  tl.add(function(){ setStageBackground(' + JSON.stringify(url) + ', ' + JSON.stringify(f.viewport || null) + '); }, ' + t.toFixed(3) + ');');
     }
   }
