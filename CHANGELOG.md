@@ -352,6 +352,72 @@ All notable changes to this project will be documented in this file.
   `js-reddit-ops-skill@3.6.x`, `js-browser-ops-skill@2.3.0`,
   `@js-eyes/server-core@2.7.0`.
 
+## Visual stack follow-up — 2026-05-04
+
+> **Platform / monorepo semver unchanged (`@js-eyes/*` → `2.7.0`).** Extensions and
+> server WS contracts from 2026-05-03 stay as documented above. Entries below summarise
+> the same-day git lineage (`02e1bcf` … `6051591`) for the offline replay toolchain and
+> `js-reddit-ops-skill`. Per-workspace **`CHANGELOG.md`** files carry fully enumerated
+> bullet lists (`packages/visual-replay-hyperframes`, `skills/js-reddit-ops-skill`, …).
+
+### Added
+
+- **`@js-eyes/visual-bridge-kit@0.5.2`** *(git `8423c2a`)* — snapshot photography on
+  the stable surface again: JPEG/PNG `captureFrame` path (`makeFrameWriter`,
+  `writeFrameSync`, `attachFrameRefsToEvents`), `wrapCallApi` awaits the hook +
+  ring-buffer bookkeeping, `updateVisualSessionMeta` when sessions are appended,
+  README notes that HUD / flash overlays are included in screenshots.
+- **`js-reddit-ops-skill@3.8.x`** *(same window)* — `makeFrameWriter` plumbed through
+  `wrapCallApi` behind `--visual-record`, emitting `frame` events and on-disk JPEGs
+  (throttled; nav retries fire `pre-nav` / `post-nav` grabs). New CLI knobs:
+  `--frames` / `--no-frames`, `--hi-dpi`, `--max-frames` (skill changelog for quotas).
+  **`replay-templates/`** publishes Reddit `list` / `item` renderers once they migrate
+  out of the translator package (**`@js-eyes/visual-replay-hyperframes@0.7.2+`**).
+- **`@js-eyes/visual-replay-hyperframes@0.7.0+`** *(git `97577c1`, `5acda28`, `6051591`)* —
+  plugin host (`pluginHost.js`, `pluginContext.js`), reference builtins **`@builtin/hud` /
+  `@builtin/flash`**, community **`@js-eyes/spotlight`**, repeatable `--plugin` loading +
+  `--plugin-config`, `plugins/README.md` contract & `sample-local-plugin.js` fixture.
+
+### Changed
+
+- **DOM-first visual events** *(git `02e1bcf`)* — `dom_locate` / `dom_click` / `dom_type`
+  (plus supporting bridge work and `_dom-actions.js`) propagate through reddit bridges and
+  the translator/timeline/registry stack; Reddit card shells and fallback templates expand
+  until the **`0.6.0`** prune below.
+- **`@js-eyes/visual-replay-hyperframes@0.6.0`** *(git `72f4eae`)* —
+  **snapshot-first maintenance ("snapshot-only-prune").** Drops ~1180 LOC of Reddit chrome
+  simulation, page-header scaffolding, unused templates (`global`, `navigation`, comment
+  tree, synthetic headers), **`lib/shellLayout.js`**, and **`cli/jse-template-scaffold`** —
+  compositions lean on screenshot plates + `_generic` + minimal Reddit fallbacks (`timeline.js`
+  regains PNG frame sequencing for snapshot mode).
+
+### Breaking / migration
+
+- **CLI tightening (`0.7.1`)** *(git `97577c1`)* — rejecting `--effects=hud|flash|…` and
+  `--all-effects`; use **`--plugin=@builtin/hud`** / **`--plugin=@builtin/flash`** explicitly
+  (translator `opts.effects` remains valid for programmatic callers).
+- **External Reddit templates (`0.7.2`)** *(git `5acda28`)* —
+  **`translate(opts)`** / **`jse-replay`** accept **`opts.templateBootstrap`**, CLI
+  **`--template-bootstrap`**, env **`JSE_REPLAY_TEMPLATE_BOOTSTRAP`**, or the relative
+  `../../replay-templates/index.js` discovery path for bundles under **`runs/`**; callers
+  who only depended on npm **must** supply the bootstrap when none of those apply.
+- **Skill snapshot defaults (`3.8.x`)** — `--visual-record` now captures JPEG frames unless
+  disabled with **`--no-frames`** (CI / throughput opt-out).
+
+### Fixed
+
+- **Reddit `user-bridge` navigation (`js-reddit-ops-skill`)** *(git `fd2d2d6`)* —
+  deprecated **`/user/.../overview`** targets map back to the default profile homepage,
+  **`runTool`** may issue **two** navigations before surfacing failure on stubborn 404s,
+  empty profile responses bail early instead of spinning.
+
+### Replay polish
+
+- **`0.7.3`–`0.7.5`** *(published same day)* — softened then hardened snapshot transitions:
+  longer cross-fade + skip duplicate opener keyframe, teardown of stacked opacity timeouts,
+  final **single-layer hard cut** for background swaps (drops dual-buffer fade artefacts).
+  See `packages/visual-replay-hyperframes/CHANGELOG.md` for timings and rationale.
+
 ## [2.6.3] - 2026-05-02
 
 > **Install-time UX release — zero behavioural changes at runtime.** Closes a
