@@ -25,10 +25,11 @@ const path = require('path');
 const { readVisualSession } = require('@js-eyes/visual-bridge-kit');
 
 const { buildTimeline } = require('./timeline');
-const { renderHudClips } = require('./hudClips');
 const { buildStyleBlock } = require('./styleEmbed');
 const { buildTimelineScript } = require('./timelineScript');
 const { escapeHtml } = require('./escape');
+const { resolveList, runHooks } = require('./pluginHost');
+const { createPluginContext } = require('./pluginContext');
 
 // 注册默认模板：先 _generic（('*','*') 终极兜底 + tree/global/navigation/write 显式
 // 兜底注册），再 reddit（list/item 专属覆盖）。顺序无关功能正确性（registry 按
@@ -43,12 +44,10 @@ const DEFAULT_TITLE = 'JS-Eyes Visual Replay';
 const CARD_GAP_BEFORE_NEXT = 0.2;
 const CARD_TAIL_AFTER_LAST = 1.6;
 
-// v0.6.0：effects 只剩 hud / flash 两个 opt-in overlay；snapshot 模式默认全关
-// （"录制 = 干净"），template 模式由 translate() 在决定好 mode 后自动拉满（零回归）。
+// v0.7.0+ plugin-system：effects.{hud,flash} 仅用于 translate() **程序化** API：hud=true
+// → 在 plugins 列表后追加 @builtin/hud（CLI v0.7.1 起不再接受 --effects=hud，只认
+// --plugin）。CLI 始终传 auto|none 或省略。
 const DEFAULT_EFFECTS = Object.freeze({ hud: false, flash: false });
-
-// v0.6.0 之前 effects 支持 cursor/typing/click/ripple/spinner/scroll/shell；
-// 这批旧 key 现在全部下线，translate() / CLI 各自校验后报错（不在这里硬抛）。
 const KNOWN_EFFECTS = Object.freeze(['hud', 'flash']);
 
 function normalizeEffects(input){
@@ -80,14 +79,24 @@ function normalizeEffects(input){
   return Object.assign({}, DEFAULT_EFFECTS);
 }
 
+// effects → plugin id 的内部映射。CLI 兼容用：translate() 收到 effects.hud=true
+// 时，自动把 @builtin/hud append 到最终 plugin list（未显式传入则不会重复）。
+const EFFECT_TO_PLUGIN = Object.freeze({
+  hud: '@builtin/hud',
+  flash: '@builtin/flash',
+});
+
 /**
  * @param {string} sessionDir
  * @param {string} outDir
  * @param {object} [opts]
  * @param {string} [opts.title]
  * @param {string} [opts.skillId] 显式覆盖 meta.skillId（影响模板路由）
- * @param {object|string} [opts.effects] 'auto' | 'none' | 'all' | 'hud,flash' | { hud, flash }
+ * @param {object|string} [opts.effects] 'auto' | 'none' | { hud, flash }（对象形仅 SDK 用；CLI 只传 auto|none）
+ * @param {Array<string>} [opts.plugins] 显式 plugin id 列表（按出现顺序）
+ * @param {object} [opts.pluginConfigs] { '<plugin-id>': {...} } 给对应 plugin 的私有配置
  * @param {'auto'|'always'|'never'} [opts.snapshot='auto'] snapshot 模式开关（auto = events 含 frame 即用）
+ * @param {string} [opts.cwd] 解析本地路径 plugin 时的基准目录（默认 process.cwd()）
  */
 function translate(sessionDir, outDir, opts){
   const o = opts || {};
@@ -125,6 +134,34 @@ function translate(sessionDir, outDir, opts){
     effects = normalizeEffects(o.effects);
   }
 
+  // 计算最终 plugin id 列表：先用户显式 opts.plugins（保序），再把 effects.{hud,flash}
+  // 映射到 @builtin/* append 到末尾（去重 by id）。SDK 直接调 translate({ effects:{hud:true} })
+  // 时仍生效；CLI 只传 effects=auto|none 并通过 --plugin 加载 builtin。
+  const cwd = o.cwd || process.cwd();
+  const pluginIds = [];
+  const seenIds = new Set();
+  const explicitPlugins = Array.isArray(o.plugins) ? o.plugins : [];
+  for (const id of explicitPlugins) {
+    if (typeof id !== 'string' || !id) continue;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    pluginIds.push(id);
+  }
+  for (const k of KNOWN_EFFECTS) {
+    if (!effects[k]) continue;
+    const pid = EFFECT_TO_PLUGIN[k];
+    if (!pid || seenIds.has(pid)) continue;
+    seenIds.add(pid);
+    pluginIds.push(pid);
+  }
+
+  // 解析 + 准备 ctx 工厂
+  const pluginEntries = resolveList(pluginIds, cwd).map((entry) => ({
+    id: entry.id,
+    plugin: entry.plugin,
+    config: (o.pluginConfigs && o.pluginConfigs[entry.id]) || (o.pluginConfigs && o.pluginConfigs[entry.plugin.name]) || {},
+  }));
+
   fs.mkdirSync(outDir, { recursive: true });
 
   // snapshot 模式拷贝 frames/ 到 composition/frames/
@@ -133,19 +170,46 @@ function translate(sessionDir, outDir, opts){
     framesCopied = copyFramesDir(path.join(sessionDir, 'frames'), path.join(outDir, 'frames'));
   }
 
+  // 跑 plugin hooks（runHooks 自己 fail-fast；任何一个 plugin 抛错都直接冒泡）
+  const ctxFactory = (plugin, config) => createPluginContext({
+    session,
+    timeline: {
+      hud: tl.clips.hud,
+      flash: tl.clips.flash,
+      relation: tl.clips.relation,
+      frames,
+      before: tl.clips.before,
+      after: tl.clips.after,
+      dom: tl.clips.dom,
+      durationSec: tl.durationSec,
+    },
+    composition: {
+      id: compositionId,
+      durationSec: tl.durationSec,
+      viewport: frames[0] && frames[0].viewport ? frames[0].viewport : null,
+      outDir,
+      snapshotMode,
+    },
+    config: config || {},
+  });
+  const pluginOutput = runHooks(pluginEntries, ctxFactory);
+
+  // 拷贝 plugin assets（{ from: <abs path>, to: <relative-in-composition> }）
+  const assetsCopied = copyPluginAssets(pluginOutput.assets, outDir);
+
   const html = buildHtml({
     title,
     compositionId,
     durationSec: tl.durationSec,
-    hud: tl.clips.hud,
-    flash: tl.clips.flash,
-    relation: tl.clips.relation,
     frames,
     snapshotMode,
     effects,
     cards,
     skillId,
     meta: session.meta,
+    pluginHead: pluginOutput.head,
+    pluginBody: pluginOutput.body,
+    pluginTimeline: pluginOutput.timeline,
   });
 
   const indexPath = path.join(outDir, 'index.html');
@@ -153,6 +217,12 @@ function translate(sessionDir, outDir, opts){
 
   const totalDataItems = cards.reduce((acc, c) => acc + (Number.isFinite(c.itemCount) ? c.itemCount : 0), 0);
   const missingTemplates = aggregateMissing(buildResult.templateUsage);
+
+  const pluginsSummaryArr = pluginEntries.map((e) => ({
+    id: e.id,
+    name: e.plugin.name,
+    version: e.plugin.version || 'unknown',
+  }));
 
   const summaryPath = path.join(outDir, 'replay-summary.json');
   fs.writeFileSync(summaryPath, JSON.stringify({
@@ -167,9 +237,12 @@ function translate(sessionDir, outDir, opts){
     framesCopied,
     snapshotMode,
     effects,
+    plugins: pluginsSummaryArr,
+    pluginContributions: pluginOutput.summary,
+    pluginAssets: assetsCopied,
     eventEntries: session.entries ? session.entries.length : 0,
     meta: session.meta || null,
-    architecture: 'snapshot-only-prune (v0.6.0)',
+    architecture: 'plugin-system (v0.7.1)',
     templateUsage: buildResult.templateUsage,
     missingTemplates,
   }, null, 2), 'utf8');
@@ -187,9 +260,28 @@ function translate(sessionDir, outDir, opts){
     framesCopied,
     snapshotMode,
     effects,
+    plugins: pluginsSummaryArr,
     meta: session.meta || null,
     missingTemplates,
   };
+}
+
+function copyPluginAssets(assets, outDir){
+  if (!Array.isArray(assets) || !assets.length) return [];
+  const copied = [];
+  for (const a of assets) {
+    if (!a || typeof a.from !== 'string' || typeof a.to !== 'string') continue;
+    const dest = path.join(outDir, a.to);
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(a.from, dest);
+      copied.push({ from: a.from, to: a.to });
+    } catch (err) {
+      // assets 失败不致命；plugin 自己负责声明该不该写
+      try { process.stderr.write('[jse-replay] plugin asset copy failed ' + a.from + ' → ' + dest + ': ' + err.message + '\n'); } catch (_) {}
+    }
+  }
+  return copied;
 }
 
 function copyFramesDir(srcDir, destDir){
@@ -414,9 +506,6 @@ function anchorIdOf(anchor){
 
 function buildHtml(info){
   const styleBlock = buildStyleBlock();
-  const effects = info.effects || {};
-  // hud DOM 不渲染等于 0 视觉残留（容易被 GSAP set/from 命中也无所谓，无节点）
-  const hudHtml = effects.hud ? renderHudClips(info.hud) : '';
 
   const cardsHtml = (info.cards || []).map(c => c.html).join('\n');
   const snapshotMode = info.snapshotMode === 'snapshot' ? 'snapshot' : 'template';
@@ -426,19 +515,16 @@ function buildHtml(info){
     'jse-replay',
     info.meta && info.meta.skillId ? '· ' + info.meta.skillId : '',
     info.meta && info.meta.sessionId ? '· ' + info.meta.sessionId.slice(0, 14) : '',
-    'v0.6 ' + snapshotMode,
+    'v0.7.1 ' + snapshotMode,
   ].filter(Boolean).join(' ');
 
   const tlScript = buildTimelineScript({
     compositionId: info.compositionId,
-    hud: info.hud,
-    flash: info.flash,
-    relation: info.relation,
     frames,
     snapshotMode,
-    effects,
     cards: info.cards || [],
     durationSec: info.durationSec,
+    pluginTimeline: info.pluginTimeline || '',
   });
 
   const framesPresent = snapshotMode === 'snapshot' && frames.length > 0;
@@ -449,7 +535,7 @@ function buildHtml(info){
     '<main',
     '  id="stage"',
     '  data-composition-id="' + escapeHtml(info.compositionId) + '"',
-    '  data-architecture="snapshot-only-prune-v0.6"',
+    '  data-architecture="plugin-system-v0.7.1"',
     '  data-mode="' + stageMode + '"',
     '>',
     framesPresent
@@ -464,6 +550,9 @@ function buildHtml(info){
     'data-frames="' + (framesPresent ? 'present' : 'absent') + '"',
   ].join(' ');
 
+  const pluginHead = info.pluginHead || '';
+  const pluginBody = info.pluginBody || '';
+
   return [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
@@ -472,11 +561,12 @@ function buildHtml(info){
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     '<title>' + escapeHtml(info.title) + '</title>',
     styleBlock,
+    pluginHead,
     '<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>',
     '</head>',
     '<body ' + bodyAttrs + '>',
     stageBlock,
-    hudHtml,
+    pluginBody,
     '<div class="jse-progress"><div class="bar"></div></div>',
     '<div class="jse-watermark">' + escapeHtml(watermarkText) + '</div>',
     tlScript,

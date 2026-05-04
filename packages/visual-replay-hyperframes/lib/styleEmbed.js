@@ -12,11 +12,15 @@ function loadRuntimeCss(){
 }
 
 /**
- * v0.6.0 snapshot-only-prune：composition 样式只保留两条主链路。
+ * v0.7.0 plugin-system：composition 样式只保留两条主链路。
  *   - snapshot 主链路：#stage[data-mode="snapshot"] 双缓冲背景图
  *   - template 兜底：list / item 卡片（_generic + reddit/{list,item} 还会用）
  *
- * 已删除的 CSS（v0.5.x 有，v0.6.0 起失去对应渲染源）：
+ * 已删除的 CSS（v0.6.x 有，v0.7.0 起搬到对应 plugin）：
+ *   - HUD 浮层 CSS（.jse-hud / .hud-action / ...）→ plugins/builtin-hud/style.js
+ *   - flash 描边 + keyframes（.flash-active / @keyframes jse-flash-pulse*）→ plugins/builtin-flash/style.js
+ *
+ * v0.6.0 已删除的（仍然不在）：
  *   - reddit chrome 仿真：.reddit-topbar / .reddit-leftnav / body[data-shell="reddit"]
  *   - page header：.reddit-page-header（含 sub-banner / sort-tabs / user-banner / nav-breadcrumb）
  *   - tree 模板：.reddit-comment-tree / .comment-node
@@ -72,30 +76,8 @@ function getCompositionExtraCss(){
     '.reddit-info-card .empty-hint { font-size: 12px; color: rgba(240,246,252,0.4); }',
     '.empty-hint { padding: 20px; text-align: center; color: rgba(240,246,252,0.4); font-size: 13px; }',
 
-    /* HUD card：右上角，固定屏幕坐标。--effects=hud 显式开启时才输出 DOM */
-    '.jse-hud { position: fixed; top: 24px; right: 24px; min-width: 240px; max-width: 360px; padding: 14px 18px; background: rgba(20,25,33,0.92); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); color: #f0f6fc; opacity: 0; transform: translateY(-8px); pointer-events: none; z-index: 1000; }',
-    '.jse-hud .hud-action { font-size: 13px; font-weight: 700; color: #f0f6fc; margin: 0 0 4px; word-break: break-word; }',
-    '.jse-hud .hud-target { font-size: 12px; color: rgba(240,246,252,0.7); margin: 0 0 4px; word-break: break-word; }',
-    '.jse-hud .hud-detail { font-size: 11px; color: rgba(240,246,252,0.5); margin: 0; }',
-    '.jse-hud[data-tone="success"] { border-color: rgba(82,196,26,0.5); }',
-    '.jse-hud[data-tone="success"] .hud-action { color: #b6f0a3; }',
-    '.jse-hud[data-tone="error"], .jse-hud[data-tone="danger"] { border-color: rgba(255,77,79,0.55); }',
-    '.jse-hud[data-tone="error"] .hud-action, .jse-hud[data-tone="danger"] .hud-action { color: #ffb3b5; }',
-    '.jse-hud[data-tone="pending"], .jse-hud[data-tone="warn"] { border-color: rgba(250,173,20,0.5); }',
-    '.jse-hud[data-tone="pending"] .hud-action, .jse-hud[data-tone="warn"] .hud-action { color: #ffd966; }',
-
     /* card 入场（template mode 兜底卡片） */
     '.reddit-card.card-active, .reddit-info-card.card-active { opacity: 1; transform: translateY(0); }',
-
-    /* flash outline 动画：--effects=flash 开启时才被 toggle */
-    '@keyframes jse-flash-pulse { 0% { outline-width: 2px; outline-color: rgba(22,119,255,0); box-shadow: 0 0 0 0 rgba(22,119,255,0); } 35% { outline-width: 4px; outline-color: rgba(22,119,255,0.85); box-shadow: 0 0 0 6px rgba(22,119,255,0.18); } 100% { outline-width: 2px; outline-color: rgba(22,119,255,0); box-shadow: 0 0 0 0 rgba(22,119,255,0); } }',
-    '@keyframes jse-flash-pulse-success { 0% { outline-color: rgba(82,196,26,0); box-shadow: 0 0 0 0 rgba(82,196,26,0); } 35% { outline-color: rgba(82,196,26,0.9); box-shadow: 0 0 0 6px rgba(82,196,26,0.2); } 100% { outline-color: rgba(82,196,26,0); box-shadow: 0 0 0 0 rgba(82,196,26,0); } }',
-    '@keyframes jse-flash-pulse-error { 0% { outline-color: rgba(255,77,79,0); box-shadow: 0 0 0 0 rgba(255,77,79,0); } 35% { outline-color: rgba(255,77,79,0.9); box-shadow: 0 0 0 6px rgba(255,77,79,0.22); } 100% { outline-color: rgba(255,77,79,0); box-shadow: 0 0 0 0 rgba(255,77,79,0); } }',
-    '@keyframes jse-flash-pulse-pending { 0% { outline-color: rgba(250,173,20,0); box-shadow: 0 0 0 0 rgba(250,173,20,0); } 35% { outline-color: rgba(250,173,20,0.9); box-shadow: 0 0 0 6px rgba(250,173,20,0.22); } 100% { outline-color: rgba(250,173,20,0); box-shadow: 0 0 0 0 rgba(250,173,20,0); } }',
-    '.flash-active { animation: jse-flash-pulse 600ms ease-out; outline: 2px solid rgba(22,119,255,0.85); outline-offset: 2px; }',
-    '.flash-active[data-tone="success"], .flash-active.tone-success { animation: jse-flash-pulse-success 600ms ease-out; outline-color: rgba(82,196,26,0.85); }',
-    '.flash-active[data-tone="error"], .flash-active.tone-error, .flash-active[data-tone="danger"], .flash-active.tone-danger { animation: jse-flash-pulse-error 600ms ease-out; outline-color: rgba(255,77,79,0.85); }',
-    '.flash-active[data-tone="pending"], .flash-active.tone-pending, .flash-active[data-tone="warn"], .flash-active.tone-warn { animation: jse-flash-pulse-pending 600ms ease-out; outline-color: rgba(250,173,20,0.85); }',
 
     /* 进度条 */
     '.jse-progress { position: fixed; left: 0; bottom: 0; height: 3px; width: 100%; background: rgba(255,255,255,0.08); z-index: 999; }',
@@ -104,8 +86,8 @@ function getCompositionExtraCss(){
     /* 水印 */
     '.jse-watermark { position: fixed; left: 16px; bottom: 12px; font: 600 11px/1 -apple-system, system-ui; color: rgba(255,255,255,0.4); letter-spacing: 0.04em; z-index: 998; }',
 
-    /* 响应式：小屏 stage 留白收紧 */
-    '@media (max-width: 700px) { #stage { padding: 3vh 4vw 6vh; } .reddit-card { padding: 10px 12px; } .jse-hud { right: 12px; top: 12px; left: 12px; max-width: none; } }',
+    /* 响应式：小屏 stage 留白收紧（HUD 小屏规则随 plugin 走） */
+    '@media (max-width: 700px) { #stage { padding: 3vh 4vw 6vh; } .reddit-card { padding: 10px 12px; } }',
 
     /* ===========================================================
        snapshot mode：#stage[data-mode="snapshot"] PNG/JPEG 序列舞台。

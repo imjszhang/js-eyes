@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/visual-replay-hyperframes",
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "Translate js-eyes visual session bundle into hyperframes composition; spawn `npx hyperframes` to render MP4",
   "private": true,
   "main": "index.js",
@@ -11,7 +11,8 @@
     "index.js",
     "lib",
     "cli",
-    "templates"
+    "templates",
+    "plugins"
   ],
   "engines": {
     "node": ">=22.0.0"

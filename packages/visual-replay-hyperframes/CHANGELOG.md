@@ -13,6 +13,125 @@
 >
 > v0.6.0 起把 reddit chrome / page-header / dom_* 合成动画 / scaffold CLI 等
 > 在 snapshot 主链路下走不到的代码全部砍掉，回到"snapshot 优先 + 最小模板兜底"。
+>
+> v0.7.0 起把 HUD/flash 从硬编码改成 plugin 系统；v0.7.1 起 CLI 不再接受
+> `--effects=hud,flash` / `--all-effects`（避免与 `--plugin` 混淆），改用显式 `--plugin=@builtin/*`。
+
+---
+
+## [0.7.1] - 2026-05-04
+
+### Breaking — CLI：`--effects` 不再承载 hud/flash/all
+
+`--effects` 与 `--plugin` 双轨容易造成「我到底在开默认 builtin 还是在开某条 effect？」的混淆。
+v0.7.1 收紧 CLI：**`--effects` 仅保留 `auto`（默认）与 `none`（同 `--no-effects`）**，用于 mode-aware 默认 builtin 的全局开关；具体要叠合成端 HUD/flash 一律走 `--plugin=@builtin/hud` / `--plugin=@builtin/flash`。
+
+- **移除**：`--effects=hud` / `flash` / `hud,flash` / `all` → exit 1，提示改用 `--plugin`
+- **移除**：`--all-effects` → exit 2（parse 阶段），提示改用两个 `--plugin=@builtin/*`
+- **保留**：`--effects=cursor|typing|...` 仍报 `unknown effect`（v0.6.0 hard-error）
+- **不变**：`translate()` 程序化 API 仍可传 `opts.effects: { hud: true, flash: true }`（与 `opts.plugins` 合并），仅 CLI 收紧
+
+- **`cli/jse-replay.js`**：`validateCompositionEffects()` 取代 `expandEffects()`；删 deprecation warning 分支；help 与 file header 同步
+- **`lib/translator.js`**：`replay-summary.json` 的 `architecture` 字段改为 `plugin-system (v0.7.1)`
+- **`package.json`**：`0.7.0 → 0.7.1`
+
+### Migration
+
+| 旧命令 | 新命令 |
+|---|---|
+| `jse-replay sess --effects=hud,flash` | `jse-replay sess --plugin=@builtin/hud --plugin=@builtin/flash` |
+| `jse-replay sess --all-effects` | 同上 |
+| `jse-replay sess --effects=hud` | `jse-replay sess --plugin=@builtin/hud` |
+
+### Verified
+
+| 场景 | 命令 | 预期 |
+|---|---|---|
+| `--effects=hud` 已拒绝 | `jse-replay sess --effects=hud --no-render` | exit 1，stderr 提示 `--plugin=@builtin/hud` |
+| snapshot 上显式 builtin | `jse-replay sess --plugin=@builtin/hud --plugin=@builtin/flash --no-render --keep` | plugins=两个 builtin |
+| 其余 0.7.0 验收（默认 snapshot/template、spotlight、local plugin） | 同 0.7.0 | 行为不变 |
+
+---
+
+## [0.7.0] - 2026-05-04
+
+### Added — Plugin system + reference spotlight + local plugin loading
+
+把 `--effects=hud,flash` 这个封闭 enum 升级成 plugin 系统，落地两层价值：
+
+- **架构层**：HUD / flash 从硬编码（`lib/hudClips.js` + 三段 timelineScript / styleEmbed）抽成两个 reference plugin；新增 plugin host 暴露 5 个 hook
+- **用户层**：交付 `@js-eyes/spotlight`（消费已录制的 `dom_locate.rect` 数据画聚光灯）+ 一个 5 行的 local plugin fixture，作者照抄即可写出自己的效果
+
+**新文件：**
+
+- `lib/pluginHost.js` — 注册 / 解析 / 调 hook 核心；`@builtin/*` + `@js-eyes/*` + 本地路径解析
+- `lib/pluginContext.js` — 只读 ctx 工厂（session / timeline / composition / config / logger）
+- `plugins/builtin-hud/{index.js, style.js}` — 移植 `lib/hudClips.js` + `timelineScript` HUD 段
+- `plugins/builtin-flash/{index.js, style.js}` — 移植 `timelineScript` flash + relation `addClassByAnchor` 段
+- `plugins/community/spotlight/{index.js, style.js, README.md}` — 消费 `timeline.dom.locate.rect` 画聚光灯
+- `plugins/README.md` — Plugin 接口契约 + 教学
+- `__fixtures__/sample-local-plugin.js` — 最小 local plugin 例子（贴水印 + 一行字幕）
+
+**Plugin 接口（同步 pure function，5 hooks）：**
+
+```js
+{
+  name: '@me/my-effect',
+  version: '0.1.0',
+  injectHead?(ctx)        → string,                     // <head>
+  injectBody?(ctx)        → string,                     // <body> 顶部
+  injectTimeline?(ctx)    → string,                     // GSAP IIFE 末尾
+  collectAssets?(ctx)     → Array<{from, to}>,          // 拷贝静态资源
+  contributeSummary?(ctx) → object,                     // 写到 replay-summary
+}
+```
+
+**CLI 用法：**
+
+```bash
+jse-replay <sess> --plugin=@js-eyes/spotlight
+jse-replay <sess> --plugin=./my-watermark.js
+jse-replay <sess> --plugin=@builtin/hud --plugin=@js-eyes/spotlight \
+  --plugin-config '@js-eyes/spotlight={"radius":120,"tone":"orange"}'
+```
+
+### Changed — HUD / flash 移到 plugin
+
+- `lib/translator.js`：删 `require('./hudClips')`，新增 `require('./pluginHost')` + `require('./pluginContext')`；`buildHtml` 不再硬调 `renderHudClips`，改用 plugin host 收集 `head/body/timeline` 字符串拼到 final HTML；`replay-summary.json` 新增 `plugins` / `pluginContributions` / `pluginAssets`，`architecture` 改为 `'plugin-system (v0.7.0)'`
+- `lib/timelineScript.js`：删 `// ---- HUD ----` 整段（`tl.fromTo("#hud-...")` ~12 行）+ `// ---- Flash ----` 整段（`addClassByAnchor` + relation 处理 ~22 行）；保留 `addClassByAnchor` / `removeClassByAnchor` helper（plugin 端复用）；末尾留 `pluginTimeline` 注入点
+- `lib/styleEmbed.js`：删 `.jse-hud` / `.flash-active` / `@keyframes jse-flash-pulse*` 共 ~14 行 CSS（已搬到对应 plugin/style.js）；保留核心 `#stage` snapshot stage + `.reddit-card*` / `.reddit-info-card`
+- `cli/jse-replay.js`：新增 `--plugin <id>`（可重复）+ `--plugin-config '<id>={...}'`（必须是合法 JSON object）；`--effects=hud,flash` 内部 alias 成 `--plugin=@builtin/hud --plugin=@builtin/flash` + stderr deprecation warning；help 加「Plugin system」段
+
+### Deprecated（v0.7.0 当时；CLI 已在 v0.7.1 移除 alias）
+
+- ~~`--effects=hud / flash / hud,flash / all`：CLI 曾自动展开为 `--plugin=@builtin/*` + deprecation warning~~ → **v0.7.1**：CLI 拒绝这些 token，必须用 `--plugin`
+
+### Removed
+
+- `lib/hudClips.js`：内容移到 `plugins/builtin-hud/index.js`
+
+### Behavior
+
+- `snapshot mode 默认`：plugins=[]（"录制 = 干净"），与 0.6.0 视觉 1:1 一致
+- `template mode 默认`：plugins=[`@builtin/hud`, `@builtin/flash`]（CLI 自动 append），与 0.6.0 视觉 1:1 一致
+- `--effects=cursor|typing|click|ripple|spinner|scroll|shell` 仍然 hard-error（v0.6.0 已立的不动）
+- `--shell / --no-shell / --frames-debug / --width / --height` 仍然 hard-error（v0.6.0 已立的不动）
+
+### Migration（v0.7.0；CLI 细节以 v0.7.1 为准）
+
+- ~~用户用过 `--effects=hud,flash`：能继续 work~~ → **v0.7.1** 必须用 `--plugin=@builtin/*`
+- 想用新效果：`--plugin=@js-eyes/spotlight` 立即可用，或写自己的 plugin 用本地路径 `--plugin=./my.js` 加载
+- SDK 用户调用 `translate(sessionDir, outDir, opts)`：`opts.effects` 对象形仍兼容；`opts.plugins` 与 CLI 行为一致
+
+### Verified
+
+| 场景 | 命令 | 预期 |
+|---|---|---|
+| 零回归 - snapshot 默认 | `jse-replay sess-snapshot --no-render --keep` | mode=snapshot, plugins=[], 视觉与 0.6.0 完全一致（0 hud aside, 0 flash class） |
+| 零回归 - template 默认 | `jse-replay sess-template --no-snapshot --no-render --keep` | mode=template, plugins=[`@builtin/hud`, `@builtin/flash`], hud asides ≥1, flash toggles ≥1 |
+| snapshot 上显式 builtin（v0.7.1+） | `jse-replay sess --plugin=@builtin/hud --plugin=@builtin/flash --no-render --keep` | replay-summary `plugins=[@builtin/hud, @builtin/flash]` |
+| spotlight opt-in | `jse-replay sess --plugin=@js-eyes/spotlight --no-render --keep` | composition 含 `<div id="jse-spotlight-overlay">`；timeline 出现 `setSpotlight` 调用 |
+| 本地 plugin | `jse-replay sess --plugin=./__fixtures__/sample-local-plugin.js --no-render --keep` | composition 内嵌该 plugin 注入的水印 + 字幕节点 |
 
 ---
 

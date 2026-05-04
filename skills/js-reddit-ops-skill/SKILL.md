@@ -246,10 +246,12 @@ v3.8.0 起 `--visual-record <dir>` 自动启用 PNG/JPEG 截图链路（默认 J
 |---|---|
 | `--snapshot=auto`（默认） | events 含 `frame` 走 snapshot；否则退模板 |
 | `--snapshot=never` | 强制走模板路径（list/item 卡片兜底） |
-| `--effects=auto`（默认） | snapshot=none, template=hud+flash（mode-aware） |
-| `--effects=hud,flash` | snapshot 之上 opt-in 叠合成端 HUD/flash overlay |
-| `--no-effects` | 强制 0 effects（即使 template 模式也压住 HUD） |
+| `--effects=auto`（默认） | snapshot=不自动加 builtin plugin；template=自动 `@builtin/hud`+`@builtin/flash`（与 v0.6 一致） |
+| `--plugin=@builtin/hud` 等 | 显式叠合成端 HUD/flash（**取代**已移除的 `--effects=hud,flash`） |
+| `--no-effects` / `--effects=none` | 关掉上述 mode-aware 默认（template 也不自动加载 builtin） |
 
+> **v0.7.1**：`jse-replay` 不再接受 `--effects=hud,flash`；请用 `--plugin=@builtin/hud --plugin=@builtin/flash`。
+>
 > **v0.6.0 breaking**：`--shell` / `--no-shell` 已删；`--effects=cursor|typing|click|ripple|spinner|scroll`
 > 报 `unknown effect` 退出 1。snapshot 模式截图自带 chrome 与 dom 操作的视觉表现，
 > 这些 v0.5.x flag 已无对应渲染源。回退请用 0.5.2。

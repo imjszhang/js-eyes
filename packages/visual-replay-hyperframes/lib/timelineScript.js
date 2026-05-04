@@ -2,34 +2,32 @@
 
 /**
  * post-2.7.0 architecture pivot：HTML 数据驱动 replay 的 GSAP 时间轴。
- * v0.6.0：snapshot-only-prune 后，只保留 setStageBackground 主链路 + HUD/flash
- * 两个 opt-in overlay。dom_* 合成动画 (cursor/typing/ripple/spinner/scroll)、
- * reddit shell sync (syncShellState) 全部下线——snapshot 模式下截图自带，
- * template 模式下没人用。
  *
- * 核心：
+ * v0.7.0：plugin 系统化重构。HUD / flash 段从 hardcoded 抽到
+ * `plugins/builtin-hud` / `plugins/builtin-flash`。本文件只剩两条主链路：
  *   - snapshot mode：#stage 双缓冲背景图 cross-fade（主链路）
  *   - template mode：每张卡片 fromTo 入场（list/item 兜底用）
- *   - HUD/flash 仅在 effects.hud / effects.flash 显式开启时输出 tween
+ * helpers（addClassByAnchor / removeClassByAnchor / $ / $all）仍由本脚本顶部
+ * 提供，plugin 端 timeline 段拼接到 helpers 之后即可直接使用。
  *
- * @param {{ compositionId: string, hud: Array, flash: Array, relation: Array, durationSec: number }} info
+ * pluginTimeline：plugin 通过 pluginHost.runHooks 收集到的所有 plugin
+ * injectTimeline 字符串，会被原样拼到 IIFE 末尾、tl 注册之前。
+ *
+ * @param {{
+ *   compositionId: string,
+ *   frames: Array, snapshotMode: string, cards: Array,
+ *   durationSec: number,
+ *   pluginTimeline?: string  // 来自 pluginHost.runHooks(ctx).timeline
+ * }} info
  * @returns {string} <script>...</script>
  */
 function buildTimelineScript(info){
   const id = info.compositionId;
-  const hud = Array.isArray(info.hud) ? info.hud : [];
-  const flash = Array.isArray(info.flash) ? info.flash : [];
-  const relation = Array.isArray(info.relation) ? info.relation : [];
   const cards = Array.isArray(info.cards) ? info.cards : [];
   const frames = Array.isArray(info.frames) ? info.frames : [];
   const snapshotMode = info.snapshotMode === 'snapshot' ? 'snapshot' : 'template';
-  const effectsCfg = info.effects && typeof info.effects === 'object' ? info.effects : {};
-  const effects = {
-    // v0.6.0：只剩 hud / flash 两个合成端 overlay；其它 dom_* effects 已删
-    hud: !!effectsCfg.hud,
-    flash: !!effectsCfg.flash,
-  };
   const dur = Math.max(0.5, Number(info.durationSec) || 0.5);
+  const pluginTimeline = typeof info.pluginTimeline === 'string' ? info.pluginTimeline : '';
 
   const lines = [];
   lines.push('(function () {');
@@ -67,55 +65,6 @@ function buildTimelineScript(info){
       lines.push('  tl.to("#' + c.id + '", { opacity: 0, duration: 0.18, ease: "power2.in" }, ' + tOut.toFixed(3) + ');');
     } else {
       lines.push('  tl.set("#' + c.id + '", { opacity: 0 }, ' + (Number.isFinite(c.tEnd) ? c.tEnd : (tIn + 4)).toFixed(3) + ');');
-    }
-  }
-
-  // ---- HUD（受 effects.hud 控制；snapshot 模式默认关）----
-  // hud DOM 在 effects.hud=false 时不渲染（buildHtml 已跳过 renderHudClips），这里
-  // 只为了避免给不存在的 #hud-i 写 GSAP tween 而再做一次 gate。
-  if (effects.hud) {
-    for (const h of hud) {
-      const dHud = Math.max(0.05, h.duration);
-      const fadeIn = Math.min(0.18, Math.max(0.04, dHud * 0.4));
-      const tIn = h.tStart;
-      const tEnd = tIn + dHud;
-      lines.push('  tl.fromTo("#' + h.id + '", { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: ' + fadeIn.toFixed(3) + ', ease: "power2.out" }, ' + tIn.toFixed(3) + ');');
-      if (dHud >= 0.5) {
-        const fadeOut = 0.18;
-        const tOut = tEnd - fadeOut;
-        lines.push('  tl.to("#' + h.id + '", { opacity: 0, duration: ' + fadeOut.toFixed(3) + ', ease: "power2.in" }, ' + tOut.toFixed(3) + ');');
-      } else {
-        lines.push('  tl.set("#' + h.id + '", { opacity: 0 }, ' + tEnd.toFixed(3) + ');');
-      }
-    }
-  }
-
-  // ---- Flash：class 切换（受 effects.flash 控制）----
-  if (effects.flash) {
-    for (const f of flash) {
-      if (!f.anchorId) continue;
-      const tIn = Math.max(0, f.tStart);
-      const dF = Math.max(0.1, Math.min(0.6, f.duration));
-      const tOff = tIn + dF;
-      const tone = String(f.tone || 'info').replace(/[^a-z]/g, '');
-      lines.push('  tl.add(function(){ addClassByAnchor(' + JSON.stringify(f.anchorId) + ', "flash-active", ' + JSON.stringify(tone) + '); }, ' + tIn.toFixed(3) + ');');
-      lines.push('  tl.add(function(){ removeClassByAnchor(' + JSON.stringify(f.anchorId) + ', "flash-active"); }, ' + tOff.toFixed(3) + ');');
-    }
-
-    for (const r of relation) {
-      const tIn = Math.max(0, r.tStart);
-      const dR = Math.max(0.2, r.duration);
-      const tOff = tIn + Math.min(0.6, dR);
-      const tone = String(r.tone || 'info').replace(/[^a-z]/g, '');
-      if (r.fromAnchorId) {
-        lines.push('  tl.add(function(){ addClassByAnchor(' + JSON.stringify(r.fromAnchorId) + ', "flash-active", ' + JSON.stringify(tone) + '); }, ' + tIn.toFixed(3) + ');');
-        lines.push('  tl.add(function(){ removeClassByAnchor(' + JSON.stringify(r.fromAnchorId) + ', "flash-active"); }, ' + tOff.toFixed(3) + ');');
-      }
-      if (r.toAnchorId) {
-        const t2 = tIn + 0.18;
-        lines.push('  tl.add(function(){ addClassByAnchor(' + JSON.stringify(r.toAnchorId) + ', "flash-active", ' + JSON.stringify(tone) + '); }, ' + t2.toFixed(3) + ');');
-        lines.push('  tl.add(function(){ removeClassByAnchor(' + JSON.stringify(r.toAnchorId) + ', "flash-active"); }, ' + (t2 + Math.min(0.6, dR)).toFixed(3) + ');');
-      }
     }
   }
 
@@ -175,10 +124,19 @@ function buildTimelineScript(info){
   // ---- 进度条 ----
   lines.push('  tl.to(".jse-progress > .bar", { width: "100%", duration: ' + dur.toFixed(3) + ', ease: "none" }, 0);');
 
+  // ---- plugin 注入点 ----
+  // pluginHost.runHooks(ctx).timeline 拼接进来；plugin 可读 tl / addClassByAnchor /
+  // removeClassByAnchor / $ / $all。空字符串时插入 0 字节，零开销。
+  if (pluginTimeline) {
+    lines.push('  // ===== plugin timeline injections =====');
+    lines.push(pluginTimeline);
+    lines.push('  // ===== /plugin timeline =====');
+  }
+
   lines.push('  window.__timelines[' + JSON.stringify(id) + '] = tl;');
   // 用 JSON.stringify 把整条 log 信息一次性序列化成合法 JS 字符串字面量，避免
-  // effects JSON 内的双引号撕裂外层 console.log("...") 引号导致 SyntaxError。
-  const __logMsg = '[jse-replay] timeline registered (v0.6.0 ' + snapshotMode + '), frames=' + frames.length + ', hud=' + hud.length + ', flash=' + flash.length + ', rel=' + relation.length + ', cards=' + cards.length + ', effects=' + JSON.stringify(effects) + ', dur=' + dur.toFixed(3) + 's';
+  // 内嵌字符串里的双引号撕裂外层 console.log("...") 引号导致 SyntaxError。
+  const __logMsg = '[jse-replay] timeline registered (v0.7.0 ' + snapshotMode + '), frames=' + frames.length + ', cards=' + cards.length + ', dur=' + dur.toFixed(3) + 's';
   lines.push('  console.log(' + JSON.stringify(__logMsg) + ');');
   lines.push('  setTimeout(function(){');
   lines.push('    if (window.__hyperframesActive) { console.log("[jse-replay] hyperframes active; deferring playback"); return; }');

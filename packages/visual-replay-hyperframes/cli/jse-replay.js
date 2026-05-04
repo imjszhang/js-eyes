@@ -1,24 +1,31 @@
 #!/usr/bin/env node
 'use strict';
 
-// jse-replay CLI（v0.6.0 snapshot-only-prune）
+// jse-replay CLI（v0.7.1 plugin-system）
 // ---------------------------------------------------------------------------
 // 用法：
 //   jse-replay <session-dir> [--out <video.mp4>] [--preview] [--keep-composition]
 //              [--title <s>] [--no-render]
-//              [--snapshot=auto|always|never] [--effects=auto|none|all|hud,flash]
+//              [--snapshot=auto|always|never]
+//              [--plugin <id>]                       (可重复)
+//              [--plugin-config '<id>={...}']        (可重复)
+//              [--effects=auto|none]                 （仅 mode-aware / 显式关默认 plugin）
+//              [--no-effects]                         等价 --effects=none
 //
-// 行为：
-//   1. 读会话包 → 转译成 hyperframes composition 目录（默认在 <session-dir>/composition/）
-//   2. --preview     → spawn `npx hyperframes preview <composition>`
-//      --no-render   → 只生成 composition，不调用 hyperframes
-//      默认          → spawn `npx hyperframes render <composition> -o <out>`
-//   3. --keep-composition 渲染完保留中间产物
+// v0.7.1：CLI 不再接受 `--effects=hud,flash` / `all`（易与 `--plugin` 混淆）。要叠合成端
+// HUD/flash 请显式：`--plugin=@builtin/hud --plugin=@builtin/flash`。
 //
-// v0.6.0 breaking：
-//   - 删 --shell / --no-shell（snapshot 模式截图自带 chrome；template 模式无 chrome）
-//   - --effects=cursor|typing|click|ripple|spinner|scroll → unknown effect (exit 1)
-//   - 删 deprecated flag --frames-debug / --width / --height（已 noop 多版）
+// v0.7.0 起：
+//   - `--plugin <id>` 注册一个 plugin（按出现顺序生效，重复会去重）
+//   - `--plugin-config '<id>={JSON}'` 给特定 plugin 私有配置
+//
+// 默认行为（与 v0.6.0 一致）：
+//   - snapshot mode 默认 plugins=[]（"录制 = 干净"）
+//   - template mode 默认 plugins=[@builtin/hud, @builtin/flash]
+//
+// 仍然 hard-error（v0.6.0 立的）：
+//   - --effects=cursor|typing|click|ripple|spinner|scroll|shell → unknown effect (exit 1)
+//   - --shell / --no-shell / --frames-debug / --width / --height → 未知参数 (exit 2)
 // ---------------------------------------------------------------------------
 
 const fs = require('fs');
@@ -27,9 +34,7 @@ const { spawn } = require('child_process');
 
 const { translate } = require('../index');
 
-// v0.6.0 起仅认这两个 effect；其他键报 unknown effect 退出 1
-const KNOWN_EFFECTS = new Set(['hud', 'flash']);
-// v0.5.x 曾支持的 effect 名；v0.6.0 全部移除
+// v0.5.x 曾支持的 effect 名；v0.6.0 起全部移除（CLI 仍拒绝）
 const REMOVED_EFFECTS = new Set(['cursor', 'typing', 'click', 'ripple', 'spinner', 'scroll', 'shell']);
 
 function parseArgs(argv){
@@ -43,10 +48,12 @@ function parseArgs(argv){
     skillId: null,
     help: false,
     verbose: false,
-    // effects 默认 'auto'（mode-aware）：snapshot 模式 → none，template 模式 → hud+flash。
-    // 用户显式传 --effects / --no-effects / --all-effects 都会覆盖。
-    effects: 'auto',          // 'auto' | 'none' | 'all' | 'hud' | 'flash' | 'hud,flash'
+    // --effects 仅 auto | none（template 默认 builtin 由 translate() mode-aware 决定）
+    effects: 'auto',          // 'auto' | 'none'
     snapshot: 'auto',         // 'auto' | 'always' | 'never'
+    plugins: [],              // ['<id>', ...]，按出现顺序去重
+    pluginConfigs: {},        // { '<id>': {...} }
+    effectsExplicit: false,   // 用户是否显式传过 --effects/--no-effects
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -61,13 +68,19 @@ function parseArgs(argv){
     if (a.startsWith('--title=')) { opts.title = a.slice('--title='.length); continue; }
     if (a === '--skill' && argv[i + 1]) { opts.skillId = argv[++i]; continue; }
     if (a.startsWith('--skill=')) { opts.skillId = a.slice('--skill='.length); continue; }
-    if (a === '--effects' && argv[i + 1]) { opts.effects = argv[++i]; continue; }
-    if (a.startsWith('--effects=')) { opts.effects = a.slice('--effects='.length); continue; }
-    if (a === '--no-effects') { opts.effects = 'none'; continue; }
-    if (a === '--all-effects') { opts.effects = 'all'; continue; }
+    if (a === '--effects' && argv[i + 1]) { opts.effects = argv[++i]; opts.effectsExplicit = true; continue; }
+    if (a.startsWith('--effects=')) { opts.effects = a.slice('--effects='.length); opts.effectsExplicit = true; continue; }
+    if (a === '--no-effects') { opts.effects = 'none'; opts.effectsExplicit = true; continue; }
+    if (a === '--all-effects') {
+      throw new Error('已移除 --all-effects。请使用 --plugin=@builtin/hud --plugin=@builtin/flash');
+    }
     if (a === '--snapshot' && argv[i + 1]) { opts.snapshot = argv[++i]; continue; }
     if (a.startsWith('--snapshot=')) { opts.snapshot = a.slice('--snapshot='.length); continue; }
     if (a === '--no-snapshot') { opts.snapshot = 'never'; continue; }
+    if (a === '--plugin' && argv[i + 1]) { opts.plugins.push(argv[++i]); continue; }
+    if (a.startsWith('--plugin=')) { opts.plugins.push(a.slice('--plugin='.length)); continue; }
+    if (a === '--plugin-config' && argv[i + 1]) { applyPluginConfig(opts.pluginConfigs, argv[++i]); continue; }
+    if (a.startsWith('--plugin-config=')) { applyPluginConfig(opts.pluginConfigs, a.slice('--plugin-config='.length)); continue; }
     if (a.startsWith('-')) { throw new Error('未知参数: ' + a); }
     if (!opts.sessionDir) { opts.sessionDir = a; continue; }
     throw new Error('多余的位置参数: ' + a);
@@ -76,65 +89,105 @@ function parseArgs(argv){
 }
 
 /**
- * v0.6.0：把 --effects 字符串里的每个 token 校验一遍，命中 REMOVED_EFFECTS 直接报错。
- * 'auto' / 'none' / 'all' / 任意 KNOWN_EFFECTS 都通过。
+ * 校验 `--effects`：**仅**允许 `auto`（默认）与 `none`（含 `--no-effects`）。
+ * `hud` / `flash` / `all` 等旧写法已移除，避免与 `--plugin` 双轨混淆。
  *
- * @returns {string|null} 错误信息（null = 校验通过）
+ * @returns {{ error?: string }} error 非空 → CLI exit 1
  */
-function validateEffects(input){
-  if (!input) return null;
-  if (input === 'auto' || input === 'none' || input === 'all') return null;
-  if (typeof input !== 'string') return null;
+function validateCompositionEffects(input){
+  if (!input || input === 'auto') return { error: null };
+  if (input === 'none') return { error: null };
+  if (typeof input !== 'string') return { error: null };
   const tokens = input.split(/[\s,]+/).map((t) => t.trim().toLowerCase()).filter(Boolean);
   for (const t of tokens) {
-    if (t === 'all' || t === 'none' || t === 'auto') continue;
-    if (KNOWN_EFFECTS.has(t)) continue;
+    if (t === 'auto' || t === 'none') continue;
     if (REMOVED_EFFECTS.has(t)) {
-      return 'unknown effect: ' + t + ' (removed in v0.6.0; snapshot mode carries real screenshots, see CHANGELOG)';
+      return { error: 'unknown effect: ' + t + ' (removed in v0.6.0; snapshot mode carries real screenshots, see CHANGELOG)' };
     }
-    return 'unknown effect: ' + t + ' (known: ' + Array.from(KNOWN_EFFECTS).join(',') + ')';
+    if (t === 'hud' || t === 'flash' || t === 'all') {
+      return { error: '--effects 不再接受 hud/flash/all（v0.7.1）。请在需要合成端 HUD/flash 时使用 --plugin=@builtin/hud 与/或 --plugin=@builtin/flash' };
+    }
+    return { error: '--effects 仅支持 auto（默认）或 none；未知 token: ' + t };
   }
-  return null;
+  return { error: null };
+}
+
+/**
+ * 解析 --plugin-config '<id>={JSON}'。id 不能包含 '='；JSON 部分一律按 strict JSON
+ * 解析，非法 JSON 直接抛错（fail-fast，错就错在生成时）。
+ */
+function applyPluginConfig(target, raw){
+  if (!raw || typeof raw !== 'string') {
+    throw new Error('--plugin-config 不能为空');
+  }
+  const eqIdx = raw.indexOf('=');
+  if (eqIdx <= 0) {
+    throw new Error('--plugin-config 格式错误，应为 \'<id>={...}\': ' + raw);
+  }
+  const id = raw.slice(0, eqIdx).trim();
+  const json = raw.slice(eqIdx + 1).trim();
+  if (!id) throw new Error('--plugin-config id 不能为空: ' + raw);
+  let parsed;
+  try { parsed = JSON.parse(json); }
+  catch (err) {
+    throw new Error('--plugin-config 的 JSON 解析失败 (' + id + '): ' + err.message);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('--plugin-config (' + id + ') 必须是 JSON object');
+  }
+  target[id] = Object.assign({}, target[id] || {}, parsed);
 }
 
 function printHelp(){
   const lines = [
-    'jse-replay (v0.6.0) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
+    'jse-replay (v0.7.1) - 把 visual session bundle 转译并 spawn hyperframes 渲染',
     '                      events 含 frame → snapshot 双缓冲背景图；否则 list/item 模板兑底',
     '',
     'Usage:',
     '  jse-replay <session-dir> [options]',
     '',
     'Options:',
-    '  --out <file.mp4>        渲染输出路径（默认 <session-dir>/replay.mp4）',
-    '  --preview               启动 hyperframes preview 而非 render',
-    '  --no-render             只生成 composition 目录，不调用 hyperframes',
-    '  --keep-composition      渲染完保留 composition/ 目录',
-    '  --title <s>             页面 title',
-    '  --skill <id>            显式指定 skillId 以路由模板（默认从 meta.json 读）',
+    '  --out <file.mp4>            渲染输出路径（默认 <session-dir>/replay.mp4）',
+    '  --preview                   启动 hyperframes preview 而非 render',
+    '  --no-render                 只生成 composition 目录，不调用 hyperframes',
+    '  --keep-composition          渲染完保留 composition/ 目录',
+    '  --title <s>                 页面 title',
+    '  --skill <id>                显式指定 skillId 以路由模板（默认从 meta.json 读）',
     '',
-    '  snapshot mode：',
-    '  --snapshot <mode>       auto (默认，events 含 frame 即用) | always | never',
-    '  --no-snapshot           等价 --snapshot=never，强制走模板路径',
+    '  Snapshot mode:',
+    '  --snapshot <mode>           auto (默认，events 含 frame 即用) | always | never',
+    '  --no-snapshot               等价 --snapshot=never，强制走模板路径',
     '',
-    '  effects（v0.6.0：仅剩 hud / flash 两个 opt-in overlay）：',
-    '  --effects <list>        auto (默认；snapshot=none, template=hud+flash) | none | all',
-    '                          | hud | flash | hud,flash 任意组合',
-    '  --no-effects            等价 --effects=none',
-    '  --all-effects           等价 --effects=all（hud + flash）',
+    '  Plugin system (v0.7.0+):',
+    '  --plugin <id>               注册一个 plugin（可重复，按出现顺序生效）',
+    '                              支持：@builtin/hud / @builtin/flash / @js-eyes/spotlight',
+    '                                    或本地路径 ./xxx.js / 绝对路径',
+    '  --plugin-config \'<id>={...}\' 给特定 plugin 私有 JSON 配置（可重复）',
     '',
-    '  -v, --verbose           输出 spawn 的命令',
-    '  -h, --help              显示帮助',
+    '  默认 plugin（mode-aware，无需传 flag）：',
+    '    snapshot → 无 builtin；template → @builtin/hud + @builtin/flash',
+    '',
+    '  Composition 策略（仅 auto | none，不设具体 effect 名字）：',
+    '  --effects <mode>            auto (默认) | none（强制关掉上述 mode-aware 默认 builtin）',
+    '  --no-effects                等价 --effects=none',
+    '                              要叠 HUD/flash 请用 --plugin=@builtin/hud / --plugin=@builtin/flash',
+    '',
+    '  -v, --verbose               输出 spawn 的命令',
+    '  -h, --help                  显示帮助',
     '',
     'Removed in v0.6.0 (会报错):',
-    '  --shell / --no-shell                 snapshot 模式截图自带 chrome；template 无 chrome',
-    '  --effects=cursor|typing|click|...    dom_* 合成动画已下线，回退请用 0.5.2',
-    '  --frames-debug / --width / --height  已 noop 多版',
+    '  --shell / --no-shell                     snapshot 模式截图自带 chrome；template 无 chrome',
+    '  --effects=cursor|typing|click|ripple|... dom_* 合成动画已下线，回退请用 0.5.2',
+    '  --frames-debug / --width / --height      已 noop 多版',
     '',
     'Examples:',
-    '  jse-replay runs/sess-001                              # 默认 snapshot + 干净录制',
-    '  jse-replay runs/sess-001 --effects=hud                # snapshot 上 opt-in HUD overlay',
-    '  jse-replay runs/sess-001 --no-snapshot                # 走 template 卡片路径',
+    '  jse-replay runs/sess-001                                    # 默认 snapshot + 干净录制',
+    '  jse-replay runs/sess-001 --plugin=@js-eyes/spotlight        # snapshot 上加聚光灯',
+    '  jse-replay runs/sess-001 --plugin=./my-watermark.js         # 本地 plugin',
+    '  jse-replay runs/sess-001 --plugin=@builtin/hud \\',
+    '             --plugin=@js-eyes/spotlight \\',
+    '             --plugin-config \'@js-eyes/spotlight={"radius":120,"tone":"orange"}\'',
+    '  jse-replay runs/sess-001 --plugin=@builtin/hud --plugin=@builtin/flash  # snapshot 上叠合成端 HUD+flash',
   ];
   process.stdout.write(lines.join('\n') + '\n');
 }
@@ -167,12 +220,12 @@ async function main(argv){
     return opts.help ? 0 : 2;
   }
 
-  // v0.6.0：硬校验 --effects
-  const effErr = validateEffects(opts.effects);
-  if (effErr) {
-    process.stderr.write('ERROR: ' + effErr + '\n');
+  const effCheck = validateCompositionEffects(opts.effects);
+  if (effCheck.error) {
+    process.stderr.write('ERROR: ' + effCheck.error + '\n');
     return 1;
   }
+  const pluginIds = Array.isArray(opts.plugins) ? opts.plugins : [];
 
   const sessionDir = path.resolve(opts.sessionDir);
   if (!fs.existsSync(sessionDir)) {
@@ -186,11 +239,16 @@ async function main(argv){
     result = translate(sessionDir, compositionDir, {
       title: opts.title || undefined,
       skillId: opts.skillId || undefined,
-      effects: opts.effects,
+      // effects=auto 仍旧透给 translate()，让 mode-aware 默认行为生效（没显式 --effects/--plugin）
+      effects: opts.effectsExplicit ? opts.effects : (pluginIds.length ? 'none' : 'auto'),
       snapshot: opts.snapshot,
+      plugins: pluginIds,
+      pluginConfigs: opts.pluginConfigs,
+      cwd: process.cwd(),
     });
   } catch (err) {
     process.stderr.write('ERROR: translate failed: ' + err.message + '\n');
+    if (opts.verbose && err.stack) process.stderr.write(err.stack + '\n');
     return 1;
   }
 
@@ -205,6 +263,8 @@ async function main(argv){
   process.stderr.write('[jse-replay] frames:           ' + (result.frameCount || 0) + ' (copied=' + (result.framesCopied || 0) + ')\n');
   const onEffects = Object.keys(result.effects || {}).filter((k) => result.effects[k]);
   process.stderr.write('[jse-replay] effects:          ' + (onEffects.length ? onEffects.join(',') : 'none') + '\n');
+  const pluginNames = (result.plugins || []).map((p) => p.name);
+  process.stderr.write('[jse-replay] plugins:          ' + (pluginNames.length ? pluginNames.join(', ') : '(none)') + '\n');
 
   if (opts.noRender) {
     process.stdout.write(JSON.stringify({ ok: true, composition: compositionDir, ...stripMeta(result) }) + '\n');
@@ -251,9 +311,10 @@ function stripMeta(r){
     framesCopied: r.framesCopied || 0,
     snapshotMode: r.snapshotMode || 'template',
     effects: r.effects || {},
+    plugins: r.plugins || [],
     sessionId: r.meta && r.meta.sessionId,
     skillId: r.meta && r.meta.skillId,
-    architecture: 'snapshot-only-prune (v0.6.0)',
+    architecture: 'plugin-system (v0.7.1)',
   };
 }
 
@@ -264,4 +325,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, parseArgs, validateEffects };
+module.exports = { main, parseArgs, validateCompositionEffects, applyPluginConfig };
