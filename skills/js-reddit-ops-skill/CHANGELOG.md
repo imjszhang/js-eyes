@@ -5,6 +5,34 @@ All notable changes to `js-reddit-ops-skill` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.1] - 2026-05-04
+
+### Notes — visual-replay-hyperframes v0.6.0 联动（仅文档同步，代码不动）
+
+`@js-eyes/visual-replay-hyperframes` v0.6.0 收敛成"snapshot 优先 + 最小模板兜底"，
+砍掉 reddit chrome 仿真 / page-header / dom_* 合成动画 / scaffold CLI 等
+snapshot 主链路下走不到的代码（约 1180 行）。skill 侧的运行时行为完全不变：
+
+- `dom_*` 事件流仍照常 emit 进 events.jsonl（给上游审计 / 调试用）
+- snapshot 模式下 `dom_*` 操作的视觉表现由真实截图序列承载（鼠标 / 输入 / 滚动 /
+  点击都已被浏览器真实绘制并截进 JPEG），v0.5.x 那种合成端 cursor/typing/ripple
+  等已下线
+- bridge 录制时画在浏览器里的 HUD/flash 浮层照常生效，依旧被截进 JPEG（合成端
+  默认不再额外叠 composition-side HUD/flash，避免双重画）
+
+**Breaking（仅 jse-replay CLI 层）**：
+
+- `--shell` / `--no-shell` 不再识别（"未知参数"）
+- `--effects=cursor|typing|click|ripple|spinner|scroll|shell` 报
+  `unknown effect: <name>` 退出 1
+- 想要 v0.5.x 完整体验 → pin `@js-eyes/visual-replay-hyperframes@0.5.2`
+
+**仅修文档**：
+
+- `SKILL.md`：DOM-first 段落改写为"dom_* 事件给上游审计 / 真实视觉表现来自截图"；
+  snapshot mode 表删 `--shell`、`--effects=all/cursor,typing` 行；新增 v0.6.0 breaking 提示
+- `CHANGELOG.md`：本条目
+
 ## [3.8.0] - 2026-05-04
 
 ### Added — visual-replay snapshot mode（默认录制不叠特效）

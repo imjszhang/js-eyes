@@ -10,6 +10,82 @@
 >
 > v0.5.0 起 snapshot mode 重新启用 PNG/JPEG 截图作为 #stage 背景；模板路径
 > 仍保留作为 events 无 `frame` 事件时的自动退化路径。
+>
+> v0.6.0 起把 reddit chrome / page-header / dom_* 合成动画 / scaffold CLI 等
+> 在 snapshot 主链路下走不到的代码全部砍掉，回到"snapshot 优先 + 最小模板兜底"。
+
+---
+
+## [0.6.0] - 2026-05-04
+
+### Removed — snapshot-only-prune（约删 1180 行）
+
+snapshot mode 主链路实测一周后：真实截图序列对"在哪个网站、做什么动作"的叙事感已经
+**远超**之前的 reddit chrome 仿真 + dom_* 合成动画。这一版把 snapshot 模式下走不到
+的代码全部砍掉，回到"snapshot 优先 + 最小模板兜底"。
+
+**整文件删除（5 个）：**
+
+- `lib/shellLayout.js` — 111 行，reddit topbar/leftnav 仿真
+- `templates/reddit/pageHeader.js` — 296 行，按 toolName 分发的 page header
+- `templates/reddit/tree.js` — 102 行，评论树模板（snapshot 截图已含真树）
+- `templates/reddit/global.js` — 31 行，KV 卡（用 `_generic/genericKv` 兜底替代）
+- `templates/reddit/navigation.js` — 47 行，from→to 过场卡
+- `cli/jse-template-scaffold.js` — 388 行，模板脚手架 CLI
+
+**部分编辑：**
+
+- `lib/timelineScript.js` 删 `// ---- v0.4.0 DOM-first 渲染 ----` 整段（cursor / typing /
+  click / ripple / spinner / scroll 渲染分支共 ~120 行 + 函数定义 +
+  `syncShellState` 函数），只保留 setStageBackground 双缓冲 cross-fade、HUD
+  `tl.fromTo("#hud-...")`、flash `addClassByAnchor` 三段
+- `lib/styleEmbed.js` 删 `.jse-cursor / .jse-click-ripple / .jse-spinner /
+  .jse-typing-caret` 等 dom_* CSS、`.reddit-topbar / .reddit-leftnav /
+  body[data-shell="reddit"]` 系列 reddit chrome CSS、`.reddit-page-header` page header
+  CSS、`.reddit-comment-tree / .comment-node` tree CSS、`.reddit-nav-card` 过场卡 CSS
+- `lib/translator.js` 删 `require('./shellLayout')` / `require('../templates/reddit/pageHeader')`、
+  `buildRedditShell({ communities })` 调用、`renderPageHeader(ctx)` 调用、`--shell` flag
+  处理（`shellPolicy / shellEnabled`）；`normalizeEffects` 只留 `hud / flash` 两键；
+  `replay-summary.json` schema 删 `shellPolicy / cardCount / missingTemplates` 等字段；
+  `architecture` 字段从 `'snapshot-mode (v0.5.0)'` 改为 `'snapshot-only-prune (v0.6.0)'`
+- `templates/reddit/index.js` 只保留 `register(SKILL_ID, 'list' | 'item', ...)` +
+  对应 `('*', kind)` 兜底；删 `tree / global / navigation / write` 6 行 register
+- `templates/_generic/index.js` 显式 register `('*', 'tree' | 'global' | 'navigation' | 'write')`
+  → `genericKv`，让删掉的 reddit 模板有兜底（避免命中 legacy-global 时 missing）
+- `cli/jse-replay.js` 删 `--shell / --no-shell`；新增 `validateEffects()` 把
+  `--effects=cursor|typing|click|ripple|spinner|scroll|shell` 命中 → throw
+  `unknown effect: <name>` (exit 1)；删 deprecated `--frames-debug / --width / --height`；
+  help 文本同步精简
+- `package.json` `version: "0.5.2" → "0.6.0"`；`bin` 删 `jse-template-scaffold`
+
+### Breaking
+
+- `--shell` / `--no-shell` 不再识别（CLI 报"未知参数"）。snapshot 模式截图自带
+  chrome；template 模式直接渲卡片。
+- `--effects=cursor|typing|click|ripple|spinner|scroll|shell` 现报
+  `unknown effect: <name>` 退出 1。CLI 仅认 `auto / none / all / hud / flash`。
+- `hint.kind=tree / global / navigation / write` 走 `_generic/genericKv` 兜底
+  （视觉与 0.5.x 不一致：旧版有评论树 / KV info-card / from→to 过场卡专属布局；
+  现在统一用 KV 兜底）。
+- `replay-summary.json` 不再写 `shellPolicy / cardCount` 字段（保留
+  `frameCount / framesCopied / snapshotMode / effects / templateUsage`）。
+
+### Migration
+
+- 想要 v0.5.x 完整体验（reddit chrome / page header / dom_* 动画）→ pin 到 0.5.2
+- 用 `register()` 接 skill 模板的代码不变；scaffold CLI 用户需迁移到手写 register
+- `--snapshot=auto --effects=auto` 默认行为**完全不变**：events 含 frame → snapshot
+  + 干净录制；events 无 frame → 模板兜底（list/item 卡片 + HUD/flash 替代 chrome）
+
+### Verified
+
+| 场景 | 命令 | 预期 |
+|---|---|---|
+| snapshot 主链路 | `jse-replay sess-ai-self-evolution-snapshot --no-render` | duration / frame count / 视觉与 0.5.2 一致 |
+| template 兜底 | `jse-replay sess-ai-self-evolution --no-render --no-snapshot` | reddit list / item 卡仍渲；tree/global/navigation 走 genericKv |
+| 老 fixture v0.2.0 | `jse-replay __fixtures__/sess-reddit-list-html --no-render` | list 卡渲，shell 消失（接受） |
+| 旧 effects flag 报错 | `jse-replay sess --effects=cursor` | exit 1，stderr `unknown effect: cursor (removed in v0.6.0; ...)` |
+| HUD opt-in 仍可用 | `jse-replay sess --effects=hud` | composition 多 N 个 `<aside id="hud-...">` |
 
 ---
 
