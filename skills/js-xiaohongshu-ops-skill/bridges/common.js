@@ -10,7 +10,11 @@
 //   同源 API 仅在评论 (edith) 等少数路径稳定）。
 // - 反爬识别基于 og:xhs:note_* meta 三件齐全；连续 3 次 risk hit → 暂停 5 分钟。
 // - navigateLocation 严格限制 *.xiaohongshu.com / *.xhslink.com 同源，绝不跨站跳转。
+// - 顶部一行 @@include 由 kit 的 makeBridgeExpander 展开：装入 window.__jse_visual。
 // ---------------------------------------------------------------------------
+
+// @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
+// @@include ./_visual-xhs.js
 
 const __jseXhsCache = {
   loginCache: null,

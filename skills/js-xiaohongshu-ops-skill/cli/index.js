@@ -19,6 +19,8 @@ const { Session } = require('../lib/session');
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { runTool } = require('../lib/runTool');
+const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
+const { warnDeprecatedFlagsOnce } = require('../lib/cliVisualFlags');
 
 function pickPage(cmdDef, opts) {
   if (opts.page) return opts.page;
@@ -36,6 +38,11 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
   });
   const args = (cmdDef.toArgs || (() => [{}]))(opts, positional);
   const targetUrl = (cmdDef.targetUrl || (() => null))(opts, positional);
+  // 把 CLI 旋钮交给 visual-bridge-kit 标准化（含 deprecation 检测、tracePath/recordDir 解析）。
+  const vp = parseVisualFlags(opts);
+  warnDeprecatedFlagsOnce(vp.deprecatedFlags);
+  const visualEnabled = (opts.visual === true) || (opts.visualHud === true) || (opts.visualFlash === true)
+    || vp.traceEnabled || vp.recordEnabled;
   try {
     const result = await runTool(browser, {
       toolName: cmdDef.toolName,
@@ -56,13 +63,9 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
         reuseAnyXhsTab: true,
         timeoutMs: 90000,
         rateLimit: opts.rateLimit === true,
-        visualConfig: (opts.visual || opts.visualHud || opts.visualFlash) ? {
-          enabled: opts.visual !== false,
-          hud: opts.visualHud === true,
-          flash: opts.visualFlash === true,
-        } : undefined,
-        visualTrace: opts.visualTrace || undefined,
-        visualRecord: opts.visualRecord !== undefined ? opts.visualRecord : undefined,
+        visualConfig: visualEnabled ? vp.config : undefined,
+        visualTrace: vp.tracePath || undefined,
+        visualRecord: vp.recordDir || undefined,
       },
     });
     if (!opts.quiet && result && result.run && result.run.paths && result.run.paths.historyFile) {
@@ -74,6 +77,11 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
             : (result.result.note ? 'note=1' : ''))
           : '';
         process.stderr.write(`[xhs] records: ${result.run.paths.historyFile}${sizeHint ? ' (' + sizeHint + ')' : ''}\n`);
+      } catch (_) {}
+    }
+    if (!opts.quiet && result && result.visual && result.visual.recordDir) {
+      try {
+        process.stderr.write(`[xhs] visual: ${result.visual.recordDir} (events=${result.visual.eventsCount || 0})\n`);
       } catch (_) {}
     }
     emitJson(result, opts);

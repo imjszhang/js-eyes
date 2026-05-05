@@ -10,18 +10,19 @@ const {
 const { sanitizeForRecording } = require('./xhsUtils');
 const { getSharedLimiter } = require('./rateLimit/limiter');
 const { recordCall: recordAntiCrawlCall } = require('./rateLimit/antiCrawlingStats');
-
-// 可选 visual-bridge-kit 依赖：缺包时降级到 noop。
-let _visualKit = null;
-function _loadVisualKit() {
-  if (_visualKit !== null) return _visualKit;
-  try {
-    _visualKit = require('@js-eyes/visual-bridge-kit');
-  } catch (_) {
-    _visualKit = false;
-  }
-  return _visualKit;
-}
+// v3.1 visual 真接入：硬依赖 visual-bridge-kit（与 x-skill 一致）。
+const {
+  wrapCallApi,
+  drainVisualEvents,
+  appendVisualTrace,
+  appendVisualSession,
+  updateVisualSessionMeta,
+  buildFrameRef,
+  makeFrameWriter,
+} = require('@js-eyes/visual-bridge-kit');
+const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');
+const fs = require('fs');
+const pathLib = require('path');
 
 const SKILL_ID = pkg.name;
 
@@ -193,6 +194,7 @@ async function runTool(browser, spec) {
       navigateOnReuse: options.navigateOnReuse === true,
       reuseAnyXhsTab: options.reuseAnyXhsTab !== false,
       createUrl: options.createUrl || 'https://www.xiaohongshu.com/',
+      visualConfig: options.visualConfig || null,
     },
   });
 
@@ -210,18 +212,89 @@ async function runTool(browser, spec) {
     maxConcurrent: options.maxConcurrent || 2,
   }) : null;
 
-  // visual-bridge-kit：可选，仅在传入 visualConfig / visualTrace / visualRecord 时启用。
-  const visualKit = (options.visualConfig || options.visualTrace || options.visualRecord) ? _loadVisualKit() : false;
-  const _wrapCall = async (fn) => {
-    if (!visualKit || !visualKit.wrapCallApi) return fn();
-    try { return await visualKit.wrapCallApi(session, null, fn, {}); }
-    catch (_) { return fn(); }
+  // visual-bridge-kit：硬依赖。当 visualConfig/trace/record 为空时只走 noop wrap（drain 仍空跑），
+  // 不影响主链路；启用时 wrapCallApi 在 bridge 端 emit before/after，drain 后落 response.visual.events，
+  // 并按需写 trace.jsonl + session bundle + JPEG 帧序列。
+  const visualEnabled = !!(options.visualConfig || options.visualTrace || options.visualRecord);
+  const hint = getVisualHint(toolName, args || {});
+  // 推导 visual 输出目录：runId 维度，与 records 同级（skillDir/visual/<runId>/）。
+  let visualDir = null;
+  if (visualEnabled && runContext.paths && runContext.paths.skillDir) {
+    visualDir = pathLib.join(runContext.paths.skillDir, 'visual', runContext.runId);
+    try { fs.mkdirSync(visualDir, { recursive: true }); } catch (_) {}
+  }
+  // 显式传 --visual-trace=<path> / --visual-record=<dir> 时尊重；否则统一走 visualDir。
+  // kit 的 parseVisualFlags 在 --visual-record（无值）时会生成 cwd/runs/sess-...，
+  // 这里检测出来并重写到 visualDir，让所有 visual artifacts 集中。
+  const traceFile = options.visualTrace
+    ? (pathLib.isAbsolute(options.visualTrace) ? options.visualTrace : pathLib.resolve(process.cwd(), options.visualTrace))
+    : (visualDir ? pathLib.join(visualDir, 'trace.jsonl') : null);
+  const userPickedRecord = !!options.visualRecord && !/[\\/]runs[\\/]sess-/.test(options.visualRecord);
+  const recordDir = userPickedRecord
+    ? (pathLib.isAbsolute(options.visualRecord) ? options.visualRecord : pathLib.resolve(process.cwd(), options.visualRecord))
+    : visualDir;
+  const recordEnabled = !!options.visualRecord;
+  const frameFormat = 'jpeg';
+  const frameExt = 'jpg';
+
+  // captureFrame：仅在 --visual-record 启用且 browser 支持 captureScreenshot 时配。
+  // makeFrameWriter 直接把 frame 文件写在 recordDir（与 events.jsonl / meta.json 同级），
+  // 不再分 frames/ 子目录（与 x-skill 一致，hyperframes 默认在同目录找）。
+  let captureFrame = null;
+  if (visualEnabled && recordEnabled && recordDir
+      && browser && typeof browser.captureScreenshot === 'function') {
+    try { fs.mkdirSync(recordDir, { recursive: true }); } catch (_) {}
+    try {
+      captureFrame = makeFrameWriter({
+        recordDir,
+        getTabId: () => (session.target && session.target.id) || null,
+        captureScreenshot: async (tabId, opts) => browser.captureScreenshot(tabId, {
+          format: frameFormat,
+          quality: opts && opts.hiDpi ? 92 : 82,
+        }),
+        format: frameFormat,
+        quality: 82,
+        hiDpi: false,
+        throttle: { maxFrames: 60, minIntervalMs: 200 },
+        onWritten: async (info, meta) => {
+          if (!session) return;
+          const ts = meta && meta.ts;
+          const frameRef = meta && meta.frameRef;
+          const when = (meta && meta.when) || 'after';
+          if (ts == null || !frameRef) return;
+          const expr = '(window.__jse_visual && window.__jse_visual.emit && window.__jse_visual.emit({'
+            + 'type:\'frame\',ts:' + ts
+            + ',frameRef:' + JSON.stringify(frameRef)
+            + ',when:' + JSON.stringify(when)
+            + '})) || null';
+          try { await session.callRaw(expr, { timeoutMs: 1500 }); } catch (_) {}
+        },
+        logger: options.verbose
+          ? console
+          : { info: () => {}, warn: (m) => process.stderr.write('[xhs-visual] ' + m + '\n'), error: (m) => process.stderr.write('[xhs-visual] ' + m + '\n') },
+      });
+    } catch (_) { captureFrame = null; }
+  }
+
+  const wrapHooks = {
+    buildSummary: (resp, h, err) => buildSummary(resp, h || hint, err),
+    extractPayload: (resp, h, err) => extractPayload(resp, h || hint, err),
   };
+  if (captureFrame) {
+    wrapHooks.captureFrame = captureFrame;
+    wrapHooks.frameFormat = frameExt;
+    wrapHooks.captureFrameTimeoutMs = 8000;
+  }
+  // 收集所有 drain 出来的事件，最后塞 response.visual。
+  let drainedEvents = [];
 
   const _runCallApi = async (candidate, callArgs, callOpts) => {
-    const inner = () => session.callApi(candidate, callArgs, callOpts);
-    if (limiter) return limiter.schedule(() => _wrapCall(inner));
-    return _wrapCall(inner);
+    const inner = async () => session.callApi(candidate, callArgs, callOpts);
+    const wrapped = visualEnabled
+      ? () => wrapCallApi(session, hint, inner, wrapHooks)
+      : inner;
+    if (limiter) return limiter.schedule(wrapped);
+    return wrapped();
   };
 
   try {
@@ -229,6 +302,37 @@ async function runTool(browser, spec) {
     await session.resolveTarget();
     target = session.target;
     bridgeMeta = await session.ensureBridge();
+
+    // 进入正式 callApi 之前 drain 一次（清空 bridge 端 ring buffer 的历史事件，避免污染本次 trace）。
+    if (visualEnabled) {
+      try { await drainVisualEvents(session); } catch (_) {}
+      // 启动 visual session bundle：写 meta.json，给 hyperframes 等下游消费。
+      if (recordDir) {
+        try {
+          const probe = await session.callRaw(
+            '(window.__jse_visual && window.__jse_visual.viewport && window.__jse_visual.viewport()) || null',
+            { timeoutMs: 1500 },
+          );
+          const viewport = (probe && typeof probe === 'object') ? probe : null;
+          updateVisualSessionMeta(recordDir, {
+            skillId: SKILL_ID,
+            skillVersion: pkg.version,
+            toolName,
+            runId: runContext.runId,
+            startedAt: new Date().toISOString(),
+            viewport,
+            frames: captureFrame ? {
+              enabled: true,
+              format: frameFormat,
+              quality: 82,
+              hiDpi: false,
+              maxFrames: 60,
+            } : { enabled: false },
+            hint,
+          });
+        } catch (_) {}
+      }
+    }
 
     // 登录态预检：评论 API 必须有 web_session，否则直接短路返回 login_required。
     // 触发条件：工具是 xhs_get_note_comments（method=getComments）或 args.withComments===true。
@@ -315,7 +419,22 @@ async function runTool(browser, spec) {
 
       fellBack = true;
     }
+
+    // 成功路径 drain：把 wrapCallApi 期间 bridge ring buffer 的事件捞出来。
+    if (visualEnabled) {
+      try {
+        const tail = await drainVisualEvents(session);
+        if (Array.isArray(tail) && tail.length) drainedEvents = drainedEvents.concat(tail);
+      } catch (_) {}
+    }
   } catch (error) {
+    // 异常路径也尝试 drain，避免 bridge 状态残留。
+    if (visualEnabled) {
+      try {
+        const tail = await drainVisualEvents(session);
+        if (Array.isArray(tail) && tail.length) drainedEvents = drainedEvents.concat(tail);
+      } catch (_) {}
+    }
     const durationMs = Date.now() - startedAt;
     if (runContext.recording.debugEnabled) {
       try {
@@ -384,6 +503,15 @@ async function runTool(browser, spec) {
     triedMethods,
     usedMethod,
     antiCrawlState: antiCrawlState || null,
+    visual: visualEnabled ? {
+      enabled: true,
+      hint,
+      events: drainedEvents,
+      eventsCount: drainedEvents.length,
+      traceFile: traceFile || null,
+      recordDir: recordDir || null,
+      framesEnabled: !!captureFrame,
+    } : null,
     result: ok ? (resp.data == null ? null : resp.data) : null,
     error: ok ? null : {
       code: (resp && resp.error) || 'unknown',
@@ -424,6 +552,32 @@ async function runTool(browser, spec) {
     debug_bundle_path: debugBundlePath,
     error_summary: ok ? '' : ((response.error && response.error.code) || ''),
   });
+
+  // visual 落盘：trace JSONL（单文件）+ session bundle events.jsonl + meta 更新。
+  // 落盘：appendVisualTrace / appendVisualSession 都是「单条 entry」接口，需要循环。
+  if (visualEnabled && drainedEvents.length > 0) {
+    if (traceFile) {
+      for (const ev of drainedEvents) {
+        try { appendVisualTrace(traceFile, ev); } catch (_) {}
+      }
+    }
+    if (recordDir) {
+      for (const ev of drainedEvents) {
+        try { appendVisualSession(recordDir, ev); } catch (_) {}
+      }
+    }
+  }
+  if (visualEnabled && recordDir) {
+    try {
+      updateVisualSessionMeta(recordDir, {
+        finishedAt: new Date().toISOString(),
+        durationMs,
+        ok,
+        eventsCount: drainedEvents.length,
+        antiCrawlState: antiCrawlState || null,
+      });
+    } catch (_) {}
+  }
 
   // 反爬统计落盘（best-effort）
   try {

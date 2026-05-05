@@ -4,47 +4,16 @@ const fs = require('fs');
 const path = require('path');
 const { BrowserAutomation } = require('./js-eyes-client');
 const { getPageProfile, DEFAULT_WS_ENDPOINT, isXhsHostname } = require('./config');
+const {
+  makeBridgeExpander,
+  injectBridgeConfigSnippet,
+} = require('@js-eyes/visual-bridge-kit');
 
 const BRIDGES_DIR = path.join(__dirname, '..', 'bridges');
 
-/**
- * makeBridgeExpander - 简化版 bridge 内联展开器（不依赖 visual-bridge-kit）。
- * 只识别 `// @@include ./relative.js` 形式（相对 BRIDGES_DIR）。
- */
-function makeBridgeExpander({ baseDir }) {
-  // 每次顶层调用都新建 visited，避免跨 bridge 共享导致 common.js 仅对首个 bridge 生效。
-  return function expandTop(source, fromFile) {
-    const visited = new Set();
-    function expand(src, from) {
-      return src.replace(/^[\t ]*\/\/\s*@@include\s+([^\r\n]+?)\s*$/gm, (_match, rawPath) => {
-      const cleaned = String(rawPath).trim();
-      let abs;
-      if (cleaned.startsWith('./') || cleaned.startsWith('../')) {
-        const baseFrom = from ? path.dirname(from) : baseDir;
-        abs = path.resolve(baseFrom, cleaned);
-      } else if (path.isAbsolute(cleaned)) {
-        abs = cleaned;
-      } else {
-        return `// @@include ${cleaned} (skipped: only relative paths supported)`;
-      }
-      if (visited.has(abs)) {
-        return `// @@include ${cleaned} (already inlined)`;
-      }
-      visited.add(abs);
-      let content;
-      try {
-        content = fs.readFileSync(abs, 'utf8');
-      } catch (err) {
-        return `// @@include ${cleaned} (read failed: ${err.message})`;
-      }
-      const expanded = expand(content, abs);
-      return `/* >>> @@include ${cleaned} */\n${expanded}\n/* <<< @@include ${cleaned} */`;
-      });
-    }
-    return expand(source, fromFile);
-  };
-}
-
+// v3.1 visual 真接入：使用 kit 的 expander，原生支持 `@@include @js-eyes/...` 包路径。
+// 之前手写的简化版本仅支持相对路径；切换后 bridges/common.js 才能 include kit 的
+// bridge/visual.common.js（PR-V3 启用）。
 const expandBridgeSource = makeBridgeExpander({ baseDir: BRIDGES_DIR });
 
 function parseMaybeJson(value) {
@@ -112,6 +81,9 @@ class Session {
     this.target = null;
     this._bridgeSrcCache = null;
     this._bridgeVersionCache = null;
+    // v3.1 visual：visualConfig 由 runTool/CLI 注入；ensureBridge 后通过 _applyVisualConfig 灌进 page world。
+    this.visualConfig = opts.visualConfig || null;
+    this._visualConfigApplied = false;
   }
 
   log(msg) {
@@ -312,6 +284,7 @@ class Session {
     }
     if (cur === version) {
       this.log(`bridge up-to-date (${version})`);
+      await this._applyVisualConfig();
       return { version, reinstalled: false };
     }
     this.log(`bridge ${cur ? `stale ${cur}` : 'missing'}, installing ${version}...`);
@@ -323,7 +296,22 @@ class Session {
       throw err;
     }
     this.log(`bridge installed: version=${installResult.version}`);
+    this._visualConfigApplied = false;
+    await this._applyVisualConfig();
     return { version, reinstalled: true };
+  }
+
+  // 把 visualConfig 灌进 page world（window.__jse_visual.config(...)）。
+  // 同一 visualConfig 只灌一次；ensureBridge 重新装 bridge 时会 reset 标记。
+  async _applyVisualConfig() {
+    if (this._visualConfigApplied) return;
+    if (!this.visualConfig) return;
+    try {
+      await this.callRaw(injectBridgeConfigSnippet(this.visualConfig));
+      this._visualConfigApplied = true;
+    } catch (err) {
+      this.log(`visual config inject failed: ${err && err.message}`);
+    }
   }
 
   async callApi(method, args = [], options = {}) {

@@ -149,15 +149,84 @@ node skills/js-xiaohongshu-ops-skill/index.js records --tool xhs_get_note --last
 - `fallback` – 是否触发跨档位回退。
 - `antiCrawlState` – `{ paused, pauseUntil, consecutiveRiskHits }`，由 bridge 共享。
 
-## Visual（v3.x，可选）
+## Visual（v3.1，硬依赖）
 
-接 `@js-eyes/visual-bridge-kit`，CLI 三档旋钮：
+完整接入 `@js-eyes/visual-bridge-kit`（与 `@skills/js-x-ops-skill` 等价）：bridge 内核装 `window.__jse_visual`，runTool 用 `wrapCallApi + drainVisualEvents`，工具粒度 hint 由 [lib/visualHint.js](lib/visualHint.js) 提供，可选写 trace JSONL + JPEG 帧序列 + visual session bundle 给 hyperframes 等下游消费。
 
-- `--visual` / `--no-visual`：开关浏览器侧 visual overlay。
-- `--visual-hud` / `--visual-flash`：HUD 与 flash 高亮。
-- `--visual-trace`、`--visual-record [path]`：trace 与录制。
+### CLI 旋钮
 
-> 缺包时自动降级为 noop，不阻塞 READ 主管道。
+- `--visual` / `--no-visual`：总开关。
+- `--visual-hud` / `--no-visual-hud`：右上角 HUD 卡片。
+- `--visual-flash` / `--no-visual-flash`：元素 flash overlay。
+- `--visual-trace [path]`：单文件 JSONL trace；不传 path 时落到默认 visualDir。
+- `--visual-record [dir]`：完整 session bundle（events.jsonl + meta.json + JPEG 帧序列）。
+- 高级：`--visual-flash-ms / --visual-linger-ms / --visual-pinned-hold / --visual-error-pin / --visual-list-stride / --visual-prefix`，详见 `@js-eyes/visual-bridge-kit/node/visualConfig.js::DEFAULTS`。
+- deprecated：`--visual-mode`（v0.6 拆成 hud/flash）、`--visual-ms`（v0.7 改名 `--visual-flash-ms`）。被 `parseVisualFlags` 检出后 stderr 一次性告警。
+
+### 输出位置
+
+- 默认 visualDir：`~/.js-eyes/skill-data/js-xiaohongshu-ops-skill/visual/<runId>/`（与 history/cache/debug 同级）。
+- `<visualDir>/trace.jsonl`：所有 drain 出的 events 一行一条 JSON（type/ts/anchor/payload …）。
+- `<visualDir>/events.jsonl` + `<visualDir>/meta.json`：visual session bundle。
+- `<visualDir>/frame-*.jpg`：开 `--visual-record` 后才生成（与 events.jsonl/meta.json 同目录），每次 callApi 边界一帧（默认上限 60 帧、quality 82，hyperframes 默认在同目录找帧）。
+
+跑完后 stderr 输出一行 `[xhs] visual: <path> (events=N)`，与 records 路径并列。
+
+### 顶层结果字段
+
+```jsonc
+{
+  "visual": {
+    "enabled": true,
+    "hint": { "kind": "item", "toolName": "xhs_get_note", "label": "笔记 · ...", "anchor": { "noteId": "..." } },
+    "events": [/* drain 出的 emit 事件 */],
+    "eventsCount": 12,
+    "traceFile": ".../visual/<runId>/trace.jsonl",
+    "recordDir": ".../visual/<runId>",
+    "framesEnabled": true
+  }
+}
+```
+
+### 验收链路
+
+```bash
+# 1) HUD + flash 高亮
+node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/<id>?xsec_token=..." \
+  --visual --visual-hud --visual-flash --pretty
+
+# 2) trace JSONL（默认目录）
+node skills/js-xiaohongshu-ops-skill/index.js note "<url>" --visual --visual-trace --pretty
+#  → tail -1 ~/.js-eyes/skill-data/.../visual/<runId>/trace.jsonl
+
+# 3) 完整录制（含 JPEG 帧序列）
+node skills/js-xiaohongshu-ops-skill/index.js note "<url>" --visual --visual-record --pretty
+#  → ls ~/.js-eyes/skill-data/.../visual/<runId>/frames/
+
+# 4) doctor 看 4 profile bridge 都注入了 __jse_visual
+node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
+
+# 5) 顶层结果字段
+node skills/js-xiaohongshu-ops-skill/index.js note "<url>" --visual --json | python -c "import json,sys; r=json.load(sys.stdin); print('visual.events=', len(r['visual']['events']))"
+```
+
+### 站点 anchor resolver（v3.1.1）
+
+[bridges/_visual-xhs.js](bridges/_visual-xhs.js) 通过 `window.__jse_visual.setSiteAnchorResolver(fn)` 把 hint.anchor 映射到具体 DOM：
+
+| anchor | 当前页 | 优先 selector | fallback |
+|---|---|---|---|
+| `{ noteId }` | 笔记详情页（URL 含同名 noteId） | `#noteContainer` / `.note-container` | `.feeds-page` |
+| `{ noteId }` | 搜索 / explore 列表 | `a[href*='/explore/<noteId>'].closest('section.note-item')` | 直接 `<a>` |
+| `{ userId }` | 用户主页（URL 含 `/user/profile/<userId>`） | `.user-info-card` / `.user-info-wrapper` / `.user-page` | — |
+| `{ userId }` | 列表页 | `a[href*='/user/profile/<userId>'].closest('.author-wrapper')` | 直接 `<a>` |
+| `{ commentId }` | 笔记详情页 | `.comments-container` / `.comments-el`（整片，commentId 不暴露在 DOM） | — |
+
+resolver 命中时会多 emit 2 条 `flash(pending)` / `flash(success)` 事件（默认 hud-only 时只有 hud + before/after，共 4 条；resolver 命中后 6 条 + frame=7）。
+
+### 与 hyperframes 联动
+
+`<visualDir>` 即 `@js-eyes/visual-replay-hyperframes` 的 `jse-replay` 输入；anchorId 命名空间统一为 `note:<noteId>` / `user:<userId>` / `comment:<commentId>`，与 [lib/visualHint.js](lib/visualHint.js) 的 `extractPayload` 卡片字段对齐，离线 composition 时 `.flash-active` 能正确附到节点。
 
 ## Recording
 

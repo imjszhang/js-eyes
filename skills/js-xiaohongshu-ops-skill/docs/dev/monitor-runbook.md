@@ -138,3 +138,13 @@ diff 的 `okCountDelta < 0` 或 `changedProbes > 0` 都是漂移信号；逐 pro
 - 长跑期间不要切换 `--interval`，避免数据噪音。
 - 长跑期间不要新增/删除 target，等下一轮长跑前调整 config。
 - 长跑期间不要并行跑 `xhs note` / `xhs comments` 之类的人工抓取，避免与 daemon 互相影响 rate limiter 和反爬画像。
+- **长跑期间默认关 visual**：daemon 调 `runTool` 时不要传 `--visual / --visual-record`。视觉录制每次 callApi 至少多一帧 captureVisibleTab + 写盘，30 分钟 daemon 累计可膨胀到几百 MB。仅在调试单次失败 case 时单独跑一次：
+
+  ```bash
+  node skills/js-xiaohongshu-ops-skill/index.js note "<failing-url>" \
+    --visual --visual-record --pretty
+  # 结束后 stderr 的 [xhs] visual: <path> 即录制目录，
+  # 可直接喂给 @js-eyes/visual-replay-hyperframes 离线复现。
+  ```
+
+  配套 SKILL.md §Visual 5 条验收链路。

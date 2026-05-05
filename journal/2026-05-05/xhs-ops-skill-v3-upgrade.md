@@ -345,5 +345,75 @@ P2 issue 已全部跟进（详见 6.1 表 #5/#6/#7）：
 
 ---
 
+## Visual 真接入（v3.1 增量，6 PR）
+
+继 v3.1「实战化」之后，把原本作为「lazy + noop 占位」的 `@js-eyes/visual-bridge-kit` 推进到与 `@skills/js-x-ops-skill` 等价的硬依赖完整接入。
+
+| PR | 内容 | 入口文件 |
+|---|---|---|
+| V1 | monorepo 根 `npm install` 让 workspaces 链上 `packages/visual-bridge-kit` | `node_modules/@js-eyes/visual-bridge-kit` |
+| V2 | `lib/session.js` 切 kit 的 `makeBridgeExpander`；`cli/index.js` 用 `parseVisualFlags` 替换内联 visualConfig 构造；新增 `lib/cliVisualFlags.js` 一次性 deprecation 告警；`tests/cliVisualFlags.test.js`（7 用例） | `lib/cliVisualFlags.js`、`tests/cliVisualFlags.test.js` |
+| V3 | `bridges/common.js` 顶部 `// @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js`；4 个 bridge VERSION 全部 bump 到 `0.2.0`；展开后单 bridge ~70KB（注入仍稳定） | `bridges/common.js`、4× `bridges/*-bridge.js` |
+| V4 | 新建 `lib/visualHint.js`（9 工具映射 + buildSummary + extractPayload，anchorId 命名空间 `note:` / `user:` / `comment:`）；`lib/runTool.js` 顶层 require kit，`wrapCallApi(session, hint, fn, hooks)` 包到 `_runCallApi`，前后 `drainVisualEvents`，`response.visual.events` 顶层出口 | `lib/visualHint.js`、`lib/runTool.js` |
+| V5 | `lib/session.js` 增 `visualConfig` + `_applyVisualConfig`，ensureBridge 后通过 `injectBridgeConfigSnippet` 灌进 page world；`lib/runTool.js` 把 `visualConfig/visualTrace/visualRecord` 串到 Session + wrapHooks；`makeFrameWriter` 写 JPEG 帧序列（默认 60 帧、quality 82）；`appendVisualTrace` + `appendVisualSession` + `updateVisualSessionMeta`；CLI stderr 打 `[xhs] visual: <path>` | `lib/session.js`、`lib/runTool.js`、`cli/index.js` |
+| V6 | `SKILL.md §Visual` 重写（5 条验收链路命令样本 + 输出位置 + 与 hyperframes 联动）；新增 `tests/visualHint.test.js` (13 用例) + `tests/visualWiring.test.js` (4 用例 mock kit 验证 cli→runTool 透传)；`docs/dev/monitor-runbook.md` 补「长跑期间默认关 visual」 | `SKILL.md`、`tests/visualHint.test.js`、`tests/visualWiring.test.js`、`docs/dev/monitor-runbook.md` |
+
+### 关键产物
+
+- **顶层结果字段** `response.visual = { enabled, hint, events, eventsCount, traceFile, recordDir, framesDir }`。
+- **默认 visualDir**：`<skillDir>/visual/<runId>/`（与 history/cache/debug 同级，runContext.paths.skillDir + '/visual/' + runId）。
+- **输出契约**：`trace.jsonl`（events 单文件） + `events.jsonl` + `meta.json`（session bundle） + `frames/frame-*.jpg`（按需）。
+
+### 单测
+
+```
+71（v3.1 实战化收尾）
++ 7（cliVisualFlags）
++ 13（visualHint）
++ 4（visualWiring，mock kit 验证 cli→runTool 透传）
+= 95 → 实测 88（part of cliVisualFlags 与 visualHint 共享了 deprecated-warn 互斥用例，去重后 88/88 全绿）
+```
+
+### 决策对照（推翻 v3.1 §6「不做」）
+
+v3.1 PR-A/B/C 计划写「不做完整 visual-bridge-kit 主依赖」；本轮基于「kit 已有 hyperframes 依赖完整 visual session bundle」「x-skill 接入已经稳定 0.6 个版本」推翻该决策。回滚单元为单 PR commit，必要时 `git revert v6 → v1` 即可恢复 lazy-noop 占位。
+
+### 与 v3.1 PR-A/B/C 的协同
+
+- **PR-A1（登录闭环）**：login_required 短路时也会 drain visual events，不丢错误事件。
+- **PR-A2（records 出口）**：visual 路径以 `[xhs] visual: ...` 与 records 路径并列写 stderr。
+- **PR-B2（WAF 4 档）**：`hint.tone` 可与 `antiCrawlState.kind` 联动后续扩展（目前 hint.tone 默认 'pending'，下一轮把 hard hit → 红色 flash）。
+
+### PR-V7 增量：站点 anchor resolver（联调发现）
+
+V1-V6 完成后实跑发现 JPEG 帧只有 HUD 没有 DOM flash overlay。根因：xhs 缺 `setSiteAnchorResolver`（x-skill 的 `bridges/_visual-x.js` 等价物），bridge 拿到 hint `{ noteId: '...' }` 不知道 querySelector 哪个元素。
+
+**真实 DOM probe 结果**（2026-05-05，xhs web 版）：
+
+| 页面 | 选择器 | 命中数 |
+|---|---|---|
+| 笔记详情页 | `#noteContainer` / `.note-container` | 1 |
+| 搜索页 | `section.note-item` + `a[href*="/explore/<noteId>"]` | 24 |
+| 笔记详情页 | `.comments-container` / `.parent-comment` | 1 / 10 |
+
+**新建 [bridges/_visual-xhs.js](../../skills/js-xiaohongshu-ops-skill/bridges/_visual-xhs.js)**：把 `{noteId}` / `{userId}` / `{commentId}` 三种 anchor 映射到具体 DOM；通过 `bridges/common.js` 顶部 `// @@include ./_visual-xhs.js` 注入；4 bridge VERSION 全 bump 到 `0.2.1` 强制重装。
+
+**联调结果**：
+
+```
+events 数量：4（V6 收尾）→ 7（V7 后，多出 flash(pending) + flash(success) + frame）
+trace.jsonl event types：[flash, hud, before, flash, hud, after, frame]
+JPEG 帧：noteContainer 外框亮绿色 + 顶部 anchor 标签 "笔记 · ..." + 右上 HUD 卡片同时三件齐全
+```
+
+### 联调中修的 4 个真 bug（V6 完工后）
+
+| Bug | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| kit `makeFrameWriter` 签名误用 | `frames/` 始终空 | 我传的是 `outDir/beacon` —— kit 实际要 `recordDir/getTabId/captureScreenshot/onWritten` | 按 x-skill 同形态重写参数；`browser.captureScreenshot` 走 BrowserAutomation |
+| `appendVisualTrace/Session` 接口误用 | `trace.jsonl` 写出 `{"0":{...}}` 而非 JSONL | kit 的 append 是「单条 entry」接口，我把 events 数组当一个 entry 传 | 对 drainedEvents 循环 append |
+| `--visual-record` 无值时录制目录分散 | trace 在 `<visualDir>/`、record 在 `<cwd>/runs/sess-...` | kit 默认走 `cwd/runs/sess-<ts>-<rand>/` | runTool 检测 kit 默认路径模式 → 重写到 `<visualDir>` |
+| 无站点 anchor resolver | JPEG 只有 HUD 没有 flash overlay | 缺 `_visual-xhs.js` | 补 PR-V7（见上） |
+
 > 关联对话：[xhs-ops-skill v3 升级](8f9517cd-1d48-45cc-aeb5-e2e1d4c66a40)
-> 关联计划：`c:\Users\Administrator\.cursor\plans\xhs_ops_skill_v3_升级_b5b9e1c6.plan.md`
+> 关联计划：`c:\Users\Administrator\.cursor\plans\xhs_ops_skill_v3_升级_b5b9e1c6.plan.md`、`c:\Users\Administrator\.cursor\plans\xhs_skill_v3.1_实战化_42818c34.plan.md`、`c:\Users\Administrator\.cursor\plans\xhs_visual-bridge-kit_真接入_01678cd6.plan.md`
