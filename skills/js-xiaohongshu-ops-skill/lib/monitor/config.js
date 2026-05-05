@@ -224,6 +224,9 @@ function effectiveSearchSettings(search, config) {
     enabled: search.enabled !== false,
     summaryLength: search.summaryLength || defaults.summaryLength || 100,
     limit: search.limit || defaults.limitPerSearch || 10,
+    // 监控长跑保守默认 false；用户可在 monitor config 的 search 项里显式 extractDetails:true 启用。
+    extractDetails: search.extractDetails === true,
+    detailsLimit: search.detailsLimit ? Number(search.detailsLimit) : null,
     channelNames,
   };
 }

@@ -44,7 +44,7 @@ metadata:
 | `xhs_get_note` | READ | 笔记详情 + 可选评论 |
 | `xhs_get_note_comments` | READ | 评论分页（API 主路径） |
 | `xhs_session_state` | READ | 登录态读取（cookie a1/web_session + DOM 昵称） |
-| `xhs_search_notes` | READ | 搜索（频道 / 筛选 / 联想 / 相关搜索 / 滚动） |
+| `xhs_search_notes` | READ | 搜索（频道 / 筛选 / 滚动；可 `extractDetails` 串行点开详情） |
 | `xhs_get_user` | READ | 用户主页资料（昵称、签名、关注/粉丝/获赞） |
 | `xhs_get_user_notes` | READ | 用户笔记列表（滚动分页） |
 | `xhs_navigate_*` | INTERACTIVE | navigate-note / search / user / home（仅 location.assign） |
@@ -101,6 +101,45 @@ node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
 # 老路径 fallback（关闭 bridge）
 JS_XHS_DISABLE_BRIDGE=1 node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/xxxx"
 ```
+
+## `xhs_search_notes`（v3.2，注入与串行详情）
+
+UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐：
+
+| 阶段 | 选择器 / 行为 |
+| ---- | ---- |
+| 频道 Tab | `#channel-container` 内按文本（`全部 / 图文 / 视频 / 用户`）匹配 |
+| 打开筛选面板 | 点击 textContent==='筛选' 的 `span` → 等 `.filters-wrapper` 出现 |
+| 筛选选项 | 在 `.filters-wrapper` 内按分类名（`排序依据 / 笔记类型 / 发布时间 / 搜索范围`）+ `不限/综合` 关键字定位行，再按选项文本点 |
+| 关闭面板 | `document.body.click()` + 等 `.feeds-container .note-item` 重出现 |
+| 滚动收集 | `.feeds-container section.note-item` 去重（noteId） |
+| 详情串行 | 当 `extractDetails=true`：找带 `xsec_token=` 的 sibling `<a>` 点开 → 等 `#noteContainer` 或 `.note-container` → 等 `.engage-bar .like-wrapper`（防 stats/img lazyload 漏抓）→ 内联抽 → 路由模式 `history.back()` / 模态点 `.close-circle .close` → 等列表重现 |
+
+**参数**
+
+```bash
+# 基本搜索（仅卡片列表）
+node skills/js-xiaohongshu-ops-skill/index.js search "美食" --limit 10 --pretty
+
+# 选排序 + 内容类型
+node skills/js-xiaohongshu-ops-skill/index.js search "美食" --sort-by 最新 --content-type 图文 --pretty
+
+# 串行点开前 3 条详情（同 tab + back）
+node skills/js-xiaohongshu-ops-skill/index.js search "美食" --limit 5 --extract-details --details-limit 3 --pretty
+```
+
+**返回结构**
+
+- `notes[i].detail`：当 `extractDetails=true` 且本条点开成功时含 `{ ok:true, title, description, content, image_urls, stats, author, ... }`；失败时 `{ ok:false, error: 'card_anchor_not_found' | 'no_note_container' | 'route_navigated' | 'click_failed' }`，**不会中断主流程**。
+- 顶层 `details: { requested, succeeded, failed }`：详情统计；`extractDetails=false` 时为 `null`。
+- `appliedFilters: { channelType, sortBy, contentType, timeRange, searchScope, *_error? }`：UI 真实落到的值；某筛选项失败仅写 `<group>_error`，主流程继续。
+- `filterPanelUsed`：是否实际打开了筛选面板（无任何筛选项时 false）。
+
+**注意**
+
+- `extractDetails` 开销显著，建议 `detailsLimit ≤ 10`；硬上限 20。
+- 详情阶段若小红书弹窗实测被改成新 route（非模态），bridge 会自动 `history.back` 并把 `detail.error: route_navigated` 透出，不破坏主路径。
+- monitor `searches[]` 默认 `extractDetails=false`（长跑保守）；可在 monitor config 的 search 项里显式 `"extractDetails": true, "detailsLimit": 5` 启用，monitor 内部会把 `timeoutMs` 自动从 240s 上调到 360s。
 
 ## 评论与登录态（v3.1）
 

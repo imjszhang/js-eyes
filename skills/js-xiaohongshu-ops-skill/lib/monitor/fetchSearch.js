@@ -23,6 +23,8 @@ async function fetchSearch(browser, settings, options = {}) {
         contentType: settings.contentType,
         timeRange: settings.timeRange,
         searchScope: settings.searchScope,
+        extractDetails: settings.extractDetails === true,
+        detailsLimit: settings.detailsLimit ? Number(settings.detailsLimit) : undefined,
       },
       targetUrl: buildSearchUrl({ keyword }),
       options: {
@@ -31,7 +33,7 @@ async function fetchSearch(browser, settings, options = {}) {
         verbose: !!options.verbose,
         navigateOnReuse: true,
         reuseAnyXhsTab: true,
-        timeoutMs: 240000,
+        timeoutMs: settings.extractDetails === true ? 360000 : 240000,
       },
     });
     const notes = (resp && resp.result && Array.isArray(resp.result.notes)) ? resp.result.notes : [];
