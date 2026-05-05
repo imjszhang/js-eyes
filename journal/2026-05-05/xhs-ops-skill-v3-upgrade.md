@@ -14,7 +14,8 @@
 3. [方案设计](#3-方案设计)
 4. [实现要点](#4-实现要点)
 5. [验证与测试](#5-验证与测试)
-6. [后续演化](#6-后续演化)
+6. [P0 实战冒烟与补丁](#6-p0-实战冒烟与补丁)
+7. [后续演化](#7-后续演化)
 
 ---
 
@@ -182,7 +183,7 @@ skills/js-xiaohongshu-ops-skill/
 - **cookie 不出仓库**：所有写 history / debug 的路径必须先过 `sanitizeForRecording`；新增 `tests/sanitize.test.js` 7 个用例覆盖 cookie 字符串 / 对象键 / 数组递归 / nested debug bundle。
 - **cache key 防污染**：`buildCacheKeyParts` 添 `readMode` / `maxCommentPages` / `extractDetails` / `withComments` / `appliedFilters`，避免不同档位互相串。
 - **visual 缺包降级**：`require('@js-eyes/visual-bridge-kit')` 包 try/catch，缺包返回 `false`，`_wrapCall` 直接执行内部函数。
-- **bridge 版本号**：每个 bridge 顶部 `const VERSION = '0.1.0'`，配合 `__meta.version` 触发热更新。
+- **bridge 版本号**：每个 bridge 顶部 `const VERSION = '0.1.x'`，配合 `__meta.version` 触发热更新（实战时 search/user/home 已 bump 到 `0.1.1`，note 仍 `0.1.0`）。
 
 ## 5. 验证与测试
 
@@ -208,13 +209,55 @@ skills/js-xiaohongshu-ops-skill/
 - ✅ v3.0：`monitor init/check/daemon/stop` 闭环；AI 5 个工具不能触发 webhook。
 - ✅ v3.x：visual 三档旋钮无回归；audit 字段齐全；cookie / a1 / web_session 不出现在 history / debug 落盘。
 
-## 6. 后续演化
+## 6. P0 实战冒烟与补丁
 
-短期：
+51 个单测全绿不代表实战可信。架构落地后立即跑了一轮真实浏览器冒烟（`xhs doctor` / `session-state` / `search` / `navigate-*` / `get_user` / `get_user_notes`），暴露了 3 个真 bug 与 4 个 DOM 选择器层面的 issue。
 
-- **`bridges/_dev/probe-dom.js`**：DOM 选择器易碎，留踩点入口配合 bridge `VERSION` 热更新；预留给 search / user 列表选择器轮换。
+### 6.1 修复的真 bug
+
+| # | 严重度 | 现象 | 根因 | 修复点 |
+| - | ---- | ---- | ---- | ---- |
+| 1 | **P0** | search/user/home 三个 bridge 注入后调用任意方法都报 `okResult is not defined` | `makeBridgeExpander` 是模块级 singleton，`visited` 集合跨 bridge 共享，第二个 bridge 起 `// @@include ./common.js` 命中 visited 被跳过，IIFE 内拿不到共享 helper | `lib/session.js`：`visited` 移入闭包；bump 三个 bridge VERSION 到 0.1.1 触发热更新 |
+| 2.a | **P0** | `awaitBridgeAfterNav` 永远 timeout，即使 navigate 实际成功 | `urlMatches` 用严格 `===` 比较，但小红书 navigate 后会自动追加 `&type=51` 等 query，永远不命中 expectedUrl | `lib/session.js`：改为 origin+path 相等 + expectedUrl 的所有 query 参数都包含在 curHref 中 |
+| 2.b | **P1** | bridge 内 `location.assign` 在 `/explore` 状态下被 SPA history 路由拦截，URL 不变 | XHS React Router 接管同源 path 切换 | `cli/index.js::runNavigate`：检测到 `url_unchanged` 时走 `about:blank` → `chrome.tabs.update` 二段跳兜底，绕开 SPA 拦截 |
+
+### 6.2 实战跑通的工具
+
+| 工具 | 真实数据 | audit | 备注 |
+| ---- | ---- | ---- | ---- |
+| `doctor` | 4 profile 全连 | bridge.version 齐 | |
+| `session-state` | 抓到 username + userId | readMode/triedMethods/usedMethod/antiCrawlState 齐 | cookie 已 sanitize（`hasA1` / `hasWebSession` flags only） |
+| `search "美食" --limit=5` | 5 篇真实笔记 + searchTabs + appliedFilters | dom 主路径，`fallback:false` | |
+| `navigate-search` | attempts=1 命中 | `spaFallback:"about-blank+tabs.update"` | |
+| `navigate-user` | attempts=2，**未走 fallback** | | 跨 path 起点不在 `/explore` 时 SPA 不拦截 |
+| `get_user` | 昵称/bio/avatar/redId | dom 主路径 | |
+| `get_user_notes` | 31 篇全字段 | dom 主路径 | |
+
+### 6.3 残留 DOM 层面 issue（合并到 v3.1 PR-10）
+
+| # | 问题 | 影响 | 处理 |
+| - | ---- | ---- | ---- |
+| #3 | `search` 抓的 `searchTabs` 是顶部主导航而非搜索 tab 切换器 | 搜索结果次要字段不准 | 调 selector |
+| #4 | 列表卡片 `xsec_token` 全空（token 在 React state，不在 DOM `<a>` href） | 阻塞 navigate-note；**用户已在详情页**时不影响 note 抽取 | 改从 React fiber data / `__INITIAL_STATE__` script 抓 |
+| #5 | `search` 的 `suggestKeywords` / `relatedSearchKeywords` 都空 | 选择器漏 | 调 selector |
+| #6 | `get_user` 的 `stats.follows` / `stats.fans` 抓到 null | 部分主页字段缺失 | 调 selector |
+
+### 6.4 收益
+
+1. **从"单测全绿可信度未知"切换到"实战可信 + 离散问题清单"**。
+2. **核心 PR-9 设计验证通过**：cache key 维度生效、sanitize 生效、audit 字段齐全。
+3. **架构韧性确认**：bridge 热更新（VERSION bump）/ SPA fallback（about:blank 二段跳）/ urlMatches 宽松匹配三项基础设施被实战验证。
+4. **核心用户监控链路闭环**：search → navigate-user → get_user → get_user_notes 全通。
+
+## 7. 后续演化
+
+短期（v3.1 PR-10）：
+
+- **修 issue #3 #5 #6**：search-bridge / user-bridge 的 selector 调整。
+- **修 issue #4（xsec_token 抽取）**：从 React fiber 或 `__INITIAL_STATE__` script 抓 token，让 navigate-note 可工作；同时 search 列表 url 字段才能直接传给 `xhs_get_note`。
+- **`bridges/_dev/probe-dom.js`**：DOM 选择器探测脚本，沉淀 `#noteContainer` / `.feeds-container` / 用户主页 / 搜索结果四组节点的 outline 快照，作为后续选择器变更的对照基线。
 - **JS_XHS_DISABLE_API_FALLBACK=1**：评论分页是 API 主路径的唯一一类，留调试开关方便定位 DOM-only 模式表现。
-- **monitor schema migrate 钩子**：`config.js` 已留 `migrate(rawConfig, fromVersion)`；后续 v3.1 引入新字段时使用。
+- **monitor schema migrate 钩子**：`config.js` 已留 `migrate(rawConfig, fromVersion)`；后续引入新字段时使用。
 
 中期：
 

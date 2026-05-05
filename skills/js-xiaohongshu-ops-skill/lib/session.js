@@ -12,18 +12,19 @@ const BRIDGES_DIR = path.join(__dirname, '..', 'bridges');
  * 只识别 `// @@include ./relative.js` 形式（相对 BRIDGES_DIR）。
  */
 function makeBridgeExpander({ baseDir }) {
-  const visited = new Set();
-  return function expand(source, fromFile) {
-    return source.replace(/^[\t ]*\/\/\s*@@include\s+([^\r\n]+?)\s*$/gm, (_match, rawPath) => {
+  // 每次顶层调用都新建 visited，避免跨 bridge 共享导致 common.js 仅对首个 bridge 生效。
+  return function expandTop(source, fromFile) {
+    const visited = new Set();
+    function expand(src, from) {
+      return src.replace(/^[\t ]*\/\/\s*@@include\s+([^\r\n]+?)\s*$/gm, (_match, rawPath) => {
       const cleaned = String(rawPath).trim();
       let abs;
       if (cleaned.startsWith('./') || cleaned.startsWith('../')) {
-        const baseFrom = fromFile ? path.dirname(fromFile) : baseDir;
+        const baseFrom = from ? path.dirname(from) : baseDir;
         abs = path.resolve(baseFrom, cleaned);
       } else if (path.isAbsolute(cleaned)) {
         abs = cleaned;
       } else {
-        // 不再支持外部包注入；遇到时跳过（保持 bridge 仍可加载）
         return `// @@include ${cleaned} (skipped: only relative paths supported)`;
       }
       if (visited.has(abs)) {
@@ -38,7 +39,9 @@ function makeBridgeExpander({ baseDir }) {
       }
       const expanded = expand(content, abs);
       return `/* >>> @@include ${cleaned} */\n${expanded}\n/* <<< @@include ${cleaned} */`;
-    });
+      });
+    }
+    return expand(source, fromFile);
   };
 }
 
@@ -358,7 +361,20 @@ class Session {
       try { curHref = await this.callRaw('location.href'); }
       catch (err) { lastErr = (err && err.message) || String(err); curHref = null; }
       const urlChanged = !fromUrl || (curHref && curHref !== fromUrl);
-      const urlMatches = !expectedUrl || (curHref && curHref === expectedUrl);
+      // 放宽匹配：小红书 navigate 后常自动追加 query（如 &type=51），严格 === 永远不命中。
+      // 改判：origin+path 相等，且 expectedUrl 的所有 query 参数在 curHref 中都存在。
+      const urlMatches = !expectedUrl || (curHref && (() => {
+        try {
+          const exp = new URL(expectedUrl);
+          const cur = new URL(curHref);
+          if (exp.origin !== cur.origin) return false;
+          if (exp.pathname !== cur.pathname) return false;
+          for (const [k, v] of exp.searchParams.entries()) {
+            if (cur.searchParams.get(k) !== v) return false;
+          }
+          return true;
+        } catch (_) { return curHref === expectedUrl; }
+      })());
       if (urlChanged && urlMatches && curHref) {
         try {
           await this.ensureBridge();

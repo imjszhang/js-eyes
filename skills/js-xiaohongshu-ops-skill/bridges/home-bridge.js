@@ -12,7 +12,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
 
   // @@include ./common.js
 

@@ -102,7 +102,7 @@ async function runNavigate({ cmd, cmdDef, opts, positional, runtime }) {
     const noop = navResp.data && navResp.data.noop === true;
     const fromUrl = navResp.data && navResp.data.from && navResp.data.from.url;
     const expectedUrl = navResp.data && navResp.data.to && navResp.data.to.url;
-    const postState = noop
+    let postState = noop
       ? { ready: true, attempts: 0, currentUrl: fromUrl || null, state: null, skipped: 'noop' }
       : await session.awaitBridgeAfterNav({
           timeoutMs: 20000,
@@ -111,6 +111,26 @@ async function runNavigate({ cmd, cmdDef, opts, positional, runtime }) {
           fromUrl: fromUrl || null,
           expectedUrl: expectedUrl || null,
         });
+    // SPA 兜底：当 bridge 内 location.assign 被 SPA 路由拦截（url_unchanged）时，
+    // 走扩展的 chrome.tabs.update 做硬跳转，绕开页内拦截。
+    if (!postState.ready && postState.error === 'url_unchanged' && expectedUrl && session.target && session.target.rawId != null) {
+      try {
+        // 二段跳：先 about:blank 切断 SPA history / hash 拦截，再回到目标 URL。
+        await browser.openUrl('about:blank', session.target.rawId);
+        await new Promise((r) => setTimeout(r, 500));
+        await browser.openUrl(expectedUrl, session.target.rawId);
+        const fallbackState = await session.awaitBridgeAfterNav({
+          timeoutMs: 25000,
+          intervalMs: 500,
+          initialDelayMs: 800,
+          fromUrl: 'about:blank',
+          expectedUrl: expectedUrl || null,
+        });
+        postState = Object.assign({}, fallbackState, { spaFallback: 'about-blank+tabs.update' });
+      } catch (err) {
+        postState = Object.assign({}, postState, { spaFallback: 'tabs.update_failed', spaFallbackError: String((err && err.message) || err) });
+      }
+    }
     emitJson({
       platform: 'xiaohongshu',
       toolName: cmdDef.toolName,
