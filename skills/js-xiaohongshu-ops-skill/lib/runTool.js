@@ -90,9 +90,11 @@ function buildTryOrder(method, modeNorm, cmdDef) {
     return [base];
   }
   // auto: DOM 优先，API 兜底
+  // 调试开关：JS_XHS_DISABLE_API_FALLBACK=1 时强制只走 DOM（用于定位 API 与 DOM 模式差异）。
+  const apiDisabled = process.env.JS_XHS_DISABLE_API_FALLBACK === '1';
   const order = [];
   if (domSupported) order.push(domMethod);
-  if (apiSupported) order.push(apiMethod);
+  if (apiSupported && !apiDisabled) order.push(apiMethod);
   if (order.length === 0) return [base];
   const dedup = [];
   const seen = new Set();

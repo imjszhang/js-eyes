@@ -19,7 +19,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
 
   // @@include ./common.js
 
@@ -245,22 +245,15 @@
       notes = await _extractDetails(notes, limit);
     }
 
-    // 联想 / 相关搜索
+    // 联想 / 相关搜索 / 搜索频道 tab：
+    //   小红书 SPA 实测发现：
+    //   - 联想词仅在 input focus 时渲染，结果页通常无节点 → 留空
+    //   - 相关搜索常在滚动到底部时才出现，selector 易碎 → 留空
+    //   - 顶部 .channel-list 是站点主导航而非搜索 tab；当前结果页没有独立搜索 tab 切换器
+    //   保留字段以保 API 形状稳定，但实际抓取留 P2（探到稳定 selector 后再补）。
     var suggestKeywords = [];
-    document.querySelectorAll('.search-tip li, .suggest-list li').forEach(function (el) {
-      var t = (el.textContent || '').trim();
-      if (t) suggestKeywords.push(t);
-    });
     var relatedSearchKeywords = [];
-    document.querySelectorAll('.related-search a, .related-search-wrap a, .recommend-tag').forEach(function (el) {
-      var t = (el.textContent || '').trim();
-      if (t) relatedSearchKeywords.push(t);
-    });
     var searchTabs = [];
-    document.querySelectorAll('.search-channel-list li, .channel-list .channel').forEach(function (el) {
-      var t = (el.textContent || '').trim();
-      if (t) searchTabs.push(t);
-    });
 
     return okResult({
       keyword: keyword,

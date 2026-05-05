@@ -369,10 +369,20 @@ function navigateLocation(targetUrl) {
 function parseNoteIdFromHref(href) {
   try {
     var u = new URL(href || location.href, location.href);
+    // 标准笔记路径
     var m = u.pathname.match(/\/(?:explore|discovery\/item|search_result)\/([\w-]+)/i);
     if (m) {
       return {
         noteId: m[1],
+        xsec_token: u.searchParams.get('xsec_token') || '',
+        xsec_source: u.searchParams.get('xsec_source') || '',
+      };
+    }
+    // 用户主页笔记卡片路径：/user/profile/<userId>/<noteId>?xsec_token=...
+    var m2 = u.pathname.match(/\/user\/profile\/[\w-]+\/([\w-]+)/i);
+    if (m2) {
+      return {
+        noteId: m2[1],
         xsec_token: u.searchParams.get('xsec_token') || '',
         xsec_source: u.searchParams.get('xsec_source') || '',
       };

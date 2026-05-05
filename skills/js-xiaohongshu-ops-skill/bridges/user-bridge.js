@@ -15,7 +15,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
 
   // @@include ./common.js
 
@@ -104,9 +104,25 @@
 
     var nickname = pickText(['.user-info .username', '.user-name', '.username']);
     var bio = pickText(['.user-info .description', '.user-desc', '.user-info-desc']);
-    var follows = pickCount(['.user-info .follows .count', '.follows .count', '.user-interactions .follows .count']);
-    var fans = pickCount(['.user-info .fans .count', '.fans .count', '.user-interactions .fans .count']);
-    var interactions = pickCount(['.interactions .count', '.user-interactions .count']);
+
+    // 关注 / 粉丝 / 获赞 解析：
+    //   实测 .user-interactions 整段 text = "179关注3328粉丝1.1万获赞与收藏"
+    //   span 列表是交替 "数字 文本 数字 文本 ..."
+    //   按 keyword 配对（兼容布局变化）。
+    var follows = null, fans = null, interactions = null;
+    try {
+      var spans = document.querySelectorAll('.user-interactions span, .user-interactions div, .user-statistics span');
+      for (var si = 0; si < spans.length; si++) {
+        var label = (spans[si].textContent || '').trim();
+        if (/^关注$/.test(label) && si > 0) follows = parseCountText((spans[si - 1].textContent || '').trim());
+        else if (/^粉丝$/.test(label) && si > 0) fans = parseCountText((spans[si - 1].textContent || '').trim());
+        else if (/获赞|与收藏|获赞与收藏/.test(label) && si > 0) interactions = parseCountText((spans[si - 1].textContent || '').trim());
+      }
+    } catch (_) {}
+    // 旧 selector fallback
+    if (follows == null) follows = pickCount(['.user-info .follows .count', '.follows .count']);
+    if (fans == null) fans = pickCount(['.user-info .fans .count', '.fans .count']);
+    if (interactions == null) interactions = pickCount(['.interactions .count']);
     var avatar = (document.querySelector('.user-info .avatar img, .user-page-info .avatar img, .avatar img') || {}).src || null;
     var redId = pickText(['.user-redId', '.user-info .red-id', '.user-info-id']);
 
@@ -144,13 +160,19 @@
       var added = 0;
       var nodes = document.querySelectorAll('.feeds-container .note-item, section.note-item, .user-note-item');
       nodes.forEach(function (node) {
-        var anchors = node.querySelectorAll('a[href*="/explore/"], a[href*="/user/profile"]');
+        // 用户主页笔记卡片：a.cover/a.title 指向 /user/profile/<userId>/<noteId>?xsec_token=...
+        // 优先选带 xsec_token 的链接（任何 path 形式）；fallback 用 /explore/ 不带 token 的。
+        var anchors = node.querySelectorAll('a[href]');
         if (!anchors.length) return;
         var withToken = null, fallback = null;
         for (var ai = 0; ai < anchors.length; ai++) {
           var h2 = readReactHref(anchors[ai]) || anchors[ai].getAttribute('href') || '';
-          if (h2.indexOf('xsec_token=') >= 0 && h2.indexOf('/explore/') >= 0) { withToken = h2; break; }
-          if (!fallback && h2.indexOf('/explore/') >= 0) fallback = h2;
+          if (!h2) continue;
+          // 必须含 noteId 模式（/explore/<id> 或 /user/profile/<u>/<id>）
+          var hasNote = /\/explore\/[\w-]+/.test(h2) || /\/user\/profile\/[\w-]+\/[\w-]+/.test(h2);
+          if (!hasNote) continue;
+          if (h2.indexOf('xsec_token=') >= 0) { withToken = h2; break; }
+          if (!fallback) fallback = h2;
         }
         var href = withToken || fallback || '';
         var fullUrl = href.startsWith('http') ? href : 'https://www.xiaohongshu.com' + href;

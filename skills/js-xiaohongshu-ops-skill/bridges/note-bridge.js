@@ -17,7 +17,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
 
   // @@include ./common.js
 
@@ -288,6 +288,15 @@
     var noteRef = args.url ? parseNoteIdFromHref(args.url) : parseNoteIdFromHref(location.href);
     if (!noteRef || !noteRef.noteId) {
       return errResult('bad_arg', { reason: 'no_note_id' });
+    }
+    // 登录态门控：评论 API 必须有 web_session，否则 XHS 返回 code:300011 风控
+    var auth = getXhsAuthCookies();
+    if (!auth.web_session) {
+      return errResult('login_required', {
+        reason: 'web_session_missing',
+        hint: '评论 API 必须有登录态。请在浏览器登录小红书后重试',
+        cookieFlags: { hasA1: !!auth.a1, hasWebSession: false, hasWebId: !!auth.webId },
+      });
     }
     var maxPages = clampLimit(args.maxCommentPages, 1, 50);
     var noteId = noteRef.noteId;
