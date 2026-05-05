@@ -257,7 +257,7 @@ const TOOL_DEFINITIONS = [
         keyword: { type: 'string', description: '搜索关键词' },
         limit: { type: 'number', description: '返回笔记数上限（默认 10，最多 200）' },
         channelType: { type: 'string', enum: ['全部', '图文', '视频', '用户'], description: '频道（默认 全部）' },
-        sortBy: { type: 'string', description: '排序选项标签（如「综合」「最新」「最多点赞」「最多评论」「最多收藏」）' },
+        sortBy: { type: 'string', enum: ['综合', '最新', '最多点赞', '最多评论', '最多收藏'], description: '排序依据（xhs 实际选项；不接受「最热」等错误值）' },
         contentType: { type: 'string', description: '筛选面板「笔记类型」选项标签（不限/视频/图文）' },
         timeRange: { type: 'string', description: '筛选面板「发布时间」选项标签（不限/一天内/一周内/半年内）' },
         searchScope: { type: 'string', description: '筛选面板「搜索范围」选项标签（不限/已看过/未看过/已关注）' },

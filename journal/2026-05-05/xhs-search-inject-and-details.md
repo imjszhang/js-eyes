@@ -101,6 +101,7 @@ flowchart TB
 | ---- | ---- | ---- | ---- |
 | 0.3.0 → 0.3.1 | 详情 `detail.ok=true` 但 `desc.len=0`、`image_urls=1`、`stats.likes=7`（实际 3567） | xhs 实测点开走的是**新 route `/explore/<id>`**（不是模态），container 是 `.note-container`；旧 selectors 全部 `#noteContainer` 前缀全 miss，fallback 抓到了 `.like-wrapper .count` 的第一个匹配（外部小组件而非 engage-bar）；`.close-circle .close` 在路由模式下根本不存在 | `_extractFromNoteContainer`：把所有 `pickCount` 改为「container 内查找」，去掉 `#noteContainer` 前缀；description selector 从 `.note-content .desc` 放宽到也接受 `.note-content` 直读；新增 meta `og:xhs:note_*` 兜底。`_backToList`：检测 `routeMode = !/\/search_result/.test(location.pathname)`，路由模式下强制 `history.back()` 不点 close 按钮 |
 | 0.3.1 → 0.3.2 | 修了 selector 后 note[1]/note[2] 完美，但 note[0]（首条）仍 `desc.len=25`、`stats=null`、`imgs=1` | 第一条点开后只等了 `_waitFor(#noteContainer, 8000)` + `_randomJitter(400-700)`，但 swiper 与 engage-bar 还在 lazyload | 新增 `await _waitFor('.engage-bar .like-wrapper, .like-wrapper .count', 3000)`；`_randomJitter` 提到 600-1000ms |
+| 0.3.2 → 0.3.5 | 多筛选实测 `appliedFilters` 三项全 `applied=true` 但**列表完全没换**（首条 noteId 与 `--sort-by 综合` 一致，likes 也不降序） | xhs 用 **Vue（`data-v-eb91fffe`）不是 React**；`__reactProps$` 无；同时 visual-bridge-kit 给每个 `.tags` 装了一层 `position:absolute; opacity:0.00001; pointer-events:auto` 的 **HP overlay**（`button-hp-installed=1` `data-hp-kind=filter-tag-...`），出现在 `querySelectorAll` 顺序的前面 → 我们 click 的是 overlay 不是真实 Vue 节点；`activeText` 也读到 overlay 的镜像 active class，于是「没改成功」根本就是 false-positive。0.3.4 加 `*_activated` 字段后该 `false` 暴露 | `_applyFilter` / `_switchChannel` 全部改用 `[data-hp-bound]` 选择真 Vue 节点（fallback 跳过 `[data-hp-installed]`）；新增 `_realActiveText` 仅看 `[data-hp-bound].active` 判定 React/Vue 状态机已切；contract `sortBy` 加 `enum: ['综合','最新','最多点赞','最多评论','最多收藏']`，把之前误写的「最热」剔掉 |
 
 ### probe 直接证实的关键事实
 
@@ -109,6 +110,13 @@ flowchart TB
 - `#channel-container` 存在但内部是单一 `.content-container` div，子元素文本拼接为 `"全部 图文 图文 视频 视频 用户 用户"` —— 说明频道 Tab 不是 `<button>` 而是嵌套 `<div>` 叶子；我的 fallback「`children.length===0 && textContent === channelType`」必要。
 - `.filters-wrapper` 在面板未开时不存在；触发器候选有两个，第一个是 `.filter` 容器 div（childCount=2），第二个是空 class 的 `<span>`（childCount=0）—— 我的「优选 leaf span」策略命中正确。
 - 点开详情后 `containerCls` 实测是 `.note-container`（不是 `#noteContainer`），URL 是 `/explore/<id>` 完整路由 —— 直接证伪了「同 tab 模态」假设。这就是为什么 0.3.1 必须扩兼容容器与 `_backToList` 路由分支。
+- 筛选面板每个选项 outerHTML 里两份 `.tags`：第一份带 `button-hp-installed="1" data-hp-kind="filter-tag-综合" style="position:absolute; opacity:0.00001; pointer-events:auto"`（visual-bridge-kit 的点击映射层，**没有** `data-v-eb91fffe`），第二份才是 `data-v-eb91fffe data-hp-bound="1"` 的真 Vue 节点。`elementFromPoint(x,y)` 在视觉中心拿到的可能是 overlay 的 `<span>`，但 click() 不会触发 Vue onChange。`tag.click()` / `span.click()` / `dispatchEvent(MouseEvent)` / `pointerdown+mouseup+click` 全跑过 —— 只有点 `[data-hp-bound]` 的 Vue 节点才真正切 active。
+
+### CLI Visual & 默认行为
+
+- `cli/index.js` 里 `--no-visual` 变成显式开关：默认 visual ON（与 `js-x-ops-skill` 对齐），HUD/flash/before/after 11~15 个 events，`framesEnabled` 仍由 `--visual-record` 控制（避免无脑录大文件）。
+- `lib/commands.js` 里 `--visual-trace` 改为「下个参数以 `-` 开头则视为 truthy」，与 `--visual-record` 同款 smart-eat —— 之前会把 `--visual-trace --json` 中的 `--json` 当成 trace 路径写进文件。
+- 监控不受影响：`lib/monitor/fetchSearch.js` 不传 `visualConfig`，`runTool` 自动 noop。
 
 ## 5. 后续
 

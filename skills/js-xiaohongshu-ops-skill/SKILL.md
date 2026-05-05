@@ -102,18 +102,19 @@ node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
 JS_XHS_DISABLE_BRIDGE=1 node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/xxxx"
 ```
 
-## `xhs_search_notes`（v3.2，注入与串行详情）
+## `xhs_search_notes`（v3.5，注入与串行详情）
 
-UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐：
+UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐；xhs 实际是 **Vue（不是 React）**，且 `visual-bridge-kit` 会装 HP overlay，所有 click 都需绕开 `[data-hp-installed]` 优选 `[data-hp-bound]` 真节点。
 
 | 阶段 | 选择器 / 行为 |
 | ---- | ---- |
-| 频道 Tab | `#channel-container` 内按文本（`全部 / 图文 / 视频 / 用户`）匹配 |
+| 频道 Tab | `#channel-container` 内优先 `[data-hp-bound]`、按文本（`全部 / 图文 / 视频 / 用户`）匹配；fallback 跳过 `[data-hp-installed]` 的 HP overlay |
 | 打开筛选面板 | 点击 textContent==='筛选' 的 `span` → 等 `.filters-wrapper` 出现 |
-| 筛选选项 | 在 `.filters-wrapper` 内按分类名（`排序依据 / 笔记类型 / 发布时间 / 搜索范围`）+ `不限/综合` 关键字定位行，再按选项文本点 |
+| 筛选选项 | 在 `.filters-wrapper > .filters` 行（按 title 文本「排序依据/笔记类型/发布时间/搜索范围」定位）→ 在 `.tag-container .tags[data-hp-bound]` 中按选项文本严格匹配 → click → 等 `[data-hp-bound].active` 切到目标值（`appliedFilters.<group>_activated=false` 暴露未真切的情况） |
 | 关闭面板 | `document.body.click()` + 等 `.feeds-container .note-item` 重出现 |
 | 滚动收集 | `.feeds-container section.note-item` 去重（noteId） |
 | 详情串行 | 当 `extractDetails=true`：找带 `xsec_token=` 的 sibling `<a>` 点开 → 等 `#noteContainer` 或 `.note-container` → 等 `.engage-bar .like-wrapper`（防 stats/img lazyload 漏抓）→ 内联抽 → 路由模式 `history.back()` / 模态点 `.close-circle .close` → 等列表重现 |
+| Visual | CLI 默认开（与 `js-x-ops-skill` 对齐）：HUD pending/success + before/after + flash；`--no-visual` 关闭；`--visual-record` 才落帧；`--visual-trace` 智能 eat（下个参数以 `-` 开头视作 truthy）。监控不传 `visualConfig`，自动 noop |
 
 **参数**
 
@@ -121,8 +122,8 @@ UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐：
 # 基本搜索（仅卡片列表）
 node skills/js-xiaohongshu-ops-skill/index.js search "美食" --limit 10 --pretty
 
-# 选排序 + 内容类型
-node skills/js-xiaohongshu-ops-skill/index.js search "美食" --sort-by 最新 --content-type 图文 --pretty
+# 选排序 + 内容类型（sortBy 合法值：综合/最新/最多点赞/最多评论/最多收藏）
+node skills/js-xiaohongshu-ops-skill/index.js search "美食" --sort-by 最多点赞 --content-type 图文 --time-range 一周内 --pretty
 
 # 串行点开前 3 条详情（同 tab + back）
 node skills/js-xiaohongshu-ops-skill/index.js search "美食" --limit 5 --extract-details --details-limit 3 --pretty

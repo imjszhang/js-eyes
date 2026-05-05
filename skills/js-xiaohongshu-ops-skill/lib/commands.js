@@ -295,7 +295,11 @@ function parseArgv(argv) {
     else if (a === '--no-visual-hud') opts.visualHud = false;
     else if (a === '--visual-flash') opts.visualFlash = true;
     else if (a === '--no-visual-flash') opts.visualFlash = false;
-    else if (a === '--visual-trace') eat('visualTrace');
+    else if (a === '--visual-trace') {
+      const next = argv[i + 1];
+      if (next != null && !next.startsWith('-')) { opts.visualTrace = next; i += 1; }
+      else { opts.visualTrace = true; }
+    }
     else if (a.startsWith('--visual-trace=')) eatEq('visualTrace', '--visual-trace=');
     else if (a === '--visual-record') {
       const next = argv[i + 1];

@@ -117,7 +117,7 @@ test('cli: --visual --visual-hud --visual-flash → runTool.options.visualConfig
   });
 });
 
-test('cli: 无 --visual flag → visualConfig undefined', async () => {
+test('cli: 默认开启 visual（与 x-ops-skill 对齐）；--no-visual 关闭', async () => {
   await withMockedRunTool(async (captured, cli) => {
     const origOut = process.stdout.write;
     const origErr = process.stderr.write;
@@ -125,12 +125,14 @@ test('cli: 无 --visual flag → visualConfig undefined', async () => {
     process.stderr.write = () => true;
     try {
       await cli.dispatch(['note', 'https://www.xiaohongshu.com/explore/abc123']);
+      await cli.dispatch(['note', 'https://www.xiaohongshu.com/explore/abc123', '--no-visual']);
     } finally {
       process.stdout.write = origOut;
       process.stderr.write = origErr;
     }
-    assert.strictEqual(captured.calls.length, 1);
-    assert.strictEqual(captured.calls[0].options.visualConfig, undefined, '未启用 visual 时不应传 visualConfig');
+    assert.strictEqual(captured.calls.length, 2);
+    assert.ok(captured.calls[0].options.visualConfig, '默认 CLI 调用应启用 visual');
+    assert.strictEqual(captured.calls[1].options.visualConfig, undefined, '--no-visual 时关闭 visual');
   });
 });
 

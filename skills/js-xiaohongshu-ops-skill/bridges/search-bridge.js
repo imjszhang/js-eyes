@@ -20,7 +20,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.5';
 
   // @@include ./common.js
 
@@ -192,15 +192,24 @@
       return { ok: false, error: 'channel_container_not_found' };
     }
     // 优先 button/role=button/a，再退化到所有叶子元素文本匹配
-    var primary = container.querySelectorAll('div[role="button"], button, a, span');
+    // 优先 [data-hp-bound]（Vue 真节点；visual-bridge-kit 的 HP overlay 没有这个属性）
+    var bound = container.querySelectorAll('[data-hp-bound]');
     var hit = null;
-    for (var i = 0; i < primary.length; i++) {
-      if ((primary[i].textContent || '').trim() === channelType) { hit = primary[i]; break; }
+    for (var bi = 0; bi < bound.length; bi++) {
+      if ((bound[bi].textContent || '').trim() === channelType) { hit = bound[bi]; break; }
+    }
+    if (!hit) {
+      var primary = container.querySelectorAll('div[role="button"], button, a, span');
+      for (var i = 0; i < primary.length; i++) {
+        if (primary[i].hasAttribute('data-hp-installed')) continue;
+        if ((primary[i].textContent || '').trim() === channelType) { hit = primary[i]; break; }
+      }
     }
     if (!hit) {
       var all = container.querySelectorAll('*');
       for (var j = 0; j < all.length; j++) {
         var el = all[j];
+        if (el.hasAttribute('data-hp-installed')) continue;
         if (el.children.length === 0 && (el.textContent || '').trim() === channelType) { hit = el; break; }
       }
     }
@@ -249,43 +258,67 @@
     var panel = document.querySelector('.filters-wrapper');
     if (!panel) return { ok: false, error: 'filter_panel_not_open', groupKey: groupKey };
 
-    // 在面板内找到包含分类名 + 兜底默认值（不限/综合）的「行 div」
-    var rows = panel.querySelectorAll('div');
+    // xhs 实测面板结构：.filters-wrapper > .filters > [.title, .tag-container > .tags(.active?) > <span>]
+    // 每行的 `.filters` 第一个子元素是分类标题（"排序依据" 等），第二个是 `.tag-container`。
+    // 「选项」是 `.tags` div，每个内部是 `<span>` —— 真正的 React onClick 挂在 `.tags` 上，
+    // 点 inner span 虽然能命中文本但不会真的触发 onChange（之前 0.3.2 的 false-positive 根因）。
+    var filterRows = panel.querySelectorAll('.filters');
     var targetRow = null;
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      var text = row.textContent || '';
-      if (text.indexOf(category) === -1) continue;
-      // 必须包含一个默认占位值才算筛选行（避免命中嵌套外层）
-      if (text.indexOf('不限') >= 0 || text.indexOf('综合') >= 0) {
-        // 选择「最小匹配」：children 较少且文本未明显超长
-        if (!targetRow || row.querySelectorAll('*').length < targetRow.querySelectorAll('*').length) {
-          targetRow = row;
-        }
-      }
+    for (var i = 0; i < filterRows.length; i++) {
+      var row = filterRows[i];
+      var titleEl = row.children && row.children[0];
+      var titleText = titleEl ? (titleEl.textContent || '').trim() : '';
+      if (titleText.indexOf(category) >= 0) { targetRow = row; break; }
     }
-    if (!targetRow) return { ok: false, error: 'filter_row_not_found', groupKey: groupKey, category: category };
+    if (!targetRow) {
+      return { ok: false, error: 'filter_row_not_found', groupKey: groupKey, category: category };
+    }
 
-    // 在行内按文本匹配选项
-    var options = targetRow.querySelectorAll('span, div[role="button"], button');
-    var hit = null;
-    for (var k = 0; k < options.length; k++) {
-      if ((options[k].textContent || '').trim() === String(optionLabel)) { hit = options[k]; break; }
-    }
-    if (!hit) {
-      var leaves = targetRow.querySelectorAll('*');
-      for (var m = 0; m < leaves.length; m++) {
-        var leaf = leaves[m];
-        if (leaf.children.length === 0 && (leaf.textContent || '').trim() === String(optionLabel)) {
-          hit = leaf; break;
-        }
+    // 关键：xhs 用 Vue（不是 React）；同时 visual-bridge-kit 的 hyperframes pointer overlay
+    // 给每个 .tags 装了一个 absolute positioned 的「点击映射层」（带 `data-hp-installed` /
+    // `data-hp-kind` 但**没有** `data-v-eb91fffe`），它出现在 querySelectorAll 顺序的前面。
+    // 直接 click() 这个 overlay 不会触发 Vue 的 onChange —— 必须 click 真实的 Vue 节点
+    // （带 `data-hp-bound="1"` + `data-v-eb91fffe`）。
+    function _selectRealTag(row, label) {
+      var bound = row.querySelectorAll('.tag-container .tags[data-hp-bound]');
+      for (var i = 0; i < bound.length; i++) {
+        if ((bound[i].textContent || '').trim() === String(label)) return bound[i];
       }
+      // 兼容旧 / 未注入 visual 的情况：回到全集匹配，并主动跳过 HP overlay
+      var all = row.querySelectorAll('.tag-container .tags');
+      for (var j = 0; j < all.length; j++) {
+        if (all[j].hasAttribute('data-hp-installed')) continue;
+        var raw = (all[j].textContent || '').trim();
+        if (raw === String(label) || raw === String(label) + String(label)) return all[j];
+      }
+      return null;
     }
-    if (!hit) return { ok: false, error: 'filter_option_not_found', groupKey: groupKey, optionLabel: optionLabel };
+    function _realActiveText(row) {
+      // 同样跳过 HP overlay，避免读到镜像的 active 状态
+      var bound = row.querySelectorAll('.tag-container .tags[data-hp-bound].active');
+      if (bound.length) return (bound[0].textContent || '').trim();
+      var all = row.querySelectorAll('.tag-container .tags.active');
+      for (var i = 0; i < all.length; i++) {
+        if (!all[i].hasAttribute('data-hp-installed')) return (all[i].textContent || '').trim();
+      }
+      return null;
+    }
+
+    var hit = _selectRealTag(targetRow, String(optionLabel));
+    if (!hit) {
+      return { ok: false, error: 'filter_option_not_found', groupKey: groupKey, optionLabel: optionLabel };
+    }
 
     try { hit.click(); } catch (_) {}
+    // 等待该行真实 active 切换到目标选项（确认 Vue 状态机已更新；忽略 HP overlay 的镜像）
+    var deadline = Date.now() + 1500;
+    var activated = false;
+    while (Date.now() < deadline) {
+      if (_realActiveText(targetRow) === String(optionLabel)) { activated = true; break; }
+      await delay(150);
+    }
     await _randomJitter(300, 500);
-    return { ok: true, applied: optionLabel };
+    return { ok: true, applied: optionLabel, activated: activated };
   }
 
   async function _closeFilterPanel() {
@@ -486,6 +519,8 @@
           var fr = await _applyFilter(gk, args[gk]);
           appliedFilters[gk] = fr.applied || null;
           if (fr.error && args[gk]) appliedFilters[gk + '_error'] = fr.error;
+          // 暴露 React 是否真的把 active 切到目标值（false-positive 排查用）
+          if (args[gk] && fr.activated === false) appliedFilters[gk + '_activated'] = false;
         }
         await _closeFilterPanel();
       } else {

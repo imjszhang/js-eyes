@@ -41,7 +41,9 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
   // 把 CLI 旋钮交给 visual-bridge-kit 标准化（含 deprecation 检测、tracePath/recordDir 解析）。
   const vp = parseVisualFlags(opts);
   warnDeprecatedFlagsOnce(vp.deprecatedFlags);
-  const visualEnabled = (opts.visual === true) || (opts.visualHud === true) || (opts.visualFlash === true)
+  // CLI 默认开启 visual（与 skills/js-x-ops-skill 对齐）：用户可显式 `--no-visual` 关闭。
+  // 关闭路径仅适用 CLI；monitor 走 fetchSearch → runTool 不传 visualConfig，监控长跑保持 noop。
+  const visualEnabled = (opts.visual !== false) || (opts.visualHud === true) || (opts.visualFlash === true)
     || vp.traceEnabled || vp.recordEnabled;
   try {
     const result = await runTool(browser, {
