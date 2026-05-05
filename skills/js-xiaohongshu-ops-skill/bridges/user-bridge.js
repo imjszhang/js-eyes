@@ -15,7 +15,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
 
   // @@include ./common.js
 
@@ -144,9 +144,15 @@
       var added = 0;
       var nodes = document.querySelectorAll('.feeds-container .note-item, section.note-item, .user-note-item');
       nodes.forEach(function (node) {
-        var a = node.querySelector('a[href*="/explore/"], a.cover');
-        if (!a) return;
-        var href = a.getAttribute('href') || '';
+        var anchors = node.querySelectorAll('a[href*="/explore/"], a[href*="/user/profile"]');
+        if (!anchors.length) return;
+        var withToken = null, fallback = null;
+        for (var ai = 0; ai < anchors.length; ai++) {
+          var h2 = readReactHref(anchors[ai]) || anchors[ai].getAttribute('href') || '';
+          if (h2.indexOf('xsec_token=') >= 0 && h2.indexOf('/explore/') >= 0) { withToken = h2; break; }
+          if (!fallback && h2.indexOf('/explore/') >= 0) fallback = h2;
+        }
+        var href = withToken || fallback || '';
         var fullUrl = href.startsWith('http') ? href : 'https://www.xiaohongshu.com' + href;
         var ref = parseNoteIdFromHref(fullUrl);
         if (!ref || !ref.noteId || seenIds.has(ref.noteId)) return;

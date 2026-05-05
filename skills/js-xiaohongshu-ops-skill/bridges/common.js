@@ -376,3 +376,38 @@ function parseNoteIdFromHref(href) {
     return null;
   } catch (_) { return null; }
 }
+
+// ---------------------------------------------------------------------------
+// React fiber helpers
+//   小红书 SPA 把笔记 href（带 xsec_token）放在 React props 里，DOM attribute
+//   只有 path。读 fiber __reactProps$ 才能拿到带 token 的真实链接。
+// ---------------------------------------------------------------------------
+
+function readReactProps(el) {
+  if (!el) return null;
+  try {
+    var key = Object.keys(el).find(function (k) { return k.indexOf('__reactProps$') === 0; });
+    return key ? el[key] : null;
+  } catch (_) { return null; }
+}
+
+function readReactHref(el) {
+  var props = readReactProps(el);
+  if (props && typeof props.href === 'string' && props.href) return props.href;
+  // 卡片层级的 onClick / state 也可能带 noteCard 引用
+  var fiberKey = el ? Object.keys(el).find(function (k) { return k.indexOf('__reactFiber$') === 0; }) : null;
+  if (!fiberKey) return null;
+  try {
+    var f = el[fiberKey];
+    for (var depth = 0; depth < 6 && f; depth++) {
+      var p = f.memoizedProps || (f.return && f.return.memoizedProps);
+      if (p && typeof p.href === 'string' && p.href) return p.href;
+      if (p && p.note && p.note.id && p.note.xsec_token) {
+        return '/explore/' + p.note.id + '?xsec_token=' + encodeURIComponent(p.note.xsec_token)
+          + (p.note.xsec_source ? ('&xsec_source=' + encodeURIComponent(p.note.xsec_source)) : '');
+      }
+      f = f.return;
+    }
+  } catch (_) {}
+  return null;
+}

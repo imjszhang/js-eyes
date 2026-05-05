@@ -19,7 +19,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.3';
 
   // @@include ./common.js
 
@@ -110,8 +110,17 @@
 
   function _extractNoteCard(node) {
     if (!node) return null;
-    var a = node.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
-    var href = a ? a.getAttribute('href') : null;
+    // 卡片内通常有多个 <a>：a.cover 不带 token；a.title (/search_result/<id>?xsec_token=...) 带 token。
+    // 优先选带 xsec_token 的链接。
+    var anchors = node.querySelectorAll('a[href*="/explore/"], a[href*="/search_result/"]');
+    var withToken = null;
+    var fallback = null;
+    for (var i = 0; i < anchors.length; i++) {
+      var h = readReactHref(anchors[i]) || anchors[i].getAttribute('href') || '';
+      if (h.indexOf('xsec_token=') >= 0) { withToken = h; break; }
+      if (!fallback) fallback = h;
+    }
+    var href = withToken || fallback;
     if (!href) return null;
     var fullUrl = href.startsWith('http') ? href : ('https://www.xiaohongshu.com' + href);
     var ref = parseNoteIdFromHref(fullUrl);
