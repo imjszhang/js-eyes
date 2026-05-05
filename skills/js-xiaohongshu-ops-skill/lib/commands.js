@@ -65,6 +65,20 @@ const COMMANDS = {
     defaultPage: null,
     help: '小红书账号/关键词监控：init/add/remove/list/status/test/check/daemon/stop',
   },
+  login: {
+    kind: 'special',
+    argSpec: [],
+    pages: ['home'],
+    defaultPage: 'home',
+    help: '引导登录：navigate 到登录页 + 等待 web_session cookie 出现（仅 CLI，不进 AI tool）',
+  },
+  records: {
+    kind: 'special',
+    argSpec: [],
+    pages: [],
+    defaultPage: null,
+    help: '查看最近的 records：records [--last N] [--tool xhs_get_note]',
+  },
 
   probe: {
     kind: 'call',
@@ -253,6 +267,10 @@ function parseArgv(argv) {
     visualFlash: undefined,
     visualTrace: null,
     visualRecord: undefined,
+    timeoutMs: null,
+    quiet: false,
+    last: null,
+    tool: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -313,6 +331,13 @@ function parseArgv(argv) {
     else if (a.startsWith('--time-range=')) eatEq('timeRange', '--time-range=');
     else if (a === '--search-scope') eat('searchScope');
     else if (a.startsWith('--search-scope=')) eatEq('searchScope', '--search-scope=');
+    else if (a === '--timeout-ms') eat('timeoutMs');
+    else if (a.startsWith('--timeout-ms=')) eatEq('timeoutMs', '--timeout-ms=');
+    else if (a === '--quiet') opts.quiet = true;
+    else if (a === '--last') eat('last');
+    else if (a.startsWith('--last=')) eatEq('last', '--last=');
+    else if (a === '--tool') eat('tool');
+    else if (a.startsWith('--tool=')) eatEq('tool', '--tool=');
     else if (a.startsWith('-')) {
       const err = new Error(`unknown option: ${a}（运行 \`node index.js --help\` 查看）`);
       err.code = 'E_BAD_ARG';

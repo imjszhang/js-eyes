@@ -20,6 +20,13 @@ const __jseXhsCache = {
     paused: false,
     pauseUntil: 0,
     consecutiveRiskHits: 0,
+    // v3.1 PR-B2：四档分类（soft/captcha/hard）
+    kind: null,            // 当前档位
+    lastReason: null,      // 最近一次原因字符串
+    lastSeenAt: 0,         // 最近一次时间戳
+    softCount: 0,
+    captchaCount: 0,
+    hardCount: 0,
   },
 };
 
@@ -48,10 +55,17 @@ function errResult(error, extra) {
 }
 
 function snapshotAntiCrawl() {
+  var s = __jseXhsCache.antiCrawl;
   return {
-    paused: __jseXhsCache.antiCrawl.paused,
-    pauseUntil: __jseXhsCache.antiCrawl.pauseUntil,
-    consecutiveRiskHits: __jseXhsCache.antiCrawl.consecutiveRiskHits,
+    paused: s.paused,
+    pauseUntil: s.pauseUntil,
+    consecutiveRiskHits: s.consecutiveRiskHits,
+    kind: s.kind || null,
+    lastReason: s.lastReason || null,
+    lastSeenAt: s.lastSeenAt || 0,
+    softCount: s.softCount | 0,
+    captchaCount: s.captchaCount | 0,
+    hardCount: s.hardCount | 0,
   };
 }
 
@@ -95,14 +109,23 @@ function isAntiCrawlPaused() {
   return true;
 }
 
-function recordRiskHit(reason) {
+function recordRiskHit(reason, kind) {
   var s = __jseXhsCache.antiCrawl;
+  var k = kind === 'hard' || kind === 'captcha' || kind === 'soft' ? kind : 'soft';
   s.consecutiveRiskHits = (s.consecutiveRiskHits | 0) + 1;
-  if (s.consecutiveRiskHits >= __JSE_XHS_MAX_CONSECUTIVE_RISK) {
+  s.kind = k;
+  s.lastReason = reason || null;
+  s.lastSeenAt = Date.now();
+  if (k === 'hard') s.hardCount = (s.hardCount | 0) + 1;
+  else if (k === 'captcha') s.captchaCount = (s.captchaCount | 0) + 1;
+  else s.softCount = (s.softCount | 0) + 1;
+  // hard 立即暂停；captcha 2 次或 soft 3 次连击暂停 5 分钟。
+  if (k === 'hard' || s.consecutiveRiskHits >= __JSE_XHS_MAX_CONSECUTIVE_RISK ||
+      (k === 'captcha' && s.captchaCount >= 2)) {
     s.paused = true;
     s.pauseUntil = Date.now() + __JSE_XHS_PAUSE_MS;
   }
-  return { paused: s.paused, pauseUntil: s.pauseUntil, consecutiveRiskHits: s.consecutiveRiskHits, reason: reason || null };
+  return { paused: s.paused, pauseUntil: s.pauseUntil, consecutiveRiskHits: s.consecutiveRiskHits, reason: reason || null, kind: k };
 }
 
 function recordSuccess() {
@@ -152,8 +175,12 @@ async function fetchXhsApi(apiUrl, options) {
     });
     var contentType = resp.headers.get('content-type') || '';
     if (!resp.ok) {
-      if (resp.status === 429 || resp.status === 461) {
-        recordRiskHit('http_' + resp.status);
+      if (resp.status === 461) {
+        recordRiskHit('http_461', 'captcha');
+      } else if (resp.status === 429) {
+        recordRiskHit('http_429', 'soft');
+      } else if (resp.status === 403 || resp.status === 401) {
+        recordRiskHit('http_' + resp.status, 'hard');
       }
       var snippet = '';
       try { snippet = (await resp.text()).slice(0, 500); } catch (_) {}
@@ -168,12 +195,23 @@ async function fetchXhsApi(apiUrl, options) {
     if (json && json.success === false) {
       // 已知风控/账号异常 code（300011 = Account abnormal，缺登录态会触发）。
       var c = json.code;
-      var riskByCode = (c === -1 || c === 461 || (c >= 300010 && c <= 300099) || c === 10001 || c === 10002);
-      var riskByMsg = /verify|risk|behavior|abnormal|too\s+frequent|登录|频繁|风险/i.test(json.msg || '');
-      if (riskByCode || riskByMsg) {
-        recordRiskHit('xhs_risk_code_' + c);
+      var msg = json.msg || '';
+      // captcha：明确出现验证关键词或 461
+      var captchaByMsg = /captcha|verify|滑块|验证码/i.test(msg);
+      // hard：明显登录态丢失 / 账号封禁
+      var hardByCode = (c === 10001 || c === 10002);
+      var hardByMsg = /banned|封禁|frozen|登录后|请登录|未登录/i.test(msg);
+      // soft：评论 / behavior abnormal / too frequent
+      var softByCode = (c === -1 || c === 461 || (c >= 300010 && c <= 300099));
+      var softByMsg = /risk|behavior|abnormal|too\s+frequent|频繁|风险/i.test(msg);
+      var classifiedKind = null;
+      if (captchaByMsg) classifiedKind = 'captcha';
+      else if (hardByCode || hardByMsg) classifiedKind = 'hard';
+      else if (softByCode || softByMsg) classifiedKind = 'soft';
+      if (classifiedKind) {
+        recordRiskHit('xhs_api_code_' + c, classifiedKind);
       }
-      return errResult('xhs_api_error', { status: resp.status, code: c, msg: json.msg, payload: json });
+      return errResult('xhs_api_error', { status: resp.status, code: c, msg: msg, payload: json });
     }
     recordSuccess();
     return { ok: true, data: json, status: resp.status, antiCrawlState: snapshotAntiCrawl() };
@@ -227,8 +265,16 @@ function detectAntiCrawl(meta) {
   if (hasLike && hasComment && hasCollect) {
     return { ok: true, reason: 'meta_complete' };
   }
-  recordRiskHit('meta_incomplete');
-  return { ok: false, reason: 'meta_incomplete', hasLike: hasLike, hasComment: hasComment, hasCollect: hasCollect };
+  // hard：当前 location 已被跳到登录页 → 强制判 hard
+  var loc = '';
+  try { loc = String(location.href || ''); } catch (_) { loc = ''; }
+  if (/\/login(\?|$|\/)/.test(loc)) {
+    recordRiskHit('redirect_to_login', 'hard');
+    return { ok: false, reason: 'redirect_to_login', kind: 'hard', hasLike: hasLike, hasComment: hasComment, hasCollect: hasCollect };
+  }
+  // soft：meta 缺失，可能是反爬空壳页或加载未完成
+  recordRiskHit('meta_incomplete', 'soft');
+  return { ok: false, reason: 'meta_incomplete', kind: 'soft', hasLike: hasLike, hasComment: hasComment, hasCollect: hasCollect };
 }
 
 // ---------------------------------------------------------------------------

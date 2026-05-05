@@ -19,7 +19,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
 
   // @@include ./common.js
 

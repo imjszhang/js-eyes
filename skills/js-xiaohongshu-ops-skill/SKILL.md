@@ -102,6 +102,42 @@ node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
 JS_XHS_DISABLE_BRIDGE=1 node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/xxxx"
 ```
 
+## 评论与登录态（v3.1）
+
+小红书评论 API（`/api/sns/web/v2/comment/page` 等）必须有登录态，否则会回 `code:300011 "Account abnormal"`。skill 在两处做了门控：
+
+1. **入口预检**：`runTool` 在调用 `xhs_get_note_comments` 或 `args.withComments===true` 时，会先调一次 `sessionState`，若 `cookieFlags.hasWebSession === false` 则直接短路返回 `error: 'login_required'` + `loginUrl: 'https://www.xiaohongshu.com/login'`，避免无谓打扰风控。
+2. **bridge 内层兜底**：`api_getComments` 自身也会再校验一次，返回 `login_required` 与 `loginUrl`，便于 AI/上游识别。
+
+CLI 提供 `xhs login` 引导子命令（仅 CLI，不暴露给 AI）：
+
+```bash
+# 引导登录：打开登录页 + 轮询 web_session cookie 出现（默认最多 5 分钟）
+node skills/js-xiaohongshu-ops-skill/index.js login --pretty
+node skills/js-xiaohongshu-ops-skill/index.js login --timeout-ms 600000 --pretty
+```
+
+成功后输出 `{ ok:true, cookieFlags:{ hasWebSession:true, ... }, elapsedMs }`，超时则 `{ ok:false, error:'login_timeout' }`。
+
+## 如何查看抓到的数据（v3.1）
+
+每次 READ 工具跑完会把 history 行 append 到 `~/.js-eyes/skill-data/<skillId>/history/<YYYY-MM>.jsonl`，cache 与 debug bundle 同目录其它子目录。`runReadTool` 会在 stderr 输出一行提示（除非加了 `--quiet`）：
+
+```
+[xhs] records: /Users/x/.js-eyes/skill-data/.../history/2026-05.jsonl (notes=20)
+```
+
+result 顶层 `run.paths.{historyFile,historyDir,cacheDir,debugDir}` 也包含完整路径，便于上游脚本/AI 直接定位。
+
+CLI 提供 `xhs records` 子命令快速查看最近的 records：
+
+```bash
+node skills/js-xiaohongshu-ops-skill/index.js records --last 5 --pretty
+node skills/js-xiaohongshu-ops-skill/index.js records --tool xhs_get_note --last 10 --pretty
+```
+
+输出每条包含：`run_id / tool / timestamp / status / duration_ms / cache_hit / input(摘要) / error / debugBundlePath`。
+
 ## runToolAudit 字段（v2.1）
 
 每次 READ 工具返回顶层包含：

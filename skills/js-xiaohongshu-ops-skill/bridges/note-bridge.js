@@ -17,7 +17,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.4';
 
   // @@include ./common.js
 
@@ -294,7 +294,8 @@
     if (!auth.web_session) {
       return errResult('login_required', {
         reason: 'web_session_missing',
-        hint: '评论 API 必须有登录态。请在浏览器登录小红书后重试',
+        hint: '评论 API 必须有登录态。请在浏览器登录小红书后重试，或运行 `xhs login` 引导登录。',
+        loginUrl: 'https://www.xiaohongshu.com/login',
         cookieFlags: { hasA1: !!auth.a1, hasWebSession: false, hasWebId: !!auth.webId },
       });
     }

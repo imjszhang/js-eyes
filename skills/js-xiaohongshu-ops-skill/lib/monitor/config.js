@@ -21,6 +21,37 @@ const { resolvePaths } = require('./paths');
 
 const CURRENT_SCHEMA_VERSION = 1;
 
+// v3.1 PR-C3 schema v2 草案（仅当 B1 长跑报告确认需要才启用）：
+//   - groups: [{ name, accounts:[id], searches:[kw], priority }]   多目标聚合 / 优先级
+//   - account/search.priority: 'low' | 'normal' | 'high'
+//   - defaults.notify: { dedupWindow: <秒> }                       通知层去重窗口
+// migrate 钩子已就位（migrateV1ToV2），但默认不强制启用，保持 CURRENT_SCHEMA_VERSION=1。
+const SCHEMA_V2_DRAFT = 2;
+const VALID_PRIORITIES = new Set(['low', 'normal', 'high']);
+
+function migrateV1ToV2(config) {
+  const out = config && typeof config === 'object' ? config : {};
+  out.$schemaVersion = SCHEMA_V2_DRAFT;
+  if (!Array.isArray(out.groups)) out.groups = [];
+  if (Array.isArray(out.accounts)) {
+    out.accounts = out.accounts.map((a) => Object.assign({ priority: 'normal' }, a, {
+      priority: a && VALID_PRIORITIES.has(a.priority) ? a.priority : 'normal',
+    }));
+  }
+  if (Array.isArray(out.searches)) {
+    out.searches = out.searches.map((s) => Object.assign({ priority: 'normal' }, s, {
+      priority: s && VALID_PRIORITIES.has(s.priority) ? s.priority : 'normal',
+    }));
+  }
+  out.defaults = Object.assign({}, out.defaults || {});
+  if (!out.defaults.notify || typeof out.defaults.notify !== 'object') {
+    out.defaults.notify = { dedupWindow: 0 };
+  } else if (typeof out.defaults.notify.dedupWindow !== 'number') {
+    out.defaults.notify.dedupWindow = 0;
+  }
+  return out;
+}
+
 const DEFAULT_CONFIG = {
   $schemaVersion: CURRENT_SCHEMA_VERSION,
   accounts: [],
@@ -75,6 +106,11 @@ function migrate(config, fromVersion) {
   if (!config.$schemaVersion) config.$schemaVersion = CURRENT_SCHEMA_VERSION;
   if (!Array.isArray(config.accounts)) config.accounts = [];
   if (!Array.isArray(config.searches)) config.searches = [];
+  // v1 → v2 迁移仅当显式开启时执行（环境变量 / fromVersion 显式给 1 + targetVersion 给 2）
+  const enableV2 = process.env.JS_XHS_MONITOR_SCHEMA_V2 === '1';
+  if (enableV2 && (config.$schemaVersion === 1 || fromVersion === 1)) {
+    return migrateV1ToV2(config);
+  }
   return config;
 }
 
@@ -194,11 +230,13 @@ function effectiveSearchSettings(search, config) {
 
 module.exports = {
   CURRENT_SCHEMA_VERSION,
+  SCHEMA_V2_DRAFT,
   defaultConfig,
   ensureBaseDirs,
   loadConfig,
   loadConfigRaw,
   migrate,
+  migrateV1ToV2,
   validate,
   validateConfig,
   saveConfig,

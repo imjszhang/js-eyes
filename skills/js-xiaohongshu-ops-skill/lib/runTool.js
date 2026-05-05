@@ -230,7 +230,30 @@ async function runTool(browser, spec) {
     target = session.target;
     bridgeMeta = await session.ensureBridge();
 
-    outer: for (let i = 0; i < tryOrder.length; i++) {
+    // 登录态预检：评论 API 必须有 web_session，否则直接短路返回 login_required。
+    // 触发条件：工具是 xhs_get_note_comments（method=getComments）或 args.withComments===true。
+    const needsLogin = method === 'getComments' || (args && args.withComments === true);
+    if (needsLogin) {
+      let sessResp = null;
+      try { sessResp = await session.callApi('sessionState'); } catch (_) { sessResp = null; }
+      const cookieFlags = sessResp && sessResp.ok && sessResp.data && sessResp.data.cookieFlags;
+      if (cookieFlags && cookieFlags.hasWebSession === false) {
+        const skipResult = {
+          ok: false,
+          error: 'login_required',
+          reason: 'web_session_missing',
+          hint: '评论 API 必须有登录态。请在浏览器登录小红书后重试，或运行 `xhs login` 引导登录。',
+          loginUrl: 'https://www.xiaohongshu.com/login',
+          cookieFlags,
+        };
+        triedMethods = [];
+        usedMethod = null;
+        resp = skipResult;
+        // 跳过尝试循环，直接走结果归一化
+      }
+    }
+
+    outer: for (let i = 0; i < tryOrder.length && !(resp && resp.error === 'login_required'); i++) {
       const candidate = tryOrder[i];
       triedMethods.push(candidate);
 
@@ -344,6 +367,14 @@ async function runTool(browser, spec) {
       durationMs,
       recordingMode: runContext.recording.mode,
       target,
+      paths: runContext.paths ? {
+        historyDir: runContext.paths.historyDir,
+        cacheDir: runContext.paths.cacheDir,
+        debugDir: runContext.paths.debugDir,
+        historyFile: runContext.paths.historyDir
+          ? require('path').join(runContext.paths.historyDir, new Date().toISOString().slice(0, 7) + '.jsonl')
+          : null,
+      } : null,
     },
     bridge: bridgeMeta,
     ok,

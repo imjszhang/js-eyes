@@ -223,10 +223,46 @@ async function runCheck({ config, browser, options = {} }) {
     merged.push(out);
   }
 
+  // v3.1 PR-B2：检测到 hard 档反爬命中 → 自动停 daemon + 紧急通知。
+  let hardStop = null;
+  for (const t of merged) {
+    const ac = t.meta && t.meta.antiCrawlState;
+    if (ac && ac.kind === 'hard') {
+      hardStop = { label: t.label, reason: ac.lastReason || 'hard_anti_crawl', state: ac };
+      break;
+    }
+  }
+  if (hardStop && options.autoStopOnHard !== false) {
+    pushStep('hard_anti_crawl_detected', hardStop);
+    logger.error(`[monitor] hard anti-crawl detected on ${hardStop.label}: ${hardStop.reason} → stopping daemon`);
+    // 强制紧急通知（即使 dryNotify 也发）
+    try {
+      const emergencyChannels = (config.channels || []).filter((c) => c.type === 'console' || !!c.url);
+      if (emergencyChannels.length > 0) {
+        await dispatch(emergencyChannels, {
+          noteId: 'monitor-hard-stop',
+          title: '[xhs monitor] 紧急停机',
+          desc: `hard anti-crawl on ${hardStop.label}: ${hardStop.reason}`,
+          url: '',
+          author: 'monitor',
+        }, { summaryLength: 200, dryNotify: false });
+      }
+    } catch (err) {
+      logger.error(`[monitor] emergency notify 失败: ${err.message}`);
+    }
+    try {
+      const { stopDaemon } = require('./daemon');
+      stopDaemon();
+    } catch (err) {
+      logger.error(`[monitor] stopDaemon 失败: ${err.message}`);
+    }
+  }
+
   pushStep('check_end', {
     totalFetched: coreResult.totals.fetched,
     totalFresh: coreResult.totals.fresh,
     totalNotified, totalNotifyFailed,
+    hardStop: hardStop || null,
   });
   const finishedAt = new Date();
   return {
@@ -241,6 +277,7 @@ async function runCheck({ config, browser, options = {} }) {
       notified: totalNotified,
       notifyFailed: totalNotifyFailed,
     },
+    hardStop: hardStop || null,
     targets: merged,
   };
 }

@@ -65,6 +65,17 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
         visualRecord: opts.visualRecord !== undefined ? opts.visualRecord : undefined,
       },
     });
+    if (!opts.quiet && result && result.run && result.run.paths && result.run.paths.historyFile) {
+      try {
+        const sizeHint = result.result
+          ? (Array.isArray(result.result.notes) ? `notes=${result.result.notes.length}`
+            : Array.isArray(result.result.comments) ? `comments=${result.result.comments.length}`
+            : Array.isArray(result.result.items) ? `items=${result.result.items.length}`
+            : (result.result.note ? 'note=1' : ''))
+          : '';
+        process.stderr.write(`[xhs] records: ${result.run.paths.historyFile}${sizeHint ? ' (' + sizeHint + ')' : ''}\n`);
+      } catch (_) {}
+    }
     emitJson(result, opts);
     return result.ok ? 0 : 1;
   } finally {
@@ -226,6 +237,157 @@ async function runDoctor({ opts, runtime }) {
   return summary.ok ? 0 : 1;
 }
 
+async function runLogin({ opts, runtime }) {
+  const LOGIN_URL = 'https://www.xiaohongshu.com/login';
+  const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 5 * 60 * 1000;
+  const intervalMs = 3000;
+  const browser = new BrowserAutomation(runtime.serverUrl, {
+    logger: opts.verbose ? console : { info: () => {}, warn: console.error, error: console.error },
+  });
+  const result = { ok: false, loginUrl: LOGIN_URL };
+  let session = null;
+  try {
+    await browser.connect();
+    session = new Session({
+      opts: {
+        page: 'home',
+        bot: browser,
+        targetUrl: LOGIN_URL,
+        verbose: !!opts.verbose,
+        wsEndpoint: runtime.serverUrl,
+        createIfMissing: true,
+        navigateOnReuse: true,
+        reuseAnyXhsTab: true,
+        createUrl: LOGIN_URL,
+      },
+    });
+    await session.connect();
+    await session.resolveTarget();
+    await session.ensureBridge();
+
+    // 已登录则直接成功
+    let initial = null;
+    try { initial = await session.callApi('sessionState'); } catch (_) { initial = null; }
+    const initialFlags = initial && initial.ok && initial.data && initial.data.cookieFlags;
+    if (initialFlags && initialFlags.hasWebSession) {
+      result.ok = true;
+      result.alreadyLoggedIn = true;
+      result.cookieFlags = initialFlags;
+      emitJson(result, opts);
+      return 0;
+    }
+
+    // 主动导航到登录页（若未在登录页）
+    if (session.target && session.target.rawId != null) {
+      try { await browser.openUrl(LOGIN_URL, session.target.rawId); } catch (_) {}
+    }
+
+    process.stderr.write(`[xhs] 已打开登录页，请在浏览器内完成登录（最长等待 ${Math.round(timeoutMs / 1000)}s）...\n`);
+    const startedAt = Date.now();
+    let lastFlags = initialFlags || null;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      let resp = null;
+      try { resp = await session.callApi('sessionState'); } catch (_) { resp = null; }
+      const flags = resp && resp.ok && resp.data && resp.data.cookieFlags;
+      if (flags) {
+        lastFlags = flags;
+        if (flags.hasWebSession) {
+          result.ok = true;
+          result.cookieFlags = flags;
+          result.elapsedMs = Date.now() - startedAt;
+          emitJson(result, opts);
+          return 0;
+        }
+      }
+    }
+    result.ok = false;
+    result.error = 'login_timeout';
+    result.cookieFlags = lastFlags;
+    result.elapsedMs = Date.now() - startedAt;
+    emitJson(result, opts);
+    return 1;
+  } catch (err) {
+    result.ok = false;
+    result.error = err && err.code || 'login_failed';
+    result.message = err && err.message || String(err);
+    emitJson(result, opts);
+    return 1;
+  } finally {
+    try { if (session) await session.close(); } catch (_) {}
+    try { browser.disconnect(); } catch (_) {}
+  }
+}
+
+async function runRecords({ opts, runtime }) {
+  const fs = require('fs');
+  const path = require('path');
+  const pkg = require('../package.json');
+  const { getSkillRecordPaths } = require('@js-eyes/runtime-paths');
+  const skillId = pkg.name;
+  const last = Number(opts.last) > 0 ? Number(opts.last) : 10;
+  const toolFilter = opts.tool || null;
+
+  const paths = getSkillRecordPaths(skillId, {
+    recordingBaseDir: runtime.recording && runtime.recording.baseDir,
+  });
+  const summary = {
+    ok: true,
+    skillId,
+    historyDir: paths.historyDir,
+    cacheDir: paths.cacheDir,
+    debugDir: paths.debugDir,
+    last,
+    toolFilter,
+    entries: [],
+  };
+  try {
+    if (!fs.existsSync(paths.historyDir)) {
+      summary.entries = [];
+      emitJson(summary, opts);
+      return 0;
+    }
+    const files = fs.readdirSync(paths.historyDir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .sort()
+      .reverse();
+    const collected = [];
+    for (const fname of files) {
+      const fpath = path.join(paths.historyDir, fname);
+      let content = '';
+      try { content = fs.readFileSync(fpath, 'utf8'); } catch (_) { continue; }
+      const lines = content.split(/\r?\n/).filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        let row = null;
+        try { row = JSON.parse(lines[i]); } catch (_) { continue; }
+        if (toolFilter && row.tool_name !== toolFilter) continue;
+        collected.push({
+          file: fpath,
+          run_id: row.run_id,
+          tool: row.tool_name,
+          timestamp: row.timestamp,
+          status: row.status,
+          duration_ms: row.duration_ms,
+          cache_hit: row.cache_hit,
+          input: row.input_summary,
+          error: row.error_summary || null,
+          debugBundlePath: row.debug_bundle_path || null,
+        });
+        if (collected.length >= last) break;
+      }
+      if (collected.length >= last) break;
+    }
+    summary.entries = collected;
+    emitJson(summary, opts);
+    return 0;
+  } catch (err) {
+    summary.ok = false;
+    summary.error = err && err.message || String(err);
+    emitJson(summary, opts);
+    return 1;
+  }
+}
+
 async function dispatch(argv) {
   if (!argv.length || argv[0] === '-h' || argv[0] === '--help') {
     printHelp();
@@ -298,6 +460,8 @@ async function dispatch(argv) {
       case 'call':     return await runCall({ cmd, cmdDef, opts, positional, runtime });
       case 'special':
         if (cmd === 'doctor') return await runDoctor({ opts, runtime });
+        if (cmd === 'login')  return await runLogin({ opts, runtime });
+        if (cmd === 'records') return await runRecords({ opts, runtime });
         process.stderr.write(`special 命令 ${cmd} 暂未实现\n`);
         return 2;
       default:
