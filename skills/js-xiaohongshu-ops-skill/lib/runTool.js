@@ -166,6 +166,7 @@ async function runTool(browser, spec) {
       maxCommentPages: (args && args.maxCommentPages) || 0,
       extractDetails: !!(args && args.extractDetails),
       detailsLimit: (args && args.detailsLimit) || 0,
+      collectSuggest: !!(args && args.collectSuggest),
       withComments: !!(args && args.withComments),
       appliedFilters: args ? {
         channelType: args.channelType || null,

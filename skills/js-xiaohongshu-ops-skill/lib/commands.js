@@ -162,10 +162,11 @@ const COMMANDS = {
       searchScope: opts.searchScope || undefined,
       extractDetails: !!opts.extractDetails,
       detailsLimit: opts.detailsLimit ? Number(opts.detailsLimit) : undefined,
+      collectSuggest: !!opts.collectSuggest,
       readMode: opts.readMode || undefined,
     }],
     targetUrl: (opts, positional) => targets.searchUrl({ keyword: positional[0] }),
-    help: '搜索：search <keyword> [--limit N] [--channel-type 全部|图文|视频|用户] [--sort-by ...] [--extract-details [--details-limit N]]',
+    help: '搜索：search <keyword> [--limit N] [--channel-type 全部|图文|视频|用户] [--sort-by ...] [--extract-details [--details-limit N]] [--collect-suggest]',
   },
   user: {
     kind: 'tool',
@@ -264,6 +265,7 @@ function parseArgv(argv) {
     searchScope: null,
     extractDetails: false,
     detailsLimit: null,
+    collectSuggest: false,
     visual: undefined,
     visualHud: undefined,
     visualFlash: undefined,
@@ -289,6 +291,7 @@ function parseArgv(argv) {
     else if (a === '--extract-details') opts.extractDetails = true;
     else if (a === '--details-limit') eat('detailsLimit');
     else if (a.startsWith('--details-limit=')) eatEq('detailsLimit', '--details-limit=');
+    else if (a === '--collect-suggest') opts.collectSuggest = true;
     else if (a === '--visual') opts.visual = true;
     else if (a === '--no-visual') opts.visual = false;
     else if (a === '--visual-hud') opts.visualHud = true;

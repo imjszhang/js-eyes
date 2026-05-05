@@ -20,7 +20,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.3.7';
+  const VERSION = '0.3.9';
 
   // visual-bridge-kit 桥：当 visual 启用时，window.__jse_visual 会被注入。
   // 在编排关键节点主动 emit HUD/flash，让 19s 的串行详情过程不再「中段空白」。
@@ -547,6 +547,111 @@
     return Object.assign({}, note, { detail: extracted });
   }
 
+  // ----- 搜索框下拉联想词（best-effort） -----
+  // 参考 agent-js DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js (L1186-L1252)。
+  // 实战：xhs 现在对 programmatic input.click()/focus() 严格 gating（要求 isTrusted）。
+  // 这里把参考实现完整移过来作为 best-effort：成功最好，失败也透出 attempt 元数据。
+  async function _collectSuggestKeywords() {
+    var input = document.querySelector('#search-input, input[type="search"], input[placeholder*="搜索"]');
+    if (!input) {
+      return { keywords: [], hitSelector: null, error: 'no_input', durationMs: 0 };
+    }
+    var t0 = Date.now();
+    var prevValue = input.value;
+    try {
+      // 完整事件序列：pointer + mouse + click + focus，尽量逼近真用户
+      var rect = input.getBoundingClientRect();
+      var x = rect.left + rect.width / 2;
+      var y = rect.top + rect.height / 2;
+      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function (type) {
+        var Ev = type.indexOf('pointer') === 0 ? (window.PointerEvent || MouseEvent) : MouseEvent;
+        try {
+          input.dispatchEvent(new Ev(type, {
+            bubbles: true, cancelable: true, view: window, button: 0,
+            clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse',
+          }));
+        } catch (_) {}
+      });
+      try { input.focus(); } catch (_) {}
+      // 清空当前 value（避免被识别为「已完成搜索」状态压制 popup）
+      try {
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(input, '');
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      } catch (_) {}
+    } catch (_) {}
+
+    // 等 6s（参考实现同款）—— xhs 联想词如果出现，6s 内必到
+    await delay(6000);
+
+    // 参考 agent-js xhsSearch.js 的 selector 表，但**收紧**：
+    //   1) 去掉 `[class*="dropdown"] li`（实测命中顶部导航的「创作中心/业务合作」菜单）
+    //   2) 加几何位置过滤：候选元素必须位于输入框正下方（top 在 input.bottom 之下、≤600px 内）
+    //   3) 加语义黑名单：排除明显的导航/管理菜单词
+    var selectors = [
+      '.sug-box .sug-item',          // 参考实现的主选择器
+      '.sug-item',
+      '.search-suggest-list li',
+      '.suggest-list li',
+      '[class*="suggest-item"]',
+      '[class*="search-suggest"] a',
+      '[class*="suggest"] li',
+      '.search-suggestions li',
+      '.hot-search-list li',
+    ];
+    var inputRect2 = input.getBoundingClientRect();
+    var BLACKLIST = /(创作|直播管理|商家入驻|MCN|蒲公英|推广合作|业务合作|专业号|管理|入驻|中心|服务|帮助|举报|登录|注册|历史|清空|删除|搜索)/;
+    function isPlausibleDropdown(el) {
+      var rect = el.getBoundingClientRect();
+      // 必须在输入框下方 5~600px 内
+      if (rect.top < inputRect2.bottom - 5) return false;
+      if (rect.top > inputRect2.bottom + 600) return false;
+      // 横向应大致与输入框对齐（容许 ±300px）
+      if (rect.right < inputRect2.left - 300 || rect.left > inputRect2.right + 300) return false;
+      return true;
+    }
+    var keywords = [];
+    var hitSelector = null;
+    for (var si = 0; si < selectors.length; si++) {
+      var sel = selectors[si];
+      var els;
+      try { els = document.querySelectorAll(sel); } catch (_) { continue; }
+      if (!els || !els.length) continue;
+      var found = [];
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var txt = (el.textContent || '').trim();
+        if (!txt || txt.length < 2 || txt.length > 50) continue;
+        if (BLACKLIST.test(txt)) continue;
+        if (!isPlausibleDropdown(el)) continue;
+        if (found.indexOf(txt) < 0) found.push(txt);
+      }
+      if (found.length > 0) {
+        keywords = found;
+        hitSelector = sel;
+        break;
+      }
+    }
+
+    // 关闭 popup + 还原 input value，避免污染后续操作
+    try { document.body.click(); } catch (_) {}
+    try {
+      if (prevValue !== input.value) {
+        var setter2 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter2.call(input, prevValue);
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: prevValue }));
+      }
+    } catch (_) {}
+    await delay(300);
+
+    return {
+      keywords: keywords,
+      hitSelector: hitSelector,
+      durationMs: Date.now() - t0,
+      error: keywords.length === 0 ? 'no_dropdown_visible' : null,
+    };
+  }
+
   // ----- 主入口 -----
 
   async function dom_search(args) {
@@ -625,10 +730,46 @@
       detailsStats = { requested: requested, succeeded: succeeded, failed: failed };
     }
 
-    // 历史字段保形（小红书 SPA 实测：搜索结果页无独立 tab 切换器；联想/相关搜索 selector 易碎）
-    var suggestKeywords = [];
-    var relatedSearchKeywords = [];
+    // 相关搜索（"大家都在搜"）：xhs 把 `.query-note-wrapper` 块穿插在 feed 中，
+    // 每块含一个 `.query-note-header-text`（如 "大家都在搜"）+ 多个 `.query-note-item .item-text`。
+    // 滚动后多块会同时存在，对深度调研非常有用 → 拍平 + 去重输出 relatedSearchKeywords，
+    // 同时按 header 分组保留在 relatedSearch[]。
+    function _collectRelatedSearch() {
+      var groups = [];
+      var seen = Object.create(null);
+      var wrappers = document.querySelectorAll('.query-note-wrapper');
+      for (var wi = 0; wi < wrappers.length; wi++) {
+        var w = wrappers[wi];
+        var headerEl = w.querySelector('.query-note-header-text');
+        var header = headerEl ? (headerEl.textContent || '').trim() : '相关搜索';
+        var items = w.querySelectorAll('.query-note-item .item-text, .item-wrapper .item-text');
+        var words = [];
+        for (var ii = 0; ii < items.length; ii++) {
+          var t = (items[ii].textContent || '').trim();
+          if (t && t.length < 60 && !seen[t]) { seen[t] = true; words.push(t); }
+        }
+        if (words.length) groups.push({ header: header, words: words });
+      }
+      var flat = Object.keys(seen);
+      return { groups: groups, flat: flat };
+    }
+    var rel = _collectRelatedSearch();
+    var relatedSearchKeywords = rel.flat;
     var searchTabs = [];
+
+    // 搜索框下拉联想词（参考 agent-js xhsSearch.js 1186-1252）。
+    // 实测 xhs 当前对 programmatic focus 严格 gating（要求 isTrusted），全程模拟事件
+    // 大概率拿不到，但仍按参考实现实装作为 best-effort，并暴露 `suggestKeywordsAttempt`
+    // 字段告诉调用方「试过了，确实没东西」与「没试」可以区分。
+    var suggestKeywords = [];
+    var suggestKeywordsAttempt = null;
+    if (args.collectSuggest) {
+      _vhud('采集联想词', '', '点搜索框', 'pending');
+      suggestKeywordsAttempt = await _collectSuggestKeywords();
+      suggestKeywords = suggestKeywordsAttempt.keywords || [];
+      _vhud('采集联想词', '', suggestKeywords.length + ' 词 (' + (suggestKeywordsAttempt.hitSelector || 'none') + ')',
+        suggestKeywords.length > 0 ? 'success' : 'warn');
+    }
 
     return okResult({
       keyword: keyword,
@@ -636,7 +777,9 @@
       notes: notes,
       searchTabs: searchTabs,
       suggestKeywords: suggestKeywords,
+      suggestKeywordsAttempt: suggestKeywordsAttempt,
       relatedSearchKeywords: relatedSearchKeywords,
+      relatedSearch: rel.groups,
       appliedFilters: appliedFilters,
       filterPanelUsed: panelOpened,
       details: detailsStats,
