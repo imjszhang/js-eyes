@@ -20,7 +20,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.3.6';
+  const VERSION = '0.3.7';
 
   // visual-bridge-kit 桥：当 visual 启用时，window.__jse_visual 会被注入。
   // 在编排关键节点主动 emit HUD/flash，让 19s 的串行详情过程不再「中段空白」。
@@ -178,6 +178,11 @@
     var coverImg = node.querySelector('a.cover img, img');
     var cover = coverImg ? (coverImg.getAttribute('src') || coverImg.getAttribute('data-src')) : null;
 
+    // 卡片层 type 判定：xhs 视频卡片在 a.cover 内会有 .play-icon（svg 播放按钮），图文则没有。
+    // 兼容历史 class 命名：[class*=play-icon] / [class*=video-mask] / 真 <video> 标签。
+    var hasPlay = !!node.querySelector('a.cover .play-icon, .play-icon, [class*="play-icon"], [class*="video-mask"], video');
+    var noteType = hasPlay ? 'video' : 'normal'; // 'normal' 对应小红书自有的「图文」枚举
+
     return {
       noteId: ref.noteId,
       url: 'https://www.xiaohongshu.com/explore/' + ref.noteId
@@ -187,6 +192,7 @@
       author: author,
       likeCount: parseCountText(likeText),
       cover: cover,
+      type: noteType,
       // 保留卡片节点引用（仅在本帧有效；详情阶段会重新查找）
       _selector: 'noteId=' + ref.noteId,
     };
@@ -414,6 +420,30 @@
       if (am) authorId = am[1];
     }
     var noteRef = parseNoteIdFromHref(location.href) || {};
+
+    // 笔记发布时间 + 地点：xhs 详情页里第一个**不在 .comment-item 内**的 `.date`
+    // 元素就是笔记自身的发布时间（comments 区每条评论也带 .date 但都嵌在 .comment-item）。
+    // 文本形如 "04-22 上海" / "2天前 上海" / "昨天 12:31 上海"，地点没有空格分隔。
+    var publishTime = '';
+    var publishLocation = '';
+    var dateNodes = container.querySelectorAll('.date');
+    for (var di = 0; di < dateNodes.length; di++) {
+      var dn = dateNodes[di];
+      if (dn.closest('.comment-item') || dn.closest('.comments-container')) continue;
+      var rawDate = (dn.textContent || '').trim();
+      if (!rawDate) continue;
+      // 把「时间 地点」拆开：尽量匹配「编辑于? <时间块> [省市]」
+      // 地点都是中文 1~6 字（省/市），没有空格；时间块可能包含 "X天前" / "X小时前" / "昨天 HH:MM" / "MM-DD" / "YYYY-MM-DD"
+      var m = rawDate.match(/^(编辑于\s*)?(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}|昨天\s*\d{1,2}:\d{2}|今天\s*\d{1,2}:\d{2}|\d+天前|\d+小时前|\d+分钟前|刚刚|今天|昨天)\s*([\u4e00-\u9fa5]{1,8})?$/);
+      if (m) {
+        publishTime = (m[1] || '') + m[2];
+        publishLocation = m[3] || '';
+      } else {
+        publishTime = rawDate; // 兜底：原文，不解析
+      }
+      break;
+    }
+
     return {
       ok: true,
       noteId: noteRef.noteId || null,
@@ -423,6 +453,8 @@
       content: content,
       image_urls: imgUrls,
       stats: { likes: likes, comments: comments, collects: collects },
+      publishTime: publishTime || null,
+      publishLocation: publishLocation || null,
       note_like: meta.note_like,
       note_comment: meta.note_comment,
       note_collect: meta.note_collect,

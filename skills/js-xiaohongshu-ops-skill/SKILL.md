@@ -102,7 +102,7 @@ node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
 JS_XHS_DISABLE_BRIDGE=1 node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/xxxx"
 ```
 
-## `xhs_search_notes`（v3.6，注入 + 串行详情 + 全程 visual HUD）
+## `xhs_search_notes`（v3.7，注入 + 串行详情 + 全程 visual HUD + 卡片 type / 详情 publishTime）
 
 UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐；xhs 实际是 **Vue（不是 React）**，且 `visual-bridge-kit` 会装 HP overlay，所有 click 都需绕开 `[data-hp-installed]` 优选 `[data-hp-bound]` 真节点。
 
@@ -131,7 +131,8 @@ node skills/js-xiaohongshu-ops-skill/index.js search "美食" --limit 5 --extrac
 
 **返回结构**
 
-- `notes[i].detail`：当 `extractDetails=true` 且本条点开成功时含 `{ ok:true, title, description, content, image_urls, stats, author, ... }`；失败时 `{ ok:false, error: 'card_anchor_not_found' | 'no_note_container' | 'route_navigated' | 'click_failed' }`，**不会中断主流程**。
+- `notes[i]`：卡片层除 `noteId / url / title / author / likeCount / cover / xsec_token` 外，新增 `type: 'video' | 'normal'`（按 `a.cover .play-icon` 判定）。
+- `notes[i].detail`：当 `extractDetails=true` 且本条点开成功时含 `{ ok:true, title, description, content, image_urls, stats, author, publishTime, publishLocation, ... }`；`publishTime` 形如 `刚刚 / 3天前 / 昨天 12:31 / 04-22 / 编辑于 2024-12-01`；`publishLocation` 形如 `上海 / 福建 / 意大利`（无则 `null`）。失败时 `{ ok:false, error: 'card_anchor_not_found' | 'no_note_container' | 'route_navigated' | 'click_failed' }`，**不会中断主流程**。
 - 顶层 `details: { requested, succeeded, failed }`：详情统计；`extractDetails=false` 时为 `null`。
 - `appliedFilters: { channelType, sortBy, contentType, timeRange, searchScope, *_error? }`：UI 真实落到的值；某筛选项失败仅写 `<group>_error`，主流程继续。
 - `filterPanelUsed`：是否实际打开了筛选面板（无任何筛选项时 false）。
