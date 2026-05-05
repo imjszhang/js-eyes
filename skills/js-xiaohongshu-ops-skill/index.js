@@ -1,62 +1,25 @@
 #!/usr/bin/env node
 'use strict';
 
-const path = require('path');
+/**
+ * 顶层入口：直接委托给 cli/index.js 的 dispatcher。
+ * 老 v2.0.1 行为（spawn scripts/xhs-note.js）保留：
+ *   JS_XHS_DISABLE_BRIDGE=1 node index.js note <url>  → cli/index.js 内会判定并走老路径。
+ */
 
-const COMMANDS = {
-  note: {
-    module: './scripts/xhs-note',
-    description: '读取小红书笔记详情',
-  },
-};
+const { dispatch } = require('./cli');
 
-function printUsage() {
-  console.log('\njs-xiaohongshu-ops-skill - 小红书内容读取工具');
-  console.log('='.repeat(50));
-  console.log('\n使用方法:');
-  console.log('  node index.js <command> [args...] [options]\n');
-  console.log('命令:');
-  for (const [command, info] of Object.entries(COMMANDS)) {
-    console.log(`  ${command.padEnd(12)} ${info.description}`);
-  }
-  console.log('\n常用选项:');
-  console.log('  --recording-mode off|history|standard|debug');
-  console.log('  --debug-recording');
-  console.log('  --no-cache');
-  console.log('  --recording-base-dir /absolute/path');
-  console.log('  --run-id custom-id');
-}
-
-async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0];
-
-  if (!command || command === '--help' || command === '-h') {
-    printUsage();
-    return;
-  }
-
-  const commandInfo = COMMANDS[command];
-  if (!commandInfo) {
-    throw new Error(`未知命令: ${command}`);
-  }
-
-  const originalArgv = [...process.argv];
-  process.argv = [process.argv[0], path.join(__dirname, 'index.js'), ...args.slice(1)];
-
-  try {
-    const scriptModule = require(commandInfo.module);
-    await scriptModule.main();
-  } finally {
-    process.argv = originalArgv;
-  }
+async function main(argv) {
+  return dispatch(argv || process.argv.slice(2));
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error.message);
-    process.exit(1);
-  });
+  main()
+    .then((code) => process.exit(typeof code === 'number' ? code : 0))
+    .catch((err) => {
+      process.stderr.write(`Fatal: ${err && err.message}\n`);
+      process.exit(1);
+    });
 }
 
 module.exports = { main };

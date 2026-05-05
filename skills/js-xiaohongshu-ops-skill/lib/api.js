@@ -1,206 +1,136 @@
 'use strict';
 
+/**
+ * 编程 API（v2.1+）
+ *
+ * 默认走 bridge（lib/runTool.js → Session → bridges/note-bridge.js 等）。
+ * 设 `JS_XHS_DISABLE_BRIDGE=1` 时 `getNote` 退回老路径 (lib/xiaohongshuUtils.js::scrapeXhsNote)，
+ * 用于排查 bridge 行为。
+ */
+
 const pkg = require('../package.json');
-const { appendHistory, readCacheEntry, writeCacheEntry, writeDebugBundle } = require('@js-eyes/skill-recording');
-const { createRunContext } = require('./runContext');
-const { scrapeXhsNote } = require('./xiaohongshuUtils');
+const { runTool } = require('./runTool');
+const { processXiaohongshuUrl, isXiaohongshuUrl, normalizeXhsUrl } = require('./xhsUtils');
+const { resolveRuntimeConfig } = require('./runtimeConfig');
 
-const SKILL_ID = pkg.name;
+const SKILL_VERSION = pkg.version;
 
-function clone(value) {
-  return value ? JSON.parse(JSON.stringify(value)) : value;
-}
-
-function parseOptionalInt(value) {
-  const parsed = Number.parseInt(String(value || ''), 10);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-function buildMetrics(scrapeResult, durationMs, cacheHit) {
-  const result = scrapeResult.data || {};
+function defaultRuntimeOptions(options) {
+  const runtime = resolveRuntimeConfig({});
   return {
-    status: 'success',
-    durationMs,
-    cacheHit,
-    imageCount: Array.isArray(result.image_urls) ? result.image_urls.length : 0,
-    totalCommentsCount: parseOptionalInt(result.total_comments_count),
-    noteLike: parseOptionalInt(result.note_like),
-    noteCollect: parseOptionalInt(result.note_collect),
-    domCommentCount: scrapeResult.metrics?.domCommentCount ?? null,
-    pageCommentCount: scrapeResult.metrics?.pageCommentCount ?? null,
-    maxCommentPages: scrapeResult.metrics?.maxCommentPages ?? 0,
-    pageCommentError: scrapeResult.metrics?.pageCommentError || '',
-  };
-}
-
-function buildResponse(runContext, scrapeResult, durationMs, cacheMeta = {}) {
-  return {
-    platform: 'xiaohongshu',
-    scrapeType: 'xiaohongshu_note',
-    timestamp: scrapeResult.timestamp,
-    sourceUrl: scrapeResult.sourceUrl,
-    run: {
-      id: runContext.runId,
-      cacheHit: cacheMeta.hit === true,
-      recordingMode: runContext.recording.mode,
-    },
-    cache: {
-      hit: cacheMeta.hit === true,
-      key: runContext.cacheKey,
-      createdAt: cacheMeta.createdAt || null,
-      expiresAt: cacheMeta.expiresAt || null,
-    },
-    metrics: buildMetrics(scrapeResult, durationMs, cacheMeta.hit === true),
-    result: scrapeResult.data,
-  };
-}
-
-function buildHistoryEntry(runContext, response, options = {}) {
-  const metrics = response?.metrics || {};
-  return {
-    run_id: runContext.runId,
-    skill_id: runContext.skillId,
-    tool_name: runContext.scrapeType,
-    timestamp: new Date().toISOString(),
-    input_url: runContext.sourceUrl,
-    normalized_url: runContext.normalizedUrl,
-    status: options.status || metrics.status || 'success',
-    duration_ms: options.durationMs,
-    cache_hit: options.cacheHit === true,
-    cache_key: runContext.cacheKey,
-    debug_bundle_path: options.debugBundlePath || '',
-    error_summary: options.errorSummary || '',
-    total_comments_count: metrics.totalCommentsCount ?? null,
-    image_count: metrics.imageCount ?? null,
-    note_like: metrics.noteLike ?? null,
-    note_collect: metrics.noteCollect ?? null,
-    dom_comment_count: metrics.domCommentCount ?? null,
-    page_comment_count: metrics.pageCommentCount ?? null,
-    max_comment_pages: metrics.maxCommentPages ?? 0,
-    page_comment_error: metrics.pageCommentError || '',
-  };
-}
-
-function attachCacheHitResponse(runContext, cached, startedAtMs) {
-  if (!cached?.response) {
-    return null;
-  }
-
-  const cacheDurationMs = Date.now() - startedAtMs;
-  const response = clone(cached.response);
-  response.run = {
-    id: runContext.runId,
-    cacheHit: true,
-    recordingMode: runContext.recording.mode,
-  };
-  response.cache = {
-    hit: true,
-    key: runContext.cacheKey,
-    createdAt: cached.createdAt || null,
-    expiresAt: cached.expiresAt || null,
-  };
-  if (response.metrics) {
-    response.metrics.cacheHit = true;
-    response.metrics.durationMs = cacheDurationMs;
-  }
-  appendHistory(runContext, buildHistoryEntry(runContext, response, {
-    durationMs: cacheDurationMs,
-    cacheHit: true,
-  }));
-  return response;
-}
-
-async function getNote(browser, url, options = {}) {
-  const runContext = createRunContext({
-    skillId: SKILL_ID,
-    scrapeType: 'xiaohongshu_note',
-    skillVersion: pkg.version,
-    url,
+    wsEndpoint: options.serverUrl || options.browserServer || runtime.serverUrl,
+    recording: options.recording || runtime.recording,
     runId: options.runId,
-    recording: options.recording,
-    recordingMode: options.recordingMode,
-    debugRecording: options.debugRecording,
-    noCache: options.noCache,
-    maxCommentPages: options.maxCommentPages,
-  });
-  const startedAtMs = Date.now();
-  const cached = readCacheEntry(runContext, 'note');
-  const cachedResponse = attachCacheHitResponse(runContext, cached, startedAtMs);
-  if (cachedResponse) {
-    return cachedResponse;
-  }
-
-  let response = null;
-  let debugBundlePath = '';
-
-  try {
-    const result = await scrapeXhsNote(browser, url, { ...options, runContext });
-    response = buildResponse(runContext, result, Date.now() - startedAtMs, { hit: false });
-
-    const cacheEntry = writeCacheEntry(runContext, { response }, 'note');
-    if (cacheEntry) {
-      response.cache.createdAt = cacheEntry.createdAt;
-      response.cache.expiresAt = cacheEntry.expiresAt;
-    }
-
-    if (runContext.recording.debugEnabled) {
-      debugBundlePath = writeDebugBundle(runContext, {
-        meta: {
-          runId: runContext.runId,
-          skillId: runContext.skillId,
-          scrapeType: runContext.scrapeType,
-          sourceUrl: runContext.sourceUrl,
-          normalizedUrl: runContext.normalizedUrl,
-          recordingMode: runContext.recording.mode,
-          cacheKey: runContext.cacheKey,
-          metrics: response.metrics,
-          maxCommentPages: Number(options.maxCommentPages || 0),
-        },
-        steps: result.debug?.steps || [],
-        domStats: result.debug?.domStats || [],
-        result: response,
-        rawHtml: result.debug?.rawHtml,
-      }) || '';
-      response.debug = { bundlePath: debugBundlePath };
-    }
-
-    appendHistory(runContext, buildHistoryEntry(runContext, response, {
-      durationMs: response.metrics.durationMs,
-      cacheHit: false,
-      debugBundlePath,
-    }));
-    return response;
-  } catch (error) {
-    if (runContext.recording.debugEnabled) {
-      debugBundlePath = writeDebugBundle(runContext, {
-        meta: {
-          runId: runContext.runId,
-          skillId: runContext.skillId,
-          scrapeType: runContext.scrapeType,
-          sourceUrl: runContext.sourceUrl,
-          normalizedUrl: runContext.normalizedUrl,
-          recordingMode: runContext.recording.mode,
-          cacheKey: runContext.cacheKey,
-          error: error.message,
-          maxCommentPages: Number(options.maxCommentPages || 0),
-        },
-        steps: error.debug?.steps || [],
-        domStats: error.debug?.domStats || [],
-        result: {
-          error: error.message,
-        },
-      }) || '';
-    }
-
-    appendHistory(runContext, buildHistoryEntry(runContext, response, {
-      status: 'failed',
-      durationMs: Date.now() - startedAtMs,
-      cacheHit: false,
-      debugBundlePath,
-      errorSummary: error.message,
-    }));
-    throw error;
-  }
+    verbose: !!options.verbose,
+    navigateOnReuse: options.navigateOnReuse === true,
+    reuseAnyXhsTab: options.reuseAnyXhsTab !== false,
+  };
 }
 
-module.exports = { getNote };
+/**
+ * getNote - 读取小红书笔记详情。
+ *
+ * @param {BrowserAutomation} browser
+ * @param {string} url - 笔记 URL（http(s)://www.xiaohongshu.com/explore/<id>?...）或短链
+ * @param {Object} [options]
+ * @param {boolean} [options.useBridge=true]
+ * @param {boolean} [options.withComments]
+ * @param {number}  [options.maxCommentPages]
+ * @param {string}  [options.readMode]
+ */
+async function getNote(browser, url, options = {}) {
+  const useBridge = options.useBridge !== false && process.env.JS_XHS_DISABLE_BRIDGE !== '1';
+  const inputUrl = String(url || '').trim();
+  if (!inputUrl) {
+    throw new Error('getNote: url 必填');
+  }
+  const normalized = isXiaohongshuUrl(inputUrl) ? processXiaohongshuUrl(inputUrl) : inputUrl;
+
+  if (!useBridge) {
+    const { scrapeXhsNote } = require('./xiaohongshuUtils');
+    return scrapeXhsNote(browser, normalized, {
+      maxCommentPages: options.maxCommentPages || 0,
+    });
+  }
+
+  const baseRuntime = defaultRuntimeOptions(options);
+  return runTool(browser, {
+    toolName: 'xhs_get_note',
+    pageKey: 'note',
+    method: 'getNote',
+    cmdDef: {
+      methodBase: 'getNote',
+      domSupported: true,
+      apiSupported: true,
+      defaultReadMode: 'auto',
+    },
+    args: {
+      url: normalized,
+      withComments: !!options.withComments,
+      maxCommentPages: options.maxCommentPages || 0,
+    },
+    targetUrl: normalized,
+    options: Object.assign(baseRuntime, {
+      readMode: options.readMode,
+      timeoutMs: options.timeoutMs || 90000,
+      createUrl: normalized,
+    }),
+  });
+}
+
+/**
+ * getNoteComments - 评论分页（API 主路径）。
+ */
+async function getNoteComments(browser, url, options = {}) {
+  const inputUrl = String(url || '').trim();
+  if (!inputUrl) throw new Error('getNoteComments: url 必填');
+  const normalized = isXiaohongshuUrl(inputUrl) ? processXiaohongshuUrl(inputUrl) : inputUrl;
+  const baseRuntime = defaultRuntimeOptions(options);
+  return runTool(browser, {
+    toolName: 'xhs_get_note_comments',
+    pageKey: 'note',
+    method: 'getComments',
+    cmdDef: {
+      methodBase: 'getComments',
+      domSupported: false,
+      apiSupported: true,
+      defaultReadMode: 'api',
+    },
+    args: {
+      url: normalized,
+      maxCommentPages: options.maxCommentPages || 1,
+    },
+    targetUrl: normalized,
+    options: Object.assign(baseRuntime, {
+      readMode: options.readMode || 'api',
+      timeoutMs: options.timeoutMs || 90000,
+      createUrl: normalized,
+    }),
+  });
+}
+
+/**
+ * getSessionState - 读取登录态（基于 cookie a1 / web_session 与 DOM 抽用户名）。
+ */
+async function getSessionState(browser, options = {}) {
+  const baseRuntime = defaultRuntimeOptions(options);
+  return runTool(browser, {
+    toolName: 'xhs_session_state',
+    pageKey: 'note',
+    method: 'sessionState',
+    cmdDef: { legacyOnly: true },
+    args: {},
+    targetUrl: null,
+    options: Object.assign(baseRuntime, {
+      timeoutMs: options.timeoutMs || 30000,
+      createUrl: 'https://www.xiaohongshu.com/',
+    }),
+  });
+}
+
+module.exports = {
+  getNote,
+  getNoteComments,
+  getSessionState,
+  SKILL_VERSION,
+};
