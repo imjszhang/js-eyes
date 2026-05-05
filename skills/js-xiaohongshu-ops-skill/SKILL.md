@@ -102,7 +102,7 @@ node skills/js-xiaohongshu-ops-skill/index.js doctor --pretty
 JS_XHS_DISABLE_BRIDGE=1 node skills/js-xiaohongshu-ops-skill/index.js note "https://www.xiaohongshu.com/explore/xxxx"
 ```
 
-## `xhs_search_notes`（v3.5，注入与串行详情）
+## `xhs_search_notes`（v3.6，注入 + 串行详情 + 全程 visual HUD）
 
 UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐；xhs 实际是 **Vue（不是 React）**，且 `visual-bridge-kit` 会装 HP overlay，所有 click 都需绕开 `[data-hp-installed]` 优选 `[data-hp-bound]` 真节点。
 
@@ -114,7 +114,7 @@ UI 路径与 agent-js `DeepSearchWorkflow/lib/mcp/tools/xhsSearch.js` 对齐；x
 | 关闭面板 | `document.body.click()` + 等 `.feeds-container .note-item` 重出现 |
 | 滚动收集 | `.feeds-container section.note-item` 去重（noteId） |
 | 详情串行 | 当 `extractDetails=true`：找带 `xsec_token=` 的 sibling `<a>` 点开 → 等 `#noteContainer` 或 `.note-container` → 等 `.engage-bar .like-wrapper`（防 stats/img lazyload 漏抓）→ 内联抽 → 路由模式 `history.back()` / 模态点 `.close-circle .close` → 等列表重现 |
-| Visual | CLI 默认开（与 `js-x-ops-skill` 对齐）：HUD pending/success + before/after + flash；`--no-visual` 关闭；`--visual-record` 才落帧；`--visual-trace` 智能 eat（下个参数以 `-` 开头视作 truthy）。监控不传 `visualConfig`，自动 noop |
+| Visual | CLI 默认开（与 `js-x-ops-skill` 对齐）：bridge 在切频道 / 打开筛选面板 / 每个筛选项 / 每条详情（点开 → 等互动栏 → 抽完 → 回列表）共 ~22 次 HUD pending/success + 17 次元素 flash，覆盖整个 19s 串行详情流程，无中段空白；`--no-visual` 关闭；`--visual-record` 才落帧；`--visual-trace` 智能 eat（下个参数以 `-` 开头视作 truthy）。监控不传 `visualConfig`，自动 noop |
 
 **参数**
 

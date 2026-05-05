@@ -20,7 +20,19 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.3.5';
+  const VERSION = '0.3.6';
+
+  // visual-bridge-kit 桥：当 visual 启用时，window.__jse_visual 会被注入。
+  // 在编排关键节点主动 emit HUD/flash，让 19s 的串行详情过程不再「中段空白」。
+  function _vis() { try { return window.__jse_visual || null; } catch (_) { return null; } }
+  function _vhud(action, target, detail, tone) {
+    var v = _vis(); if (!v || !v.showHud) return;
+    try { v.showHud({ action: action || '', target: target || '', detail: detail || '', status: tone || 'info' }); } catch (_) {}
+  }
+  function _vflash(el, tone, label) {
+    var v = _vis(); if (!v || !v.flashElement || !el) return;
+    try { v.flashElement(el, { tone: tone || 'info', label: label || '' }); } catch (_) {}
+  }
 
   // @@include ./common.js
 
@@ -216,9 +228,12 @@
     if (!hit) {
       return { ok: false, error: 'channel_tab_not_found', channelType: channelType };
     }
+    _vhud('切频道', channelType, '', 'pending');
+    _vflash(hit, 'info', '频道');
     try { hit.click(); } catch (_) {}
     await _randomJitter(800, 1200);
     await _waitForFeeds(8000);
+    _vhud('切频道', channelType, 'OK', 'success');
     return { ok: true, applied: channelType };
   }
 
@@ -244,9 +259,12 @@
       }
     }
     if (!hit) return { ok: false, error: 'filter_trigger_not_found' };
+    _vhud('打开筛选面板', '', '', 'pending');
+    _vflash(hit, 'info', '筛选');
     try { hit.click(); } catch (_) {}
     var panel = await _waitFor('.filters-wrapper', 3000);
     if (!panel) return { ok: false, error: 'filter_panel_not_opened' };
+    _vhud('打开筛选面板', '', 'OK', 'success');
     await delay(400);
     return { ok: true };
   }
@@ -309,6 +327,8 @@
       return { ok: false, error: 'filter_option_not_found', groupKey: groupKey, optionLabel: optionLabel };
     }
 
+    _vhud('筛选 · ' + category, String(optionLabel), '', 'pending');
+    _vflash(hit, 'info', category);
     try { hit.click(); } catch (_) {}
     // 等待该行真实 active 切换到目标选项（确认 Vue 状态机已更新；忽略 HP overlay 的镜像）
     var deadline = Date.now() + 1500;
@@ -318,6 +338,7 @@
       await delay(150);
     }
     await _randomJitter(300, 500);
+    _vhud('筛选 · ' + category, String(optionLabel), activated ? 'OK' : '未确认', activated ? 'success' : 'warn');
     return { ok: true, applied: optionLabel, activated: activated };
   }
 
@@ -445,15 +466,20 @@
     return !!feeds;
   }
 
-  async function _extractDetailInline(note) {
+  async function _extractDetailInline(note, progress) {
+    var label = progress ? ('详情 ' + progress.i + '/' + progress.total) : '详情';
     // 1. 找卡片 anchor 并滚动到位 + 点击
     var anchor = _findCardAnchor(note.noteId);
     if (!anchor) {
+      _vhud(label, note.noteId || '', 'anchor not found', 'error');
       return Object.assign({}, note, { detail: { ok: false, error: 'card_anchor_not_found' } });
     }
+    _vhud(label, note.noteId || '', '点开', 'pending');
+    _vflash(anchor, 'info', '点开');
     try { anchor.scrollIntoView({ behavior: 'auto', block: 'center' }); } catch (_) {}
     await delay(250);
     try { anchor.click(); } catch (e) {
+      _vhud(label, note.noteId || '', 'click failed', 'error');
       return Object.assign({}, note, { detail: { ok: false, error: 'click_failed', message: String(e && e.message || e) } });
     }
     // 2. 等 #noteContainer 或 .note-container（实测 xhs 常走新 route 而非模态）
@@ -468,14 +494,20 @@
       });
     }
     // 2.5 进一步等互动栏出现（这才是 stats / desc 真正稳定的标志）
+    _vhud(label, note.noteId || '', '等互动栏', 'pending');
     await _waitFor('.engage-bar .like-wrapper, .like-wrapper .count', 3000);
     // 3. 抽取
     await _randomJitter(600, 1000);
     var extracted = _extractFromNoteContainer();
+    var detailDetail = (extracted && extracted.ok)
+      ? ('imgs=' + ((extracted.image_urls || []).length) + ' likes=' + ((extracted.stats && extracted.stats.likes) || 0))
+      : 'extract_failed';
+    _vhud(label, note.noteId || '', detailDetail, extracted && extracted.ok ? 'success' : 'warn');
     // 4. 关闭弹窗 / back
+    _vhud(label, note.noteId || '', '回列表', 'pending');
     var backOk = await _backToList();
     if (!backOk) {
-      // 列表没回来，记录 warning 但不阻塞后续（外层会重新查 anchor，可能失败）
+      _vhud(label, note.noteId || '', 'feeds 未恢复', 'warn');
       return Object.assign({}, note, {
         detail: Object.assign({}, extracted, { backWarning: 'feeds_not_restored' }),
       });
@@ -550,7 +582,7 @@
           enriched.push(notes[di]);
           continue;
         }
-        var withDetail = await _extractDetailInline(notes[di]);
+        var withDetail = await _extractDetailInline(notes[di], { i: di + 1, total: detailsLimit });
         enriched.push(withDetail);
         if (withDetail.detail && withDetail.detail.ok) succeeded++;
         else failed++;
