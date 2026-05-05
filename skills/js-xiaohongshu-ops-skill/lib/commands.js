@@ -382,6 +382,7 @@ function printHelp() {
     '  --tab <id>               强制指定浏览器 tab id',
     '  --read-mode auto|dom|api  READ：auto=DOM 优先 + API 兜底（与 X 取反）',
     '  --max-pages / --max-comment-pages / --limit / --extract-details',
+    '  --timeout-ms <ms>        READ 单次脚本超时（默认 90000；批量 extract-details 时调高）',
     '  --pretty / --json / -v',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',

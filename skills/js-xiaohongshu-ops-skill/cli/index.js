@@ -63,7 +63,7 @@ async function runReadTool({ cmd, cmdDef, opts, positional, runtime }) {
         readMode: opts.readMode || undefined,
         navigateOnReuse: false,
         reuseAnyXhsTab: true,
-        timeoutMs: 90000,
+        timeoutMs: (opts.timeoutMs && Number(opts.timeoutMs) > 0) ? Number(opts.timeoutMs) : 90000,
         rateLimit: opts.rateLimit === true,
         visualConfig: visualEnabled ? vp.config : undefined,
         visualTrace: vp.tracePath || undefined,

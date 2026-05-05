@@ -20,7 +20,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.3.9';
+  const VERSION = '0.3.12';
 
   // visual-bridge-kit 桥：当 visual 启用时，window.__jse_visual 会被注入。
   // 在编排关键节点主动 emit HUD/flash，让 19s 的串行详情过程不再「中段空白」。
@@ -120,6 +120,10 @@
           var item = _extractNoteCard(node);
           if (item && item.noteId && !seenIds.has(item.noteId)) {
             seenIds.add(item.noteId);
+            // 内部字段（下划线前缀）：详情阶段定位用，最后会被剥掉。
+            // _scrollY: 卡片在文档中的绝对 Y（留 200px 顶部余量，避开导航栏）
+            // _index:   collected 序号，作为 _scrollY 缺失时的兜底估算
+            item._index = collected.length;
             collected.push(item);
             added++;
           }
@@ -183,6 +187,14 @@
     var hasPlay = !!node.querySelector('a.cover .play-icon, .play-icon, [class*="play-icon"], [class*="video-mask"], video');
     var noteType = hasPlay ? 'video' : 'normal'; // 'normal' 对应小红书自有的「图文」枚举
 
+    // 记录卡片在文档中的绝对 Y（详情阶段 seek 用）。getBoundingClientRect 是相对视口的，
+    // 加上 window.scrollY 才是绝对值；减 200px 让卡片落在视口偏上位置，避开导航栏。
+    var _scrollY = 0;
+    try {
+      var r = node.getBoundingClientRect();
+      _scrollY = Math.max(0, Math.floor(window.scrollY + r.top - 200));
+    } catch (_) {}
+
     return {
       noteId: ref.noteId,
       url: 'https://www.xiaohongshu.com/explore/' + ref.noteId
@@ -195,6 +207,7 @@
       type: noteType,
       // 保留卡片节点引用（仅在本帧有效；详情阶段会重新查找）
       _selector: 'noteId=' + ref.noteId,
+      _scrollY: _scrollY,
     };
   }
 
@@ -480,7 +493,7 @@
     return null;
   }
 
-  async function _backToList() {
+  async function _backToList(restoreY) {
     // 优先点关闭按钮（模态详情），失败再用 history.back
     var close = document.querySelector('.close-circle .close')
       || document.querySelector('.close-mask-dark .close')
@@ -495,13 +508,55 @@
     await _randomJitter(800, 1200);
     // 路由模式后退到搜索页可能比模态更慢，给更长 timeout
     var feeds = await _waitForFeeds(routeMode ? 10000 : 6000);
-    return !!feeds;
+    if (!feeds) return false;
+    // 路由模式下浏览器 SPA 通常不会自动恢复 scroll，feeds 会重置到顶部。
+    // 这里把上一次点开前的 Y 主动设回去，让懒加载先把这一段渲出来，
+    // 再交给 _seekAndFindAnchor 做精准定位。模态模式 body scroll 通常没动，跳过。
+    if (routeMode && typeof restoreY === 'number' && restoreY > 0) {
+      try { window.scrollTo(0, restoreY); } catch (_) {}
+      await delay(400);
+    }
+    return true;
+  }
+
+  // 详情阶段用：先把视口 seek 到目标卡片附近，等懒加载补出 DOM，再返回 anchor。
+  // 三段策略：
+  //   1) scrollTo(_scrollY 或 _index*360 估算)，轮询 ~3s 等卡片节点出现
+  //   2) 仍没出现 → 分段 scrollBy(0.8 * 视口高) × 5 轮兜底（应对 _scrollY 因前序操作偏移的情况）
+  async function _seekAndFindAnchor(note) {
+    var direct = _findCardAnchor(note.noteId);
+    if (direct) return direct;
+    var seekY = (typeof note._scrollY === 'number' && note._scrollY > 0)
+      ? note._scrollY
+      : ((note._index || 0) * 360);
+    try { window.scrollTo(0, seekY); } catch (_) {}
+    var deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      await delay(200);
+      var hit = _findCardAnchor(note.noteId);
+      if (hit) return hit;
+    }
+    var vh = (window.innerHeight || 800);
+    for (var step = 0; step < 5; step++) {
+      try { window.scrollBy(0, Math.floor(vh * 0.8)); } catch (_) {}
+      await delay(600);
+      var h2 = _findCardAnchor(note.noteId);
+      if (h2) return h2;
+    }
+    return null;
   }
 
   async function _extractDetailInline(note, progress) {
     var label = progress ? ('详情 ' + progress.i + '/' + progress.total) : '详情';
+    // 记录点开前的 scrollY，用于路由模式 back 后恢复列表位置（避免下一张卡片
+    // 因 SPA 重置到顶部而 DOM 节点未渲染）。
+    var savedY = 0;
+    try { savedY = window.scrollY || 0; } catch (_) {}
     // 1. 找卡片 anchor 并滚动到位 + 点击
-    var anchor = _findCardAnchor(note.noteId);
+    //    用 _seekAndFindAnchor 替代直接 _findCardAnchor：
+    //    - 先 scrollTo 到收集时记录的绝对 Y 触发懒加载
+    //    - 轮询 + 分段下滚兜底，解决 history.back 后深位卡片节点被回收的问题
+    var anchor = await _seekAndFindAnchor(note);
     if (!anchor) {
       _vhud(label, note.noteId || '', 'anchor not found', 'error');
       return Object.assign({}, note, { detail: { ok: false, error: 'card_anchor_not_found' } });
@@ -517,10 +572,14 @@
     // 2. 等 #noteContainer 或 .note-container（实测 xhs 常走新 route 而非模态）
     var container = await _waitFor('#noteContainer, .note-container, .note-content', 8000);
     if (!container) {
-      // 路由跳走但容器没出现：回退一步并标记
+      // 路由跳走但容器没出现：回退一步并标记。同样恢复 savedY 让下一张能定位。
       var routedAway = !/\/search_result/.test(location.pathname);
       try { window.history.back(); } catch (_) {}
       await _waitForFeeds(6000);
+      if (routedAway && savedY > 0) {
+        try { window.scrollTo(0, savedY); } catch (_) {}
+        await delay(400);
+      }
       return Object.assign({}, note, {
         detail: { ok: false, error: routedAway ? 'route_navigated' : 'no_note_container' },
       });
@@ -535,9 +594,9 @@
       ? ('imgs=' + ((extracted.image_urls || []).length) + ' likes=' + ((extracted.stats && extracted.stats.likes) || 0))
       : 'extract_failed';
     _vhud(label, note.noteId || '', detailDetail, extracted && extracted.ok ? 'success' : 'warn');
-    // 4. 关闭弹窗 / back
+    // 4. 关闭弹窗 / back（路由模式会带 savedY 恢复列表 scroll，避免 SPA 重置到顶）
     _vhud(label, note.noteId || '', '回列表', 'pending');
-    var backOk = await _backToList();
+    var backOk = await _backToList(savedY);
     if (!backOk) {
       _vhud(label, note.noteId || '', 'feeds 未恢复', 'warn');
       return Object.assign({}, note, {
@@ -659,7 +718,11 @@
     var keyword = String(args.keyword || '').trim();
     if (!keyword) return errResult('bad_arg', { reason: 'keyword required' });
 
-    if (!_stateReady()) {
+    // 关键词不匹配也要重导航：仅靠 _stateReady 校验路径会把上一次「穿搭」的页面当成
+    // 「旅行攻略」结果回收。仿 user-bridge 对 userId 的双重判断。
+    var currentKeyword = '';
+    try { currentKeyword = (new URL(location.href)).searchParams.get('keyword') || ''; } catch (_) {}
+    if (!_stateReady() || currentKeyword !== keyword) {
       var u = new URL('https://www.xiaohongshu.com/search_result');
       u.searchParams.set('keyword', keyword);
       u.searchParams.set('source', 'web_explore_feed');
@@ -708,7 +771,7 @@
     // 4. extractDetails：同 tab + back 串行
     var detailsStats = null;
     if (args.extractDetails) {
-      var detailsLimit = clampLimit(args.detailsLimit, notes.length, 20);
+      var detailsLimit = clampLimit(args.detailsLimit, notes.length, 200);
       detailsLimit = Math.min(detailsLimit, notes.length);
       var requested = detailsLimit;
       var succeeded = 0;
@@ -729,6 +792,17 @@
       notes = enriched;
       detailsStats = { requested: requested, succeeded: succeeded, failed: failed };
     }
+
+    // 剥掉内部下划线字段（_scrollY / _index / _selector）：这些只是详情阶段定位用的
+    // 中间态，不应污染对外 JSON。无论是否走 extractDetails 都执行。
+    // 注意 .detail 子对象不动（那是抽取结果，不是 note 顶层的内部字段）。
+    notes = notes.map(function (n) {
+      var out = {};
+      for (var k in n) {
+        if (Object.prototype.hasOwnProperty.call(n, k) && k.charAt(0) !== '_') out[k] = n[k];
+      }
+      return out;
+    });
 
     // 相关搜索（"大家都在搜"）：xhs 把 `.query-note-wrapper` 块穿插在 feed 中，
     // 每块含一个 `.query-note-header-text`（如 "大家都在搜"）+ 多个 `.query-note-item .item-text`。
