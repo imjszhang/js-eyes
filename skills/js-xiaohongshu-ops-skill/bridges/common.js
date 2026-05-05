@@ -166,10 +166,14 @@ async function fetchXhsApi(apiUrl, options) {
     }
     var json = await resp.json();
     if (json && json.success === false) {
-      if (json.code === -1 || /verify|risk|behavior/i.test(json.msg || '')) {
-        recordRiskHit('xhs_risk_code_' + json.code);
+      // 已知风控/账号异常 code（300011 = Account abnormal，缺登录态会触发）。
+      var c = json.code;
+      var riskByCode = (c === -1 || c === 461 || (c >= 300010 && c <= 300099) || c === 10001 || c === 10002);
+      var riskByMsg = /verify|risk|behavior|abnormal|too\s+frequent|登录|频繁|风险/i.test(json.msg || '');
+      if (riskByCode || riskByMsg) {
+        recordRiskHit('xhs_risk_code_' + c);
       }
-      return errResult('xhs_api_error', { status: resp.status, code: json.code, msg: json.msg, payload: json });
+      return errResult('xhs_api_error', { status: resp.status, code: c, msg: json.msg, payload: json });
     }
     recordSuccess();
     return { ok: true, data: json, status: resp.status, antiCrawlState: snapshotAntiCrawl() };

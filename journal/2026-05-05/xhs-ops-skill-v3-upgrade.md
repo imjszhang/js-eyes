@@ -136,14 +136,16 @@ skills/js-xiaohongshu-ops-skill/
 │       ├── runCheck.js / daemon.js / dispatcher.js
 ├── bridges/
 │   ├── common.js                fetchXhsApi + parseNoteMeta + detectAntiCrawl + 软限流 + readReactHref
-│   ├── note-bridge.js           getNote / getComments + 五件套（v0.1.0）
+│   ├── note-bridge.js           getNote / getComments + 五件套（v0.1.1）
 │   ├── search-bridge.js         search / applyFilters / extractDetails + 五件套（v0.1.3）
 │   ├── user-bridge.js           getUser / getUserNotes + 五件套（v0.1.2）
 │   └── home-bridge.js           sessionState + navigateHome（占位，v0.1.1）
 ├── scripts/
 │   ├── xhs-note.js              JS_XHS_DISABLE_BRIDGE=1 fallback 路径（保留）
 │   └── _dev/
-│       └── probe-token.js       探当前 tab <a> 元素的 attrHref/propsHref/fiber/INITIAL_STATE
+│       ├── probe-token.js       探 <a> 元素的 attrHref/propsHref/fiber/INITIAL_STATE
+│       ├── probe-note.js        探 #noteContainer 子树 + 候选 selector 命中
+│       └── probe-comments.js    直接 fetch edith 评论 API，dump 真实返回结构
 └── tests/                       node --test，51 用例
     ├── config.test.js
     ├── xhsUtils.test.js
@@ -161,8 +163,8 @@ skills/js-xiaohongshu-ops-skill/
 | `lib/config.js` | 4 个 PAGE_PROFILES，每个含 `score(tab)`、`bridgePath`、`bridgeGlobal`；note profile 对 `/explore/<id>` 与 `/discovery/item/<id>` 各 +500，对 `xhslink.com` +50 |
 | `lib/session.js` | 连接 js-eyes server、解析 tab、注入 bridge、`callApi`；简化版 expander 仅做相对路径 include（v3.0 PR-10 修：visited 移入闭包避免跨 bridge 共享；`urlMatches` 改为 origin+path+expected query 子集匹配） |
 | `lib/runTool.js` | READ 主管道：`buildTryOrder` 决定 DOM/API 顺序；`FALLBACK_ERRORS` 控制跨档位回退；可选 limiter + visual 包装；audit 输出 `triedMethods/usedMethod/readMode/requestedReadMode/fallback/antiCrawlState` |
-| `bridges/common.js` | 浏览器侧共享：`fetchXhsApi` / `parseNoteMeta` / `detectAntiCrawl` / `pickMediaFromNote` / 软限流状态机（连续 3 次 risk hit → 暂停 5 分钟）；`readReactProps` / `readReactHref` fiber 兜底 |
-| `bridges/note-bridge.js` | `dom_getNote` 抽 `#noteContainer`；`api_getNote` 用 meta 兜底；`api_getComments` 通过 edith 分页 |
+| `bridges/common.js` | 浏览器侧共享：`fetchXhsApi`（识别 `success:false` + 风控 code 范围 `300010-300099/10001/10002` + msg 关键字 → recordRiskHit）/ `parseNoteMeta` / `detectAntiCrawl` / `pickMediaFromNote` / 软限流状态机（连续 3 次 risk hit → 暂停 5 分钟）；`readReactProps` / `readReactHref` fiber 兜底 |
+| `bridges/note-bridge.js` | `dom_getNote` 抽 `#noteContainer`；`api_getNote` 用 meta 兜底；`api_getComments` 通过 edith 分页，第一页失败直接 `errResult` 透出 `apiCode/apiMsg/httpStatus` |
 | `bridges/search-bridge.js` | `_scrollAndCollect` + `_extractNoteCard`（遍历卡片所有 `<a>` 优先选带 `xsec_token=` 的 sibling）+ `_switchChannel` + `_applyFilter` |
 | `cli/index.js::runNavigate` | navigate INTERACTIVE 主管道；检测 `url_unchanged` 时走 `about:blank` → `chrome.tabs.update` 二段跳兜底，绕开 SPA 拦截 |
 | `scripts/_dev/probe-token.js` | DOM/fiber/INITIAL_STATE 探测脚本，selector 类问题的标准排查入口 |
@@ -225,12 +227,20 @@ skills/js-xiaohongshu-ops-skill/
 | 2.a | **P0** | `awaitBridgeAfterNav` 永远 timeout，即使 navigate 实际成功 | `urlMatches` 用严格 `===` 比较，但小红书 navigate 后会自动追加 `&type=51` 等 query，永远不命中 expectedUrl | `lib/session.js`：改为 origin+path 相等 + expectedUrl 的所有 query 参数都包含在 curHref 中 |
 | 2.b | **P1** | bridge 内 `location.assign` 在 `/explore` 状态下被 SPA history 路由拦截，URL 不变 | XHS React Router 接管同源 path 切换 | `cli/index.js::runNavigate`：检测到 `url_unchanged` 时走 `about:blank` → `chrome.tabs.update` 二段跳兜底，绕开 SPA 拦截 |
 | 3 | **P0** | 搜索/用户笔记列表 `xsec_token` 全空 → 阻塞 `navigate-note`（XHS 详情页缺 token 时前端会重定向回 `/explore`） | 卡片里有**两个** `<a>`：先匹配的 `a.cover` 指向 `/explore/<id>` **不带 token**，sibling `a.title` 指向 `/search_result/<id>?xsec_token=...` 才带 token；之前 `querySelector` 总命中第一个 | `bridges/search-bridge.js::_extractNoteCard`：遍历卡片所有 `<a>`，**优先选 href 含 `xsec_token=` 的**；user-bridge 同样修；bump search→0.1.3 / user→0.1.2 |
+| 4 | **P1** | `xhs comments` 报 `ok:true total:0`，调用方误以为笔记没评论 | 两层问题：① `fetchXhsApi` 只识别 `code:-1` 与 `verify/risk` 关键词为风控，未覆盖 XHS 实际返回的 `code:300011 "Account abnormal"`（缺 `web_session` 时触发）；② `api_getComments` 第一页失败仍 `okResult({totalCount:0})` 吞掉错误 | `bridges/common.js::fetchXhsApi`：风控 code 范围扩到 `300010-300099 / 10001 / 10002`，msg 加 `abnormal/频繁/风险/登录` 关键字；`bridges/note-bridge.js::api_getComments`：第一页失败直接 `errResult` 透出 `apiCode/apiMsg/httpStatus`；bump note→0.1.1 |
 
 ### 6.2 探测脚本与 fiber helper
 
-issue #3 的根因不是猜出来的，而是用以下两个新增物件**实测**出来的：
+P0/P1 的所有真 bug 根因都不是猜出来的，而是用 `scripts/_dev/` 下三个新增探测脚本**实测**出来的：
 
-- **`scripts/_dev/probe-token.js`**：直接调 `BrowserAutomation.executeScript` 探当前 tab 第一批 `<a>` 元素的 `attrHref` / `propsHref` / `__reactFiber$.memoizedProps` / `__INITIAL_STATE__`。是后续所有 selector 类问题的标准排查入口。
+| 脚本 | 用途 | 这次帮我们定位了什么 |
+| ---- | ---- | ---- |
+| `scripts/_dev/probe-token.js` | 探当前 tab 第一批 `<a>` 的 `attrHref` / `propsHref` / `__reactFiber$.memoizedProps` / `__INITIAL_STATE__` | 发现搜索卡片里 sibling `a.title` 才带 `xsec_token`（issue #3） |
+| `scripts/_dev/probe-note.js` | 探 `#noteContainer` 子树 outline + 候选 selector 命中情况 + 图片列表 + 作者锚点 | 直接证伪了"likeCount/images 漏抓"——`stats.likes=3561 / collects=5248 / image_urls=8` 实际全有，是 demo 打印用错字段名误判 |
+| `scripts/_dev/probe-comments.js` | 直接 fetch edith 评论 API，dump status / topKeys / data 结构 / 第一条 comment 字段名 / raw body | 直接抓到 `code:300011 msg:"Account abnormal"`（issue #4 风控） |
+
+新增 fiber helper：
+
 - **`bridges/common.js::readReactProps(el) / readReactHref(el)`**：读 `__reactProps$` 与沿 fiber 链向上找 `memoizedProps.href` 或 `note.{id, xsec_token, xsec_source}`。这次实测 token 在 sibling `<a>` 而非 fiber 里，但 helper 留作 fallback——XHS 改版后 token 落到 fiber props 时不用再改 bridge。
 
 ### 6.3 实战跑通的端到端链路
@@ -243,37 +253,45 @@ issue #3 的根因不是猜出来的，而是用以下两个新增物件**实测
 | 4 | `xhs navigate-search "美食"` | attempts=4 命中 | `spaFallback:"about-blank+tabs.update"` |
 | 5 | `xhs navigate-note <带 token URL>` | attempts=2，**无需 fallback** | |
 | 6 | `xhs note <url>` | noteId / title / author（含 userId）/ content | dom_getNote，`fallback:false` |
-| 7 | `xhs comments <url>` | API 调通（解析 0 条待修） | api_getComments |
+| 7 | `xhs comments <url>` | 风控错误正确透出 `apiCode:300011 / apiMsg:"Account abnormal"` | `antiCrawlState.consecutiveRiskHits=1` 自动累计；当前账号缺 `web_session` 是功能性限制 |
 | 8 | `xhs navigate-user <id>` | attempts=2，**无需 fallback** | |
 | 9 | `xhs get_user <id>` | 昵称/bio/avatar/redId | dom 主路径 |
 | 10 | `xhs get_user_notes <id>` | 31 篇全字段 | dom 主路径 |
 
 **关键链路 search → navigate-note → note 全闭环**——这是用户监控、内容采集场景的核心链路。
 
-### 6.4 残留 issue（合并到 v3.1 PR-10）
+### 6.4 撤销 / 残留 issue
+
+撤销（实测发现并非 bug）：
+
+| # | 之前认为 | 实测结果 |
+| - | ---- | ---- |
+| ~~#5~~ | `xhs note` 的 likeCount / images 抓到 null/0 | **完全正常**：`stats.likes=3561 / comments=53 / collects=5248`，`image_urls=8`。是早期 demo 打印用错字段名（`likeCount` vs `stats.likes`）造成的误判 |
+
+残留（合并 v3.1 PR-10）：
 
 | # | 问题 | 优先级 | 处理方向 |
 | - | ---- | ---- | ---- |
-| #5 | `xhs note` 的 `likeCount` / `images` 抓到 null/0 | P1（核心字段） | 用 probe-dom 探 `#noteContainer` 真实结构 |
-| #6 | `xhs comments` API 调通但解析后 `total=0` | P1（核心字段） | 看 edith 实际返回结构 vs `normalizeXhsApiComment` |
 | #7 | `xhs get_user` 的 `stats.follows` / `stats.fans` 抓到 null | P2 | 调 selector |
-| #8 | `xhs get_user_notes` 的 `xsec_token` 仍空（用户主页没有 sibling `/search_result/` 链接） | P2 | 从 React fiber 或 INITIAL_STATE 抓 |
+| #8 | `xhs get_user_notes` 的 `xsec_token` 仍空（用户主页没有 sibling `/search_result/` 链接） | P2 | 从 React fiber 或 INITIAL_STATE 抓；`readReactHref` helper 已就位 |
 | #9 | `xhs search` 的 `searchTabs` 抓到顶部主导航；`suggestKeywords` / `relatedSearchKeywords` 都空 | P2 | 用 probe-dom 重定位三处 selector |
+| funct | 评论 API 必须有 `web_session` 才能返回数据；当前用户未登录，`code:300011` 是预期行为 | 功能性 | 文档化「读评论需登录态」；非 bug |
 
 ### 6.5 收益
 
 1. **从"单测全绿可信度未知"切换到"实战可信 + 离散问题清单"**。
-2. **核心 PR-9 设计验证通过**：cache key 维度生效、sanitize 生效、audit 字段齐全（含 `triedMethods`/`usedMethod`/`fallback`/`antiCrawlState`/`spaFallback`）。
-3. **架构韧性确认**：bridge 热更新（VERSION bump）/ SPA fallback（about:blank 二段跳）/ urlMatches 宽松匹配 / 卡片 sibling `<a>` 优选 token 四项基础设施被实战验证。
-4. **probe-token.js 范式建立**：后续每个 selector issue 都可以套同样模板（拉 DOM + fiber 一起看），不再瞎猜选择器。
-5. **DOM 优先策略再次验证**：xhs 的 token 实际就在 sibling `<a>` 上而不在 React props，证明 v3 计划里 `auto = DOM 优先 + API 兜底` 的方向比 X 的 GraphQL 优先更适合 xhs。
+2. **核心 PR-9 设计验证通过**：cache key 维度生效、sanitize 生效、audit 字段齐全（含 `triedMethods`/`usedMethod`/`fallback`/`antiCrawlState`/`spaFallback`/`apiCode`/`apiMsg`）。
+3. **架构韧性确认**：bridge 热更新（VERSION bump）/ SPA fallback（about:blank 二段跳）/ urlMatches 宽松匹配 / 卡片 sibling `<a>` 优选 token / 风控错误透出（不再吞错） 五项基础设施被实战验证。
+4. **probe 脚本范式建立**：`probe-token.js` / `probe-note.js` / `probe-comments.js` 三个一组，覆盖「DOM 选择器 / 卡片结构 / 同源 API」三类问题，后续 selector / API 类 issue 都可以套同样模板。
+5. **风控可观测**：`code:300011 "Account abnormal"` 现在被正确归为 risk hit，`antiCrawlState.consecutiveRiskHits` 自动累计；不再会被吞成"评论 0 条"。
+6. **DOM 优先策略再次验证**：xhs 的 token 实际就在 sibling `<a>` 上而不在 React props，证明 v3 计划里 `auto = DOM 优先 + API 兜底` 的方向比 X 的 GraphQL 优先更适合 xhs。
 
 ### 6.6 bridge 版本快照
 
 | bridge | 版本 | 备注 |
 | ---- | ---- | ---- |
-| `bridges/common.js` | 内联 | 新增 `readReactProps` / `readReactHref` |
-| `bridges/note-bridge.js` | 0.1.0 | 未变 |
+| `bridges/common.js` | 内联 | 新增 `readReactProps` / `readReactHref`；`fetchXhsApi` 风控 code 范围扩到 `300010-300099 / 10001 / 10002` + msg 关键字 `abnormal/频繁/风险/登录` |
+| `bridges/note-bridge.js` | **0.1.1** | `api_getComments` 第一页失败直接 `errResult` 透出 `apiCode/apiMsg/httpStatus` |
 | `bridges/search-bridge.js` | **0.1.3** | _extractNoteCard 优选 token；sibling `<a>` 遍历 |
 | `bridges/user-bridge.js` | **0.1.2** | getUserNotes 优选 token；sibling 遍历 |
 | `bridges/home-bridge.js` | 0.1.1 | 仅触发 P0#1 修复后的热更新 |
@@ -282,8 +300,8 @@ issue #3 的根因不是猜出来的，而是用以下两个新增物件**实测
 
 短期（v3.1 PR-10，按价值排序）：
 
-- **修 issue #5（note 的 likeCount/images）/ #6（comments 解析 0 条）**：核心字段，影响 note 详情真正可用性。`#noteContainer` / edith 评论 API 实测对照。
-- **修 issue #7 / #8 / #9**：user follows/fans selector、user-notes token、search 三处副字段。复用 P1 已建立的 `probe-token.js` 范式扩展为通用 `probe-dom.js`（覆盖 `#noteContainer` / 用户主页 / 搜索结果三组节点 outline 快照）。
+- **修 issue #7 / #8 / #9**：user follows/fans selector、user-notes token、search 三处副字段。复用 P1 已建立的三个 probe 脚本（probe-token / probe-note / probe-comments）继续探，必要时再加 `probe-user.js` / `probe-search.js`。
+- **登录态门控**：`xhs comments` / `xhs note (withComments)` 检测到 `hasWebSession=false` 时主动给出"需要登录"提示，而不是依赖风控错误反向推断。SKILL.md 加一节"评论与登录态"。
 - **JS_XHS_DISABLE_API_FALLBACK=1**：评论分页是 API 主路径的唯一一类，留调试开关方便定位 DOM-only 模式表现。
 - **monitor schema migrate 钩子**：`config.js` 已留 `migrate(rawConfig, fromVersion)`；后续引入新字段时使用。
 

@@ -17,7 +17,7 @@
 
 (function install() {
   'use strict';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
 
   // @@include ./common.js
 
@@ -307,6 +307,14 @@
         + '&xsec_token=' + encodeURIComponent(xsecToken);
       var resp = await fetchXhsApi(apiUrl, { timeoutMs: 25000 });
       if (!resp.ok) {
+        // 第一页就失败 → 直接以 err 透出（避免 okResult({totalCount:0}) 误导调用方）。
+        if (iter === 0) {
+          return errResult(resp.error || 'comments_fetch_failed', {
+            apiCode: resp.code != null ? resp.code : null,
+            apiMsg: resp.msg || null,
+            httpStatus: resp.status != null ? resp.status : null,
+          });
+        }
         lastError = resp.error || 'unknown';
         if (resp.error === 'anti_crawl_paused') break;
         break;
