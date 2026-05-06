@@ -24,7 +24,7 @@ metadata:
 ## 提供的 AI 工具
 
 | 工具 | 类型 | 说明 |
-|------|------|------|
+| ---- | ---- | ---- |
 | `zhihu_get_answer` | READ | 读取知乎回答详情 |
 | `zhihu_get_article` | READ | 读取知乎专栏详情 |
 | `zhihu_session_state` | READ | 读取登录态、cookie 标记、登录墙/验证码状态 |
@@ -50,6 +50,24 @@ node skills/js-zhihu-ops-skill/index.js user "people-slug" --pretty
 node skills/js-zhihu-ops-skill/index.js monitor init --pretty
 node skills/js-zhihu-ops-skill/index.js monitor add search "大模型" --limit 10 --pretty
 ```
+
+## 真实浏览器 Smoke
+
+真实浏览器 smoke 是显式 opt-in 的本机验证，不会随 `npm test` 自动执行。运行前需要：
+
+- `js-eyes` server 已启动，浏览器扩展可连接。
+- 知乎相关域名已加入 egress allowlist：`zhihu.com`、`www.zhihu.com`、`zhuanlan.zhihu.com`。
+- 浏览器里有可复用的知乎 tab，或允许脚本打开知乎页面。
+- 当前登录态足以读取所选公开样本；遇到登录墙、验证码或页面结构漂移时 smoke 会失败并返回非零退出码。
+
+```bash
+npm run smoke:browser
+npm run smoke:browser -- --only answer,search
+npm run smoke:browser -- --samples path/to/local.samples.json
+npm run smoke:browser -- --server ws://localhost:18080 --timeout-ms 120000
+```
+
+默认样本位于 `scripts/_dev/smoke-browser.samples.json`，只包含公开 URL、slug 和关键词。可通过 `--samples <path>` 指向本机私有样本文件，但不要把 cookie、token 或账号私密信息写入样本。
 
 ## READ 调度
 
@@ -93,7 +111,7 @@ AI 工具只开放 `list/status/add/remove/test`，其中 `add/remove` 仅写 co
 
 ## 架构
 
-```
+```text
 skills/js-zhihu-ops-skill/
   SKILL.md
   package.json
