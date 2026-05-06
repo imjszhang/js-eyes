@@ -58,12 +58,12 @@ function whoami() {
   const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
   // Strip ANSI so spinner libs don't confuse the regex.
   const clean = combined.replace(/\u001b\[[0-9;]*m/g, '');
-  // clawhub v0.9.0+: "✔ imjszhang" (no @, optional spinner prefix).
+  // clawhub v0.9.0+: "✔ imjszhang" / "√ imjszhang" (no @, optional spinner prefix).
   // clawhub legacy:  "✔ OK. Logged in as @imjszhang."
   const match =
-    clean.match(/✔\s+OK\.\s+Logged in as @([\w-]+)/) ||
+    clean.match(/[✔√]\s+OK\.\s+Logged in as @([\w-]+)/) ||
     clean.match(/@([\w-]+)/) ||
-    clean.match(/✔\s+([\w-]+)/);
+    clean.match(/[✔√]\s+([\w-]+)/);
   return match ? match[1] : null;
 }
 
