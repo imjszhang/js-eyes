@@ -54,6 +54,40 @@
         "type": "boolean",
         "default": true,
         "description": "开发模式：监听已发现技能目录的文件变更（默认 ~300ms 防抖），改完 skill.contract.js 自动 reload。仅推荐在本地开发用；生产可关闭以减少 fs 监听负载。"
+      },
+      "nativeHost": {
+        "type": "object",
+        "additionalProperties": false,
+        "default": {
+          "autoInstall": true,
+          "browser": "all",
+          "repairStale": true,
+          "warnOnly": false
+        },
+        "description": "浏览器 Native Messaging host 自检/修复配置，用于支持扩展 popup 的“从本机同步 token”。",
+        "properties": {
+          "autoInstall": {
+            "type": "boolean",
+            "default": true,
+            "description": "OpenClaw 加载插件时自动检查并安装/修复 JS Eyes Native Messaging host。"
+          },
+          "browser": {
+            "type": "string",
+            "default": "all",
+            "enum": ["all", "chromium", "chrome", "chrome-canary", "edge", "brave", "firefox"],
+            "description": "要检查/安装的浏览器范围。"
+          },
+          "repairStale": {
+            "type": "boolean",
+            "default": true,
+            "description": "manifest 指向旧 launcher 或允许的扩展 ID 不匹配时自动重写。"
+          },
+          "warnOnly": {
+            "type": "boolean",
+            "default": false,
+            "description": "仅检查并记录日志，不写入 manifest、launcher 或 Windows 注册表。"
+          }
+        }
       }
     }
   },
@@ -103,6 +137,11 @@
     "devWatchSkills": {
       "label": "监听技能目录（开发模式）",
       "help": "默认开启。监听已发现技能目录里的文件变更，改完 skill.contract.js 自动 reload。生产环境可关闭。",
+      "advanced": true
+    },
+    "nativeHost": {
+      "label": "Native Messaging 自动部署",
+      "help": "默认开启。OpenClaw 启动 JS Eyes 插件时检查并安装/修复浏览器 Native Messaging host，使扩展可以从本机同步 server token。修复后浏览器通常需要完整重启。",
       "advanced": true
     }
   }

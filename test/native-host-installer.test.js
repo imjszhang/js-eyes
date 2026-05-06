@@ -30,18 +30,22 @@ const {
   statusForBrowser,
 } = require('../apps/native-host/src/installer');
 
+function slashPath(value) {
+  return String(value).replace(/\\/g, '/');
+}
+
 describe('native-host paths', () => {
   it('returns macOS NativeMessagingHosts paths under ~/Library/Application Support', () => {
     const dirs = getBrowserManifestDirs('darwin', {}, '/Users/foo');
-    assert.match(dirs.chrome, /Library\/Application Support\/Google\/Chrome\/NativeMessagingHosts$/);
-    assert.match(dirs.firefox, /Library\/Application Support\/Mozilla\/NativeMessagingHosts$/);
+    assert.match(slashPath(dirs.chrome), /Library\/Application Support\/Google\/Chrome\/NativeMessagingHosts$/);
+    assert.match(slashPath(dirs.firefox), /Library\/Application Support\/Mozilla\/NativeMessagingHosts$/);
   });
 
   it('returns Linux XDG config paths', () => {
     const dirs = getBrowserManifestDirs('linux', {}, '/home/foo');
-    assert.equal(dirs.chrome, '/home/foo/.config/google-chrome/NativeMessagingHosts');
-    assert.equal(dirs.chromium, '/home/foo/.config/chromium/NativeMessagingHosts');
-    assert.equal(dirs.firefox, '/home/foo/.mozilla/native-messaging-hosts');
+    assert.equal(slashPath(dirs.chrome), '/home/foo/.config/google-chrome/NativeMessagingHosts');
+    assert.equal(slashPath(dirs.chromium), '/home/foo/.config/chromium/NativeMessagingHosts');
+    assert.equal(slashPath(dirs.firefox), '/home/foo/.mozilla/native-messaging-hosts');
   });
 
   it('returns Windows LOCALAPPDATA / APPDATA paths', () => {
@@ -49,8 +53,8 @@ describe('native-host paths', () => {
       LOCALAPPDATA: 'C:/Users/foo/AppData/Local',
       APPDATA: 'C:/Users/foo/AppData/Roaming',
     }, 'C:/Users/foo');
-    assert.ok(dirs.chrome.endsWith('js-eyes/native-host'));
-    assert.ok(dirs.firefox.endsWith('js-eyes/native-host'));
+    assert.ok(slashPath(dirs.chrome).endsWith('js-eyes/native-host'));
+    assert.ok(slashPath(dirs.firefox).endsWith('js-eyes/native-host'));
     assert.ok(dirs.chrome.includes('Local'));
     assert.ok(dirs.firefox.includes('Roaming'));
   });
@@ -64,9 +68,9 @@ describe('native-host paths', () => {
   });
 
   it('getLauncherDir returns platform-specific dir', () => {
-    assert.ok(getLauncherDir('darwin', {}, '/tmp').endsWith('.js-eyes/native-host'));
-    assert.ok(getLauncherDir('linux', {}, '/tmp').endsWith('.js-eyes/native-host'));
-    assert.ok(getLauncherDir('win32', { LOCALAPPDATA: 'C:/L' }, 'C:/H').endsWith('js-eyes/native-host') || getLauncherDir('win32', { LOCALAPPDATA: 'C:/L' }, 'C:/H').endsWith('js-eyes\\native-host'));
+    assert.ok(slashPath(getLauncherDir('darwin', {}, '/tmp')).endsWith('.js-eyes/native-host'));
+    assert.ok(slashPath(getLauncherDir('linux', {}, '/tmp')).endsWith('.js-eyes/native-host'));
+    assert.ok(slashPath(getLauncherDir('win32', { LOCALAPPDATA: 'C:/L' }, 'C:/H')).endsWith('js-eyes/native-host'));
   });
 });
 

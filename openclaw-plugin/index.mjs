@@ -24,6 +24,7 @@ const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/r
 const { ensureToken } = require("../packages/runtime-paths/token.js");
 import { createAuthHelpers } from "./auth.mjs";
 import { hashFileSha1Sync } from "./fs-utils/hash.mjs";
+import { ensureNativeHost, logNativeHostResult } from "./native-host-setup.mjs";
 
 function tryLoadChokidar() {
   try {
@@ -334,6 +335,12 @@ function register(api) {
           previousTeardown = null;
         }
         const tokenInfo = security.allowAnonymous ? null : ensureToken();
+        try {
+          const nativeHostResult = ensureNativeHost(pluginCfg.nativeHost);
+          logNativeHostResult(nativeHostResult, ctx.logger);
+        } catch (error) {
+          ctx.logger.warn(`[js-eyes] Native host check failed: ${error.message}`);
+        }
         server = createServer({
           port: serverPort,
           host: serverHost,
