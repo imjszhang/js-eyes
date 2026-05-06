@@ -11,9 +11,9 @@
 //     process.env (tokens, OAuth state, etc.) never leak into the npm run;
 //   * postinstall scripts are disabled unless the caller explicitly opts in.
 //
-// The single allowed binary name is `npm`. No wildcards, no PATHEXT, no shell
-// meta-characters: Node's child_process with shell=false treats the argv as a
-// literal argument vector.
+// The only allowed binary is npm (or the fixed cmd.exe/npm.cmd wrapper Windows
+// requires for command shims). No wildcards or user-controlled argv: every npm
+// argument still comes from immutable constants below.
 
 const fs = require('fs');
 const path = require('path');
@@ -26,6 +26,7 @@ const ALLOWED_SUBCOMMANDS = Object.freeze({
 
 const SAFE_ENV_KEYS = Object.freeze([
   'PATH',
+  'Path',
   'HOME',
   'USERPROFILE',
   'APPDATA',
@@ -82,7 +83,12 @@ function runNpm(subcommand, targetDir, options = {}) {
     npm_config_ignore_scripts: allowPostinstall ? 'false' : 'true',
   });
 
-  const result = spawnSync('npm', baseArgs, {
+  const bin = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+  const args = process.platform === 'win32'
+    ? ['/d', '/s', '/c', 'npm.cmd', ...baseArgs]
+    : baseArgs;
+
+  const result = spawnSync(bin, args, {
     cwd: targetDir,
     stdio: options.stdio || 'pipe',
     shell: false,
@@ -97,7 +103,8 @@ function safeNpmCi(targetDir, options = {}) {
   const { result, args } = runNpm('ci', targetDir, options);
   if (result.status !== 0) {
     const stderr = result.stderr ? String(result.stderr) : '';
-    throw new Error(`npm ${args.join(' ')} 失败 (status=${result.status}): ${stderr.slice(0, 500)}`);
+    const reason = result.error ? result.error.message : stderr;
+    throw new Error(`npm ${args.join(' ')} 失败 (status=${result.status}): ${String(reason || '').slice(0, 500)}`);
   }
   return { ran: true, manager: 'npm', args };
 }
@@ -106,7 +113,8 @@ function safeNpmInstall(targetDir, options = {}) {
   const { result, args } = runNpm('install', targetDir, options);
   if (result.status !== 0) {
     const stderr = result.stderr ? String(result.stderr) : '';
-    throw new Error(`npm ${args.join(' ')} 失败 (status=${result.status}): ${stderr.slice(0, 500)}`);
+    const reason = result.error ? result.error.message : stderr;
+    throw new Error(`npm ${args.join(' ')} 失败 (status=${result.status}): ${String(reason || '').slice(0, 500)}`);
   }
   return { ran: true, manager: 'npm', args };
 }
