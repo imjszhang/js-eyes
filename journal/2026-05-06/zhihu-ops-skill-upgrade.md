@@ -264,15 +264,90 @@ js-eyes egress allow zhuanlan.zhihu.com
 | 回答作者抽取错误 | `bridges/common.js`、`bridges/answer-bridge.js` | 作者由问题标题修正为真实作者 |
 | 搜索重复结果 | `bridges/common.js`、`bridges/search-bridge.js` | 按 URL/title 去重 |
 
+### 5.5 真实浏览器 Smoke 固化
+
+在第一轮真实验证通过后，继续将手工命令固化为显式 opt-in 的本机 smoke：
+
+| 文件 | 变更 |
+| ---- | ---- |
+| `scripts/_dev/smoke-browser.js` | 新增真实浏览器 smoke runner，顺序调用现有 CLI，不绕过 `cli/index.js` |
+| `scripts/_dev/smoke-browser.samples.json` | 固化公开样本：`yevon2ou`、回答 URL、专栏 URL、`大模型`、问题 ID |
+| `package.json` | 新增 `smoke:browser`，但不挂入默认 `npm test` |
+| `tests/smokeBrowser.test.js` | 离线覆盖参数解析、样本加载、命令构造、JSON 解析与结果判定 |
+| `SKILL.md` | 增加真实浏览器 smoke 前置条件、示例命令和样本安全边界 |
+
+验证结果：
+
+```powershell
+npm test
+npm run smoke:browser -- --help
+npm run smoke:browser
+```
+
+结果：
+
+- `npm test`：24/24 通过。
+- `ReadLints`：无错误。
+- 完整真实浏览器 smoke：7/7 通过，覆盖 `session-state`、`user`、`user-answers`、`answer`、`article`、`search`、`question-answers`。
+
+### 5.6 列表分页与受控滚动升级
+
+随后进入 READ 列表增强阶段，将问题回答、搜索结果、用户回答/文章从首屏抽取升级为受控 DOM 滚动采集。
+
+核心变更：
+
+| 文件 | 变更 |
+| ---- | ---- |
+| `bridges/common.js` | 新增 `clampLimit`、`delay`、`normalizeListOptions`、`scrollAndCollect`，并为列表结果返回 `pageInfo` |
+| `bridges/question-bridge.js` | `getQuestionAnswers` / `dom_getQuestionAnswers` 改为 async，bridge 版本升到 `0.2.0` |
+| `bridges/search-bridge.js` | `search` / `dom_search` 改为 async，增加 `q` / `type` 参数一致性校验，bridge 版本升到 `0.2.0` |
+| `bridges/user-bridge.js` | `getUserAnswers` / `getUserArticles` 改为 async，按回答/文章链接过滤，bridge 版本升到 `0.2.0` |
+| `lib/commands.js` | `search`、`user-answers`、`user-articles` 补齐 `maxPages` 透传，help 说明 `--max-pages` 是最大 DOM 滚动轮次 |
+| `skill.contract.js` | `zhihu_get_question_answers`、`zhihu_search`、`zhihu_get_user_answers`、`zhihu_get_user_articles` 暴露 `maxPages` |
+| `scripts/_dev/smoke-browser.js` | smoke 从样本读取列表 `maxPages`，并校验 `pageInfo.returnedCount` |
+| `scripts/_dev/smoke-browser.samples.json` | 为 `userAnswers`、`search`、`questionAnswers` 增加保守 `maxPages: 2` |
+| `tests/commands.test.js`、`tests/contract.test.js`、`tests/smokeBrowser.test.js` | 补充 `maxPages` 参数面与 smoke 断言测试 |
+| `SKILL.md` | 说明 `limit` / `maxPages` 语义、默认值、风控边界和 `pageInfo` 字段 |
+
+`pageInfo` 字段包括：
+
+```text
+requestedLimit
+requestedMaxPages
+returnedCount
+scrollRounds
+endedReason
+duplicateSkipped
+```
+
+本轮明确约束：`maxPages` 是 DOM 最大滚动轮次，不是知乎业务页码，也不是内部 API cursor 翻页；默认值保持 `1`，只有显式传入更高值才扩大采集。
+
+验证结果：
+
+```powershell
+npm test
+npm run smoke:browser -- --help
+npm run smoke:browser
+node index.js search "大模型" --limit 8 --max-pages 2 --pretty --no-cache --timeout-ms 120000
+node index.js question-answers 1933579229917843753 --limit 5 --max-pages 2 --pretty --no-cache --timeout-ms 120000
+```
+
+结果：
+
+- `npm test`：26/26 通过。
+- `ReadLints`：无错误。
+- 完整真实浏览器 smoke：7/7 通过。
+- 搜索聚焦验证：返回 8 条，`pageInfo.returnedCount = 8`，`endedReason = limit`。
+- 问题回答聚焦验证：返回 5 条，`pageInfo.returnedCount = 5`，`endedReason = limit`。
+
 ## 6. 后续演化
 
 近期建议：
 
-- 将真实浏览器 smoke test 固化为可选脚本，例如 `scripts/_dev/smoke-browser.js`，避免每次手工拼命令。
 - 完整接入 `@js-eyes/visual-bridge-kit` 的 HUD/flash/trace/frame，而不仅是当前 visual 元数据结构。
-- 给 `question-answers` 增强分页滚动与排序识别，当前只验证了首屏 DOM 抽取。
-- 给 `search` 增强更多结果容器选择器和分页滚动，当前验证显示可读但结果数量依赖首屏加载。
-- `user-answers` / `user-articles` 可进一步区分回答和文章 tab，目前是主页现有内容的 DOM 摘要。
+- 给 `question-answers` 增强排序识别、回答筛选和更稳定的懒加载结束判断。
+- 给 `search` 继续增强结果容器分类，过滤“相关搜索”等非内容卡片。
+- `user-answers` / `user-articles` 后续可进一步导航到用户回答 tab / 文章 tab，而不只依赖主页当前内容。
 - monitor 后续可补 `check` / `daemon` / 通知渠道，但继续保持 webhook 触发动作只在 CLI 暴露，不进入 AI 工具。
 
 长期方向：
@@ -280,4 +355,3 @@ js-eyes egress allow zhuanlan.zhihu.com
 - 建立与小红书 skill 相同层级的 visual replay、anti-crawl stats、debug bundle 规范。
 - 将各平台 skill 的 `js-eyes-client.js` token 解析逻辑收敛为共享包，避免单个 skill 漏同步导致 401。
 - 为真实浏览器验证引入固定测试账号/固定页面夹具，降低知乎页面结构与内容动态变化带来的测试波动。
-
