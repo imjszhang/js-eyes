@@ -88,7 +88,16 @@ function splitList(value) {
 function loadSamples(filePath = DEFAULT_SAMPLES_PATH) {
   const resolved = path.resolve(filePath);
   const data = JSON.parse(fs.readFileSync(resolved, 'utf8'));
-  return Object.assign({ limits: {} }, data);
+  return Object.assign({
+    limits: {},
+    maxPages: {},
+    sampleHealth: {
+      minFilledFields: 5,
+      minListSampleCount: 3,
+      replaceStrategy: 'prefer_latest_public_url',
+      lastReviewedAt: null,
+    },
+  }, data);
 }
 
 function valueForStep(samples, step) {
@@ -117,6 +126,18 @@ function validateSamples(samples, steps = STEP_DEFS) {
         missing.push(`${step.id}.${key}`);
       }
     }
+  }
+  const requiredSampleFields = ['userSlug', 'answerUrl', 'articleUrl', 'searchKeyword', 'questionId'];
+  const filledFields = requiredSampleFields.filter((key) => nonEmptyString(samples[key])).length;
+  const minFilledFields = Number(samples.sampleHealth && samples.sampleHealth.minFilledFields) || requiredSampleFields.length;
+  if (filledFields < minFilledFields) {
+    missing.push(`sampleHealth.minFilledFields(${filledFields}/${minFilledFields})`);
+  }
+  const listSampleCount = ['userAnswers', 'search', 'questionAnswers']
+    .filter((key) => Number(samples.limits && samples.limits[key]) > 0).length;
+  const minListSampleCount = Number(samples.sampleHealth && samples.sampleHealth.minListSampleCount) || 3;
+  if (listSampleCount < minListSampleCount) {
+    missing.push(`sampleHealth.minListSampleCount(${listSampleCount}/${minListSampleCount})`);
   }
   return missing;
 }
@@ -201,6 +222,9 @@ function evaluateResult(stepId, payload) {
 function pageInfoMatches(pageInfo, length) {
   if (!pageInfo || typeof pageInfo !== 'object') return { ok: false, reason: 'missing_page_info' };
   if (pageInfo.returnedCount !== length) return { ok: false, reason: 'page_info_count_mismatch' };
+  if (!['limit', 'no_new_items', 'max_pages', 'blocked'].includes(pageInfo.endedReason)) {
+    return { ok: false, reason: 'bad_page_info_ended_reason' };
+  }
   return { ok: true };
 }
 

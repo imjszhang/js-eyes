@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildTryOrder, normalizeReadMode } = require('../lib/runTool');
+const { buildTryOrder, normalizeReadMode, classifyRunBlocker, classifyAntiCrawl } = require('../lib/runTool');
 
 test('normalizeReadMode defaults to auto and accepts dom/api', () => {
   assert.equal(normalizeReadMode(), 'auto');
@@ -20,4 +20,30 @@ test('buildTryOrder prefers DOM for zhihu read tools', () => {
 
 test('buildTryOrder keeps legacy methods untouched', () => {
   assert.deepEqual(buildTryOrder('sessionState', 'auto', { legacyOnly: true }), ['sessionState']);
+});
+
+test('classifyRunBlocker maps common response codes', () => {
+  assert.deepEqual(classifyRunBlocker({ error: 'captcha_required' }), {
+    category: 'captcha',
+    recommendedAction: 'pause_and_verify',
+  });
+  assert.deepEqual(classifyRunBlocker({ error: 'dom_navigation_required' }), {
+    category: 'navigation',
+    recommendedAction: 'navigate_then_retry',
+  });
+});
+
+test('classifyAntiCrawl returns structured category and action', () => {
+  assert.deepEqual(classifyAntiCrawl({ error: 'login_required' }), {
+    paused: false,
+    reason: 'login_required',
+    category: 'auth',
+    recommendedAction: 'reauth',
+  });
+  assert.deepEqual(classifyAntiCrawl({ error: 'dom_not_found' }), {
+    paused: false,
+    reason: 'dom_not_found',
+    category: 'dom',
+    recommendedAction: 'retry_or_fallback',
+  });
 });

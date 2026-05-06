@@ -21,6 +21,9 @@ test('monitor config lifecycle works in an isolated home', () => {
     const dryRun = monitor.testTarget({ type: 'search', keyword: '大模型' });
     assert.equal(dryRun.ok, true);
     assert.match(dryRun.targetUrl, /zhihu\.com\/search/);
+    const badType = monitor.addTarget({ type: 'bad-type', keyword: 'x' });
+    assert.equal(badType.ok, false);
+    assert.deepEqual(badType.supportedTypes, ['user', 'question', 'search']);
     const removed = monitor.removeTarget({ type: 'search', value: '大模型' });
     assert.equal(removed.removed, 1);
   } finally {

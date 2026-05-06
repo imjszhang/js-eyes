@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const pkg = require('../package.json');
 const { Session } = require('./session');
 const {
@@ -11,6 +12,8 @@ const {
   writeDebugBundle,
 } = require('@js-eyes/skill-recording');
 const { getSharedLimiter } = require('./rateLimit/limiter');
+const { wrapCallApi, drainVisualEvents } = require('@js-eyes/visual-bridge-kit');
+const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');
 
 const SKILL_ID = pkg.name;
 
@@ -85,8 +88,83 @@ function parseOptionalInt(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function ensureDir(dirPath) {
+  if (!dirPath) return null;
+  fs.mkdirSync(dirPath, { recursive: true });
+  return dirPath;
+}
+
+function safeJsonlAppend(filePath, rows) {
+  if (!filePath || !Array.isArray(rows) || rows.length === 0) return;
+  ensureDir(path.dirname(filePath));
+  const payload = rows.map((row) => JSON.stringify(row)).join('\n') + '\n';
+  fs.appendFileSync(filePath, payload, 'utf8');
+}
+
+function resolveVisualPaths(options, runContext) {
+  const requested = options.visualConfig || options.visualTrace || options.visualRecord;
+  if (!requested) return null;
+  const baseDir = (runContext.paths && runContext.paths.debugDir)
+    || (runContext.paths && runContext.paths.historyDir)
+    || process.cwd();
+  const defaultRecordDir = path.join(baseDir, '..', 'visual', runContext.runId);
+  const traceFile = options.visualTrace
+    ? (options.visualTrace === true ? path.join(defaultRecordDir, 'trace.jsonl') : path.resolve(String(options.visualTrace)))
+    : null;
+  const recordDir = options.visualRecord
+    ? (options.visualRecord === true ? defaultRecordDir : path.resolve(String(options.visualRecord)))
+    : null;
+  if (recordDir) ensureDir(recordDir);
+  if (traceFile) ensureDir(path.dirname(traceFile));
+  return {
+    enabled: true,
+    traceFile,
+    recordDir,
+    framesEnabled: !!recordDir,
+  };
+}
+
+function buildVisualHint(toolName, args) {
+  return {
+    toolName,
+    label: toolName,
+    anchor: sanitizeForRecording(args || {}),
+  };
+}
+
+async function captureFrame(browser, target, visualPaths, label, visualEvents) {
+  if (!visualPaths || !visualPaths.framesEnabled || !browser || !target || !target.rawId) return null;
+  if (typeof browser.captureScreenshot !== 'function') return null;
+  try {
+    const shot = await browser.captureScreenshot(target.rawId, { format: 'jpeg', quality: 82, timeout: 15 });
+    if (!shot || !shot.dataUrl) return null;
+    const b64 = String(shot.dataUrl).split(',')[1] || '';
+    if (!b64) return null;
+    const index = visualEvents.filter((evt) => evt.type === 'frame').length + 1;
+    const frameName = `frame-${String(index).padStart(3, '0')}-${label || 'step'}.jpg`;
+    const framePath = path.join(visualPaths.recordDir, frameName);
+    fs.writeFileSync(framePath, Buffer.from(b64, 'base64'));
+    const frame = { path: framePath, width: shot.width || null, height: shot.height || null };
+    visualEvents.push({ ts: Date.now(), type: 'frame', label: label || 'step', frame });
+    return frame;
+  } catch (_) {
+    return null;
+  }
+}
+
+function classifyRunBlocker(resp) {
+  const code = resp && resp.error;
+  if (!code) return null;
+  if (code === 'captcha_required') return { category: 'captcha', recommendedAction: 'pause_and_verify' };
+  if (code === 'login_required') return { category: 'auth', recommendedAction: 'reauth' };
+  if (code === 'dom_navigation_required') return { category: 'navigation', recommendedAction: 'navigate_then_retry' };
+  if (String(code).indexOf('dom_') === 0) return { category: 'dom', recommendedAction: 'retry_or_fallback' };
+  return { category: 'unknown', recommendedAction: 'inspect_logs' };
+}
+
 function buildMetrics(result, durationMs, cacheHit) {
   const content = result && (result.content || result.excerpt || '');
+  const pageInfo = result && result.pageInfo;
   return {
     status: 'success',
     durationMs,
@@ -94,15 +172,30 @@ function buildMetrics(result, durationMs, cacheHit) {
     contentLength: String(content || '').length,
     upvoteCount: parseOptionalInt(result && result.upvote_count),
     commentCount: parseOptionalInt(result && result.comment_count),
+    pageInfo: pageInfo ? {
+      requestedLimit: parseOptionalInt(pageInfo.requestedLimit),
+      requestedMaxPages: parseOptionalInt(pageInfo.requestedMaxPages),
+      returnedCount: parseOptionalInt(pageInfo.returnedCount),
+      scrollRounds: parseOptionalInt(pageInfo.scrollRounds),
+      endedReason: pageInfo.endedReason || null,
+      duplicateSkipped: parseOptionalInt(pageInfo.duplicateSkipped),
+      blockedReason: pageInfo.blockedReason || null,
+    } : null,
   };
 }
 
 function classifyAntiCrawl(resp) {
   const code = resp && resp.error;
-  if (!code) return { paused: false, reason: null };
-  if (code === 'captcha_required') return { paused: true, reason: code };
-  if (code === 'login_required') return { paused: false, reason: code };
-  return { paused: false, reason: code };
+  const blocker = classifyRunBlocker(resp);
+  if (!code) return { paused: false, reason: null, category: null, recommendedAction: null };
+  if (code === 'captcha_required') return { paused: true, reason: code, category: 'captcha', recommendedAction: 'pause_and_verify' };
+  if (code === 'login_required') return { paused: false, reason: code, category: 'auth', recommendedAction: 'reauth' };
+  return {
+    paused: false,
+    reason: code,
+    category: blocker ? blocker.category : 'unknown',
+    recommendedAction: blocker ? blocker.recommendedAction : 'inspect_logs',
+  };
 }
 
 function attachCacheHitResponse(runContext, cached, startedAtMs) {
@@ -192,6 +285,7 @@ async function runTool(browser, spec) {
       navigateOnReuse: options.navigateOnReuse === true,
       reuseAnyZhihuTab: options.reuseAnyZhihuTab !== false,
       createUrl: options.createUrl || targetUrl || 'https://www.zhihu.com/',
+      visualConfig: options.visualConfig || null,
     },
   });
 
@@ -203,19 +297,40 @@ async function runTool(browser, spec) {
   let usedMethod = null;
   let usedMode = null;
   let fellBack = false;
+  let fallbackReason = null;
+  let blocker = null;
+  const visualPaths = resolveVisualPaths(options, runContext);
+  const visualHint = getVisualHint(toolName, args || {});
+  const visualEvents = [];
+  const pushVisual = (type, payload) => {
+    if (!visualPaths) return;
+    visualEvents.push({ ts: Date.now(), type, payload: payload || null });
+  };
   const limiter = (options.rateLimit === true || process.env.JS_ZHIHU_RATE_LIMIT === '1')
     ? getSharedLimiter(options.rateLimitOptions || {})
     : null;
 
   try {
+    pushVisual('run_start', { toolName, pageKey, method });
     await session.connect();
+    pushVisual('session_connected', { wsEndpoint: options.wsEndpoint || null });
     await session.resolveTarget();
     target = session.target;
+    pushVisual('target_resolved', { url: target && target.url, tabId: target && target.rawId });
     bridgeMeta = await session.ensureBridge();
+    pushVisual('bridge_ready', bridgeMeta || null);
+    await captureFrame(browser, target, visualPaths, 'bridge-ready', visualEvents);
 
     const runCallApi = async (candidate) => {
+      pushVisual('method_try', { candidate });
       const call = () => session.callApi(candidate, [args || {}], { timeoutMs: options.timeoutMs || 90000 });
-      return limiter ? limiter.schedule(call) : call();
+      const wrapped = visualPaths
+        ? () => wrapCallApi(session, visualHint, call, {
+          buildSummary: (resp, hint, err) => buildSummary(resp, hint || visualHint, err),
+          extractPayload: (resp, hint, err) => extractPayload(resp, hint || visualHint, err),
+        })
+        : call;
+      return limiter ? limiter.schedule(wrapped) : wrapped();
     };
 
     outer: for (let i = 0; i < tryOrder.length; i++) {
@@ -226,6 +341,7 @@ async function runTool(browser, spec) {
       usedMode = candidateModeLabel(candidate);
 
       if (resp && resp.error === 'dom_navigation_required' && resp.to) {
+        pushVisual('navigation_required', { from: target && target.url, to: resp.to, candidate });
         const fromUrl = target && target.url;
         if (resp.navMethod) {
           try { await session.callApi(resp.navMethod, [resp.navArgs || args || {}], { timeoutMs: 12000 }); } catch (_) {}
@@ -243,13 +359,18 @@ async function runTool(browser, spec) {
         if (postNav && postNav.currentUrl && target) target.url = postNav.currentUrl;
         bridgeMeta = await session.ensureBridge();
         target = session.target;
+        pushVisual('navigation_done', { to: target && target.url, candidate });
         resp = await runCallApi(candidate);
       }
 
       if (resp && resp.ok) break outer;
+      blocker = classifyRunBlocker(resp);
+      pushVisual('method_failed', { candidate, error: resp && resp.error, blocker });
       const hasOtherPath = (i + 1) < tryOrder.length;
       if (!shouldFallBack(resp && resp.error, modeNorm, hasOtherPath)) break outer;
       fellBack = true;
+      fallbackReason = resp && resp.error ? resp.error : 'unknown';
+      pushVisual('fallback_triggered', { fromMethod: candidate, reason: fallbackReason });
     }
   } catch (error) {
     const durationMs = Date.now() - startedAt;
@@ -270,6 +391,10 @@ async function runTool(browser, spec) {
         }) || '';
       } catch (_) {}
     }
+    pushVisual('run_exception', { message: error.message || String(error) });
+    if (visualPaths && visualPaths.traceFile) {
+      try { safeJsonlAppend(visualPaths.traceFile, visualEvents); } catch (_) {}
+    }
     appendHistory(runContext, {
       run_id: runContext.runId,
       skill_id: runContext.skillId,
@@ -285,6 +410,13 @@ async function runTool(browser, spec) {
     });
     throw error;
   } finally {
+    if (visualPaths) {
+      try {
+        const drained = await drainVisualEvents(session);
+        if (Array.isArray(drained) && drained.length) visualEvents.push(...drained);
+      } catch (_) {}
+    }
+    await captureFrame(browser, target, visualPaths, 'run-end', visualEvents);
     await session.close();
   }
 
@@ -327,17 +459,19 @@ async function runTool(browser, spec) {
     readMode: usedMode,
     requestedReadMode: requestedReadModeRaw,
     fallback: fellBack,
+    fallbackReason: fellBack ? (fallbackReason || 'unknown') : null,
     triedMethods,
     usedMethod,
     antiCrawlState: classifyAntiCrawl(resp),
-    visual: options.visualConfig || options.visualTrace || options.visualRecord ? {
+    blocker,
+    visual: visualPaths ? {
       enabled: true,
-      hint: { toolName, label: toolName, anchor: args || {} },
-      events: [],
-      eventsCount: 0,
-      traceFile: options.visualTrace || null,
-      recordDir: options.visualRecord || null,
-      framesEnabled: false,
+      hint: visualHint || buildVisualHint(toolName, args),
+      events: visualEvents,
+      eventsCount: visualEvents.length,
+      traceFile: visualPaths.traceFile,
+      recordDir: visualPaths.recordDir,
+      framesEnabled: visualPaths.framesEnabled,
     } : null,
     result,
     error: ok ? null : {
@@ -373,6 +507,23 @@ async function runTool(browser, spec) {
     } catch (_) {}
   }
 
+  if (visualPaths && visualPaths.traceFile) {
+    try { safeJsonlAppend(visualPaths.traceFile, visualEvents); } catch (_) {}
+  }
+  if (visualPaths && visualPaths.recordDir) {
+    try {
+      safeJsonlAppend(path.join(visualPaths.recordDir, 'events.jsonl'), visualEvents);
+      fs.writeFileSync(path.join(visualPaths.recordDir, 'meta.json'), JSON.stringify({
+        runId: runContext.runId,
+        toolName,
+        pageKey,
+        method,
+        generatedAt: new Date().toISOString(),
+        eventsCount: visualEvents.length,
+      }, null, 2), 'utf8');
+    } catch (_) {}
+  }
+
   appendHistory(runContext, {
     run_id: runContext.runId,
     skill_id: runContext.skillId,
@@ -396,4 +547,6 @@ module.exports = {
   normalizeReadMode,
   FALLBACK_ERRORS,
   sanitizeForRecording,
+  classifyRunBlocker,
+  classifyAntiCrawl,
 };

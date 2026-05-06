@@ -20,6 +20,7 @@
 'use strict';
 
 const WebSocket = require('ws');
+const { resolveAutomationToken, getWsConnectOptions } = require('./wsAuth');
 
 // 活跃的 BrowserAutomation 实例集合；进程退出信号只注册一次，避免每个实例都挂
 // SIGINT/SIGTERM/exit 造成 MaxListenersExceededWarning 与 listener 泄漏。
@@ -92,32 +93,7 @@ class BrowserAutomation {
    */
   _resolveToken() {
     if (this._cachedToken !== undefined) return this._cachedToken;
-    if (this._explicitToken) {
-      this._cachedToken = this._explicitToken;
-      return this._cachedToken;
-    }
-    if (process.env.JS_EYES_TOKEN) {
-      this._cachedToken = process.env.JS_EYES_TOKEN;
-      return this._cachedToken;
-    }
-    try {
-      const os = require('os');
-      const path = require('path');
-      const fs = require('fs');
-      const candidates = [
-        path.join(os.homedir(), '.js-eyes', 'runtime', 'server.token'),
-        path.join(os.homedir(), '.js-eyes', 'secrets', 'server-token'),
-      ];
-      for (const p of candidates) {
-        if (!fs.existsSync(p)) continue;
-        const value = fs.readFileSync(p, 'utf8').trim();
-        if (value) {
-          this._cachedToken = value;
-          return this._cachedToken;
-        }
-      }
-    } catch (_) {}
-    this._cachedToken = null;
+    this._cachedToken = resolveAutomationToken(this._explicitToken);
     return this._cachedToken;
   }
 
@@ -141,7 +117,7 @@ class BrowserAutomation {
       const token = this._resolveToken();
       const tokenPart = token ? `&token=${encodeURIComponent(token)}` : '';
       const wsUrl = `${this.serverUrl}?type=automation${tokenPart}`;
-      const wsOptions = { headers: { Origin: 'http://localhost' } };
+      const wsOptions = getWsConnectOptions();
 
       this.logger.info(`[JS-Eyes] 正在连接: ${this.serverUrl}?type=automation${token ? '&token=***' : ''}`);
 
@@ -458,6 +434,23 @@ class BrowserAutomation {
   async getCookies(tabId, options = {}) {
     const resp = await this._sendRequest('get_cookies', { tabId: parseInt(tabId) }, options);
     return resp.cookies || [];
+  }
+
+  async captureScreenshot(tabId, options = {}) {
+    if (typeof options === 'number') options = { timeout: options };
+    const payload = { tabId: parseInt(tabId) };
+    if (options.format) payload.format = options.format;
+    if (Number.isFinite(options.quality)) payload.quality = options.quality;
+    const resp = await this._sendRequest('capture_screenshot', payload, options);
+    return {
+      tabId: resp.tabId,
+      windowId: resp.windowId ?? null,
+      format: resp.format || null,
+      dataUrl: resp.dataUrl || null,
+      width: resp.width ?? null,
+      height: resp.height ?? null,
+      skipped: resp.skipped || null,
+    };
   }
 }
 

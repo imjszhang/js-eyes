@@ -24,6 +24,11 @@ const SAMPLE = {
     search: 3,
     questionAnswers: 2,
   },
+  sampleHealth: {
+    minFilledFields: 5,
+    minListSampleCount: 3,
+    replaceStrategy: 'prefer_latest_public_url',
+  },
 };
 
 test('parseArgs supports browser smoke options', () => {
@@ -52,6 +57,7 @@ test('loadSamples reads json and preserves default limits object', () => {
   const samples = smoke.loadSamples(file);
   assert.equal(samples.userSlug, 'alice');
   assert.deepEqual(samples.limits, {});
+  assert.equal(samples.sampleHealth.minListSampleCount, 3);
 });
 
 test('buildSteps constructs CLI arguments without running browser', () => {
@@ -99,7 +105,11 @@ test('validateSamples reports missing required fields for selected steps', () =>
     { id: 'session-state', required: [] },
   ]);
 
-  assert.deepEqual(missing, ['answer.answerUrl']);
+  assert.deepEqual(missing, [
+    'answer.answerUrl',
+    'sampleHealth.minFilledFields(0/5)',
+    'sampleHealth.minListSampleCount(0/3)',
+  ]);
 });
 
 test('parseJsonOutput reads the last JSON line', () => {
@@ -121,13 +131,18 @@ test('evaluateResult applies per-step smoke assertions', () => {
 
   assert.deepEqual(smoke.evaluateResult('user-answers', {
     ok: true,
-    result: { answers: [{ title: '回答' }], pageInfo: { returnedCount: 1 } },
+    result: { answers: [{ title: '回答' }], pageInfo: { returnedCount: 1, endedReason: 'limit' } },
   }), { ok: true });
 
   assert.equal(smoke.evaluateResult('search', {
     ok: true,
-    result: { items: [{ title: '结果' }], pageInfo: { returnedCount: 0 } },
+    result: { items: [{ title: '结果' }], pageInfo: { returnedCount: 0, endedReason: 'limit' } },
   }).reason, 'page_info_count_mismatch');
+
+  assert.equal(smoke.evaluateResult('search', {
+    ok: true,
+    result: { items: [{ title: '结果' }], pageInfo: { returnedCount: 1, endedReason: 'bad' } },
+  }).reason, 'bad_page_info_ended_reason');
 
   assert.equal(smoke.evaluateResult('search', {
     ok: true,

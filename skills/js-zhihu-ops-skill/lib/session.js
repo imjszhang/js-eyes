@@ -1,8 +1,24 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const { BrowserAutomation } = require('./js-eyes-client');
 const { getPageProfile, DEFAULT_WS_ENDPOINT, isZhihuHostname } = require('./config');
+const { makeBridgeExpander, applyVisualConfig } = require('@js-eyes/visual-bridge-kit');
+
+const BRIDGES_DIR = path.join(__dirname, '..', 'bridges');
+const expandBridgeSourceWithKit = makeBridgeExpander({ baseDir: BRIDGES_DIR });
+
+function normalizeLegacyIncludes(raw) {
+  return String(raw || '').replace(
+    /^(\s*\/\/\s*@@include\s+)(?![.@/\\])(\S+)(\s*)$/gm,
+    '$1./$2$3',
+  );
+}
+
+function expandBridgeSource(raw, opts) {
+  return expandBridgeSourceWithKit(normalizeLegacyIncludes(raw), opts || { baseDir: BRIDGES_DIR });
+}
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') return value;
@@ -55,13 +71,6 @@ function isZhihuTabUrl(url) {
   }
 }
 
-function expandBridgeSource(raw) {
-  return raw.replace(/^\s*\/\/\s*@@include\s+(.+)$/gm, (_line, rel) => {
-    const includePath = require('path').join(__dirname, '..', 'bridges', rel.trim());
-    return fs.readFileSync(includePath, 'utf8');
-  });
-}
-
 class Session {
   constructor({ opts = {} } = {}) {
     this.opts = opts;
@@ -71,6 +80,8 @@ class Session {
     this.target = null;
     this._bridgeSrcCache = null;
     this._bridgeVersionCache = null;
+    this.visualConfig = opts.visualConfig || null;
+    this._visualConfigApplied = false;
   }
 
   log(message) {
@@ -235,7 +246,10 @@ class Session {
         `(window.${this.pageProfile.bridgeGlobal} && window.${this.pageProfile.bridgeGlobal}.__meta && window.${this.pageProfile.bridgeGlobal}.__meta.version) || null`,
       );
     } catch (_) {}
-    if (cur === version) return { version, reinstalled: false };
+    if (cur === version) {
+      await this._applyVisualConfig();
+      return { version, reinstalled: false };
+    }
     const installResult = await this.callRaw(src, { timeoutMs: 30000 });
     if (!installResult || installResult.ok !== true) {
       const err = new Error(`bridge 注入失败: ${JSON.stringify(installResult)}`);
@@ -243,7 +257,19 @@ class Session {
       err.detail = installResult;
       throw err;
     }
+    await this._applyVisualConfig();
     return { version, reinstalled: true };
+  }
+
+  async _applyVisualConfig() {
+    if (!this.visualConfig || this._visualConfigApplied) return null;
+    try {
+      const applied = await applyVisualConfig(this, this.visualConfig);
+      this._visualConfigApplied = true;
+      return applied;
+    } catch (_) {
+      return null;
+    }
   }
 
   async callApi(method, args = [], options = {}) {

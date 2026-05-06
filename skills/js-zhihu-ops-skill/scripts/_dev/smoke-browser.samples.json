@@ -13,5 +13,11 @@
     "userAnswers": 2,
     "search": 2,
     "questionAnswers": 2
+  },
+  "sampleHealth": {
+    "minFilledFields": 5,
+    "minListSampleCount": 3,
+    "replaceStrategy": "prefer_latest_public_url",
+    "lastReviewedAt": "2026-05-06T00:00:00+08:00"
   }
 }

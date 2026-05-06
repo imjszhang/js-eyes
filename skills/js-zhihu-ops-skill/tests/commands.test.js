@@ -21,6 +21,10 @@ test('parseArgv supports common recording and visual flags', () => {
     '--recording-mode',
     'debug',
     '--visual-trace',
+    '--visual-hud',
+    '--visual-flash',
+    '--visual-linger-ms',
+    '15000',
     '--limit=5',
     '--rate-limit',
   ]);
@@ -28,6 +32,9 @@ test('parseArgv supports common recording and visual flags', () => {
   assert.equal(opts.pretty, true);
   assert.equal(opts.recordingMode, 'debug');
   assert.equal(opts.visualTrace, true);
+  assert.equal(opts.visualHud, true);
+  assert.equal(opts.visualFlash, true);
+  assert.equal(opts.visualLingerMs, '15000');
   assert.equal(opts.limit, '5');
   assert.equal(opts.rateLimit, true);
 });

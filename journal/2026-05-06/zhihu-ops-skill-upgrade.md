@@ -344,7 +344,7 @@ node index.js question-answers 1933579229917843753 --limit 5 --max-pages 2 --pre
 
 近期建议：
 
-- 完整接入 `@js-eyes/visual-bridge-kit` 的 HUD/flash/trace/frame，而不仅是当前 visual 元数据结构。
+- 继续完善 `@js-eyes/visual-bridge-kit` 的站点级 anchor resolver、列表项批量 flash 和 replay 产物质量。
 - 给 `question-answers` 增强排序识别、回答筛选和更稳定的懒加载结束判断。
 - 给 `search` 继续增强结果容器分类，过滤“相关搜索”等非内容卡片。
 - `user-answers` / `user-articles` 后续可进一步导航到用户回答 tab / 文章 tab，而不只依赖主页当前内容。
@@ -355,3 +355,122 @@ node index.js question-answers 1933579229917843753 --limit 5 --max-pages 2 --pre
 - 建立与小红书 skill 相同层级的 visual replay、anti-crawl stats、debug bundle 规范。
 - 将各平台 skill 的 `js-eyes-client.js` token 解析逻辑收敛为共享包，避免单个 skill 漏同步导致 401。
 - 为真实浏览器验证引入固定测试账号/固定页面夹具，降低知乎页面结构与内容动态变化带来的测试波动。
+
+## 7. 下一步实施计划执行（v3.1）
+
+基于「下一步实施计划（2026-05-06 15:53:56 +08:00）」完成首轮落地，重点是稳定性、可观测性与跨模块一致性，不新增 DESTRUCTIVE 能力。
+
+### 7.1 P0 稳定性加固
+
+- `bridges/common.js` 的列表采集结束语义统一为 `limit/no_new_items/max_pages/blocked`。
+- 列表采集新增 `blockedReason`，并在每轮采集前做阻断检测（登录墙/验证码）。
+- `smoke-browser.samples.json` 增加 `sampleHealth`（`minFilledFields`、`minListSampleCount`、`replaceStrategy`、`lastReviewedAt`）。
+- `scripts/_dev/smoke-browser.js` 增加样本健康校验，防止样本字段缺失或列表样本过少导致假绿/假红。
+
+### 7.2 P1 可观测性升级
+
+- `lib/runTool.js` 新增结构化 blocker 分类（`captcha/auth/navigation/dom/unknown`）和建议动作字段。
+- `metrics` 增补列表采集维度（`pageInfo` 子结构），便于跨 run 横向对比。
+- `visual` 从空元数据升级为事件流：支持 trace JSONL 写盘，`--visual-record` 时写 `events.jsonl/meta.json` 与帧文件。
+- `cli/index.js` 在 stderr 输出 visual 路径提示（与 records 路径并列）。
+
+### 7.3 P2 复用收敛
+
+- 抽出 `lib/wsAuth.js` 统一 token 解析与 WS Origin 配置，`lib/js-eyes-client.js` 改为复用该模块。
+- `lib/js-eyes-client.js` 补 `captureScreenshot`，为 visual 录制提供最小帧能力。
+- `runMonitor` 与 `monitor/dispatcher` 对齐 target type 校验，统一支持类型来源，降低 CLI/AI 边界漂移风险。
+
+### 7.4 验收补充
+
+- 更新 `SKILL.md`：补 `verify:visual` 示例、`pageInfo` 字段扩展、`endedReason` 统一语义、样本健康约束说明。
+- 测试新增/更新：
+  - `tests/wsAuth.test.js`
+  - `tests/runTool.test.js`（blocker/anti-crawl 分类）
+  - `tests/smokeBrowser.test.js`（sampleHealth + `endedReason` 断言）
+  - `tests/monitor.test.js`（supportedTypes 断言）
+
+## 8. Visual HUD/Flash 真实可见化修复（v3.1.1）
+
+时间：2026-05-06 16:28:45 +08:00。
+
+在首轮 v3.1 验收中，`--visual-trace` / `--visual-record` 已能写入 `trace.jsonl`、`events.jsonl`、`meta.json` 和截图帧，但真实浏览器页面里没有看到 HUD 与 flash overlay。进一步检查后确认：当时只是 Node 侧记录了 visual 事件和 frame，没有把 `@js-eyes/visual-bridge-kit` 的 page-world runtime 注入到知乎 bridge，也没有通过 `wrapCallApi` 触发 `window.__jse_visual.before/after`。
+
+### 8.1 问题定位
+
+| 现象 | 根因 |
+| ---- | ---- |
+| `visual.enabled = true`，但浏览器中没有 HUD | `bridges/common.js` 未 include `@js-eyes/visual-bridge-kit/bridge/visual.common.js` |
+| 有 frame 截图，但截图只是普通页面 | 只在 Node 侧 `captureScreenshot`，没有 page-world overlay |
+| HUD 初次接入后显示 `[object Object]` | `visual.common.js` 在没有 `hint.target` 时会 fallback 到 `String(h.anchor)`，对象型 anchor 被字符串化 |
+| 旧单测 `// @@include common.js` 失败 | `visual-bridge-kit` 的 expander 要求相对 include 写成 `./common.js` |
+
+### 8.2 修复内容
+
+核心变更：
+
+- `package.json` 增加 `@js-eyes/visual-bridge-kit` 依赖。
+- `lib/session.js` 改用 `makeBridgeExpander`，支持包路径 include，并保留旧式 `// @@include common.js` 的兼容归一化。
+- `bridges/common.js` 顶部 include：
+  - `@js-eyes/visual-bridge-kit/bridge/visual.common.js`
+  - `./_visual-zhihu.js`
+- 新增 `bridges/_visual-zhihu.js`，实现知乎站点 anchor resolver：
+  - answer：按 `/answer/<id>` 找回答卡片或正文区域。
+  - article：按 `/p/<id>` 找专栏头部或正文区域。
+  - question：按 `/question/<id>` 找问题头部/主区域。
+  - search：按关键词定位搜索结果区。
+  - user：按用户 slug 定位用户主页区域。
+- 新增 `lib/visualHint.js`，为各工具生成 `kind/label/anchor/target/tone`。
+- `lib/runTool.js` 在 visual 开启时用 `wrapCallApi` 包裹 `session.callApi`，触发 page-world 的 `before/after`、HUD 和 flash。
+- `cli/index.js` 通过 `parseVisualFlags` 生成完整 visual config。
+- `lib/commands.js` 增加 CLI 旋钮：
+  - `--visual-hud` / `--no-visual-hud`
+  - `--visual-flash` / `--no-visual-flash`
+  - `--visual-linger-ms`
+  - `--visual-flash-ms`
+- `lib/visualHint.js` 补 `target` 字段，避免 HUD 显示 `[object Object]`：
+  - 搜索：`关键词：大模型`
+  - 回答：`回答 <answerId>`
+  - 专栏：`专栏 <articleId>`
+  - 问题：`问题 <questionId>`
+  - 用户：`<userSlug>`
+
+### 8.3 真实浏览器验证
+
+可见版深度调研命令都显式开启：
+
+```powershell
+--visual --visual-hud --visual-flash --visual-linger-ms 20000 --visual-trace --visual-record
+```
+
+实际执行链路：
+
+| 步骤 | 结果 | visual 证据 |
+| ---- | ---- | ---- |
+| 回答详情 | 成功读取 `2026 年了，国产大模型和 GPT/Claude的差距还有多大？`，作者 `小小将`，正文长度 `1666` | `visual.events = 16`，含 `flash/hud/before/after/frame` |
+| 专栏详情 | 成功读取 `国内外知名大模型及应用——模型/应用维度（2026/04/24）`，正文长度 `30261`，评论数 `148` | `visual.events = 16` |
+| 搜索采样 | 成功返回 8 条 `大模型` 搜索结果 | `visual.events = 32`，含列表项批量 flash |
+
+关键证据目录：
+
+```text
+C:\Users\Helix\.js-eyes\skill-records\js-zhihu-ops-skill\visual\js-zhihu-ops-skill-0d49f56c-8b02-45ef-bb32-f53ec269630a
+C:\Users\Helix\.js-eyes\skill-records\js-zhihu-ops-skill\visual\js-zhihu-ops-skill-5b81290b-26bc-479e-b52e-986662ff6bd4
+C:\Users\Helix\.js-eyes\skill-records\js-zhihu-ops-skill\visual\js-zhihu-ops-skill-19c185ca-091e-4631-845e-0c6cae6af0d2
+```
+
+其中复核截图显示：
+
+- 页面右上角出现绿色 HUD。
+- HUD target 已从 `[object Object]` 修正为 `回答 2034920314539353145` / `关键词：大模型` 等可读文本。
+- 回答内容区域出现绿色 flash 高亮框。
+- 搜索场景生成多条列表项 flash 事件。
+
+### 8.4 验收结果
+
+```powershell
+npm test
+```
+
+结果：31/31 通过。
+
+IDE lints：无错误。

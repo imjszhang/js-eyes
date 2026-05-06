@@ -1,6 +1,8 @@
 'use strict';
 
 const {
+  MONITOR_TARGET_TYPES,
+  normalizeTargetType,
   initConfig,
   listTargets,
   getStatus,
@@ -28,9 +30,11 @@ function parseArgs(argv) {
 }
 
 function buildTarget(type, positional, opts) {
-  if (type === 'user') return { type, userSlug: positional[0], url: /^https?:/i.test(positional[0] || '') ? positional[0] : undefined, limit: opts.limit || undefined };
-  if (type === 'question') return { type, questionId: positional[0], url: /^https?:/i.test(positional[0] || '') ? positional[0] : undefined, limit: opts.limit || undefined };
-  if (type === 'search') return { type, keyword: positional[0], limit: opts.limit || undefined };
+  const normalizedType = normalizeTargetType(type);
+  if (!normalizedType) return { type };
+  if (normalizedType === 'user') return { type: normalizedType, userSlug: positional[0], url: /^https?:/i.test(positional[0] || '') ? positional[0] : undefined, limit: opts.limit || undefined };
+  if (normalizedType === 'question') return { type: normalizedType, questionId: positional[0], url: /^https?:/i.test(positional[0] || '') ? positional[0] : undefined, limit: opts.limit || undefined };
+  if (normalizedType === 'search') return { type: normalizedType, keyword: positional[0], limit: opts.limit || undefined };
   return { type };
 }
 
@@ -48,8 +52,8 @@ async function dispatch(argv = []) {
       '  add user <slug|url>',
       '  add question <questionId|url>',
       '  add search <keyword>',
-      '  remove user|question|search <value>',
-      '  test user|question|search <value>',
+      `  remove ${MONITOR_TARGET_TYPES.join('|')} <value>`,
+      `  test ${MONITOR_TARGET_TYPES.join('|')} <value>`,
       '',
     ].join('\n'));
     return 0;
@@ -68,18 +72,32 @@ async function dispatch(argv = []) {
       return 0;
     }
     if (sub === 'add') {
-      const type = positional[0];
+      const type = normalizeTargetType(positional[0]);
+      if (!type) {
+        process.stderr.write(`未知 target 类型: ${positional[0]}（支持: ${MONITOR_TARGET_TYPES.join(', ')}）\n`);
+        return 2;
+      }
       const result = addTarget(buildTarget(type, positional.slice(1), opts));
       emitJson(result, opts);
       return result.ok ? 0 : 1;
     }
     if (sub === 'remove') {
-      const result = removeTarget({ type: positional[0], value: positional[1] });
+      const type = normalizeTargetType(positional[0]);
+      if (!type) {
+        process.stderr.write(`未知 target 类型: ${positional[0]}（支持: ${MONITOR_TARGET_TYPES.join(', ')}）\n`);
+        return 2;
+      }
+      const result = removeTarget({ type, value: positional[1] });
       emitJson(result, opts);
       return result.ok ? 0 : 1;
     }
     if (sub === 'test') {
-      const result = testTarget(buildTarget(positional[0], positional.slice(1), opts));
+      const type = normalizeTargetType(positional[0]);
+      if (!type) {
+        process.stderr.write(`未知 target 类型: ${positional[0]}（支持: ${MONITOR_TARGET_TYPES.join(', ')}）\n`);
+        return 2;
+      }
+      const result = testTarget(buildTarget(type, positional.slice(1), opts));
       emitJson(result, opts);
       return result.ok ? 0 : 1;
     }

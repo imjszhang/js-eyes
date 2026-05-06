@@ -238,6 +238,10 @@ function parseArgv(argv) {
     last: null,
     tool: null,
     visual: undefined,
+    visualHud: undefined,
+    visualFlash: undefined,
+    visualLingerMs: null,
+    visualFlashMs: null,
     visualTrace: null,
     visualRecord: null,
     rateLimit: false,
@@ -256,6 +260,14 @@ function parseArgv(argv) {
     else if (a === '--rate-limit') opts.rateLimit = true;
     else if (a === '--visual') opts.visual = true;
     else if (a === '--no-visual') opts.visual = false;
+    else if (a === '--visual-hud') opts.visualHud = true;
+    else if (a === '--no-visual-hud') opts.visualHud = false;
+    else if (a === '--visual-flash') opts.visualFlash = true;
+    else if (a === '--no-visual-flash') opts.visualFlash = false;
+    else if (a === '--visual-linger-ms') eat('visualLingerMs');
+    else if (a.startsWith('--visual-linger-ms=')) eatEq('visualLingerMs', '--visual-linger-ms=');
+    else if (a === '--visual-flash-ms') eat('visualFlashMs');
+    else if (a.startsWith('--visual-flash-ms=')) eatEq('visualFlashMs', '--visual-flash-ms=');
     else if (a === '--visual-trace') {
       const next = argv[i + 1];
       if (next != null && !next.startsWith('-')) { opts.visualTrace = next; i += 1; } else opts.visualTrace = true;
@@ -326,7 +338,8 @@ function printHelp() {
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',
     '  --debug-recording / --no-cache / --recording-base-dir / --run-id',
-    '  --visual / --visual-trace [path] / --visual-record [dir]',
+    '  --visual / --visual-hud / --visual-flash / --visual-linger-ms <ms>',
+    '  --visual-trace [path] / --visual-record [dir]',
     '  -h, --help               显示帮助',
     '',
     '注意:',

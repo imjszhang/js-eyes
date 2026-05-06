@@ -9,6 +9,7 @@ const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { runTool } = require('../lib/runTool');
 const { createSkillRunContext } = require('@js-eyes/skill-recording');
+const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
 
 function emitJson(value, opts) {
   const s = opts.pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value);
@@ -26,6 +27,8 @@ async function runReadTool({ cmdDef, opts, positional, runtime }) {
   });
   const args = (cmdDef.toArgs || (() => [{}]))(opts, positional);
   const targetUrl = (cmdDef.targetUrl || (() => null))(opts, positional);
+  const visualEnabled = opts.visual !== false && (opts.visual || opts.visualTrace || opts.visualRecord);
+  const visualConfig = visualEnabled ? parseVisualFlags(opts).config : undefined;
   try {
     const result = await runTool(browser, {
       toolName: cmdDef.toolName,
@@ -47,13 +50,17 @@ async function runReadTool({ cmdDef, opts, positional, runtime }) {
         reuseAnyZhihuTab: true,
         timeoutMs: (opts.timeoutMs && Number(opts.timeoutMs) > 0) ? Number(opts.timeoutMs) : 90000,
         rateLimit: opts.rateLimit === true,
-        visualConfig: opts.visual !== false && (opts.visual || opts.visualTrace || opts.visualRecord) ? { enabled: true } : undefined,
+        visualConfig,
         visualTrace: opts.visualTrace || undefined,
         visualRecord: opts.visualRecord || undefined,
       },
     });
     if (!opts.quiet && result && result.run && result.run.paths && result.run.paths.historyFile) {
       process.stderr.write(`[zhihu] records: ${result.run.paths.historyFile}\n`);
+    }
+    if (!opts.quiet && result && result.visual && result.visual.enabled) {
+      const visualPath = result.visual.recordDir || result.visual.traceFile || '(inline-only)';
+      process.stderr.write(`[zhihu] visual: ${visualPath} (events=${result.visual.eventsCount || 0})\n`);
     }
     emitJson(result, opts);
     return result.ok ? 0 : 1;

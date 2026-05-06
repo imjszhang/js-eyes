@@ -3,6 +3,13 @@
 const { loadConfig, saveConfig, initConfig, exists } = require('./monitor/config');
 const targets = require('./toolTargets');
 
+const MONITOR_TARGET_TYPES = ['user', 'question', 'search'];
+
+function normalizeTargetType(type) {
+  const value = String(type || '').trim().toLowerCase();
+  return MONITOR_TARGET_TYPES.includes(value) ? value : null;
+}
+
 function listTargets() {
   const config = loadConfig();
   return {
@@ -24,7 +31,7 @@ function getStatus() {
 }
 
 function addTarget(args = {}) {
-  const type = args.type;
+  const type = normalizeTargetType(args.type);
   const config = loadConfig();
   const now = new Date().toISOString();
   if (type === 'user') {
@@ -40,19 +47,19 @@ function addTarget(args = {}) {
     if (!item.keyword) return { ok: false, error: 'missing_keyword' };
     config.searches.push(item);
   } else {
-    return { ok: false, error: 'bad_target_type', type };
+    return { ok: false, error: 'bad_target_type', type: args.type, supportedTypes: MONITOR_TARGET_TYPES };
   }
   const configFile = saveConfig(config);
   return { ok: true, configFile, targets: listTargets() };
 }
 
 function removeTarget(args = {}) {
-  const type = args.type;
+  const type = normalizeTargetType(args.type);
   const value = args.value || args.userSlug || args.questionId || args.keyword || args.url;
   if (!value) return { ok: false, error: 'missing_value' };
   const config = loadConfig();
   const key = type === 'user' ? 'users' : type === 'question' ? 'questions' : type === 'search' ? 'searches' : null;
-  if (!key) return { ok: false, error: 'bad_target_type', type };
+  if (!key) return { ok: false, error: 'bad_target_type', type: args.type, supportedTypes: MONITOR_TARGET_TYPES };
   const before = config[key].length;
   config[key] = config[key].filter((item) => ![
     item.userSlug,
@@ -67,11 +74,11 @@ function removeTarget(args = {}) {
 }
 
 function testTarget(args = {}) {
-  const type = args.type;
+  const type = normalizeTargetType(args.type);
   if (type === 'user') return { ok: true, dryRun: true, type, targetUrl: targets.userUrl(args) };
   if (type === 'question') return { ok: true, dryRun: true, type, targetUrl: targets.questionUrl(args) };
   if (type === 'search') return { ok: true, dryRun: true, type, targetUrl: targets.searchUrl({ keyword: args.keyword, type: args.searchType }) };
-  return { ok: false, error: 'bad_target_type', type };
+  return { ok: false, error: 'bad_target_type', type: args.type, supportedTypes: MONITOR_TARGET_TYPES };
 }
 
 const MONITOR_TOOL_DEFINITIONS = [
@@ -151,6 +158,8 @@ const MONITOR_TOOL_DEFINITIONS = [
 ];
 
 module.exports = {
+  MONITOR_TARGET_TYPES,
+  normalizeTargetType,
   initConfig,
   listTargets,
   getStatus,

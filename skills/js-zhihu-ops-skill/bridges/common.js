@@ -1,3 +1,6 @@
+// @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
+// @@include ./_visual-zhihu.js
+
 function q(selector, root) {
   return (root || document).querySelector(selector);
 }
@@ -76,10 +79,19 @@ async function scrollAndCollect(options) {
   let duplicateSkipped = 0;
   let idleRounds = 0;
   let scrollRounds = 0;
-  let endedReason = 'max_rounds';
+  let endedReason = 'max_pages';
+  let blockedReason = null;
   let previousBottom = bottomY();
 
   for (let page = 0; page < maxPages; page++) {
+    const blockedCode = typeof options.detectBlocked === 'function'
+      ? options.detectBlocked()
+      : null;
+    if (blockedCode) {
+      endedReason = 'blocked';
+      blockedReason = blockedCode;
+      break;
+    }
     const beforeCount = items.length;
     const batch = snapshot();
     for (const item of batch) {
@@ -102,11 +114,11 @@ async function scrollAndCollect(options) {
     const added = items.length - beforeCount;
     idleRounds = added > 0 ? 0 : idleRounds + 1;
     if (idleRounds >= idleRoundsMax) {
-      endedReason = 'idle';
+      endedReason = 'no_new_items';
       break;
     }
     if (page + 1 >= maxPages) {
-      endedReason = 'max_rounds';
+      endedReason = 'max_pages';
       break;
     }
 
@@ -125,7 +137,7 @@ async function scrollAndCollect(options) {
 
     const nextBottom = bottomY();
     if (nextBottom <= previousBottom && added === 0) {
-      endedReason = 'idle';
+      endedReason = 'no_new_items';
       break;
     }
     previousBottom = nextBottom;
@@ -141,6 +153,7 @@ async function scrollAndCollect(options) {
       scrollRounds,
       endedReason,
       duplicateSkipped,
+      blockedReason,
     },
   };
 }
@@ -272,6 +285,10 @@ async function extractQuestionAnswers(args) {
   const collected = await scrollAndCollect({
     limit: opts.limit,
     maxPages: opts.maxPages,
+    detectBlocked: () => {
+      const blocked = errorIfBlocked();
+      return blocked && blocked.error;
+    },
     scrollAnchor: () => qa('.ContentItem.AnswerItem, .List-item .AnswerItem').pop(),
     snapshot: () => qa('.ContentItem.AnswerItem, .List-item .AnswerItem').map((node) => {
       const author = extractAuthor(node);
@@ -328,6 +345,10 @@ async function extractSearch(args) {
   const collected = await scrollAndCollect({
     limit: opts.limit,
     maxPages: opts.maxPages,
+    detectBlocked: () => {
+      const blocked = errorIfBlocked();
+      return blocked && blocked.error;
+    },
     scrollAnchor: () => qa('.SearchResult-Card, .List-item, .ContentItem').pop(),
     snapshot: () => qa('.SearchResult-Card, .List-item, .ContentItem').map((node) => {
       const link = q('a[href]', node);
@@ -379,6 +400,10 @@ async function extractUserList(args, kind) {
   const collected = await scrollAndCollect({
     limit: opts.limit,
     maxPages: opts.maxPages,
+    detectBlocked: () => {
+      const blocked = errorIfBlocked();
+      return blocked && blocked.error;
+    },
     scrollAnchor: () => qa('.List-item .ContentItem, .Profile-mainColumn .ContentItem').pop(),
     snapshot: () => qa('.List-item .ContentItem, .Profile-mainColumn .ContentItem').map((node) => {
       const link = kind === 'answers'
