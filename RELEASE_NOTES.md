@@ -86,6 +86,7 @@
 - [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.7.0/js-eyes-chrome-v2.7.0.zip)
 - [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.7.0/js-eyes-firefox-v2.7.0.xpi)
 - [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.7.0/js-eyes-skill-v2.7.0.zip)
+- [ClawHub Skill (`js-eyes@2.7.0`)](https://clawhub.ai/imjszhang/js-eyes)
 
 ### Installation Instructions
 
@@ -104,6 +105,15 @@
    `@js-eyes/server-core@2.7.0` with the new `capture_screenshot`
    forwarder. Subsequent `js-eyes skills link/unlink/reload/relink` remain
    zero-restart.
+
+#### ClawHub
+
+1. `js-eyes@2.7.0` is published on ClawHub with the `latest` tag pointing to
+   2.7.0 and MIT-0 as the platform license.
+2. ClawHub's scanner may show `SUSPICIOUS` for this bundle because JS Eyes
+   intentionally ships host-side `child_process`, `fs`, and WebSocket plumbing
+   for OpenClaw browser automation. The flagged patterns are expected for this
+   release and match the documented security posture in `RELEASE.md`.
 
 #### Chrome / Edge
 
