@@ -11,11 +11,11 @@ const INDEX_PATH = path.join(__dirname, '..', '..', 'index.js');
 const STEP_DEFS = [
   { id: 'session-state', command: 'session-state', required: [] },
   { id: 'user', command: 'user', required: ['userSlug'] },
-  { id: 'user-answers', command: 'user-answers', required: ['userSlug'], limitKey: 'userAnswers' },
+  { id: 'user-answers', command: 'user-answers', required: ['userSlug'], limitKey: 'userAnswers', maxPagesKey: 'userAnswers' },
   { id: 'answer', command: 'answer', required: ['answerUrl'] },
   { id: 'article', command: 'article', required: ['articleUrl'] },
-  { id: 'search', command: 'search', required: ['searchKeyword'], limitKey: 'search' },
-  { id: 'question-answers', command: 'question-answers', required: ['questionId'], limitKey: 'questionAnswers' },
+  { id: 'search', command: 'search', required: ['searchKeyword'], limitKey: 'search', maxPagesKey: 'search' },
+  { id: 'question-answers', command: 'question-answers', required: ['questionId'], limitKey: 'questionAnswers', maxPagesKey: 'questionAnswers' },
 ];
 
 function printHelp(stream = process.stdout) {
@@ -139,6 +139,10 @@ function buildSteps(samples, opts = {}) {
       const limit = samples.limits && samples.limits[def.limitKey];
       if (limit != null) args.push('--limit', String(limit));
     }
+    if (def.maxPagesKey) {
+      const maxPages = samples.maxPages && samples.maxPages[def.maxPagesKey];
+      if (maxPages != null) args.push('--max-pages', String(maxPages));
+    }
     args.push('--json', '--no-cache', '--timeout-ms', String(timeoutMs));
     if (opts.server) args.push('--server', opts.server);
     if (opts.recordingMode) args.push('--recording-mode', opts.recordingMode);
@@ -180,20 +184,23 @@ function evaluateResult(stepId, payload) {
   }
   if (stepId === 'user-answers') {
     const items = Array.isArray(result.answers) ? result.answers : result.items;
-    return Array.isArray(items) && items.length > 0
-      ? { ok: true }
-      : { ok: false, reason: 'empty_user_answers' };
+    if (!Array.isArray(items) || items.length === 0) return { ok: false, reason: 'empty_user_answers' };
+    return pageInfoMatches(result.pageInfo, items.length);
   }
   if (stepId === 'search') {
-    return Array.isArray(result.items) && result.items.length > 0
-      ? { ok: true }
-      : { ok: false, reason: 'empty_search_results' };
+    if (!Array.isArray(result.items) || result.items.length === 0) return { ok: false, reason: 'empty_search_results' };
+    return pageInfoMatches(result.pageInfo, result.items.length);
   }
   if (stepId === 'question-answers') {
-    return Array.isArray(result.answers) && result.answers.length > 0
-      ? { ok: true }
-      : { ok: false, reason: 'empty_question_answers' };
+    if (!Array.isArray(result.answers) || result.answers.length === 0) return { ok: false, reason: 'empty_question_answers' };
+    return pageInfoMatches(result.pageInfo, result.answers.length);
   }
+  return { ok: true };
+}
+
+function pageInfoMatches(pageInfo, length) {
+  if (!pageInfo || typeof pageInfo !== 'object') return { ok: false, reason: 'missing_page_info' };
+  if (pageInfo.returnedCount !== length) return { ok: false, reason: 'page_info_count_mismatch' };
   return { ok: true };
 }
 
@@ -313,6 +320,7 @@ module.exports = {
   buildSteps,
   parseJsonOutput,
   evaluateResult,
+  pageInfoMatches,
   summarize,
   main,
 };

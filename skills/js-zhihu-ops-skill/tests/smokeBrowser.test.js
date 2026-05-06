@@ -19,6 +19,11 @@ const SAMPLE = {
     search: 4,
     questionAnswers: 3,
   },
+  maxPages: {
+    userAnswers: 2,
+    search: 3,
+    questionAnswers: 2,
+  },
 };
 
 test('parseArgs supports browser smoke options', () => {
@@ -75,6 +80,8 @@ test('buildSteps constructs CLI arguments without running browser', () => {
     SAMPLE.searchKeyword,
     '--limit',
     '4',
+    '--max-pages',
+    '3',
     '--json',
     '--no-cache',
     '--timeout-ms',
@@ -114,8 +121,13 @@ test('evaluateResult applies per-step smoke assertions', () => {
 
   assert.deepEqual(smoke.evaluateResult('user-answers', {
     ok: true,
-    result: { answers: [{ title: '回答' }] },
+    result: { answers: [{ title: '回答' }], pageInfo: { returnedCount: 1 } },
   }), { ok: true });
+
+  assert.equal(smoke.evaluateResult('search', {
+    ok: true,
+    result: { items: [{ title: '结果' }], pageInfo: { returnedCount: 0 } },
+  }).reason, 'page_info_count_mismatch');
 
   assert.equal(smoke.evaluateResult('search', {
     ok: true,

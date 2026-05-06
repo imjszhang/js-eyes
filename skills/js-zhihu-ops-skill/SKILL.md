@@ -44,8 +44,8 @@ node skills/js-zhihu-ops-skill/index.js article "https://zhuanlan.zhihu.com/p/12
 node skills/js-zhihu-ops-skill/index.js session-state --pretty
 node skills/js-zhihu-ops-skill/index.js doctor --pretty
 node skills/js-zhihu-ops-skill/index.js records --last 5 --pretty
-node skills/js-zhihu-ops-skill/index.js question-answers "https://www.zhihu.com/question/1" --limit 10 --pretty
-node skills/js-zhihu-ops-skill/index.js search "大模型" --limit 10 --pretty
+node skills/js-zhihu-ops-skill/index.js question-answers "https://www.zhihu.com/question/1" --limit 10 --max-pages 2 --pretty
+node skills/js-zhihu-ops-skill/index.js search "大模型" --limit 10 --max-pages 2 --pretty
 node skills/js-zhihu-ops-skill/index.js user "people-slug" --pretty
 node skills/js-zhihu-ops-skill/index.js monitor init --pretty
 node skills/js-zhihu-ops-skill/index.js monitor add search "大模型" --limit 10 --pretty
@@ -74,6 +74,13 @@ npm run smoke:browser -- --server ws://localhost:18080 --timeout-ms 120000
 知乎当前以 DOM 抽取为主，`readMode` 支持 `auto|dom|api`，默认 `dom`。`api` 暂不作为主路径，后续若接入稳定公开数据源再启用。
 
 每次 READ 返回顶层包含 `run`、`metrics`、`result`、`triedMethods`、`usedMethod`、`readMode`、`requestedReadMode`、`fallback`、`antiCrawlState`。`antiCrawlState` 会区分 `login_required`、`captcha_required` 等页面阻断。
+
+列表类 READ 工具（`zhihu_get_question_answers`、`zhihu_search`、`zhihu_get_user_answers`、`zhihu_get_user_articles`）支持 `limit` 与 `maxPages`：
+
+- `limit` 是目标返回条数，默认 10，最多 100。
+- `maxPages` 是 DOM 最大滚动轮次，默认 1，最多 20；它不是知乎业务页码，也不代表 API cursor 翻页。
+- 返回结果会带 `pageInfo`，包含 `requestedLimit`、`requestedMaxPages`、`returnedCount`、`scrollRounds`、`endedReason` 和 `duplicateSkipped`。
+- 为降低风控风险，默认只读首轮 DOM；需要更多结果时显式提高 `--max-pages`，并配合 `--timeout-ms`。
 
 ## Recording
 

@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   // @@include common.js
 
   function questionTarget(args) {
@@ -14,15 +14,15 @@
       const state = currentPageState();
       return { ok: true, data: Object.assign({}, state, { ready: state.ready && state.hasQuestion }) };
     },
-    dom_getQuestionAnswers(args) {
+    async dom_getQuestionAnswers(args) {
       const target = questionTarget(args || {});
       if (target && location.href !== target && !/\/question\/\d+/.test(location.pathname)) {
         return { ok: false, error: 'dom_navigation_required', to: target, navMethod: 'navigateQuestion', navArgs: args || {} };
       }
-      return extractQuestionAnswers(args || {});
+      return await extractQuestionAnswers(args || {});
     },
-    getQuestionAnswers(args) {
-      return this.dom_getQuestionAnswers(args || {});
+    async getQuestionAnswers(args) {
+      return await this.dom_getQuestionAnswers(args || {});
     },
     sessionState,
     navigateQuestion(args) {

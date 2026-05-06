@@ -34,3 +34,17 @@ test('contract includes upgraded read, navigation, and monitor tools', () => {
 test('runtime declares zhihu and zhuanlan platforms', () => {
   assert.deepEqual(contract.runtime.platforms, ['zhihu.com', 'zhuanlan.zhihu.com']);
 });
+
+test('list read tools expose maxPages parameter', () => {
+  const tools = new Map(contract.tools.map((tool) => [tool.name, tool]));
+  for (const name of [
+    'zhihu_get_question_answers',
+    'zhihu_search',
+    'zhihu_get_user_answers',
+    'zhihu_get_user_articles',
+  ]) {
+    const tool = tools.get(name);
+    assert.ok(tool, name);
+    assert.equal(tool.parameters.properties.maxPages.type, 'number', name);
+  }
+});

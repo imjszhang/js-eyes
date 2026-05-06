@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.1.1';
+  const VERSION = '0.2.0';
   // @@include common.js
 
   function userTarget(args) {
@@ -24,25 +24,25 @@
     getUser(args) {
       return this.dom_getUser(args || {});
     },
-    dom_getUserAnswers(args) {
+    async dom_getUserAnswers(args) {
       const target = userTarget(args || {});
       if (target && !/^\/(people|org)\//.test(location.pathname)) {
         return { ok: false, error: 'dom_navigation_required', to: target, navMethod: 'navigateUser', navArgs: args || {} };
       }
-      return extractUserList(args || {}, 'answers');
+      return await extractUserList(args || {}, 'answers');
     },
-    getUserAnswers(args) {
-      return this.dom_getUserAnswers(args || {});
+    async getUserAnswers(args) {
+      return await this.dom_getUserAnswers(args || {});
     },
-    dom_getUserArticles(args) {
+    async dom_getUserArticles(args) {
       const target = userTarget(args || {});
       if (target && !/^\/(people|org)\//.test(location.pathname)) {
         return { ok: false, error: 'dom_navigation_required', to: target, navMethod: 'navigateUser', navArgs: args || {} };
       }
-      return extractUserList(args || {}, 'articles');
+      return await extractUserList(args || {}, 'articles');
     },
-    getUserArticles(args) {
-      return this.dom_getUserArticles(args || {});
+    async getUserArticles(args) {
+      return await this.dom_getUserArticles(args || {});
     },
     sessionState,
     navigateUser(args) {

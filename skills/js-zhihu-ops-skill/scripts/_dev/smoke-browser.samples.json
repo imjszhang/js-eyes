@@ -8,5 +8,10 @@
     "userAnswers": 3,
     "search": 5,
     "questionAnswers": 3
+  },
+  "maxPages": {
+    "userAnswers": 2,
+    "search": 2,
+    "questionAnswers": 2
   }
 }

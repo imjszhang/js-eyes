@@ -32,6 +32,17 @@ test('parseArgv supports common recording and visual flags', () => {
   assert.equal(opts.rateLimit, true);
 });
 
+test('list commands pass maxPages through to tool args', () => {
+  const searchArgs = COMMANDS.search.toArgs({ limit: '8', maxPages: '2' }, ['大模型'])[0];
+  assert.deepEqual(searchArgs, { keyword: '大模型', type: undefined, limit: 8, maxPages: 2 });
+
+  const userArgs = COMMANDS['user-answers'].toArgs({ limit: '5', maxPages: '3' }, ['alice'])[0];
+  assert.deepEqual(userArgs, { url: undefined, userSlug: 'alice', limit: 5, maxPages: 3 });
+
+  const articleArgs = COMMANDS['user-articles'].toArgs({ limit: '4', maxPages: '2' }, ['alice'])[0];
+  assert.deepEqual(articleArgs, { url: undefined, userSlug: 'alice', limit: 4, maxPages: 2 });
+});
+
 test('parseArgv rejects unknown options', () => {
   assert.throws(() => parseArgv(['--not-real']), /unknown option/);
 });

@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.1.2';
+  const VERSION = '0.2.0';
   // @@include common.js
 
   function searchTarget(args) {
@@ -16,15 +16,15 @@
       const state = currentPageState();
       return { ok: true, data: Object.assign({}, state, { ready: state.ready && state.hasSearch }) };
     },
-    dom_search(args) {
+    async dom_search(args) {
       const target = searchTarget(args || {});
       if (target && location.pathname.indexOf('/search') !== 0) {
         return { ok: false, error: 'dom_navigation_required', to: target, navMethod: 'navigateSearch', navArgs: args || {} };
       }
-      return extractSearch(args || {});
+      return await extractSearch(args || {});
     },
-    search(args) {
-      return this.dom_search(args || {});
+    async search(args) {
+      return await this.dom_search(args || {});
     },
     sessionState,
     navigateSearch(args) {

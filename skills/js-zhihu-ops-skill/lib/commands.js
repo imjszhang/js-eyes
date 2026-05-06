@@ -88,7 +88,7 @@ const COMMANDS = {
     targetUrl: (_opts, positional) => /^https?:/i.test(positional[0])
       ? targets.questionUrl({ url: positional[0] })
       : targets.questionUrl({ questionId: positional[0] }),
-    help: '问题回答列表：question-answers <url|questionId> [--limit N]',
+    help: '问题回答列表：question-answers <url|questionId> [--limit N] [--max-pages N]',
   },
   search: {
     kind: 'tool',
@@ -98,9 +98,14 @@ const COMMANDS = {
     pages: ['search'],
     defaultPage: 'search',
     argSpec: [{ name: 'keyword', required: true }],
-    toArgs: (opts, positional) => [{ keyword: positional[0], type: opts.type || undefined, limit: opts.limit ? Number(opts.limit) : 10 }],
+    toArgs: (opts, positional) => [{
+      keyword: positional[0],
+      type: opts.type || undefined,
+      limit: opts.limit ? Number(opts.limit) : 10,
+      maxPages: opts.maxPages ? Number(opts.maxPages) : 1,
+    }],
     targetUrl: (opts, positional) => targets.searchUrl({ keyword: positional[0], type: opts.type || undefined }),
-    help: '搜索：search <keyword> [--type content|people|topic] [--limit N]',
+    help: '搜索：search <keyword> [--type content|people|topic] [--limit N] [--max-pages N]',
   },
   user: {
     kind: 'tool',
@@ -122,9 +127,14 @@ const COMMANDS = {
     pages: ['user'],
     defaultPage: 'user',
     argSpec: [{ name: 'urlOrSlug', required: true }],
-    toArgs: (opts, positional) => [{ url: /^https?:/i.test(positional[0]) ? positional[0] : undefined, userSlug: /^https?:/i.test(positional[0]) ? undefined : positional[0], limit: opts.limit ? Number(opts.limit) : 10 }],
+    toArgs: (opts, positional) => [{
+      url: /^https?:/i.test(positional[0]) ? positional[0] : undefined,
+      userSlug: /^https?:/i.test(positional[0]) ? undefined : positional[0],
+      limit: opts.limit ? Number(opts.limit) : 10,
+      maxPages: opts.maxPages ? Number(opts.maxPages) : 1,
+    }],
     targetUrl: (_opts, positional) => /^https?:/i.test(positional[0]) ? targets.userUrl({ url: positional[0] }) : targets.userUrl({ userSlug: positional[0] }),
-    help: '用户回答列表：user-answers <url|slug> [--limit N]',
+    help: '用户回答列表：user-answers <url|slug> [--limit N] [--max-pages N]',
   },
   'user-articles': {
     kind: 'tool',
@@ -134,9 +144,14 @@ const COMMANDS = {
     pages: ['user'],
     defaultPage: 'user',
     argSpec: [{ name: 'urlOrSlug', required: true }],
-    toArgs: (opts, positional) => [{ url: /^https?:/i.test(positional[0]) ? positional[0] : undefined, userSlug: /^https?:/i.test(positional[0]) ? undefined : positional[0], limit: opts.limit ? Number(opts.limit) : 10 }],
+    toArgs: (opts, positional) => [{
+      url: /^https?:/i.test(positional[0]) ? positional[0] : undefined,
+      userSlug: /^https?:/i.test(positional[0]) ? undefined : positional[0],
+      limit: opts.limit ? Number(opts.limit) : 10,
+      maxPages: opts.maxPages ? Number(opts.maxPages) : 1,
+    }],
     targetUrl: (_opts, positional) => /^https?:/i.test(positional[0]) ? targets.userUrl({ url: positional[0] }) : targets.userUrl({ userSlug: positional[0] }),
-    help: '用户文章列表：user-articles <url|slug> [--limit N]',
+    help: '用户文章列表：user-articles <url|slug> [--limit N] [--max-pages N]',
   },
   'navigate-answer': {
     kind: 'navigate',
@@ -306,7 +321,7 @@ function printHelp() {
     `  --page <name>            page profile (${pageList})`,
     '  --tab <id>               强制指定浏览器 tab id',
     '  --read-mode auto|dom|api  READ 调度模式（知乎当前默认 dom）',
-    '  --limit / --max-pages / --timeout-ms',
+    '  --limit / --max-pages / --timeout-ms（列表工具中 --max-pages 表示最大 DOM 滚动轮次）',
     '  --pretty / --json / -v',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',

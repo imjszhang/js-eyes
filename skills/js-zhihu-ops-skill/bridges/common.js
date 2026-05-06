@@ -35,6 +35,116 @@ function meta(name) {
   return attrOf(q(`meta[itemprop="${name}"], meta[name="${name}"], meta[property="${name}"]`), 'content');
 }
 
+function clampLimit(value, defaultValue, maxValue) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return defaultValue;
+  return Math.min(Math.floor(n), maxValue);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeListOptions(args) {
+  return {
+    limit: clampLimit(args && args.limit, 10, 100),
+    maxPages: clampLimit(args && args.maxPages, 1, 20),
+  };
+}
+
+function bottomY() {
+  const doc = document.documentElement;
+  const body = document.body;
+  return Math.max(
+    doc ? doc.scrollHeight : 0,
+    body ? body.scrollHeight : 0,
+    doc ? doc.offsetHeight : 0,
+    body ? body.offsetHeight : 0,
+  );
+}
+
+async function scrollAndCollect(options) {
+  const limit = options.limit;
+  const maxPages = Math.max(1, options.maxPages || 1);
+  const snapshot = options.snapshot;
+  const keyOf = options.keyOf || ((item) => item && (item.url || item.id || item.title));
+  const scrollAnchor = options.scrollAnchor || (() => null);
+  const waitMs = options.waitMs || 900;
+  const idleRoundsMax = options.idleRoundsMax || 2;
+  const seen = new Set();
+  const items = [];
+  let duplicateSkipped = 0;
+  let idleRounds = 0;
+  let scrollRounds = 0;
+  let endedReason = 'max_rounds';
+  let previousBottom = bottomY();
+
+  for (let page = 0; page < maxPages; page++) {
+    const beforeCount = items.length;
+    const batch = snapshot();
+    for (const item of batch) {
+      if (!item) continue;
+      const key = keyOf(item);
+      if (!key) continue;
+      if (seen.has(key)) {
+        duplicateSkipped++;
+        continue;
+      }
+      seen.add(key);
+      items.push(item);
+      if (items.length >= limit) {
+        endedReason = 'limit';
+        break;
+      }
+    }
+    if (items.length >= limit) break;
+
+    const added = items.length - beforeCount;
+    idleRounds = added > 0 ? 0 : idleRounds + 1;
+    if (idleRounds >= idleRoundsMax) {
+      endedReason = 'idle';
+      break;
+    }
+    if (page + 1 >= maxPages) {
+      endedReason = 'max_rounds';
+      break;
+    }
+
+    const anchor = scrollAnchor();
+    try {
+      if (anchor && typeof anchor.scrollIntoView === 'function') {
+        anchor.scrollIntoView({ block: 'end', behavior: 'auto' });
+      } else {
+        window.scrollTo(0, bottomY());
+      }
+    } catch (_) {
+      window.scrollTo(0, bottomY());
+    }
+    scrollRounds++;
+    await delay(waitMs);
+
+    const nextBottom = bottomY();
+    if (nextBottom <= previousBottom && added === 0) {
+      endedReason = 'idle';
+      break;
+    }
+    previousBottom = nextBottom;
+  }
+
+  const returned = items.slice(0, limit);
+  return {
+    items: returned,
+    pageInfo: {
+      requestedLimit: limit,
+      requestedMaxPages: maxPages,
+      returnedCount: returned.length,
+      scrollRounds,
+      endedReason,
+      duplicateSkipped,
+    },
+  };
+}
+
 function currentPageState() {
   const bodyText = textOf(document.body);
   const hasLoginWall = !!q('.SignFlow, .Modal-wrapper, .Login-content, .MobileModal') && /登录|注册/.test(bodyText);
@@ -154,27 +264,32 @@ function extractArticle(args) {
   };
 }
 
-function extractQuestionAnswers(args) {
+async function extractQuestionAnswers(args) {
   const blocked = errorIfBlocked();
   if (blocked) return blocked;
-  const limit = Math.min(Math.max(Number((args && args.limit) || 10), 1), 100);
-  const answerNodes = qa('.ContentItem.AnswerItem, .List-item .AnswerItem').slice(0, limit);
+  const opts = normalizeListOptions(args);
   const questionId = (location.pathname.match(/\/question\/(\d+)/) || [])[1] || null;
-  const answers = answerNodes.map((node) => {
-    const author = extractAuthor(node);
-    const contentRoot = q('.RichContent-inner, .RichText[itemprop="text"]', node);
-    const href = attrOf(q('a[href*="/answer/"]', node), 'href');
-    const answerId = (href.match(/\/answer\/(\d+)/) || [])[1] || attrOf(node, 'name') || null;
-    const stats = extractStats(node);
-    return {
-      answer_id: answerId,
-      url: absUrl(href),
-      author,
-      author_name: author.name,
-      excerpt: richText(contentRoot).slice(0, 500),
-      upvote_count: stats.upvote_count || '0',
-      comment_count: stats.comment_count || '0',
-    };
+  const collected = await scrollAndCollect({
+    limit: opts.limit,
+    maxPages: opts.maxPages,
+    scrollAnchor: () => qa('.ContentItem.AnswerItem, .List-item .AnswerItem').pop(),
+    snapshot: () => qa('.ContentItem.AnswerItem, .List-item .AnswerItem').map((node) => {
+      const author = extractAuthor(node);
+      const contentRoot = q('.RichContent-inner, .RichText[itemprop="text"]', node);
+      const href = attrOf(q('a[href*="/answer/"]', node), 'href');
+      const answerId = (href.match(/\/answer\/(\d+)/) || [])[1] || attrOf(node, 'name') || null;
+      const stats = extractStats(node);
+      return {
+        answer_id: answerId,
+        url: absUrl(href),
+        author,
+        author_name: author.name,
+        excerpt: richText(contentRoot).slice(0, 500),
+        upvote_count: stats.upvote_count || '0',
+        comment_count: stats.comment_count || '0',
+      };
+    }),
+    keyOf: (item) => item.url || item.answer_id || `${item.author_name || ''}:${item.excerpt || ''}`,
   });
   return {
     ok: true,
@@ -182,41 +297,60 @@ function extractQuestionAnswers(args) {
       question_id: questionId,
       title: textOf(q('.QuestionHeader-title, h1')) || meta('name') || document.title,
       description: richText(q('.QuestionRichText, .QuestionHeader-detail')),
-      answers,
-      count: answers.length,
+      answers: collected.items,
+      count: collected.items.length,
+      pageInfo: collected.pageInfo,
       source_url: location.href,
     },
   };
 }
 
-function extractSearch(args) {
+async function extractSearch(args) {
   const blocked = errorIfBlocked();
   if (blocked) return blocked;
-  const limit = Math.min(Math.max(Number((args && args.limit) || 10), 1), 100);
-  const nodes = qa('.SearchResult-Card, .List-item, .ContentItem').slice(0, limit);
-  const seen = new Set();
-  const items = [];
-  nodes.forEach((node) => {
-    const link = q('a[href]', node);
-    const item = {
-      title: textOf(q('.ContentItem-title, h2, a', node)) || textOf(link),
-      url: absUrl(attrOf(link, 'href')),
-      excerpt: textOf(q('.RichContent-inner, .SearchResult-Card .Highlight, .ContentItem-excerpt', node)).slice(0, 500),
-      type: /\/answer\//.test(attrOf(link, 'href')) ? 'answer'
-        : /zhuanlan\.zhihu\.com\/p\//.test(attrOf(link, 'href')) || /\/p\//.test(attrOf(link, 'href')) ? 'article'
-          : /\/question\//.test(attrOf(link, 'href')) ? 'question' : 'unknown',
-    };
-    const key = item.url || item.title;
-    if ((!item.title && !item.url) || seen.has(key)) return;
-    seen.add(key);
-    items.push(item);
+  const opts = normalizeListOptions(args);
+  const url = new URL(location.href);
+  const keyword = (args && args.keyword) || url.searchParams.get('q') || '';
+  const currentKeyword = url.searchParams.get('q') || '';
+  const currentType = url.searchParams.get('type') || '';
+  if (args && args.keyword && currentKeyword !== args.keyword) {
+    const target = new URL('https://www.zhihu.com/search');
+    target.searchParams.set('q', args.keyword);
+    if (args.type) target.searchParams.set('type', args.type);
+    return { ok: false, error: 'dom_navigation_required', to: target.toString(), navMethod: 'navigateSearch', navArgs: args || {} };
+  }
+  if (args && args.type && currentType !== args.type) {
+    const target = new URL('https://www.zhihu.com/search');
+    target.searchParams.set('q', args.keyword || currentKeyword);
+    target.searchParams.set('type', args.type);
+    return { ok: false, error: 'dom_navigation_required', to: target.toString(), navMethod: 'navigateSearch', navArgs: args || {} };
+  }
+  const collected = await scrollAndCollect({
+    limit: opts.limit,
+    maxPages: opts.maxPages,
+    scrollAnchor: () => qa('.SearchResult-Card, .List-item, .ContentItem').pop(),
+    snapshot: () => qa('.SearchResult-Card, .List-item, .ContentItem').map((node) => {
+      const link = q('a[href]', node);
+      const rawHref = attrOf(link, 'href');
+      const item = {
+        title: textOf(q('.ContentItem-title, h2, a', node)) || textOf(link),
+        url: absUrl(rawHref),
+        excerpt: textOf(q('.RichContent-inner, .SearchResult-Card .Highlight, .ContentItem-excerpt', node)).slice(0, 500),
+        type: /\/answer\//.test(rawHref) ? 'answer'
+          : /zhuanlan\.zhihu\.com\/p\//.test(rawHref) || /\/p\//.test(rawHref) ? 'article'
+            : /\/question\//.test(rawHref) ? 'question' : 'unknown',
+      };
+      return item.title || item.url ? item : null;
+    }),
+    keyOf: (item) => item.url || item.title,
   });
   return {
     ok: true,
     data: {
-      keyword: (args && args.keyword) || new URL(location.href).searchParams.get('q') || '',
-      items,
-      count: items.length,
+      keyword,
+      items: collected.items,
+      count: collected.items.length,
+      pageInfo: collected.pageInfo,
       source_url: location.href,
     },
   };
@@ -238,21 +372,34 @@ function extractUser(args) {
   };
 }
 
-function extractUserList(args, kind) {
+async function extractUserList(args, kind) {
   const base = extractUser(args);
   if (!base.ok) return base;
-  const limit = Math.min(Math.max(Number((args && args.limit) || 10), 1), 100);
-  const nodes = qa('.List-item .ContentItem, .Profile-mainColumn .ContentItem').slice(0, limit);
-  const items = nodes.map((node) => {
-    const link = q('a[href*="/answer/"], a[href*="/p/"], a[href*="zhuanlan.zhihu.com/p/"], a[href*="/question/"]', node);
-    return {
-      title: textOf(q('.ContentItem-title, h2, a', node)) || textOf(link),
-      url: absUrl(attrOf(link, 'href')),
-      excerpt: textOf(q('.RichContent-inner, .ContentItem-excerpt', node)).slice(0, 500),
-    };
-  }).filter((item) => item.title || item.url);
-  base.data[kind] = items;
-  base.data.count = items.length;
+  const opts = normalizeListOptions(args);
+  const collected = await scrollAndCollect({
+    limit: opts.limit,
+    maxPages: opts.maxPages,
+    scrollAnchor: () => qa('.List-item .ContentItem, .Profile-mainColumn .ContentItem').pop(),
+    snapshot: () => qa('.List-item .ContentItem, .Profile-mainColumn .ContentItem').map((node) => {
+      const link = kind === 'answers'
+        ? (q('a[href*="/answer/"]', node) || q('a[href*="/question/"]', node))
+        : (q('a[href*="zhuanlan.zhihu.com/p/"], a[href*="/p/"]', node) || q('a[href]', node));
+      const rawHref = attrOf(link, 'href');
+      const item = {
+        title: textOf(q('.ContentItem-title, h2, a', node)) || textOf(link),
+        url: absUrl(rawHref),
+        excerpt: textOf(q('.RichContent-inner, .ContentItem-excerpt', node)).slice(0, 500),
+      };
+      if (!item.title && !item.url) return null;
+      if (kind === 'articles' && !(/zhuanlan\.zhihu\.com\/p\//.test(rawHref) || /\/p\//.test(rawHref))) return null;
+      if (kind === 'answers' && !/\/answer\//.test(rawHref)) return null;
+      return item;
+    }),
+    keyOf: (item) => item.url || item.title,
+  });
+  base.data[kind] = collected.items;
+  base.data.count = collected.items.length;
+  base.data.pageInfo = collected.pageInfo;
   return base;
 }
 
