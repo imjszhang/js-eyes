@@ -15,9 +15,16 @@ const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+function clawhubArgs(args) {
+  return process.platform === 'win32'
+    ? { file: 'cmd.exe', args: ['/d', '/s', '/c', 'clawhub.cmd', ...args] }
+    : { file: 'clawhub', args };
+}
+
 function available() {
   try {
-    execFileSync('clawhub', ['--help'], { stdio: 'pipe' });
+    const command = clawhubArgs(['--help']);
+    execFileSync(command.file, command.args, { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -26,7 +33,8 @@ function available() {
 
 function runClawhub(args, { allowFailure = false } = {}) {
   try {
-    return execFileSync('clawhub', args, {
+    const command = clawhubArgs(args);
+    return execFileSync(command.file, command.args, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
@@ -41,7 +49,8 @@ function runClawhub(args, { allowFailure = false } = {}) {
 function whoami() {
   // clawhub CLI writes the spinner and the "✔ <handle>" result line to STDERR,
   // not stdout. We must inspect both streams to detect a logged-in session.
-  const result = spawnSync('clawhub', ['whoami'], {
+  const command = clawhubArgs(['whoami']);
+  const result = spawnSync(command.file, command.args, {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe'],
   });

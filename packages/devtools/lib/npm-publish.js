@@ -17,6 +17,17 @@ const NPMRC_CONTENT =
   'registry=https://registry.npmjs.org/\n' +
   '//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n';
 
+function npmExecArgs(args) {
+  return process.platform === 'win32'
+    ? { file: 'cmd.exe', args: ['/d', '/s', '/c', 'npm.cmd', ...args] }
+    : { file: 'npm', args };
+}
+
+function execNpm(args, options = {}) {
+  const command = npmExecArgs(args);
+  return execFileSync(command.file, command.args, options);
+}
+
 function requireToken() {
   if (!process.env.NPM_TOKEN) {
     throw new Error(
@@ -52,7 +63,7 @@ function publish(distDir, { dryRun = false, tag = 'latest' } = {}) {
   if (dryRun) args.push('--dry-run');
 
   try {
-    const output = execFileSync('npm', args, {
+    const output = execNpm(args, {
       cwd: distDir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -83,7 +94,7 @@ function publishFromSource(pkgDir, { dryRun = false, tag = 'latest' } = {}) {
     if (dryRun) args.push('--dry-run');
 
     try {
-      const output = execFileSync('npm', args, {
+      const output = execNpm(args, {
         cwd: pkgDir,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -99,7 +110,7 @@ function publishFromSource(pkgDir, { dryRun = false, tag = 'latest' } = {}) {
 
 function versionExists(pkgName, version) {
   try {
-    const out = execFileSync('npm', ['view', `${pkgName}@${version}`, 'version'], {
+    const out = execNpm(['view', `${pkgName}@${version}`, 'version'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -115,7 +126,7 @@ function whoami() {
   const npmrc = path.join(tmpDir, `.npmrc.js-eyes-${process.pid}`);
   fs.writeFileSync(npmrc, NPMRC_CONTENT);
   try {
-    const out = execFileSync('npm', ['whoami', '--userconfig', npmrc], {
+    const out = execNpm(['whoami', '--userconfig', npmrc], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
