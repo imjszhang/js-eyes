@@ -14,6 +14,7 @@
  *   - navigate:  navigate-search / navigate-profile / navigate-post / navigate-home
  */
 
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -42,7 +43,19 @@ function pickPage(commandName, opts) {
 
 function printJson(value, opts) {
   const indent = opts && opts.pretty ? 2 : 0;
-  process.stdout.write(JSON.stringify(value, null, indent) + '\n');
+  const text = JSON.stringify(value, null, indent) + '\n';
+  if (opts && opts.output) {
+    try {
+      const abs = path.resolve(opts.output);
+      const dir = path.dirname(abs);
+      if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(abs, text, 'utf8');
+    } catch (e) {
+      process.stderr.write(`ERROR: 无法写入 --output: ${e.message}\n`);
+      throw e;
+    }
+  }
+  process.stdout.write(text);
 }
 
 function buildSessionOpts(commandName, opts, extra = {}) {

@@ -267,6 +267,7 @@ function parseArgv(argv) {
   const opts = {
     tab: null,
     page: null,
+    output: null,
     json: false,
     pretty: false,
     verbose: false,
@@ -331,6 +332,8 @@ function parseArgv(argv) {
     const eatEq = (key, prefix) => { opts[key] = a.slice(prefix.length); };
     if (a === '--json') opts.json = true;
     else if (a === '--pretty') opts.pretty = true;
+    else if (a === '--output') eat('output');
+    else if (a.startsWith('--output=')) eatEq('output', '--output=');
     else if (a === '-v' || a === '--verbose') opts.verbose = true;
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a === '--debug-recording') opts.debugRecording = true;
@@ -488,6 +491,7 @@ function printHelp() {
     '  --read-mode auto|graphql|dom   READ：auto=GraphQL 优先再 DOM（v3.2 由 --mode 重命名而来，与 visual-* 解耦）',
     '  --visual / --no-visual / --visual-hud / --visual-flash / --visual-record / --visual-trace …  见 visual-bridge-kit',
     '  --pretty                 JSON 缩进 2 空格输出',
+    '  --output <file>          同时将 JSON 结果写入文件（与 stdout 内容一致；目录不存在会自动创建）',
     '  -v, --verbose            session 流转日志输出到 stderr',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',

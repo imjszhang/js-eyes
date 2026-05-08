@@ -9,6 +9,8 @@
  * Phase 4 追加：daemon / stop
  */
 
+const fs = require('fs');
+const path = require('path');
 const { BrowserAutomation } = require('../js-eyes-client');
 const { resolveRuntimeConfig } = require('../runtimeConfig');
 const {
@@ -42,6 +44,7 @@ function parseMonitorArgs(argv) {
     dryState: false,
     interval: null,
     force: false,
+    output: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -50,6 +53,8 @@ function parseMonitorArgs(argv) {
     const eatEq = (k, prefix) => { opts[k] = a.slice(prefix.length); };
     if (a === '--json') opts.json = true;
     else if (a === '--pretty') opts.pretty = true;
+    else if (a === '--output') eat('output');
+    else if (a.startsWith('--output=')) eatEq('output', '--output=');
     else if (a === '-v' || a === '--verbose') opts.verbose = true;
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a === '--dry-notify') opts.dryNotify = true;
@@ -78,7 +83,19 @@ function parseMonitorArgs(argv) {
 
 function printJson(value, opts) {
   const indent = opts && opts.pretty ? 2 : 0;
-  process.stdout.write(JSON.stringify(value, null, indent) + '\n');
+  const text = JSON.stringify(value, null, indent) + '\n';
+  if (opts && opts.output) {
+    try {
+      const abs = path.resolve(opts.output);
+      const dir = path.dirname(abs);
+      if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(abs, text, 'utf8');
+    } catch (e) {
+      process.stderr.write(`ERROR: 无法写入 --output: ${e.message}\n`);
+      throw e;
+    }
+  }
+  process.stdout.write(text);
 }
 
 function printMonitorHelp() {
@@ -105,6 +122,7 @@ function printMonitorHelp() {
     '  --interval <sec>              daemon 循环间隔秒（最小 30）',
     '  --force                       daemon 启动时忽略残留 pid',
     '  --json / --pretty             输出 JSON / 缩进',
+    '  --output <file>               同时将 JSON 写入文件（与 stdout 一致；目录不存在则创建）',
     '  --server <ws-url>             js-eyes WS endpoint',
     '  --recording-mode <mode>       off|history|standard|debug',
     '',
