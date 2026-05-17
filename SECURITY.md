@@ -1,12 +1,12 @@
 # Security and Network Behavior
 
-> **2.7.0 note**: This document covers the runtime security posture (network
+> **2.8.0 note**: This document covers the runtime security posture (network
 > behavior, token handling, policy engine, consent ledger, supply-chain
 > hardening since 2.2.0). For the per-finding response to the
 > [ClawHub Security Scan](https://clawhub.ai/imjszhang/js-eyes) of v2.6.1,
 > see [`SECURITY_SCAN_NOTES.md`](./SECURITY_SCAN_NOTES.md); for the one-screen
 > operator summary (risk item / current default / how to tighten / config
-> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-270).
+> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-280).
 > A local reproduction of the ClawHub static heuristic is available via
 > `npm run scan:security` (zero unexpected findings on 2.6.3 — the 2.6.3
 > changes are install-time UX only and do not touch the runtime callsites
@@ -69,7 +69,7 @@ See [docs/native-messaging.md](./docs/native-messaging.md) for install/uninstall
 
 Some features intentionally access external URLs, but only when the user or agent explicitly chooses those workflows:
 
-- **Extension skill discovery/install:** `js_eyes_discover_skills`, `js_eyes_install_skill`, and the install scripts may fetch the configured registry URL such as `https://js-eyes.com/skills.json`.
+- **Extension skill discovery/install:** `js-eyes` actions `skills/discover` and `skills/plan-install`, plus the install scripts, may fetch the configured registry URL such as `https://js-eyes.com/skills.json`.
 - **Release, docs, and packaging workflows in the source repo:** development tooling may reference GitHub Releases, project websites, Cloudflare deployment targets, Mozilla AMO, or similar public endpoints.
 - **Browser automation targets:** once connected, JS Eyes can automate whatever websites the user asks it to open; that traffic is the intended workload, not telemetry.
 
@@ -110,11 +110,11 @@ That means a scan of the full repository can surface external URLs that are irre
 
 JS Eyes 2.2.0 treats skill packages as untrusted inputs that must be validated end-to-end before they reach disk or are loaded into the runtime.
 
-- **Registry metadata carries integrity data.** Every entry in `docs/skills.json` now ships with `sha256` and `size`. The CLI (`js-eyes skills install`), the OpenClaw `js_eyes_install_skill` tool, and `install.sh` / `install.ps1` all refuse to install a skill whose downloaded bundle does not match the expected digest.
+- **Registry metadata carries integrity data.** Every entry in `docs/skills.json` now ships with `sha256` and `size`. The CLI (`js-eyes skills install`), the OpenClaw `js-eyes` action `skills/plan-install`, and `install.sh` / `install.ps1` all refuse to install a skill whose downloaded bundle does not match the expected digest.
 - **`@main` fallback URLs are refused.** The installers strip any registry fallback URL that resolves to a mutable `@main` / `refs/heads/main` CDN path. Bundles must be served from an immutable tag, release, or commit pinned URL.
 - **Safe ZIP extraction.** `packages/protocol/zip-extract.js` replaces `execSync unzip` / PowerShell `Expand-Archive` with an in-process ZIP reader that rejects Zip Slip, symlinks, and oversized entries (`maxFileSize`, `maxTotalSize`, `maxEntries`).
 - **Lockfile + `npm ci --ignore-scripts`.** `installSkillDependencies` requires `package-lock.json` and runs `npm ci --ignore-scripts --no-audit --no-fund`. The flag `security.requireLockfile=false` (or `JS_EYES_REQUIRE_LOCKFILE=0` in the install scripts) can be used to relax this during migration; doing so prints a prominent warning.
-- **Plan → approve installation.** `js-eyes skills install --plan` stages the extracted bundle in a temporary directory and writes a plan JSON to `runtime/pending-skills/<skillId>.json`. The install is only applied after `js-eyes skills approve <skillId>`. `js_eyes_install_skill` inside OpenClaw likewise produces a plan and requires an out-of-band approval via the CLI.
+- **Plan → approve installation.** `js-eyes skills install --plan` stages the extracted bundle in a temporary directory and writes a plan JSON to `runtime/pending-skills/<skillId>.json`. The install is only applied after `js-eyes skills approve <skillId>`. `js-eyes` action `skills/plan-install` inside OpenClaw likewise produces a plan and requires an out-of-band approval via the CLI.
 - **Runtime integrity pinning.** Every installed skill gets a `.integrity.json` manifest that records SHA-256 for each file. `registerLocalSkills` refuses to load a skill with mismatched/missing files. `js-eyes skills verify` and `js-eyes doctor` surface tamper indicators.
 - **Skills default disabled on upgrade.** `isSkillEnabled` returns `false` unless explicitly opted in via `skillsEnabled.<id>=true`. When upgrading from 2.1.x, existing skills without an explicit setting are left disabled and a warning is logged with instructions to `js-eyes skills enable <id>`.
 
@@ -137,7 +137,7 @@ The local JS Eyes server no longer treats every localhost client as trusted.
 
 Built-in and skill-provided tools that can exfiltrate or mutate browser state are now routed through a consent gateway before execution.
 
-- **Sensitive tool set.** `protocol.SENSITIVE_TOOL_NAMES` currently contains `execute_script`, `execute_script_action`, `get_cookies`, `get_cookies_by_domain`, `upload_file`, `upload_file_to_tab`, `inject_css`, and `js_eyes_install_skill`. Additional tools can be added via `security.toolPolicies`.
+- **Sensitive action set.** `protocol.SENSITIVE_TOOL_NAMES` currently contains `browser/execute-script`, `browser/get-cookies`, `browser/get-cookies-by-domain`, `browser/upload-file`, `browser/inject-css`, and `skills/plan-install`. Additional actions can be added via `security.toolPolicies`.
 - **Policy modes.** Each sensitive tool resolves to one of `allow`, `confirm`, or `deny`. The OpenClaw plugin's `wrapSensitiveTool` records every decision to `runtime/pending-consents/<id>.json` (JSONL-friendly) and logs a structured warning. `deny` short-circuits execution and returns a rejection payload to the calling agent. `confirm` currently emits an auto-confirmation log entry and records the decision so operators can review it; future versions will block until an operator runs `js-eyes consent approve <id>`.
 - **Extension-side eval lockdown.** `handleExecuteScript` / `handleExecuteScriptRequest` (Chrome MV3 + Firefox MV2) reject raw JavaScript payloads unless `securityConfig.allowRawEval=true`. Starting with v2.5+, the extension no longer requires an independent toggle: the host's `security.allowRawEval` is pushed down at WebSocket handshake (`init_ack.serverConfig.security.allowRawEval`) and applied automatically. The extension storage key `allowRawEval` is retained as an explicit **opt-out override** for security-hardened deployments: if an operator sets it explicitly via `chrome.storage.local.set({allowRawEval:false})` (or `true`), that value wins over the host-synced value. The error `RAW_EVAL_DISABLED` is returned over the same response channel so the calling agent can degrade gracefully.
 - **Consent log review.** Operators should periodically review `runtime/pending-consents/*.json` and the JSONL entries in `logs/audit.log`. `js-eyes consent list` summarizes recent decisions; `js-eyes consent approve <id>` / `js-eyes consent deny <id>` mark pending entries for audit.

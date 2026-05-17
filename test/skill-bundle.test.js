@@ -146,6 +146,7 @@ module.exports = {
 
     const [skill] = discoverLocalSkills(tempDir);
     assert.equal(skill.id, 'mock-skill');
+    assert.deepEqual(skill.actions, ['skill/mock-skill/mock-tool']);
 
     const registrations = [];
     const summary = registerOpenClawTools({

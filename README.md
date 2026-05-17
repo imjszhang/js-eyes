@@ -261,7 +261,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.7.0)
+### Security Posture (2.8.0)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -272,7 +272,7 @@ explains the trade-off in full.
 | --- | --- | --- | --- | --- |
 | Host-side raw JavaScript eval (`execute_script` family) | `allowRawEval=false` (SKILL.md deployment opts in to `true`) | Leave `false`; run in [Safe Default Mode](./SKILL.md#safe-default-mode-no-raw-eval) — click / type / open_url / screenshot still work | `security.allowRawEval` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#b-securityallowrawevaltrue-is-required-by-the-skill)) | `js-eyes doctor --json \| jq '.security.allowRawEval'` |
 | Plugin auto-starts embedded WS/HTTP server | `autoStartServer=true`, loopback-only bind, token required | Set `autoStartServer=false` and start the server manually with `js-eyes server start` | `plugins.entries["js-eyes"].config.autoStartServer` in `openclaw.json` ([notes](./SECURITY_SCAN_NOTES.md#e-autostartservertrue-expands-blast-radius)) | `js-eyes doctor` → *Server* section |
-| Tool allowlist exposes every `js_eyes_*` tool to the model | `tools.alsoAllow: ["js-eyes"]` (full set) + per-tool `confirm` gate on sensitive ones | Replace with explicit `tools.allow: ["js_eyes_open_url", …]`; keep `toolPolicies` gates | `tools.allow` / `security.toolPolicies` ([notes](./SECURITY_SCAN_NOTES.md#f-raw-eval--tool-allowlist-combine-into-a-big-blast-radius)) | `js-eyes consent list` + `js-eyes doctor` |
+| Single OpenClaw tool exposes the JS Eyes router | `tools.alsoAllow: ["js-eyes"]` + per-action `confirm` gate on sensitive actions | Keep only `js-eyes` allowed; tighten individual actions with `security.toolPolicies` | `tools.allow` / `security.toolPolicies` ([notes](./SECURITY_SCAN_NOTES.md#f-raw-eval--tool-allowlist-combine-into-a-big-blast-radius)) | `js-eyes consent list` + `js-eyes doctor` |
 | `extraSkillDirs` skipped integrity verification | New switch off — 2.6.1 behaviour preserved | Set `security.verifyExtraSkillDirs=true`; `skills link` then auto-snapshots, `skills relink` after reviewed edits | `security.verifyExtraSkillDirs` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification)) | `js-eyes doctor` prints `integrity: verified \| drifted \| missing-snapshot` per extra; `js-eyes doctor --json` exposes it on each skill row |
 | Native-host install path runs remote code (`npx`) | `npx js-eyes native-host install` remains supported (does **not** seed the server token) | Use the local launcher `bin/js-eyes-native-host-install.sh \| .ps1` — zero network and 2.6.3+ also runs `js-eyes server token init` so popup **Sync Token From Host** works on first try | none — doc-only change in 2.6.2 ([notes](./SECURITY_SCAN_NOTES.md#d-npx-js-eyes-native-host-install-runs-remote-code)) | `node apps/cli/bin/js-eyes.js native-host status` + `js-eyes server token show` |
 | Server token handling | Generated on demand, file `0600` / Windows `icacls`, bearer on WS + HTTP | Keep defaults; rotate periodically; never set `allowAnonymous=true` in production | `security.allowAnonymous`, `js-eyes server token rotate` ([notes](./SECURITY_SCAN_NOTES.md#scope)) | `js-eyes doctor` → *Token* section; `js-eyes audit tail` |
@@ -350,27 +350,27 @@ If `JS_EYES_HOME` is set, that override still takes precedence and automatic mig
 
 ## OpenClaw Plugin
 
-JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, providing browser automation tools directly to AI agents.
+JS Eyes registers as an [OpenClaw](https://openclaw.ai/) plugin, exposing one `js-eyes` tool that routes browser automation and extension-skill actions.
 
 For native plugin loading, follow the OpenClaw runtime requirements for external plugins (ESM + Node 22+).
 
 ### What It Provides
 
 - **Background Service** — Automatically starts/stops the built-in WebSocket server
-- **9 AI Tools** — Browser automation + skill discovery/installation (see table below)
+- **1 AI Tool** — `js-eyes`, with path-style actions for browser automation and skill management
 - **CLI Commands** — `openclaw js-eyes status`, `openclaw js-eyes tabs`, `openclaw js-eyes server start/stop`
 
-| Tool | Description |
-|------|-------------|
-| `js_eyes_get_tabs` | List all open browser tabs with ID, URL, title |
-| `js_eyes_list_clients` | List connected browser extension clients |
-| `js_eyes_open_url` | Open a URL in new or existing tab |
-| `js_eyes_close_tab` | Close a tab by ID |
-| `js_eyes_get_html` | Get full HTML content of a tab |
-| `js_eyes_execute_script` | Run JavaScript in a tab and return result |
-| `js_eyes_get_cookies` | Get all cookies for a tab's domain |
-| `js_eyes_discover_skills` | Query the skill registry for available extension skills |
-| `js_eyes_install_skill` | Download, extract, and enable an extension skill so the main plugin can auto-load it |
+| Action | Description |
+|--------|-------------|
+| `browser/get-tabs` | List all open browser tabs with ID, URL, title |
+| `browser/list-clients` | List connected browser extension clients |
+| `browser/open-url` | Open a URL in a new or existing tab |
+| `browser/close-tab` | Close a tab by ID |
+| `browser/get-html` | Get full HTML content of a tab |
+| `browser/execute-script` | Run JavaScript in a tab and return the result |
+| `browser/get-cookies` | Get all cookies for a tab's domain |
+| `skills/discover` | Query the skill registry for available extension skills |
+| `skills/plan-install` | Download, verify, and stage an extension-skill install plan |
 
 ### Setup
 
@@ -427,12 +427,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.7.0` |
-| Browser extension assets | `2.7.0` |
-| `@js-eyes/server-core` | `2.7.0` |
-| `@js-eyes/client-sdk` | `2.7.0` |
-| `openclaw-plugin` | `2.7.0` |
-| Skills using `@js-eyes/client-sdk` | `2.7.0` |
+| CLI | `2.8.0` |
+| Browser extension assets | `2.8.0` |
+| `@js-eyes/server-core` | `2.8.0` |
+| `@js-eyes/client-sdk` | `2.8.0` |
+| `openclaw-plugin` | `2.8.0` |
+| Skills using `@js-eyes/client-sdk` | `2.8.0` |
 
 ## Extension Skills
 
@@ -453,8 +453,9 @@ Migration note: child skills no longer ship their own `openclaw-plugin` wrapper 
 AI agents can discover available skills automatically:
 
 ```
-# Via the AI tool
-js_eyes_discover_skills
+# Via the js-eyes AI tool
+tool: js-eyes
+action: skills/discover
 
 # Via the skill registry
 https://js-eyes.com/skills.json
@@ -485,7 +486,7 @@ newer it upgrades in place (no `Overwrite?` prompt) after verifying the
 bundle `sha256`. `JS_EYES_SKILL=all` iterates every directory under
 `<install-dir>/js-eyes/skills/`.
 
-**Via AI agent:** the agent calls `js_eyes_install_skill` with the skill ID. It downloads, extracts, installs dependencies, and enables the skill in the JS Eyes host config. Since 2026-04-19 the main plugin **hot-loads** the skill via `SkillRegistry` + chokidar within ~300 ms — no OpenClaw restart needed unless the skill introduces a brand-new tool name (see [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)).
+**Via AI agent:** the agent calls the `js-eyes` tool with `action: skills/plan-install` and the skill ID in `args`. It downloads, verifies, and stages an install plan; finalize with `js-eyes skills approve <id>` and `js-eyes skills enable <id>`. The main plugin then hot-loads the skill via `SkillRegistry` + chokidar within ~300 ms — no OpenClaw restart needed for new skill actions.
 
 **Via the js-eyes CLI:**
 
@@ -495,16 +496,16 @@ js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 ```
 
-**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, then `js-eyes skills enable js-x-ops-skill`. A running OpenClaw + `js-eyes` plugin will hot-load the skill via the config watcher; call `js-eyes skills reload` (or Agent tool `js_eyes_reload_skills`) to force a reload. An OpenClaw restart is only required for brand-new tool names the host has never registered before.
+**Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, then `js-eyes skills enable js-x-ops-skill`. A running OpenClaw + `js-eyes` plugin will hot-load the skill via the config watcher; call `js-eyes skills reload` or `action: skills/reload` through the `js-eyes` tool to force a reload.
 
 ### Authoring your own JS Eyes Skill
 
 Custom skills don't have to live inside this repository. Two ways to hook them in:
 
 - Point `skillsDir` at the parent folder that contains your skills (js-eyes takes full lifecycle ownership — `install` / `approve` / `verify` all act on this dir).
-- Keep the default `skillsDir` and add individual skill folders (or parent folders) to `extraSkillDirs`. Extras are **read-only**: they're discovered and their tools are registered, but js-eyes never mutates them.
+- Keep the default `skillsDir` and add individual skill folders (or parent folders) to `extraSkillDirs`. Extras are **read-only**: they're discovered and routed through `js-eyes`, but js-eyes never mutates them.
 
-The fastest path for an external custom skill is **zero-restart**: `js-eyes skills link /abs/path/to/my-skill` appends the directory to `extraSkillDirs` and triggers an in-memory `registry.reload()` on the running plugin. `js-eyes skills unlink <path>` / `js-eyes skills reload` (and the `js_eyes_reload_skills` Agent tool) cover the rest of the lifecycle. See [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐).
+The fastest path for an external custom skill is **zero-restart**: `js-eyes skills link /abs/path/to/my-skill` appends the directory to `extraSkillDirs` and triggers an in-memory `registry.reload()` on the running plugin. `js-eyes skills unlink <path>` / `js-eyes skills reload` (or `action: skills/reload` through the `js-eyes` tool) cover the rest of the lifecycle. See [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐).
 
 See:
 
@@ -550,7 +551,7 @@ npm run build:firefox
 # Bump version across all manifests (note: this does NOT touch skills/*/package.json —
 # sub-skills keep their own independent versions so users can upgrade them via
 # `js-eyes skills update` without reinstalling the parent bundle)
-npm run bump -- 2.7.0
+npm run bump -- 2.8.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
@@ -570,16 +571,16 @@ Use this checklist after a fresh ClawHub install:
 3. Restart or refresh OpenClaw
 4. Run `openclaw js-eyes status`
 5. Install the browser extension, connect it to `http://localhost:18080`, then run `openclaw js-eyes tabs`
-6. Ask the agent to call `js_eyes_get_tabs`
-7. Ask the agent to call `js_eyes_discover_skills`
-8. Install one child skill with `js_eyes_install_skill` (or `js-eyes skills link <path>` for external skills). The main plugin hot-reloads within ~300 ms via the config watcher; confirm via `js_eyes_reload_skills` or the `Hot-loaded skill` / `added` entries in the gateway logs. Restart OpenClaw only if `failedDispatchers` reports a brand-new tool name the host refused to register at runtime.
+6. Ask the agent to call `js-eyes` with `action: browser/get-tabs`
+7. Ask the agent to call `js-eyes` with `action: skills/discover`
+8. Install one child skill with `action: skills/plan-install` (or `js-eyes skills link <path>` for external skills). The main plugin hot-reloads within ~300 ms via the config watcher; confirm via `action: skills/reload` or the `Hot-loaded skill` / `added` entries in the gateway logs.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | Extension shows "Disconnected" | Check `openclaw js-eyes status`; ensure `autoStartServer` is `true` |
-| `js_eyes_get_tabs` returns empty | Click extension icon, verify address, click Connect |
+| `browser/get-tabs` returns empty | Click extension icon, verify address, click Connect |
 | `Cannot find module 'ws'` | Run `npm install` in the skill root |
 | Tools not appearing in OpenClaw | Ensure `plugins.load.paths` points to the main `openclaw-plugin` subdirectory and the target child skill is not disabled in the JS Eyes host config |
 | Plugin path not found (Windows) | Use forward slashes in JSON, e.g. `C:/Users/you/skills/js-eyes/openclaw-plugin` |

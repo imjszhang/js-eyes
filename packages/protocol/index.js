@@ -24,13 +24,12 @@ const FORWARDABLE_ACTIONS = [
 ];
 
 const SENSITIVE_TOOL_NAMES = Object.freeze([
-  'js_eyes_execute_script',
-  'js_eyes_get_cookies',
-  'js_eyes_get_cookies_by_domain',
-  'js_eyes_inject_css',
-  'js_eyes_upload_file',
-  'js_eyes_upload_file_to_tab',
-  'js_eyes_install_skill',
+  'browser/execute-script',
+  'browser/get-cookies',
+  'browser/get-cookies-by-domain',
+  'browser/inject-css',
+  'browser/upload-file',
+  'skills/plan-install',
 ]);
 
 const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1', '0:0:0:0:0:0:0:1']);
@@ -79,13 +78,12 @@ const DEFAULT_SECURITY_CONFIG = Object.freeze({
   taint: { ...DEFAULT_TAINT_CONFIG },
   profile: { ...DEFAULT_PROFILE_CONFIG },
   toolPolicies: {
-    js_eyes_execute_script: 'confirm',
-    js_eyes_get_cookies: 'confirm',
-    js_eyes_get_cookies_by_domain: 'confirm',
-    js_eyes_inject_css: 'confirm',
-    js_eyes_upload_file: 'confirm',
-    js_eyes_upload_file_to_tab: 'confirm',
-    js_eyes_install_skill: 'confirm',
+    'browser/execute-script': 'confirm',
+    'browser/get-cookies': 'confirm',
+    'browser/get-cookies-by-domain': 'confirm',
+    'browser/inject-css': 'confirm',
+    'browser/upload-file': 'confirm',
+    'skills/plan-install': 'confirm',
   },
   sensitiveCookieDomains: [
     'bank',

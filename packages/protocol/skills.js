@@ -13,6 +13,20 @@ const SKILL_CONTRACT_FILE = 'skill.contract.js';
 const INTEGRITY_FILE = '.integrity.json';
 const INSTALL_MANIFEST_FILE = 'skills-install.json';
 
+function toolNameToActionSegment(name) {
+  return String(name || '')
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function skillToolActionName(skillId, toolName) {
+  const action = toolNameToActionSegment(toolName);
+  return `skill/${skillId}/${action || 'run'}`;
+}
+
 function loadSkillContract(skillDir) {
   const contractPath = path.resolve(skillDir, SKILL_CONTRACT_FILE);
   if (!fs.existsSync(contractPath)) return null;
@@ -142,8 +156,10 @@ function normalizeSkillMetadata(skillDir) {
     ? cli.commands.map((command) => command.name)
     : [];
 
+  const id = contract?.id || pkg.name || path.basename(skillDir);
+
   return {
-    id: contract?.id || pkg.name || path.basename(skillDir),
+    id,
     name: contract?.name || pkg.name || path.basename(skillDir),
     version: contract?.version || pkg.version || '1.0.0',
     description: contract?.description || pkg.description || '',
@@ -151,6 +167,7 @@ function normalizeSkillMetadata(skillDir) {
     cliEntry: cli.entry ? path.resolve(skillDir, cli.entry) : path.join(skillDir, 'index.js'),
     commands,
     tools,
+    actions: tools.map((tool) => skillToolActionName(id, tool)),
     runtime: contract?.runtime || {},
     contract,
   };
@@ -728,6 +745,8 @@ Object.assign(module.exports, {
   resolveSkillsDir,
   resolveOpenClawPluginEntry,
   runSkillCli,
+  skillToolActionName,
+  toolNameToActionSegment,
   verifySkillIntegrity,
   writeIntegrityManifest,
 });

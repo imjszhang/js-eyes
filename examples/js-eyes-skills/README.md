@@ -62,7 +62,7 @@ npm install
 }
 ```
 
-> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并注册工具。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
+> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并纳入 `js-eyes` 路由。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
 
 ### 4. 启用与调用（零重启路径推荐）
 
@@ -71,7 +71,7 @@ npm install
 js-eyes skills link ~/my-skills/js-hello-ops-skill
 
 # 已在运行的 OpenClaw 会在 ~300ms 内通过 config 监听器热加载这个技能
-# 对应的 js_eyes_reload_skills 工具也能主动驱动 reload 并拿到 diff 摘要
+# js-eyes 的 skills/reload action 也能主动驱动 reload 并拿到 diff 摘要
 
 # 也可以直接用 CLI 跑
 node ~/my-skills/js-hello-ops-skill/index.js title 123

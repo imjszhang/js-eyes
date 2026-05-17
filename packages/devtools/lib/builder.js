@@ -463,6 +463,14 @@ async function buildSkillsRegistry(preBuiltSkills) {
   const skills = preBuiltSkills || discoverSubSkills();
   const version = getVersion();
   const generated = new Date().toISOString();
+  const toolNameToActionSegment = (name) => String(name || '')
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  const skillToolActionName = (skillId, toolName) =>
+    `skill/${skillId}/${toolNameToActionSegment(toolName) || 'run'}`;
 
   const registry = {
     version: 1,
@@ -494,6 +502,7 @@ async function buildSkillsRegistry(preBuiltSkills) {
         size: size || null,
         homepage: skill.homepage,
         tools: skill.tools,
+        actions: (skill.tools || []).map((tool) => skillToolActionName(skill.id, tool)),
         commands: skill.commands,
         runtime: skill.runtime,
         minParentVersion: skill.minParentVersion || version,

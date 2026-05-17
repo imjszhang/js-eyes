@@ -2,7 +2,7 @@
   "id": "js-eyes",
   "name": "JS Eyes",
   "description": "浏览器自动化工具 — 通过 WebSocket 为 AI Agent 提供远程浏览器控制能力（标签页管理、内容获取、脚本执行等）",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -74,7 +74,15 @@
           "browser": {
             "type": "string",
             "default": "all",
-            "enum": ["all", "chromium", "chrome", "chrome-canary", "edge", "brave", "firefox"],
+            "enum": [
+              "all",
+              "chromium",
+              "chrome",
+              "chrome-canary",
+              "edge",
+              "brave",
+              "firefox"
+            ],
             "description": "要检查/安装的浏览器范围。"
           },
           "repairStale": {
@@ -126,12 +134,12 @@
     "extraSkillDirs": {
       "label": "额外只读技能目录",
       "placeholder": "[\"/Users/you/my-skills\"]",
-      "help": "在 primary 之外再纳入若干外部技能目录（只读：发现并注册工具，但不接管 install/approve/verify/完整性校验）。每条可为单个技能目录或父目录。运行中可用 js-eyes skills link/unlink 零重启增删。",
+      "help": "在 primary 之外再纳入若干外部技能目录（只读：发现并纳入 js-eyes 路由，但不接管 install/approve/verify/完整性校验）。每条可为单个技能目录或父目录。运行中可用 js-eyes skills link/unlink 零重启增删。",
       "advanced": true
     },
     "watchConfig": {
       "label": "监听宿主配置",
-      "help": "默认开启。关闭后 js-eyes skills link/unlink/enable/disable 等会写 ~/.js-eyes/config/config.json 的命令将不再触发自动热加载，需要手动调用 js-eyes skills reload 或 js_eyes_reload_skills 工具。",
+      "help": "默认开启。关闭后 js-eyes skills link/unlink/enable/disable 等会写 ~/.js-eyes/config/config.json 的命令将不再触发自动热加载，需要手动调用 js-eyes skills reload 或通过 js-eyes 工具调用 action=skills/reload。",
       "advanced": true
     },
     "devWatchSkills": {

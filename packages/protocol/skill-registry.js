@@ -3,7 +3,12 @@
 /**
  * SkillRegistry — js-eyes 技能运行时注册表
  *
- * 通过「工具级 dispatcher 间接层」实现零重启热加载：
+ * 通过两种绑定模式实现零重启热加载：
+ *   - routerMode=true（OpenClaw 单工具模式）：只维护 actionBindings，由 `js-eyes`
+ *     总线工具按 `skill/<skillId>/<action>` 委派执行，不向宿主注册子技能工具；
+ *   - routerMode=false（兼容/测试模式）：保留工具级 dispatcher 间接层。
+ *
+ * 兼容 dispatcher 模式：
  *   - 插件启动时 api.registerTool(name, dispatcher) 仅对每个 tool name 注册一次稳定闭包；
  *   - 每个 dispatcher 在调用时从 toolBindings.get(name) 查当前实现并委派；
  *   - 热加载只改 toolBindings 映射，不触碰宿主注册表。
@@ -15,6 +20,8 @@
  * 让 OpenClaw / LLM 看到正确的入参约束（required / properties 等）。热加载时若 contract
  * 改了 schema，会按**引用** mutate 已注册的 dispatcher 对象；若某些 OpenClaw 宿主对 tool
  * 对象做了深拷贝/快照，则 mutate 不会生效，但首次注册的 schema 仍然是正确的。
+ * routerMode 下 OpenClaw 只看到 `js-eyes` 的总线 schema，子技能 schema 作为内部 definition
+ * 保留给后续 introspection / 文档输出使用。
  */
 
 const fs = require('fs');
@@ -30,6 +37,7 @@ function isSkillEnabled(...args) { return skillsApi.isSkillEnabled(...args); }
 function loadSkillContract(...args) { return skillsApi.loadSkillContract(...args); }
 function readSkillIntegrity(...args) { return skillsApi.readSkillIntegrity(...args); }
 function resolveSkillSources(...args) { return skillsApi.resolveSkillSources(...args); }
+function skillToolActionName(...args) { return skillsApi.skillToolActionName(...args); }
 function verifySkillIntegrity(...args) { return skillsApi.verifySkillIntegrity(...args); }
 
 const { verifyExtraDir: verifyExtraSkillDir } = require('./extra-integrity');
@@ -129,6 +137,7 @@ function createSkillRegistry(options = {}) {
     pluginConfig = {},
     wrapSensitiveTool = null,
     builtinToolNames = [],
+    routerMode = false,
     // When true (default when a watcher is active), we set suppressNextReload
     // after our own setConfigValue writes so the chokidar echo doesn't cause a
     // duplicate reload. Leave this false in test harnesses that drive reload()
@@ -136,11 +145,11 @@ function createSkillRegistry(options = {}) {
     suppressSelfWrites = true,
   } = options;
 
-  if (!api || typeof api.registerTool !== 'function') {
+  if (!routerMode && (!api || typeof api.registerTool !== 'function')) {
     throw new Error('createSkillRegistry: api.registerTool is required');
   }
 
-  const logger = makeLogger(options.logger || api.logger);
+  const logger = makeLogger(options.logger || (api && api.logger));
   const configLoader = typeof options.configLoader === 'function'
     ? options.configLoader
     : () => ({});
@@ -159,6 +168,8 @@ function createSkillRegistry(options = {}) {
   const skills = new Map();
   // toolName -> { skillId, definition, optional }
   const toolBindings = new Map();
+  // action -> { skillId, toolName, definition, optional }
+  const actionBindings = new Map();
   // toolName -> dispatcher object (registered once per name; kept by reference so we can
   // mutate `description`/`parameters`/`label` on hot-reload to keep OpenClaw-visible schema in sync)
   const dispatchers = new Map();
@@ -266,6 +277,11 @@ function createSkillRegistry(options = {}) {
         removed.push(name);
       }
     }
+    for (const [action, binding] of actionBindings) {
+      if (binding.skillId === skillId) {
+        actionBindings.delete(action);
+      }
+    }
     return removed;
   }
 
@@ -347,6 +363,7 @@ function createSkillRegistry(options = {}) {
       contract,
       adapter,
       toolNames: toolDefs.map((t) => t.toolName),
+      actionNames: toolDefs.map((t) => skillToolActionName(skill.id, t.toolName)),
       // runtime.dispose is used by hot-unload to drain WS, clear intervals, etc.
       dispose: async () => {
         const runtime = adapter && adapter.runtime;
@@ -365,14 +382,32 @@ function createSkillRegistry(options = {}) {
 
   function applyBindings(state) {
     const failedDispatchers = [];
+    const localActions = new Set();
     for (const entry of state.toolDefs) {
-      const dispatched = ensureDispatcher(entry.toolName, entry.optional, entry.definition);
-      if (!dispatched.ok) {
+      if (!routerMode) {
+        const dispatched = ensureDispatcher(entry.toolName, entry.optional, entry.definition);
+        if (!dispatched.ok) {
+          failedDispatchers.push(entry.toolName);
+          continue;
+        }
+      }
+      const actionName = skillToolActionName(state.id, entry.toolName);
+      if (localActions.has(actionName)) {
+        logger.warn(
+          `[js-eyes] Skill "${state.id}" skipped tool "${entry.toolName}" because action "${actionName}" duplicates another tool after slug normalization`,
+        );
         failedDispatchers.push(entry.toolName);
         continue;
       }
+      localActions.add(actionName);
       toolBindings.set(entry.toolName, {
         skillId: state.id,
+        definition: entry.definition,
+        optional: entry.optional,
+      });
+      actionBindings.set(actionName, {
+        skillId: state.id,
+        toolName: entry.toolName,
         definition: entry.definition,
         optional: entry.optional,
       });
@@ -663,10 +698,25 @@ function createSkillRegistry(options = {}) {
         sourcePath: s.sourcePath,
         skillDir: s.skillDir,
         tools: s.toolNames.slice(),
+        actions: s.actionNames.slice(),
       })),
       toolBindings: Array.from(toolBindings.keys()),
+      actionBindings: Array.from(actionBindings.keys()),
       dispatchersRegistered: Array.from(dispatchers.keys()),
     };
+  }
+
+  async function executeAction(action, toolCallId, params) {
+    const binding = actionBindings.get(action);
+    if (!binding) {
+      return { content: [{ type: 'text', text: DEFAULT_UNAVAILABLE_MESSAGE(action) }] };
+    }
+    return binding.definition.execute(toolCallId, params);
+  }
+
+  function getActionDefinition(action) {
+    const binding = actionBindings.get(action);
+    return binding ? binding.definition : null;
   }
 
   return {
@@ -676,9 +726,12 @@ function createSkillRegistry(options = {}) {
     disposeAll,
     snapshot,
     getState,
+    executeAction,
+    getActionDefinition,
     // Testing / plugin integration helpers
     _internals: {
       toolBindings,
+      actionBindings,
       skills,
       dispatchers,
       setSuppressNextReload(v) { suppressNextReload = Boolean(v); },

@@ -10,7 +10,7 @@ window.I18nLocales['zh-CN'] = {
         langToggle: 'EN',
     },
     hero: {
-        badge: 'v2.7.0 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
+        badge: 'v2.8.0 // \u6d4f\u89c8\u5668\u81ea\u52a8\u5316',
         openclawBadge: '\u539f\u751f\u652f\u6301 OPENCLAW',
         titleLine1: 'AI Agent \u7684',
         titleLine2: '\u6d4f\u89c8\u5668\u4e4b\u773c',
@@ -105,7 +105,7 @@ window.I18nLocales['zh-CN'] = {
         },
         agentHint: {
             title: 'Agent \u81ea\u52a8\u53d1\u73b0',
-            desc: '\u5df2\u5b89\u88c5 JS Eyes \u7684 AI Agent \u53ef\u4ee5\u901a\u8fc7\u5185\u7f6e\u7684 <span class="text-[#FCD228] font-mono">js_eyes_discover_skills</span> \u5de5\u5177\u81ea\u52a8\u53d1\u73b0\u548c\u5b89\u88c5\u6269\u5c55\u6280\u80fd\u3002\u6280\u80fd\u6ce8\u518c\u8868\u6258\u7ba1\u5728 <a href="./skills.json" class="text-[#FCD228] underline hover:no-underline">js-eyes.com/skills.json</a>\u3002',
+            desc: '\u5df2\u5b89\u88c5 JS Eyes \u7684 AI Agent \u53ef\u4ee5\u901a\u8fc7\u5185\u7f6e\u7684 <span class="text-[#FCD228] font-mono">js-eyes</span> \u5de5\u5177\u4e0e <span class="text-[#FCD228] font-mono">skills/discover</span> action \u81ea\u52a8\u53d1\u73b0\u548c\u5b89\u88c5\u6269\u5c55\u6280\u80fd\u3002\u6280\u80fd\u6ce8\u518c\u8868\u6258\u7ba1\u5728 <a href="./skills.json" class="text-[#FCD228] underline hover:no-underline">js-eyes.com/skills.json</a>\u3002',
         },
     },
     cta: {

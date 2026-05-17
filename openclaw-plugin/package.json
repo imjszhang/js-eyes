@@ -1,6 +1,6 @@
 {
   "name": "js-eyes",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "Optional OpenClaw plugin component for JS Eyes",
   "type": "module",
   "main": "index.mjs",

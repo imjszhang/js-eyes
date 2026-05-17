@@ -56,7 +56,7 @@ const TOOL_DEFINITIONS = [
     parameters: {
       type: 'object',
       properties: {
-        tabId: { type: 'number', description: '标签页 ID（通过 js_eyes_get_tabs 获取）' },
+        tabId: { type: 'number', description: '标签页 ID（通过 js-eyes action=browser/get-tabs 获取）' },
         target: { type: 'string', description: '目标浏览器 clientId 或名称（如 firefox/chrome）' },
       },
       required: ['tabId'],

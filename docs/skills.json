@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generated": "2026-05-01T19:32:28.044Z",
+  "generated": "2026-05-17T07:25:24.000Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.7.0"
+    "version": "2.8.0"
   },
   "skills": [
     {
@@ -25,6 +25,10 @@
       "tools": [
         "bilibili_get_video",
         "bilibili_get_subtitles"
+      ],
+      "actions": [
+        "skill/js-bilibili-ops-skill/bilibili-get-video",
+        "skill/js-bilibili-ops-skill/bilibili-get-subtitles"
       ],
       "commands": [
         "video",
@@ -62,6 +66,14 @@
         "browser_wait_for",
         "browser_scroll",
         "browser_screenshot"
+      ],
+      "actions": [
+        "skill/js-browser-ops-skill/browser-read-page",
+        "skill/js-browser-ops-skill/browser-click",
+        "skill/js-browser-ops-skill/browser-fill-form",
+        "skill/js-browser-ops-skill/browser-wait-for",
+        "skill/js-browser-ops-skill/browser-scroll",
+        "skill/js-browser-ops-skill/browser-screenshot"
       ],
       "commands": [
         "read",
@@ -104,6 +116,15 @@
         "github_navigate_repo",
         "github_navigate_issues",
         "github_navigate_issue"
+      ],
+      "actions": [
+        "skill/js-github-ops-skill/github-session-state",
+        "skill/js-github-ops-skill/github-get-repo",
+        "skill/js-github-ops-skill/github-list-issues",
+        "skill/js-github-ops-skill/github-get-issue",
+        "skill/js-github-ops-skill/github-navigate-repo",
+        "skill/js-github-ops-skill/github-navigate-issues",
+        "skill/js-github-ops-skill/github-navigate-issue"
       ],
       "commands": [
         "doctor",
@@ -150,6 +171,9 @@
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
+      ],
+      "actions": [
+        "skill/js-jike-ops-skill/jike-get-post"
       ],
       "commands": [
         "post"
@@ -199,6 +223,23 @@
         "reddit_navigate_user",
         "reddit_navigate_inbox",
         "reddit_navigate_home"
+      ],
+      "actions": [
+        "skill/js-reddit-ops-skill/reddit-get-post",
+        "skill/js-reddit-ops-skill/reddit-session-state",
+        "skill/js-reddit-ops-skill/reddit-list-subreddit",
+        "skill/js-reddit-ops-skill/reddit-subreddit-about",
+        "skill/js-reddit-ops-skill/reddit-search",
+        "skill/js-reddit-ops-skill/reddit-user-profile",
+        "skill/js-reddit-ops-skill/reddit-inbox-list",
+        "skill/js-reddit-ops-skill/reddit-my-feed",
+        "skill/js-reddit-ops-skill/reddit-expand-more",
+        "skill/js-reddit-ops-skill/reddit-navigate-post",
+        "skill/js-reddit-ops-skill/reddit-navigate-subreddit",
+        "skill/js-reddit-ops-skill/reddit-navigate-search",
+        "skill/js-reddit-ops-skill/reddit-navigate-user",
+        "skill/js-reddit-ops-skill/reddit-navigate-inbox",
+        "skill/js-reddit-ops-skill/reddit-navigate-home"
       ],
       "commands": [
         "post",
@@ -257,6 +298,9 @@
       "tools": [
         "wechat_get_article"
       ],
+      "actions": [
+        "skill/js-wechat-ops-skill/wechat-get-article"
+      ],
       "commands": [
         "article"
       ],
@@ -304,6 +348,22 @@
         "x_monitor_add_account",
         "x_monitor_remove_account",
         "x_monitor_test_account"
+      ],
+      "actions": [
+        "skill/js-x-ops-skill/x-search-tweets",
+        "skill/js-x-ops-skill/x-get-profile",
+        "skill/js-x-ops-skill/x-get-post",
+        "skill/js-x-ops-skill/x-get-home-feed",
+        "skill/js-x-ops-skill/x-session-state",
+        "skill/js-x-ops-skill/x-navigate-search",
+        "skill/js-x-ops-skill/x-navigate-profile",
+        "skill/js-x-ops-skill/x-navigate-post",
+        "skill/js-x-ops-skill/x-navigate-home",
+        "skill/js-x-ops-skill/x-monitor-list-accounts",
+        "skill/js-x-ops-skill/x-monitor-get-status",
+        "skill/js-x-ops-skill/x-monitor-add-account",
+        "skill/js-x-ops-skill/x-monitor-remove-account",
+        "skill/js-x-ops-skill/x-monitor-test-account"
       ],
       "commands": [
         "search",
@@ -356,6 +416,9 @@
       "tools": [
         "xhs_get_note"
       ],
+      "actions": [
+        "skill/js-xiaohongshu-ops-skill/xhs-get-note"
+      ],
       "commands": [
         "note"
       ],
@@ -389,6 +452,10 @@
         "youtube_get_video",
         "youtube_get_subtitles"
       ],
+      "actions": [
+        "skill/js-youtube-ops-skill/youtube-get-video",
+        "skill/js-youtube-ops-skill/youtube-get-subtitles"
+      ],
       "commands": [
         "video",
         "subtitles"
@@ -421,6 +488,10 @@
       "tools": [
         "zhihu_get_answer",
         "zhihu_get_article"
+      ],
+      "actions": [
+        "skill/js-zhihu-ops-skill/zhihu-get-answer",
+        "skill/js-zhihu-ops-skill/zhihu-get-article"
       ],
       "commands": [
         "answer",

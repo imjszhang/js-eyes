@@ -19,6 +19,7 @@ const {
   fetchSkillsRegistry,
   planSkillInstall,
   resolveSkillSources,
+  skillToolActionName,
 } = require("../packages/protocol/skills");
 const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
 const { ensureToken } = require("../packages/runtime-paths/token.js");
@@ -63,23 +64,7 @@ function resolveSkillRoot() {
 
 const SKILL_ROOT = resolveSkillRoot();
 const DEFAULT_REGISTRY = SKILLS_REGISTRY_URL;
-const BUILTIN_TOOL_NAMES = [
-  "js_eyes_get_tabs",
-  "js_eyes_list_clients",
-  "js_eyes_open_url",
-  "js_eyes_close_tab",
-  "js_eyes_get_html",
-  "js_eyes_execute_script",
-  "js_eyes_get_cookies",
-  "js_eyes_inject_css",
-  "js_eyes_get_cookies_by_domain",
-  "js_eyes_get_page_info",
-  "js_eyes_upload_file",
-  "js_eyes_discover_skills",
-  "js_eyes_install_skill",
-  "js_eyes_reload_skills",
-  "js_eyes_reload_security",
-];
+const BUILTIN_TOOL_NAMES = [];
 
 function resolvePluginEntry(definition) {
   try {
@@ -318,8 +303,13 @@ function register(api) {
     throw err;
   }
 
-  function registerBuiltin(definition, options) {
-    api.registerTool(wrapSensitiveTool(definition, { source: 'builtin' }), options);
+  const coreActions = new Map();
+
+  function registerCoreAction(action, definition) {
+    coreActions.set(
+      action,
+      wrapSensitiveTool({ ...definition, name: action }, { source: 'builtin' }),
+    );
   }
 
   api.registerService({
@@ -374,9 +364,10 @@ function register(api) {
     },
   });
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/get-tabs",
     {
-      name: "js_eyes_get_tabs",
+      name: "browser/get-tabs",
       label: "JS Eyes: Get Tabs",
       description: "获取浏览器中所有已打开的标签页列表，包含每个标签页的 ID、URL、标题等信息。",
       parameters: {
@@ -407,12 +398,12 @@ function register(api) {
         return textResult(lines.join("\n"));
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/list-clients",
     {
-      name: "js_eyes_list_clients",
+      name: "browser/list-clients",
       label: "JS Eyes: List Clients",
       description: "获取当前已连接到 JS-Eyes 服务器的浏览器扩展客户端列表。",
       parameters: { type: "object", properties: {} },
@@ -428,12 +419,12 @@ function register(api) {
         return textResult(lines.join("\n"));
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/open-url",
     {
-      name: "js_eyes_open_url",
+      name: "browser/open-url",
       label: "JS Eyes: Open URL",
       description: "在浏览器中打开指定 URL。可以打开新标签页，也可以在已有标签页中导航。返回标签页 ID。",
       parameters: {
@@ -467,12 +458,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/close-tab",
     {
-      name: "js_eyes_close_tab",
+      name: "browser/close-tab",
       label: "JS Eyes: Close Tab",
       description: "关闭浏览器中指定 ID 的标签页。",
       parameters: {
@@ -493,12 +484,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/get-html",
     {
-      name: "js_eyes_get_html",
+      name: "browser/get-html",
       label: "JS Eyes: Get HTML",
       description: "获取指定标签页的完整 HTML 内容。",
       parameters: {
@@ -519,12 +510,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  registerBuiltin(
+  registerCoreAction(
+    "browser/execute-script",
     {
-      name: "js_eyes_execute_script",
+      name: "browser/execute-script",
       label: "JS Eyes: Execute Script",
       description: "在指定标签页中执行 JavaScript 代码并返回执行结果。可用于提取页面数据、操作 DOM 等。",
       parameters: {
@@ -549,12 +540,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  registerBuiltin(
+  registerCoreAction(
+    "browser/get-cookies",
     {
-      name: "js_eyes_get_cookies",
+      name: "browser/get-cookies",
       label: "JS Eyes: Get Cookies",
       description: "获取指定标签页对应域名的所有 Cookie。",
       parameters: {
@@ -578,12 +569,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  registerBuiltin(
+  registerCoreAction(
+    "browser/inject-css",
     {
-      name: "js_eyes_inject_css",
+      name: "browser/inject-css",
       label: "JS Eyes: Inject CSS",
       description: "向指定标签页注入自定义 CSS 样式。可用于隐藏页面元素、调整布局等。",
       parameters: {
@@ -605,12 +596,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  registerBuiltin(
+  registerCoreAction(
+    "browser/get-cookies-by-domain",
     {
-      name: "js_eyes_get_cookies_by_domain",
+      name: "browser/get-cookies-by-domain",
       label: "JS Eyes: Get Cookies By Domain",
       description: "按域名获取浏览器中的所有 Cookie，无需指定标签页。支持包含子域名。",
       parameters: {
@@ -641,12 +632,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "browser/get-page-info",
     {
-      name: "js_eyes_get_page_info",
+      name: "browser/get-page-info",
       label: "JS Eyes: Get Page Info",
       description: "获取指定标签页的页面信息，包括 URL、标题、状态和图标。",
       parameters: {
@@ -667,12 +658,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  registerBuiltin(
+  registerCoreAction(
+    "browser/upload-file",
     {
-      name: "js_eyes_upload_file",
+      name: "browser/upload-file",
       label: "JS Eyes: Upload File",
       description: "向指定标签页的文件上传控件上传文件。文件以 Base64 编码传入，自动设置到页面的 file input 元素。",
       parameters: {
@@ -713,14 +704,14 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
+  registerCoreAction(
+    "skills/discover",
     {
-      name: "js_eyes_discover_skills",
+      name: "skills/discover",
       label: "JS Eyes: Discover Skills",
-      description: "查询 JS Eyes 扩展技能注册表，列出可安装的扩展技能（如 X.com 搜索等）。返回每个技能的 ID、名称、描述、版本、提供的 AI 工具列表和安装命令。",
+      description: "查询 JS Eyes 扩展技能注册表，列出可安装的扩展技能（如 X.com 搜索等）。返回每个技能的 ID、名称、描述、版本、可通过 js-eyes 调用的 action 和安装命令。",
       parameters: {
         type: "object",
         properties: {
@@ -760,8 +751,11 @@ function register(api) {
             lines.push(`### ${s.emoji || ""} ${s.name} (${s.id}) — ${status}`);
             lines.push(`  ${s.description}`);
             lines.push(`  版本: ${s.version}`);
-            if (s.tools && s.tools.length > 0) {
-              lines.push(`  AI 工具: ${s.tools.join(", ")}`);
+            const actions = Array.isArray(s.actions)
+              ? s.actions
+              : (Array.isArray(s.tools) ? s.tools.map((tool) => skillToolActionName(s.id, tool)) : []);
+            if (actions.length > 0) {
+              lines.push(`  Actions: ${actions.join(", ")}`);
             }
             if (s.commands && s.commands.length > 0) {
               lines.push(`  CLI 命令: ${s.commands.join(", ")}`);
@@ -770,7 +764,7 @@ function register(api) {
               lines.push(`  依赖: ${s.requires.skills.join(", ")}`);
             }
             if (!installed) {
-              lines.push(`  安装: 调用 js_eyes_install_skill 工具，参数 skillId="${s.id}"`);
+              lines.push(`  安装: 调用 js-eyes 工具，action="skills/plan-install"，args.skillId="${s.id}"`);
               lines.push(`  或命令行: curl -fsSL https://js-eyes.com/install.sh | bash -s -- ${s.id}`);
             }
             lines.push("");
@@ -782,12 +776,12 @@ function register(api) {
         }
       },
     },
-    { optional: true },
   );
 
-  api.registerTool(
-    wrapSensitiveTool({
-      name: "js_eyes_install_skill",
+  registerCoreAction(
+    "skills/plan-install",
+    {
+      name: "skills/plan-install",
       label: "JS Eyes: Plan Skill Install",
       description: "下载并校验一个 JS Eyes 扩展技能的安装计划：核对 SHA-256、解到 staging 目录、列出工具/依赖。出于安全考虑，不会自动启用或写入到 skills 目录；需要用户在终端执行 `js-eyes skills approve <skillId>` 才会真正落地。",
       parameters: {
@@ -826,7 +820,7 @@ function register(api) {
             `  来源: ${plan.sourceUrl}`,
             `  SHA-256: ${plan.bundleSha256}`,
             `  Bundle 大小: ${plan.bundleSize} bytes`,
-            `  声明工具: ${(plan.declaredTools || []).join(', ') || '(none)'}`,
+            `  声明 actions: ${(plan.declaredTools || []).map((tool) => skillToolActionName(skillId, tool)).join(', ') || '(none)'}`,
             `  依赖锁文件: ${plan.hasLockfile ? '存在' : '缺失'}`,
             `  Staging: ${plan.stagingDir}`,
             `  目标: ${plan.targetDir}`,
@@ -839,8 +833,7 @@ function register(api) {
           return textResult(`生成安装计划失败 (${skillId}): ${err.message}`);
         }
       },
-    }),
-    { optional: true },
+    },
   );
 
   skillRegistry = createSkillRegistry({
@@ -848,6 +841,7 @@ function register(api) {
     pluginConfig: pluginCfg,
     wrapSensitiveTool,
     builtinToolNames: BUILTIN_TOOL_NAMES,
+    routerMode: true,
     skillsDir,
     extrasProvider: () => {
       const cfg = loadConfig();
@@ -863,9 +857,10 @@ function register(api) {
   });
   void initPromise;
 
-  api.registerTool(
-    wrapSensitiveTool({
-      name: "js_eyes_reload_skills",
+  registerCoreAction(
+    "skills/reload",
+    {
+      name: "skills/reload",
       label: "JS Eyes: Reload Skills",
       description: "重新扫描 primary + extraSkillDirs，应用 skillsEnabled 与配置变更（热加载/卸载技能），无需重启 OpenClaw。",
       parameters: {
@@ -895,7 +890,7 @@ function register(api) {
             }
           }
           if (Array.isArray(summary.failedDispatchers) && summary.failedDispatchers.length > 0) {
-            lines.push(`  dispatcher-failures (restart OpenClaw once to expose these):`);
+            lines.push(`  binding-failures:`);
             for (const f of summary.failedDispatchers) {
               lines.push(`    - ${f.skillId}: ${f.toolNames.join(', ')}`);
             }
@@ -905,13 +900,13 @@ function register(api) {
           return { content: [{ type: 'text', text: `reload 失败: ${error.message}` }] };
         }
       },
-    }),
-    { optional: true },
+    },
   );
 
-  api.registerTool(
-    wrapSensitiveTool({
-      name: "js_eyes_reload_security",
+  registerCoreAction(
+    "security/reload",
+    {
+      name: "security/reload",
       label: "JS Eyes: Reload Security",
       description: "热加载 ~/.js-eyes/config/config.json 中的安全配置（egressAllowlist / toolPolicies / enforcement 等），无需重启 OpenClaw 或 JS Eyes 服务器。下一次 open_url 会立即生效。非热加载字段（serverHost/serverPort/allowAnonymous/token 等）会出现在 ignored 字段中，仍需重启。",
       parameters: {
@@ -949,7 +944,50 @@ function register(api) {
           return { content: [{ type: 'text', text: `security reload 失败: ${error.message}` }] };
         }
       },
-    }),
+    },
+  );
+
+  api.registerTool(
+    {
+      name: "js-eyes",
+      label: "JS Eyes",
+      description: "JS Eyes 单一入口。使用路径式 action 调用浏览器、技能与安全管理能力，例如 browser/open-url、skills/reload、skill/<skillId>/<action>。",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            description: "路径式动作名，例如 browser/get-tabs、browser/open-url、skills/reload、security/reload、skill/<skillId>/<action>。",
+          },
+          args: {
+            type: "object",
+            description: "传给 action 的参数对象。",
+            additionalProperties: true,
+          },
+        },
+        required: ["action"],
+      },
+      async execute(toolCallId, params = {}) {
+        const action = typeof params.action === "string" ? params.action.trim() : "";
+        const args = params.args && typeof params.args === "object" && !Array.isArray(params.args)
+          ? params.args
+          : {};
+        if (!action) {
+          return textResult("缺少 action。请使用路径式 action，例如 browser/get-tabs 或 browser/open-url。");
+        }
+        const core = coreActions.get(action);
+        if (core) {
+          return core.execute(toolCallId, args);
+        }
+        if (action.startsWith("skill/")) {
+          return skillRegistry.executeAction(action, toolCallId, args);
+        }
+        return textResult(
+          `不支持的 JS Eyes action: ${action}\n` +
+          `请使用路径式 action，例如 browser/get-tabs、browser/open-url、skills/reload、security/reload 或 skill/<skillId>/<action>。`,
+        );
+      },
+    },
     { optional: true },
   );
 

@@ -52,6 +52,7 @@ const {
   resolveSkillSources,
   resolveSkillsDir,
   runSkillCli,
+  skillToolActionName,
   verifySkillIntegrity,
 } = require('@js-eyes/protocol/skills');
 const {
@@ -66,6 +67,12 @@ function resolveSources(paths, config) {
     primary: resolveSkillsDir(paths, config),
     extras: Array.isArray(config && config.extraSkillDirs) ? config.extraSkillDirs : [],
   });
+}
+
+function skillActions(skill) {
+  if (Array.isArray(skill && skill.actions)) return skill.actions.slice();
+  const tools = Array.isArray(skill && skill.tools) ? skill.tools : [];
+  return tools.map((tool) => skillToolActionName(skill.id, tool));
 }
 
 function parseSemver(input) {
@@ -1170,7 +1177,7 @@ async function commandSkills(positionals, flags) {
               source: skill.source,
               sourcePath: skill.sourcePath,
               skillDir: skill.skillDir,
-              tools: skill.tools,
+              actions: skillActions(skill),
               commands: skill.commands,
               enabled: isSkillEnabled(config, skill.id, legacyState),
               latestVersion,
@@ -1207,8 +1214,9 @@ async function commandSkills(positionals, flags) {
           if (Array.isArray(skill.commands) && skill.commands.length > 0) {
             lines.push(`  Commands: ${skill.commands.join(', ')}`);
           }
-          if (Array.isArray(skill.tools) && skill.tools.length > 0) {
-            lines.push(`  Tools: ${skill.tools.join(', ')}`);
+          const actions = skillActions(skill);
+          if (actions.length > 0) {
+            lines.push(`  Actions: ${actions.join(', ')}`);
           }
           if (local) {
             lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
@@ -1228,7 +1236,8 @@ async function commandSkills(positionals, flags) {
             lines.push(`- ${skill.id} [installed]`);
             lines.push(`  ${skill.description || ''}`);
             if (skill.commands.length > 0) lines.push(`  Commands: ${skill.commands.join(', ')}`);
-            if (skill.tools.length > 0) lines.push(`  Tools: ${skill.tools.join(', ')}`);
+            const actions = skillActions(skill);
+            if (actions.length > 0) lines.push(`  Actions: ${actions.join(', ')}`);
             lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${skill.skillDir}`);
             lines.push(renderSourceLine(skill));
@@ -1264,8 +1273,9 @@ async function commandSkills(positionals, flags) {
         if (skill.commands.length > 0) {
           lines.push(`  Commands: ${skill.commands.join(', ')}`);
         }
-        if (skill.tools.length > 0) {
-          lines.push(`  Tools: ${skill.tools.join(', ')}`);
+        const actions = skillActions(skill);
+        if (actions.length > 0) {
+          lines.push(`  Actions: ${actions.join(', ')}`);
         }
         lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
         lines.push(`  Installed at: ${skill.skillDir}`);
@@ -1313,7 +1323,7 @@ async function commandSkills(positionals, flags) {
       print(`Source: ${plan.sourceUrl}`);
       print(`SHA-256: ${plan.bundleSha256}`);
       print(`Bundle size: ${plan.bundleSize} bytes`);
-      print(`Declared tools: ${(plan.declaredTools || []).join(', ') || '(none)'}`);
+      print(`Declared actions: ${(plan.declaredTools || []).map((tool) => skillToolActionName(skillId, tool)).join(', ') || '(none)'}`);
       print(`Has package-lock.json: ${plan.hasLockfile ? 'yes' : 'no'}`);
       print(`Files in bundle: ${plan.stagedFiles.length}`);
       print(`Target dir: ${plan.targetDir}`);

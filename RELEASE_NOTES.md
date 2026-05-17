@@ -1,5 +1,49 @@
 # Release Notes
 
+## v2.8.0
+
+> **OpenClaw now sees one tool: `js-eyes`.** All browser operations, skill
+> lifecycle commands, security reloads, and child skill actions route through
+> path-style `action` values on the single `js-eyes` tool.
+
+### Highlights
+
+- **Single OpenClaw tool**: the plugin registers only `js-eyes`; previous
+  built-ins such as `js_eyes_get_tabs` and per-skill tools are internalized.
+- **Path-style actions**: call `browser/get-tabs`, `browser/open-url`,
+  `skills/reload`, `security/reload`, or `skill/<skillId>/<action>` with
+  `args: { ... }`.
+- **Router-mode skills**: `SkillRegistry` keeps hot-reloadable skill bindings
+  without registering each skill action as an OpenClaw tool.
+- **Security preserved**: sensitive operations still pass through action-level
+  policy wrapping and `security.toolPolicies`.
+
+### Migration Notes
+
+- This is a breaking OpenClaw invocation change. Do not call old `js_eyes_*`
+  tools or old action names; they are intentionally rejected.
+- Allowlist `js-eyes` in OpenClaw, then control sensitive paths through JS Eyes
+  policy configuration.
+- Existing browser extension protocol and WebSocket automation remain on the
+  same protocol version; the main impact is the OpenClaw tool surface.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.0/js-eyes-chrome-v2.8.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.0/js-eyes-firefox-v2.8.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.8.0/js-eyes-skill-v2.8.0.zip)
+- [ClawHub Skill (`js-eyes@2.8.0`)](https://clawhub.ai/imjszhang/js-eyes)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` bundle to `2.8.0` and run `npm install` in the bundle
+   root.
+2. Restart OpenClaw once so the plugin reloads and registers only `js-eyes`.
+3. Update agent prompts or tool-call adapters to send `action` and `args` to
+   `js-eyes`.
+
 ## v2.7.0
 
 > **Visual-trace → video pipeline (Phase 2).** Visual events now travel with

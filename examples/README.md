@@ -59,14 +59,14 @@ npm install
 ```bash
 js-eyes skills enable js-hello-ops-skill
 # 运行中的 js-eyes 主插件会在 ~300 ms 内通过 chokidar watcher 自动热加载
-# 之后 hello_get_title 工具即可见，无需重启 OpenClaw。
+# 之后可通过 js-eyes 的 skill/js-hello-ops-skill/hello-get-title action 调用，无需重启 OpenClaw。
 
 # 零重启快捷方式（等价）：
 # js-eyes skills link /Users/you/my-skills/js-hello-ops-skill   # 外部 skill 直接挂到当前主机
 # js-eyes skills reload                                           # 强制触发一次 reload
-# 或 Agent 侧调 js_eyes_reload_skills 工具拿 diff 摘要
+# 或 Agent 侧通过 js-eyes 调 skills/reload 拿 diff 摘要
 ```
 
-> 仅当 `openclaw-plugin` 第一次纳入 OpenClaw 或该 skill 带来了一个**从未注册过的 tool name** 时，`js_eyes_reload_skills` 返回的 `failedDispatchers` 会要求一次 OpenClaw 重启。其他变更（启用/禁用、热替换实现、unlink）全部零重启。
+> 仅当 `openclaw-plugin` 第一次纳入 OpenClaw 时需要重启。之后 skill 的启用/禁用、热替换实现、unlink 都通过单一 `js-eyes` 工具路由，全部零重启。
 
 详细步骤见 [docs/dev/js-eyes-skills/deployment.zh.md](../docs/dev/js-eyes-skills/deployment.zh.md)。

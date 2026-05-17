@@ -30,6 +30,60 @@ All notable changes to this project will be documented in this file.
 `--visual-mode dom` → `--no-visual-hud`、`--visual-mode off` → `--no-visual`、
 代码里 `mode:` 字段（runTool 调用 / cmdDef defaults）→ `readMode:` / `defaultReadMode:`。
 
+## [2.8.0] - 2026-05-17
+
+> **OpenClaw single-tool router.** JS Eyes now exposes exactly one OpenClaw tool,
+> `js-eyes`. Browser automation, skill management, security reloads, and child
+> skill actions are routed through path-style `action` values plus an `args`
+> object, so OpenClaw no longer sees one tool per built-in command or skill.
+
+### Breaking
+
+- OpenClaw no longer registers individual `js_eyes_*` tools. Agents must call
+  `tool: js-eyes` with `action` values such as `browser/get-tabs`,
+  `browser/open-url`, `skills/reload`, `security/reload`, or
+  `skill/<skillId>/<action>`.
+- Old `js_eyes_*` action names are intentionally not retained as aliases. This
+  keeps the OpenClaw surface strict and makes failed migrations visible.
+- Skill tools are no longer registered directly with OpenClaw. `SkillRegistry`
+  runs in router mode for the plugin, maintains internal action bindings, and
+  dispatches skill calls via `executeAction()`.
+
+### Added
+
+- `openclaw-plugin` registers a single `js-eyes` router tool with `action` and
+  `args` parameters.
+- Built-in plugin operations now live in an internal action map:
+  `browser/get-tabs`, `browser/list-clients`, `browser/open-url`,
+  `browser/get-html`, `browser/execute-script`, `browser/get-cookies`,
+  `skills/discover`, `skills/plan-install`, `skills/reload`, and
+  `security/reload`.
+- Skill metadata now includes generated path-style `actions`, and the CLI shows
+  actions instead of OpenClaw tool names in `js-eyes skills list/install`
+  output.
+- Tests cover the single-tool registration contract, router-mode skill
+  dispatch, action metadata generation, and rejection of old action names.
+
+### Changed
+
+- `SENSITIVE_TOOL_NAMES` and sensitive action wrapping now use path-style action
+  names, preserving confirm/deny behavior under the single router.
+- `README.md`, `docs/README_CN.md`, `SKILL.md`, site copy, i18n assets,
+  `docs/skills.json`, and OpenClaw plugin metadata were updated to describe the
+  one-tool action model.
+- Platform/core package versions, extension manifests, and OpenClaw plugin
+  manifests were bumped to `2.8.0`.
+- `docs/native-messaging.md` example `pong.version` was bumped to `2.8.0`.
+
+### Migration Notes
+
+- Replace calls like `js_eyes_get_tabs` with:
+  `tool: js-eyes`, `action: browser/get-tabs`, `args: {}`.
+- Replace skill tool invocations with:
+  `tool: js-eyes`, `action: skill/<skillId>/<action>`, `args: { ... }`.
+- Keep OpenClaw allowlists focused on `js-eyes`; use `security.toolPolicies`
+  for per-action confirmation on sensitive paths.
+
 ## [2.7.0] - 2026-05-03
 
 > **Visual-trace → video pipeline (Phase 2) lands.** Visual events now travel

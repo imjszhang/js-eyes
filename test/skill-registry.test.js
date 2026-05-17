@@ -331,6 +331,52 @@ module.exports = {
   });
 });
 
+describe('createSkillRegistry — router mode', () => {
+  let tempDir = null;
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-router-'));
+  });
+  afterEach(() => {
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it('does not register skill tools with OpenClaw and executes path-style skill actions', async () => {
+    const primary = path.join(tempDir, 'primary');
+    fs.mkdirSync(primary, { recursive: true });
+    writeSkill(path.join(primary, 'mock-skill'), 'mock-skill', { tool: 'mock_tool' });
+
+    const api = createFakeApi();
+    const io = stubConfigIo({ skillsEnabled: { 'mock-skill': true } });
+    const registry = createSkillRegistry({
+      api,
+      skillsDir: primary,
+      extrasProvider: () => [],
+      configLoader: io.loader,
+      setConfigValue: io.setter,
+      logger: api.logger,
+      routerMode: true,
+      suppressSelfWrites: false,
+    });
+
+    await registry.init();
+
+    assert.equal(api._registered.size, 0);
+    assert.ok(registry._internals.actionBindings.has('skill/mock-skill/mock-tool'));
+
+    const result = await registry.executeAction('skill/mock-skill/mock-tool', 't-1', { msg: 'hi' });
+    assert.match(result.content[0].text, /from mock-skill: hi/);
+
+    const oldAction = await registry.executeAction('mock_tool', 't-2', {});
+    assert.match(oldAction.content[0].text, /not currently loaded/);
+
+    io.setter('skillsEnabled.mock-skill', false);
+    await registry.reload('toggle-off');
+    const disabled = await registry.executeAction('skill/mock-skill/mock-tool', 't-3', {});
+    assert.match(disabled.content[0].text, /not currently loaded/);
+  });
+});
+
 describe('createSkillRegistry — reload diff and lifecycle', () => {
   let tempDir = null;
   beforeEach(() => {

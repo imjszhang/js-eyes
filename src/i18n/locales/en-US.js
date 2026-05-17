@@ -10,7 +10,7 @@ window.I18nLocales['en-US'] = {
         langToggle: '中',
     },
     hero: {
-        badge: 'v2.7.0 // BROWSER AUTOMATION',
+        badge: 'v2.8.0 // BROWSER AUTOMATION',
         openclawBadge: 'NATIVE OPENCLAW SUPPORT',
         titleLine1: "AI Agent's",
         titleLine2: 'Browser Eyes',
@@ -105,7 +105,7 @@ window.I18nLocales['en-US'] = {
         },
         agentHint: {
             title: 'Agent Auto-Discovery',
-            desc: 'AI agents with JS Eyes installed can discover and install extension skills automatically via the built-in <span class="text-[#FCD228] font-mono">js_eyes_discover_skills</span> tool. The skill registry is hosted at <a href="./skills.json" class="text-[#FCD228] underline hover:no-underline">js-eyes.com/skills.json</a>.',
+            desc: 'AI agents with JS Eyes installed can discover and install extension skills automatically via the built-in <span class="text-[#FCD228] font-mono">js-eyes</span> tool and the <span class="text-[#FCD228] font-mono">skills/discover</span> action. The skill registry is hosted at <a href="./skills.json" class="text-[#FCD228] underline hover:no-underline">js-eyes.com/skills.json</a>.',
         },
     },
     cta: {
