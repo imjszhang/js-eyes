@@ -5,6 +5,8 @@
  */
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -135,37 +137,239 @@ function generateCommitMessage(files) {
   return `update ${areaList.join(', ')}`;
 }
 
-function ghRelease(tag, title, notes, assets = [], options = {}) {
-  const args = ['release', 'create', tag, '--title', title];
-  if (options.notesFile) {
-    args.push('--notes-file', options.notesFile);
-  } else {
-    args.push('--notes', notes || `Release ${tag}`);
-  }
-  if (options.repo) {
-    args.push('--repo', options.repo);
-  }
-  for (const asset of assets) {
-    args.push(asset);
-  }
-
-  const env = { ...process.env };
-  if (!env.GH_TOKEN && env.GITHUB_TOKEN) {
-    env.GH_TOKEN = env.GITHUB_TOKEN;
-  }
-
+/** npm package `gh` is Node GH (Liferay), not GitHub CLI — it breaks `gh release create`. */
+function isNpmNodeGhBinary(absPath) {
   try {
-    const output = execFileSync('gh', args, {
-      cwd: ROOT,
+    const head = fs.readFileSync(absPath, 'utf8').slice(0, 500);
+    return head.includes('Liferay') && /\bnode\s+GH\b/i.test(head);
+  } catch {
+    return false;
+  }
+}
+
+function listGhPathCandidates() {
+  const seen = new Set();
+  const add = (p) => {
+    if (p && typeof p === 'string') seen.add(p.trim());
+  };
+  add(process.env.GITHUB_CLI);
+  add('/opt/homebrew/bin/gh');
+  add('/usr/local/bin/gh');
+  try {
+    const out = execFileSync('bash', ['-lc', 'type -a gh 2>/dev/null || true'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      env,
-    }).trim();
-    return { tag, url: output };
-  } catch (err) {
-    const stderr = err.stderr?.trim() || err.message;
-    throw new Error(`gh release failed: ${stderr}`);
+    });
+    for (const line of out.split('\n')) {
+      const m = line.match(/^gh is (.+)$/);
+      if (m) add(m[1].replace(/^aliased to `/, '').replace(/`$/, '').trim());
+    }
+  } catch {
+    /* ignore */
   }
+  try {
+    const which = execFileSync('/bin/bash', ['-lc', 'command -v gh'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    add(which);
+  } catch {
+    /* ignore */
+  }
+  return [...seen].filter(Boolean);
+}
+
+/** Resolve GitHub's official `gh` binary, skipping npm's unrelated `gh` package. */
+function resolveGhExecutable() {
+  for (const candidate of listGhPathCandidates()) {
+    if (!candidate.startsWith('/') || !fs.existsSync(candidate)) continue;
+    if (isNpmNodeGhBinary(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+function parseCurlHttpBody(raw) {
+  const m = raw.match(/\nHTTP_STATUS:(\d+)\s*$/);
+  if (!m) return { status: 0, body: raw.trimEnd() };
+  const status = Number(m[1]);
+  const body = raw.slice(0, m.index).trimEnd();
+  return { status, body };
+}
+
+function githubReleaseViaRestApi(tag, title, notesBody, assets, { repo, token }) {
+  const parts = String(repo).split('/');
+  const owner = parts[0];
+  const repoName = parts[1];
+  if (!owner || !repoName) throw new Error(`release: invalid repo "${repo}" (expected owner/name)`);
+
+  let curlOk = false;
+  try {
+    execFileSync('curl', ['--version'], { stdio: 'pipe' });
+    curlOk = true;
+  } catch {
+    /* ignore */
+  }
+  if (!curlOk) throw new Error('release: curl not found (needed for GitHub API fallback)');
+
+  const apiRoot = `https://api.github.com/repos/${owner}/${repoName}`;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-ghrel-'));
+  const payloadPath = path.join(tmpDir, 'release.json');
+  try {
+    fs.writeFileSync(
+      payloadPath,
+      JSON.stringify({
+        tag_name: tag,
+        name: title,
+        body: notesBody || `Release ${tag}`,
+        draft: false,
+        prerelease: false,
+      }),
+    );
+
+    const postArgs = [
+      '-sS',
+      '-w',
+      '\nHTTP_STATUS:%{http_code}',
+      '-X',
+      'POST',
+      `${apiRoot}/releases`,
+      '-H',
+      'Accept: application/vnd.github+json',
+      '-H',
+      `Authorization: Bearer ${token}`,
+      '-H',
+      'X-GitHub-Api-Version: 2022-11-28',
+      '-H',
+      'Content-Type: application/json',
+      '-d',
+      `@${payloadPath}`,
+    ];
+    const postRaw = execFileSync('curl', postArgs, { encoding: 'utf-8' });
+    let { status, body } = parseCurlHttpBody(postRaw);
+    let release = null;
+
+    if (status === 201) {
+      release = JSON.parse(body);
+    } else if (status === 422) {
+      const getUrl = `${apiRoot}/releases/tags/${encodeURIComponent(tag)}`;
+      const getArgs = [
+        '-sS',
+        '-w',
+        '\nHTTP_STATUS:%{http_code}',
+        '-X',
+        'GET',
+        getUrl,
+        '-H',
+        'Accept: application/vnd.github+json',
+        '-H',
+        `Authorization: Bearer ${token}`,
+        '-H',
+        'X-GitHub-Api-Version: 2022-11-28',
+      ];
+      const getRaw = execFileSync('curl', getArgs, { encoding: 'utf-8' });
+      const parsed = parseCurlHttpBody(getRaw);
+      if (parsed.status !== 200) {
+        throw new Error(`GitHub API create release failed (${status}): ${body.slice(0, 500)}`);
+      }
+      release = JSON.parse(parsed.body);
+    } else {
+      throw new Error(`GitHub API create release failed (${status}): ${body.slice(0, 500)}`);
+    }
+
+    const uploadTemplate = release.upload_url;
+    if (uploadTemplate && assets.length) {
+      const uploadBase = uploadTemplate.replace(/\{\?[^}]+\}$/, '');
+      for (const assetPath of assets) {
+        if (!fs.existsSync(assetPath)) continue;
+        const base = path.basename(assetPath);
+        const uploadUrl = `${uploadBase}?name=${encodeURIComponent(base)}`;
+        const upArgs = [
+          '-sS',
+          '-w',
+          '\nHTTP_STATUS:%{http_code}',
+          '-X',
+          'POST',
+          uploadUrl,
+          '-H',
+          `Authorization: Bearer ${token}`,
+          '-H',
+          'Content-Type: application/octet-stream',
+          '--data-binary',
+          `@${assetPath}`,
+        ];
+        const upRaw = execFileSync('curl', upArgs, { encoding: 'utf-8' });
+        const up = parseCurlHttpBody(upRaw);
+        if (up.status !== 201 && up.status !== 200) {
+          const msg = up.body.slice(0, 400);
+          if (!/already_exists/i.test(msg)) {
+            throw new Error(`GitHub API upload asset ${base} failed (${up.status}): ${msg}`);
+          }
+        }
+      }
+    }
+
+    const url = release.html_url || release.url || `${apiRoot}/releases/tag/${encodeURIComponent(tag)}`;
+    return url;
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function ghRelease(tag, title, notes, assets = [], options = {}) {
+  const repo = options.repo || 'imjszhang/js-eyes';
+  const notesBody = options.notesFile ? fs.readFileSync(options.notesFile, 'utf8') : notes || `Release ${tag}`;
+
+  const ghExe = resolveGhExecutable();
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+
+  if (ghExe) {
+    const args = ['release', 'create', tag, '--title', title];
+    if (options.notesFile) {
+      args.push('--notes-file', options.notesFile);
+    } else {
+      args.push('--notes', notesBody);
+    }
+    args.push('--repo', repo);
+    for (const asset of assets) {
+      args.push(asset);
+    }
+
+    const env = { ...process.env };
+    if (!env.GH_TOKEN && env.GITHUB_TOKEN) {
+      env.GH_TOKEN = env.GITHUB_TOKEN;
+    }
+    if (!env.CI) env.CI = 'true';
+    if (!env.GH_PROMPT_DISABLED) env.GH_PROMPT_DISABLED = '1';
+
+    try {
+      const output = execFileSync(ghExe, args, {
+        cwd: ROOT,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env,
+      }).trim();
+      return { tag, url: output };
+    } catch (err) {
+      const stderr = err.stderr?.trim() || err.message;
+      throw new Error(`gh release failed: ${stderr}`);
+    }
+  }
+
+  if (!token) {
+    throw new Error(
+      'GitHub CLI (github.com/cli/cli) not found, or PATH points at npm package "gh" (wrong tool). ' +
+        'Install: brew install gh, or set GITHUB_CLI to the real gh binary, ' +
+        'or set GITHUB_TOKEN and ensure curl is available to publish via the REST API.',
+    );
+  }
+
+  const url = githubReleaseViaRestApi(tag, title, notesBody, assets, { repo, token });
+  return { tag, url };
 }
 
 function gitPushTag(remote, tag) {
@@ -173,8 +377,11 @@ function gitPushTag(remote, tag) {
 }
 
 function ghAvailable() {
+  if (resolveGhExecutable()) return true;
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return false;
   try {
-    execFileSync('gh', ['--version'], { stdio: 'pipe' });
+    execFileSync('curl', ['--version'], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
