@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-05-17T07:25:24.000Z",
+  "generated": "2026-05-19T16:41:49.371Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
@@ -19,8 +19,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-bilibili-ops-skill/js-bilibili-ops-skill-skill.zip",
-      "sha256": "1ee4daded12543e5f0ad5ebbf16131f9488343a36debf94ab25f3832a46a26d8",
-      "size": 13626,
+      "sha256": "b7659b3d37c01c533409986fb087c7a049963c8458e7931a0650e38475bb6dd2",
+      "size": 13748,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "bilibili_get_video",
@@ -48,7 +48,7 @@
       "id": "js-browser-ops-skill",
       "name": "JS Browser Ops Skill",
       "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。",
-      "version": "2.1.1",
+      "version": "2.4.0",
       "emoji": "🌐",
       "requires": {
         "bins": [
@@ -56,8 +56,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "sha256": "067c9dd8a81ff300a90ab817d5a8d5552b260c022c05134e37a5e5547d9c6a2c",
-      "size": 19634,
+      "sha256": "ec38a7d1558f67a71391a9a39b4d6e1f9c498d7f4b3c30fa9bc52e8539254162",
+      "size": 36034,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -87,8 +87,8 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-26T23:09:48+08:00",
-      "changelogUrl": null
+      "releasedAt": "2026-05-05T02:49:04+08:00",
+      "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-browser-ops-skill/CHANGELOG.md"
     },
     {
       "id": "js-github-ops-skill",
@@ -105,8 +105,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-github-ops-skill/js-github-ops-skill-skill.zip",
-      "sha256": "dfde80f16e91fc02e7088b286ebf0bee4a0cdd331ceb24455d144573399d2f86",
-      "size": 34253,
+      "sha256": "059693caba71e1e9f836144666cb1b58d7ca5c7eebe4d345fc44414b3ce369d6",
+      "size": 34454,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "github_session_state",
@@ -166,8 +166,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-jike-ops-skill/js-jike-ops-skill-skill.zip",
-      "sha256": "ce8af8e1ae368b50f872cbc228c4fb121f123b9b3cdbcb589a4a538641b7913f",
-      "size": 15389,
+      "sha256": "dea5a05b039de96c183ea4a1efdacdafe66ae003765c1d538587972e8e23f00b",
+      "size": 15507,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "jike_get_post"
@@ -192,8 +192,8 @@
     {
       "id": "js-reddit-ops-skill",
       "name": "JS Reddit Ops Skill",
-      "description": "Reddit 内容只读 + 浏览器导航 skill：帖子详情 / subreddit 列表 / 搜索 / 用户主页 / 收件箱 / 主 feed，全部走 reddit 公开 JSON 端点，浏览器侧仅 location.assign 改 URL。",
-      "version": "3.4.2",
+      "description": "Reddit 内容只读 + 浏览器导航 skill：帖子详情 / subreddit 列表 / 搜索 / 用户主页 / 收件箱 / 主 feed，DOM/API 双模式（auto 默认 DOM 优先 fallback API），浏览器侧仅 location.assign 改 URL。",
+      "version": "3.9.0",
       "emoji": "📰",
       "requires": {
         "skills": [
@@ -204,8 +204,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-reddit-ops-skill/js-reddit-ops-skill-skill.zip",
-      "sha256": "2d29866182588f00cbf64659726a2f3cd1b1696e79ecfccbea3ef7b16d381305",
-      "size": 94088,
+      "sha256": "771f785e298f5b86eeab96e6f2f743cac35897ba71ed76c4dc5f35c9f5473e3c",
+      "size": 170192,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "reddit_get_post",
@@ -277,7 +277,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-27T11:05:00+08:00",
+      "releasedAt": "2026-05-05T02:49:04+08:00",
       "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-reddit-ops-skill/CHANGELOG.md"
     },
     {
@@ -292,8 +292,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-wechat-ops-skill/js-wechat-ops-skill-skill.zip",
-      "sha256": "b0ecb8482c0058aa2598d19b29acb63be607a8fd4c61c23a877a10feed9e8df0",
-      "size": 15635,
+      "sha256": "49c3e254b511e11a03db574e2a2f6b602265d13dcbb6c0b84fb7864889c23003",
+      "size": 15753,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "wechat_get_article"
@@ -319,7 +319,7 @@
       "id": "js-x-ops-skill",
       "name": "JS X Ops Skill",
       "description": "X.com (Twitter) 内容只读 + 浏览器导航 + 账号监控 skill：搜索 / 用户主页 / 推文详情 / 首页 Feed 走 X.com 内部 GraphQL 同源端点（DOM 兜底），浏览器侧仅 location.assign 改 URL；内置 monitor 子系统做定时监控 + webhook 通知；写操作（reply/post/quote/thread）保持 v2.0.1 透传，v3.1 将拆到专用工具。",
-      "version": "3.0.6",
+      "version": "3.2.0",
       "emoji": "🔍",
       "requires": {
         "skills": [
@@ -330,8 +330,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip",
-      "sha256": "7092464bbb68cddb72310d3b2856987ab16282bafc86aeea6b8de37b1121357e",
-      "size": 213750,
+      "sha256": "a291ef5e55c5bc46b30356152fb182b65a14e90bc23aeefc409eb767d7ea9166",
+      "size": 237860,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "x_search_tweets",
@@ -395,14 +395,14 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-05-02T02:31:18+08:00",
+      "releasedAt": "2026-05-08T15:37:44+08:00",
       "changelogUrl": null
     },
     {
       "id": "js-xiaohongshu-ops-skill",
       "name": "JS Xiaohongshu Ops Skill",
-      "description": "小红书内容读取 skill，提供笔记详情、图片、作者信息和评论读取。",
-      "version": "2.0.1",
+      "description": "小红书内容读取 skill，提供笔记详情、评论、搜索、用户主页等多 profile READ + 受控 INTERACTIVE 导航能力。",
+      "version": "3.0.0",
       "emoji": "🌸",
       "requires": {
         "bins": [
@@ -410,27 +410,72 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "sha256": "ee72b3ae6e47027365c099cb7aa45f779f385712ec47bcc7b8ca936347fcb7ac",
-      "size": 16901,
+      "sha256": "8424100ffaf574649393d7c6944bea547c9cfada90c6d9f0eb21d99901927a9a",
+      "size": 150814,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
-        "xhs_get_note"
+        "xhs_get_note",
+        "xhs_get_note_comments",
+        "xhs_session_state",
+        "xhs_search_notes",
+        "xhs_get_user",
+        "xhs_get_user_notes",
+        "xhs_navigate_note",
+        "xhs_navigate_search",
+        "xhs_navigate_user",
+        "xhs_navigate_home",
+        "xhs_monitor_list_targets",
+        "xhs_monitor_get_status",
+        "xhs_monitor_add_target",
+        "xhs_monitor_remove_target",
+        "xhs_monitor_test_target"
       ],
       "actions": [
-        "skill/js-xiaohongshu-ops-skill/xhs-get-note"
+        "skill/js-xiaohongshu-ops-skill/xhs-get-note",
+        "skill/js-xiaohongshu-ops-skill/xhs-get-note-comments",
+        "skill/js-xiaohongshu-ops-skill/xhs-session-state",
+        "skill/js-xiaohongshu-ops-skill/xhs-search-notes",
+        "skill/js-xiaohongshu-ops-skill/xhs-get-user",
+        "skill/js-xiaohongshu-ops-skill/xhs-get-user-notes",
+        "skill/js-xiaohongshu-ops-skill/xhs-navigate-note",
+        "skill/js-xiaohongshu-ops-skill/xhs-navigate-search",
+        "skill/js-xiaohongshu-ops-skill/xhs-navigate-user",
+        "skill/js-xiaohongshu-ops-skill/xhs-navigate-home",
+        "skill/js-xiaohongshu-ops-skill/xhs-monitor-list-targets",
+        "skill/js-xiaohongshu-ops-skill/xhs-monitor-get-status",
+        "skill/js-xiaohongshu-ops-skill/xhs-monitor-add-target",
+        "skill/js-xiaohongshu-ops-skill/xhs-monitor-remove-target",
+        "skill/js-xiaohongshu-ops-skill/xhs-monitor-test-target"
       ],
       "commands": [
-        "note"
+        "doctor",
+        "dom-dump",
+        "monitor",
+        "login",
+        "records",
+        "probe",
+        "state",
+        "session-state",
+        "note",
+        "comments",
+        "search",
+        "user",
+        "user-notes",
+        "navigate-note",
+        "navigate-search",
+        "navigate-user",
+        "navigate-home"
       ],
       "runtime": {
         "requiresServer": true,
         "requiresBrowserExtension": true,
         "platforms": [
-          "xiaohongshu.com"
+          "xiaohongshu.com",
+          "xhslink.com"
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-26T23:09:48+08:00",
+      "releasedAt": "2026-05-05T22:11:10+08:00",
       "changelogUrl": null
     },
     {
@@ -445,8 +490,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-youtube-ops-skill/js-youtube-ops-skill-skill.zip",
-      "sha256": "de7ffaef5db06e2f8575483aecd3641bbc70fddb13bb8c1a4ceb3cac76956093",
-      "size": 13849,
+      "sha256": "114e9a76c6f4a66e9cc8704bfb994c040ee676b1417d166ef1daa31c6196ffeb",
+      "size": 13966,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "youtube_get_video",
@@ -474,7 +519,7 @@
       "id": "js-zhihu-ops-skill",
       "name": "JS Zhihu Ops Skill",
       "description": "知乎内容读取 skill，提供回答与专栏详情读取能力。",
-      "version": "2.0.1",
+      "version": "3.0.0",
       "emoji": "📘",
       "requires": {
         "bins": [
@@ -482,30 +527,80 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-zhihu-ops-skill/js-zhihu-ops-skill-skill.zip",
-      "sha256": "f612ed46aa9a74fc26aeeb078a5ee5b98be1fdbe5dd0e0ec7c5fa2cf95605f2b",
-      "size": 16345,
+      "sha256": "5996c3299ff8b2fdc6e21e40d760baa3c00984281db467d6a49e39f9f0ff2345",
+      "size": 69179,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "zhihu_get_answer",
-        "zhihu_get_article"
+        "zhihu_get_article",
+        "zhihu_session_state",
+        "zhihu_get_question_answers",
+        "zhihu_search",
+        "zhihu_get_user",
+        "zhihu_get_user_answers",
+        "zhihu_get_user_articles",
+        "zhihu_navigate_answer",
+        "zhihu_navigate_article",
+        "zhihu_navigate_question",
+        "zhihu_navigate_search",
+        "zhihu_navigate_user",
+        "zhihu_navigate_home",
+        "zhihu_monitor_list_targets",
+        "zhihu_monitor_get_status",
+        "zhihu_monitor_add_target",
+        "zhihu_monitor_remove_target",
+        "zhihu_monitor_test_target"
       ],
       "actions": [
         "skill/js-zhihu-ops-skill/zhihu-get-answer",
-        "skill/js-zhihu-ops-skill/zhihu-get-article"
+        "skill/js-zhihu-ops-skill/zhihu-get-article",
+        "skill/js-zhihu-ops-skill/zhihu-session-state",
+        "skill/js-zhihu-ops-skill/zhihu-get-question-answers",
+        "skill/js-zhihu-ops-skill/zhihu-search",
+        "skill/js-zhihu-ops-skill/zhihu-get-user",
+        "skill/js-zhihu-ops-skill/zhihu-get-user-answers",
+        "skill/js-zhihu-ops-skill/zhihu-get-user-articles",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-answer",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-article",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-question",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-search",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-user",
+        "skill/js-zhihu-ops-skill/zhihu-navigate-home",
+        "skill/js-zhihu-ops-skill/zhihu-monitor-list-targets",
+        "skill/js-zhihu-ops-skill/zhihu-monitor-get-status",
+        "skill/js-zhihu-ops-skill/zhihu-monitor-add-target",
+        "skill/js-zhihu-ops-skill/zhihu-monitor-remove-target",
+        "skill/js-zhihu-ops-skill/zhihu-monitor-test-target"
       ],
       "commands": [
+        "doctor",
+        "records",
+        "monitor",
+        "session-state",
         "answer",
-        "article"
+        "article",
+        "question-answers",
+        "search",
+        "user",
+        "user-answers",
+        "user-articles",
+        "navigate-answer",
+        "navigate-article",
+        "navigate-question",
+        "navigate-search",
+        "navigate-user",
+        "navigate-home"
       ],
       "runtime": {
         "requiresServer": true,
         "requiresBrowserExtension": true,
         "platforms": [
-          "zhihu.com"
+          "zhihu.com",
+          "zhuanlan.zhihu.com"
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-04-26T23:09:48+08:00",
+      "releasedAt": "2026-05-06T16:35:24+08:00",
       "changelogUrl": null
     }
   ]
