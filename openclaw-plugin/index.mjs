@@ -79,10 +79,79 @@ function resolvePluginEntry(definition) {
 }
 
 // 模块级单例：防止 OpenClaw host 直接重跑 register() 时 chokidar watcher /
-// skillRegistry / server 被重复创建（老的没关 → listener + fd 持续累积）。
-// OpenClaw 当前要求 register() 同步返回；如存在上一轮注册，先启动异步清理，
+// skillRegistry 被重复创建（老的没关 → listener + fd 持续累积）。
+// WebSocket server 单独用 sharedServerState 跨 register() 复用，避免重复 register
+// 时 teardown 关掉仍在监听的端口（OpenClaw deferred reload / 插件热重载）。
+// OpenClaw 当前要求 register() 同步返回；如存在上一轮注册，先启动异步清理 sidecars，
 // 需要绑定端口的 service.start() 再等待它完成，避免 register() 返回 Promise。
 let currentRegistration = null;
+
+/** @type {{ instance: object | null, configKey: string | null, startPromise: Promise<void> | null, refs: number }} */
+const sharedServerState = {
+  instance: null,
+  configKey: null,
+  startPromise: null,
+  refs: 0,
+};
+
+function sharedServerConfigKey(host, port) {
+  return `${host}:${port}`;
+}
+
+function isFullRegistration(api) {
+  const mode = api.registrationMode;
+  return mode === undefined || mode === "full";
+}
+
+async function stopSharedServerInstance() {
+  const instance = sharedServerState.instance;
+  sharedServerState.instance = null;
+  sharedServerState.configKey = null;
+  sharedServerState.startPromise = null;
+  sharedServerState.refs = 0;
+  if (instance) {
+    try {
+      await instance.stop();
+    } catch {}
+  }
+}
+
+async function acquireSharedServer(createOptions) {
+  const key = sharedServerConfigKey(createOptions.host, createOptions.port);
+  if (sharedServerState.instance && sharedServerState.configKey !== key) {
+    await stopSharedServerInstance();
+  }
+  if (!sharedServerState.instance) {
+    if (!sharedServerState.startPromise) {
+      sharedServerState.startPromise = (async () => {
+        const instance = createServer(createOptions);
+        await instance.start();
+        sharedServerState.instance = instance;
+        sharedServerState.configKey = key;
+      })();
+    }
+    try {
+      await sharedServerState.startPromise;
+    } catch (err) {
+      sharedServerState.instance = null;
+      sharedServerState.configKey = null;
+      throw err;
+    } finally {
+      sharedServerState.startPromise = null;
+    }
+  }
+  sharedServerState.refs += 1;
+  return sharedServerState.instance;
+}
+
+async function releaseSharedServer() {
+  if (sharedServerState.refs > 0) {
+    sharedServerState.refs -= 1;
+  }
+  if (sharedServerState.refs === 0) {
+    await stopSharedServerInstance();
+  }
+}
 
 // CLI 子进程退出辅助：先 teardown chokidar / skillRegistry / WS bot 让 event loop
 // 自然清空，再 setTimeout 兜底强退避免任何残留 handle 钉住进程。
@@ -90,7 +159,10 @@ let currentRegistration = null;
 async function exitCli(success) {
   process.exitCode = success ? 0 : 1;
   if (currentRegistration) {
-    try { await currentRegistration.teardown({}); } catch {}
+    try {
+      await currentRegistration.teardownSidecars({});
+      await releaseSharedServer();
+    } catch {}
     currentRegistration = null;
   }
   setTimeout(() => process.exit(process.exitCode || 0), 100).unref();
@@ -111,16 +183,17 @@ function installCliExitHandlers() {
 }
 
 function register(api) {
+  const fullRuntime = isFullRegistration(api);
   let previousTeardown = null;
   if (currentRegistration) {
     const previousRegistration = currentRegistration;
     currentRegistration = null;
     try {
       api.logger.warn(
-        "[js-eyes] register() called while a previous registration is still active; tearing it down first",
+        "[js-eyes] register() called while a previous registration is still active; tearing down sidecars (server kept if still referenced)",
       );
       previousTeardown = Promise.resolve(
-        previousRegistration.teardown({ logger: api.logger }),
+        previousRegistration.teardownSidecars({ logger: api.logger }),
       ).catch((error) => {
         api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
       });
@@ -156,7 +229,7 @@ function register(api) {
   let skillDirWatcher = null;
   let reloadTimer = null;
 
-  async function teardownRegistration(ctx) {
+  async function teardownSidecars(ctx) {
     const log = (ctx && ctx.logger) || api.logger;
     if (reloadTimer) {
       try { clearTimeout(reloadTimer); } catch {}
@@ -178,11 +251,26 @@ function register(api) {
       try { bot.disconnect(); } catch {}
       bot = null;
     }
-    if (server) {
+    server = null;
+  }
+
+  async function teardownRegistration(ctx) {
+    const log = (ctx && ctx.logger) || api.logger;
+    await teardownSidecars(ctx);
+    if (serverUsesSharedRef) {
+      serverUsesSharedRef = false;
+      await releaseSharedServer();
+    } else if (server) {
       try { await server.stop(); } catch {}
       server = null;
     }
     try { log.info("[js-eyes] Service stopped"); } catch {}
+  }
+
+  let serverUsesSharedRef = false;
+
+  function getActiveServer() {
+    return server || sharedServerState.instance;
   }
 
   const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
@@ -312,57 +400,69 @@ function register(api) {
     );
   }
 
-  api.registerService({
-    id: "js-eyes-server",
-    async start(ctx) {
-      if (!autoStart) {
-        ctx.logger.info("[js-eyes] autoStartServer=false, skipping server start");
-        return;
-      }
-      try {
-        if (previousTeardown) {
-          await previousTeardown;
-          previousTeardown = null;
+  if (fullRuntime) {
+    api.registerService({
+      id: "js-eyes-server",
+      async start(ctx) {
+        if (!autoStart) {
+          ctx.logger.info("[js-eyes] autoStartServer=false, skipping server start");
+          return;
         }
-        const tokenInfo = security.allowAnonymous ? null : ensureToken();
         try {
-          const nativeHostResult = ensureNativeHost(pluginCfg.nativeHost);
-          logNativeHostResult(nativeHostResult, ctx.logger);
-        } catch (error) {
-          ctx.logger.warn(`[js-eyes] Native host check failed: ${error.message}`);
+          if (previousTeardown) {
+            await previousTeardown;
+            previousTeardown = null;
+          }
+          const tokenInfo = security.allowAnonymous ? null : ensureToken();
+          try {
+            const nativeHostResult = ensureNativeHost(pluginCfg.nativeHost);
+            logNativeHostResult(nativeHostResult, ctx.logger);
+          } catch (error) {
+            ctx.logger.warn(`[js-eyes] Native host check failed: ${error.message}`);
+          }
+          server = await acquireSharedServer({
+            port: serverPort,
+            host: serverHost,
+            token: tokenInfo?.token || undefined,
+            security,
+            config: hostConfig,
+            requestTimeout,
+            pendingEgressDir: runtimePaths.pendingEgressDir,
+            auditLogFile: runtimePaths.auditLogFile,
+            logger: {
+              info: (msg) => ctx.logger.info(msg),
+              warn: (msg) => ctx.logger.warn(msg),
+              error: (msg) => ctx.logger.error(msg),
+            },
+          });
+          serverUsesSharedRef = true;
+          if (tokenInfo?.path) {
+            ctx.logger.info(`[js-eyes] Server token file: ${tokenInfo.path}`);
+          }
+          if (sharedServerState.refs === 1) {
+            ctx.logger.info(`[js-eyes] Server started on ws://${serverHost}:${serverPort}`);
+          } else {
+            ctx.logger.info(
+              `[js-eyes] Reusing server on ws://${serverHost}:${serverPort} (refs=${sharedServerState.refs})`,
+            );
+          }
+        } catch (err) {
+          ctx.logger.error(`[js-eyes] Failed to start server: ${err.message}`);
+          if (serverUsesSharedRef) {
+            serverUsesSharedRef = false;
+            await releaseSharedServer();
+          }
+          server = null;
         }
-        server = createServer({
-          port: serverPort,
-          host: serverHost,
-          token: tokenInfo?.token || undefined,
-          security,
-          config: hostConfig,
-          requestTimeout,
-          pendingEgressDir: runtimePaths.pendingEgressDir,
-          auditLogFile: runtimePaths.auditLogFile,
-          logger: {
-            info: (msg) => ctx.logger.info(msg),
-            warn: (msg) => ctx.logger.warn(msg),
-            error: (msg) => ctx.logger.error(msg),
-          },
-        });
-        await server.start();
-        if (tokenInfo?.path) {
-          ctx.logger.info(`[js-eyes] Server token file: ${tokenInfo.path}`);
+      },
+      async stop(ctx) {
+        await teardownRegistration(ctx);
+        if (currentRegistration && currentRegistration.api === api) {
+          currentRegistration = null;
         }
-        ctx.logger.info(`[js-eyes] Server started on ws://${serverHost}:${serverPort}`);
-      } catch (err) {
-        ctx.logger.error(`[js-eyes] Failed to start server: ${err.message}`);
-        server = null;
-      }
-    },
-    async stop(ctx) {
-      await teardownRegistration(ctx);
-      if (currentRegistration && currentRegistration.api === api) {
-        currentRegistration = null;
-      }
-    },
-  });
+      },
+    });
+  }
 
   registerCoreAction(
     "browser/get-tabs",
@@ -852,10 +952,12 @@ function register(api) {
     logger: api.logger,
   });
 
-  const initPromise = skillRegistry.init().catch((error) => {
-    api.logger.warn(`[js-eyes] SkillRegistry init failed: ${error.message}`);
-  });
-  void initPromise;
+  if (fullRuntime) {
+    const initPromise = skillRegistry.init().catch((error) => {
+      api.logger.warn(`[js-eyes] SkillRegistry init failed: ${error.message}`);
+    });
+    void initPromise;
+  }
 
   registerCoreAction(
     "skills/reload",
@@ -920,11 +1022,12 @@ function register(api) {
       },
       async execute(_toolCallId, params) {
         const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
-        if (!server || typeof server.reloadSecurity !== 'function') {
+        const activeServer = getActiveServer();
+        if (!activeServer || typeof activeServer.reloadSecurity !== 'function') {
           return { content: [{ type: 'text', text: '[js-eyes] 服务器未启动或未暴露 reloadSecurity（可能 autoStartServer=false 或版本过旧）。' }] };
         }
         try {
-          const summary = server.reloadSecurity({ source: `tool:${reason}` });
+          const summary = activeServer.reloadSecurity({ source: `tool:${reason}` });
           const lines = [
             `[js-eyes] security reload (source=tool:${reason})`,
             `  changed:    ${summary.changed}`,
@@ -1038,7 +1141,7 @@ function register(api) {
     }, 300);
   }
 
-  if (watchConfig && chokidar) {
+  if (fullRuntime && watchConfig && chokidar) {
     try {
       configWatcher = chokidar.watch(runtimePaths.configFile, {
         persistent: true,
@@ -1054,11 +1157,11 @@ function register(api) {
     } catch (error) {
       api.logger.warn(`[js-eyes] Failed to start config watcher: ${error.message}`);
     }
-  } else if (watchConfig && !chokidar) {
+  } else if (fullRuntime && watchConfig && !chokidar) {
     api.logger.warn(`[js-eyes] chokidar not installed; host-config hot reload disabled. Install chokidar to enable.`);
   }
 
-  if (devWatchSkills && chokidar) {
+  if (fullRuntime && devWatchSkills && chokidar) {
     try {
       const watchGlobs = [];
       if (skillSources && skillSources.primary && nodeFs.existsSync(skillSources.primary)) {
@@ -1161,7 +1264,7 @@ function register(api) {
         .command("start")
         .description("启动内置服务器")
         .action(async () => {
-          if (server) {
+          if (server || sharedServerState.instance) {
             console.log("服务器已在运行中。");
             return;
           }
@@ -1208,6 +1311,7 @@ function register(api) {
 
   currentRegistration = {
     api,
+    teardownSidecars,
     teardown: teardownRegistration,
   };
 }

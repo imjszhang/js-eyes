@@ -9,9 +9,12 @@ const assert = require('node:assert/strict');
 let tempDir = null;
 let previousHome = null;
 
-async function loadPlugin() {
+async function loadRegister() {
   const plugin = await import('../openclaw-plugin/index.mjs');
-  return plugin.default;
+  const entry = plugin.default;
+  if (typeof entry === 'function') return entry;
+  if (entry && typeof entry.register === 'function') return entry.register;
+  throw new Error('plugin entry has no register()');
 }
 
 function createFakeApi(pluginConfig = {}) {
@@ -54,7 +57,7 @@ describe('openclaw plugin single tool router', () => {
     const skillsDir = path.join(tempDir, 'skills');
     fs.mkdirSync(skillsDir, { recursive: true });
 
-    const register = await loadPlugin();
+    const register = await loadRegister();
     const api = createFakeApi({
       autoStartServer: false,
       watchConfig: false,
