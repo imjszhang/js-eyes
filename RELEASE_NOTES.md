@@ -1,5 +1,43 @@
 # Release Notes
 
+## v2.8.1
+
+> **visualMode 简化 + read-mode 改名。** `@js-eyes/visual-bridge-kit@0.6.0` 将
+> `visualMode` 五值枚举拆成正交的 `hud` / `flash` 布尔位；部分 ops skill 将
+> `runTool` 的 `mode` 轴改名为 `readMode`（CLI `--read-mode`）。
+
+### Highlights
+
+- **Visual flags**: `--visual-hud` / `--no-visual-hud` / `--visual-flash` /
+  `--no-visual-flash` 取代 `--visual-mode`；旧 flag 仅 stderr 告警，不再下发到 bridge。
+- **read-mode 轴**: `js-x-ops-skill` 3.2.0、`js-reddit-ops-skill` 3.9.0 将
+  `--mode` / `options.mode` 改名为 `--read-mode` / `options.readMode`（breaking）。
+- **Platform bump**: CLI、扩展、OpenClaw plugin、`@js-eyes/*` 核心包同步至 `2.8.1`。
+
+### Migration Notes
+
+- `--visual-mode hud` → `--no-visual-flash`；`dom` → `--no-visual-hud`；`off` →
+  `--no-visual`。
+- 脚本/代理调用：搜替 `--mode` → `--read-mode`，`mode:` → `readMode:` /
+  `defaultReadMode:`。
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.1/js-eyes-chrome-v2.8.1.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.1/js-eyes-firefox-v2.8.1.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.8.1/js-eyes-skill-v2.8.1.zip)
+- [ClawHub Skill (`js-eyes@2.8.1`)](https://clawhub.ai/imjszhang/js-eyes)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` bundle to `2.8.1` and run `npm install` in the bundle
+   root.
+2. Restart OpenClaw if the plugin is loaded so router + skill bindings reload.
+3. Update scripts that still pass `--visual-mode` or `--mode` on affected ops
+   skills.
+
 ## v2.8.0
 
 > **OpenClaw now sees one tool: `js-eyes`.** All browser operations, skill

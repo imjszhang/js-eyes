@@ -261,7 +261,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.8.0)
+### Security Posture (2.8.1)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -427,12 +427,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.8.0` |
-| Browser extension assets | `2.8.0` |
-| `@js-eyes/server-core` | `2.8.0` |
-| `@js-eyes/client-sdk` | `2.8.0` |
-| `openclaw-plugin` | `2.8.0` |
-| Skills using `@js-eyes/client-sdk` | `2.8.0` |
+| CLI | `2.8.1` |
+| Browser extension assets | `2.8.1` |
+| `@js-eyes/server-core` | `2.8.1` |
+| `@js-eyes/client-sdk` | `2.8.1` |
+| `openclaw-plugin` | `2.8.1` |
+| Skills using `@js-eyes/client-sdk` | `2.8.1` |
 
 ## Extension Skills
 
@@ -551,7 +551,7 @@ npm run build:firefox
 # Bump version across all manifests (note: this does NOT touch skills/*/package.json —
 # sub-skills keep their own independent versions so users can upgrade them via
 # `js-eyes skills update` without reinstalling the parent bundle)
-npm run bump -- 2.8.0
+npm run bump -- 2.8.1
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

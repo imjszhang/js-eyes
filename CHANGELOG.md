@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - visualMode 简化 + read-mode 改名
+## [2.8.1] - 2026-05-20
+
+> **visualMode 简化 + read-mode 改名。** Platform/core package versions, extension
+> manifests, and OpenClaw plugin manifests were bumped to `2.8.1`.
+> `docs/native-messaging.md` example `pong.version` was bumped to `2.8.1`.
 
 ### `@js-eyes/visual-bridge-kit@0.6.0` (BREAKING)
 
