@@ -39,9 +39,9 @@ function load(rootDir) {
     }
   }
 
-  // 常用别名：npm_key → NPM_TOKEN, GITHUB_TOKEN → GH_TOKEN
-  if (!process.env.NPM_TOKEN && process.env.npm_key) {
-    process.env.NPM_TOKEN = process.env.npm_key;
+  // 常用别名：npm_key / npm_token → NPM_TOKEN, GITHUB_TOKEN → GH_TOKEN
+  if (!process.env.NPM_TOKEN) {
+    process.env.NPM_TOKEN = process.env.npm_key || process.env.npm_token;
   }
   if (!process.env.GH_TOKEN && process.env.GITHUB_TOKEN) {
     process.env.GH_TOKEN = process.env.GITHUB_TOKEN;
