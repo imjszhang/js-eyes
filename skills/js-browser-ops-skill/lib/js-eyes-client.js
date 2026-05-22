@@ -454,7 +454,7 @@ class BrowserAutomation {
   }
 
   /**
-   * 截取标签页可见区域（chrome.tabs.captureVisibleTab）。
+   * 截取标签页截图（默认为 chrome.tabs.captureVisibleTab 可见区域）。
    *
    * 仅当标签页处于「激活」状态时浏览器才允许截图，非激活页直接返回
    * `{ skipped: 'tab_not_active' }`，不抛错。调用方按需处理（visual replay
@@ -464,6 +464,7 @@ class BrowserAutomation {
    * @param {Object} [options]
    * @param {('png'|'jpeg')} [options.format='png']
    * @param {number} [options.quality]  jpeg 时 0-100
+   * @param {boolean} [options.fullPage] Firefox active tab 支持滚动分片长截图
    * @param {number} [options.timeout]  请求超时（秒）
    * @param {string} [options.target]   目标浏览器 clientId / browserName
    * @returns {Promise<{ tabId, dataUrl?, width?, height?, format?, skipped?: string }>}
@@ -473,6 +474,7 @@ class BrowserAutomation {
     const payload = { tabId: parseInt(tabId) };
     if (options.format) payload.format = options.format;
     if (Number.isFinite(options.quality)) payload.quality = options.quality;
+    if (options.fullPage !== undefined) payload.fullPage = !!options.fullPage;
     const resp = await this._sendRequest('capture_screenshot', payload, options);
     return {
       tabId: resp.tabId,
@@ -481,6 +483,13 @@ class BrowserAutomation {
       dataUrl: resp.dataUrl || null,
       width: resp.width ?? null,
       height: resp.height ?? null,
+      fullPage: !!resp.fullPage,
+      pageWidth: resp.pageWidth ?? null,
+      pageHeight: resp.pageHeight ?? null,
+      viewportWidth: resp.viewportWidth ?? null,
+      viewportHeight: resp.viewportHeight ?? null,
+      devicePixelRatio: resp.devicePixelRatio ?? null,
+      segments: Array.isArray(resp.segments) ? resp.segments : [],
       skipped: resp.skipped || null,
     };
   }

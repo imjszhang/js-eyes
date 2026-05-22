@@ -488,6 +488,45 @@ describe('handleExtensionMessage', () => {
     assert.equal(autoSocket._messages[0].status, 'success');
   });
 
+  it('preserves capture_screenshot fullPage metadata', () => {
+    const autoSocket = createMockSocket();
+    const reqId = 'req-shot';
+
+    state.pendingResponses.set(reqId, {
+      socket: autoSocket,
+      timeoutId: setTimeout(() => {}, 60000),
+      operationType: 'capture_screenshot',
+      createdAt: Date.now(),
+    });
+
+    handleExtensionMessage(
+      JSON.stringify({
+        type: 'capture_screenshot_complete',
+        requestId: reqId,
+        tabId: '5',
+        dataUrl: 'data:image/png;base64,abc',
+        width: 200,
+        height: 1200,
+        fullPage: true,
+        pageWidth: 200,
+        pageHeight: 1200,
+        viewportWidth: 200,
+        viewportHeight: 100,
+        devicePixelRatio: 1,
+        segments: [{ index: 0, x: 0, y: 0, width: 200, height: 100 }],
+      }),
+      clientId,
+      state,
+    );
+
+    const resp = autoSocket._messages[0];
+    assert.equal(resp.type, 'capture_screenshot_response');
+    assert.equal(resp.fullPage, true);
+    assert.equal(resp.pageHeight, 1200);
+    assert.equal(resp.viewportHeight, 100);
+    assert.equal(resp.segments.length, 1);
+  });
+
   it('handles error with requestId — resolves as error', () => {
     const autoSocket = createMockSocket();
     const reqId = 'req-err';
@@ -728,6 +767,7 @@ describe('handleAutomationMessage', () => {
       ['execute_script', { tabId: '4', code: 'return 1' }],
       ['inject_css', { tabId: '5', css: 'body{color:red}' }],
       ['get_cookies', { tabId: '6' }],
+      ['capture_screenshot', { tabId: '7', format: 'png', fullPage: true }],
     ]) {
       it(`forwards ${action} with correct fields`, () => {
         handleAutomationMessage(

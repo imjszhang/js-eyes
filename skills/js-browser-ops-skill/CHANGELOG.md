@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.5.0 — 2026-05-22
+
+### Added
+
+- `browser_screenshot` 现在调用扩展层 `capture_screenshot` RPC 返回真实截图
+  dataUrl，而不是只返回页面/视口元数据。
+- 新增 `fullPage` / `format` / `quality` 参数；Firefox active tab 支持
+  `fullPage=true` 长截图，返回页面尺寸、视口尺寸与分片元数据。
+
+### Fixed
+
+- 长截图路径不再依赖 `html2canvas`、CDN 注入、`eval` 或页面内 canvas
+  `toDataURL()`，避免 Firefox CSP / isolated world / 跨域污染问题。
+
 ## 2.4.0 — 2026-05-04
 
 ### BREAKING — visualMode 拆解（同 visual-bridge-kit@0.6.0）

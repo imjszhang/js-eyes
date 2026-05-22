@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.2] - 2026-05-22
+
+> **Firefox full-page screenshots + OpenClaw skill route hardening.** Platform/core
+> package versions, extension manifests, and OpenClaw plugin manifests were
+> bumped to `2.8.2`.
+
+### Fixed
+
+- OpenClaw `js-eyes` skill routing now guards against a missing `SkillRegistry`
+  during plugin reload/teardown, returning a clear retry message instead of
+  throwing `Cannot read properties of null (reading 'executeAction')`.
+- The historical action path `skill/js-browser-ops-skill/browser_screenshot`
+  is normalized to `skill/js-browser-ops-skill/browser-screenshot`.
+
+### Firefox Screenshots
+
+- `capture_screenshot` accepts `fullPage=true` and Firefox now captures active
+  tabs through extension-level scroll-and-stitch screenshots, avoiding
+  `html2canvas`, CDN script injection, raw `eval`, and page canvas tainting.
+- `browser_screenshot` in `js-browser-ops-skill` now calls the screenshot RPC
+  directly and returns PNG data plus page/viewport/segment metadata.
+- `@js-eyes/client-sdk` exposes `captureScreenshot()` with `fullPage` metadata
+  parity for OpenClaw and skill callers.
+
 ## [2.8.1] - 2026-05-20
 
 > **visualMode 简化 + read-mode 改名。** Platform/core package versions, extension

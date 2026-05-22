@@ -239,13 +239,16 @@ function buildSummary(toolName, result, err){
     }
     case 'browser_screenshot': {
       const ok = result.success !== false;
-      const vp = result.viewport;
+      const width = result.viewportWidth || result.width;
+      const height = result.fullPage
+        ? (result.pageHeight || result.height)
+        : (result.viewportHeight || result.height);
       return {
         ok,
         items: [],
         relate: [],
         errorCode: ok ? '' : (result.error || 'screenshot_failed'),
-        detail: vp ? `${vp.width}×${vp.height}` : '',
+        detail: width && height ? `${width}×${height}` : '',
         target: '',
       };
     }

@@ -140,4 +140,34 @@ describe('openclaw plugin lifecycle', () => {
     assert.equal(api._services.length, 0);
     assert.equal(api._tools.length, 1);
   });
+
+  it('returns a clear skill registry unavailable message after teardown', async () => {
+    const skillsDir = path.join(tempDir, 'skills');
+    fs.mkdirSync(skillsDir, { recursive: true });
+
+    const register = await loadRegister();
+    const api = createFakeApi(
+      {
+        autoStartServer: false,
+        watchConfig: false,
+        devWatchSkills: false,
+        skillsDir,
+      },
+      'full',
+    );
+
+    register(api);
+    const tool = api._tools[0].definition;
+    const service = api._services[0];
+
+    await service.stop({ logger: api.logger });
+
+    const result = await tool.execute('t-registry-missing', {
+      action: 'skill/js-browser-ops-skill/browser_screenshot',
+      args: { tabId: 1 },
+    });
+
+    assert.match(result.content[0].text, /skill registry 当前不可用/);
+    assert.match(result.content[0].text, /browser_screenshot/);
+  });
 });

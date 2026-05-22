@@ -111,6 +111,25 @@ function defaultHandler(ws, data) {
       }));
       break;
 
+    case 'capture_screenshot':
+      ws.send(JSON.stringify({
+        type: 'capture_screenshot_response', requestId, status: 'success',
+        tabId: data.tabId,
+        windowId: 7,
+        format: data.format || 'png',
+        dataUrl: 'data:image/png;base64,abc',
+        width: 200,
+        height: data.fullPage ? 1200 : 100,
+        fullPage: !!data.fullPage,
+        pageWidth: data.fullPage ? 200 : null,
+        pageHeight: data.fullPage ? 1200 : null,
+        viewportWidth: data.fullPage ? 200 : null,
+        viewportHeight: data.fullPage ? 100 : null,
+        devicePixelRatio: data.fullPage ? 1 : null,
+        segments: data.fullPage ? [{ index: 0, x: 0, y: 0, width: 200, height: 100 }] : [],
+      }));
+      break;
+
     default:
       ws.send(JSON.stringify({
         type: 'error', requestId, message: `Unknown action: ${action}`,
@@ -403,6 +422,16 @@ describe('business methods', () => {
     assert.equal(cookies[0].name, 'sid');
     assert.equal(cookies[0].value, 'abc');
   });
+
+  it('captureScreenshot() returns fullPage metadata', async () => {
+    const shot = await bot.captureScreenshot(1, { fullPage: true, format: 'png' });
+    assert.equal(shot.tabId, 1);
+    assert.equal(shot.fullPage, true);
+    assert.equal(shot.dataUrl, 'data:image/png;base64,abc');
+    assert.equal(shot.pageHeight, 1200);
+    assert.equal(shot.viewportHeight, 100);
+    assert.equal(shot.segments.length, 1);
+  });
 });
 
 // ── target parameter ────────────────────────────────────────────────
@@ -430,6 +459,12 @@ describe('target parameter', () => {
   it('sends target field when specified', async () => {
     await bot.openUrl('https://example.com', null, null, { target: 'firefox' });
     assert.equal(lastReceivedMessage.target, 'firefox');
+  });
+
+  it('sends fullPage field for captureScreenshot', async () => {
+    await bot.captureScreenshot(1, { target: 'firefox', fullPage: true });
+    assert.equal(lastReceivedMessage.target, 'firefox');
+    assert.equal(lastReceivedMessage.fullPage, true);
   });
 
   it('omits target field when not specified', async () => {

@@ -1,6 +1,6 @@
 # Security and Network Behavior
 
-> **2.8.1 note**: This document covers the runtime security posture (network
+> **2.8.2 note**: This document covers the runtime security posture (network
 > behavior, token handling, policy engine, consent ledger, supply-chain
 > hardening since 2.2.0). For the per-finding response to the
 > [ClawHub Security Scan](https://clawhub.ai/imjszhang/js-eyes) of v2.6.1,

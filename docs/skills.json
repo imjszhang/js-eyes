@@ -4,7 +4,7 @@
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
-    "version": "2.8.1"
+    "version": "2.8.2"
   },
   "skills": [
     {
@@ -48,7 +48,7 @@
       "id": "js-browser-ops-skill",
       "name": "JS Browser Ops Skill",
       "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "emoji": "🌐",
       "requires": {
         "bins": [

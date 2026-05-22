@@ -167,11 +167,14 @@ const TOOL_DEFINITIONS = [
   {
     name: 'browser_screenshot',
     label: 'Browser Ops: Screenshot',
-    description: '获取页面视口信息和截图元数据。',
+    description: '截取页面截图。默认截取当前可见区域；Firefox 扩展支持 fullPage=true 长截图。',
     parameters: {
       type: 'object',
       properties: {
         tabId: { type: 'number', description: '标签页 ID' },
+        fullPage: { type: 'boolean', description: '是否截取完整页面（Firefox active tab 支持）' },
+        format: { type: 'string', enum: ['png', 'jpeg'], description: '图片格式，默认 png' },
+        quality: { type: 'number', description: 'jpeg 质量，0-100' },
       },
       required: ['tabId'],
     },

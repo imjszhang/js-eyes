@@ -21,7 +21,6 @@ const {
   generateFillFormScript,
   generateWaitForScript,
   generateScrollScript,
-  generateScreenshotScript,
 } = require('./browserUtils');
 const { getVisualHint, buildSummary } = require('./visualHint');
 
@@ -219,13 +218,12 @@ async function scrollPage(browser, params, options = {}) {
 }
 
 async function takeScreenshot(browser, params, options = {}) {
-  const { tabId } = params;
+  const { tabId, fullPage, format, quality } = params;
   if (!tabId) throw new Error('必须提供 tabId');
 
-  const script = generateScreenshotScript();
   return withVisual(
     'browser_screenshot', browser, tabId, params, options,
-    () => browser.executeScript(tabId, script),
+    () => browser.captureScreenshot(tabId, { fullPage, format, quality }),
   );
 }
 

@@ -2157,7 +2157,7 @@ class BrowserControl {
    * 返回 { skipped: 'tab_not_active' }，由调用方决定是否回退。fire-and-forget。
    */
   async handleCaptureScreenshot(message) {
-    const { tabId, requestId, format, quality } = message || {};
+    const { tabId, requestId, format, quality, fullPage } = message || {};
     try {
       if (tabId == null) {
         throw new Error('缺少必要参数: tabId');
@@ -2185,6 +2185,29 @@ class BrowserControl {
         opts.quality = Math.max(0, Math.min(100, parseInt(quality)));
       }
 
+      if (fullPage === true) {
+        const shot = await this.captureFullPageScreenshot(tab, opts);
+        this.sendMessage({
+          type: 'capture_screenshot_complete',
+          tabId,
+          windowId: tab.windowId ?? null,
+          format: shot.format,
+          dataUrl: shot.dataUrl,
+          width: shot.width,
+          height: shot.height,
+          fullPage: true,
+          pageWidth: shot.pageWidth,
+          pageHeight: shot.pageHeight,
+          viewportWidth: shot.viewportWidth,
+          viewportHeight: shot.viewportHeight,
+          devicePixelRatio: shot.devicePixelRatio,
+          segments: shot.segments,
+          requestId,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
       const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, opts);
 
       this.sendMessage({
@@ -2207,6 +2230,174 @@ class BrowserControl {
         requestId
       });
     }
+  }
+
+  async captureFullPageScreenshot(tab, opts) {
+    const tabId = parseInt(tab.id);
+    const metrics = await this.getScreenshotPageMetrics(tabId);
+    const viewportWidth = Math.max(1, Math.floor(metrics.viewportWidth || tab.width || 1));
+    const viewportHeight = Math.max(1, Math.floor(metrics.viewportHeight || tab.height || 1));
+    const pageWidth = Math.max(viewportWidth, Math.ceil(metrics.pageWidth || viewportWidth));
+    const pageHeight = Math.max(viewportHeight, Math.ceil(metrics.pageHeight || viewportHeight));
+    const maxScrollX = Math.max(0, pageWidth - viewportWidth);
+    const maxScrollY = Math.max(0, pageHeight - viewportHeight);
+    const columns = Math.ceil(pageWidth / viewportWidth);
+    const rows = Math.ceil(pageHeight / viewportHeight);
+    const maxSegments = 80;
+
+    if (columns * rows > maxSegments) {
+      throw new Error(`页面过大，长截图需要 ${columns * rows} 个分片，超过上限 ${maxSegments}`);
+    }
+
+    const captures = [];
+    let scaleX = null;
+    let scaleY = null;
+
+    try {
+      for (let row = 0; row < rows; row++) {
+        const logicalTop = row * viewportHeight;
+        const targetY = Math.min(logicalTop, maxScrollY);
+        for (let col = 0; col < columns; col++) {
+          const logicalLeft = col * viewportWidth;
+          const targetX = Math.min(logicalLeft, maxScrollX);
+          const scroll = await this.scrollScreenshotTabTo(tabId, targetX, targetY);
+          await this.delay(180);
+
+          const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, opts);
+          const image = await this.loadScreenshotImage(dataUrl);
+          if (!scaleX || !scaleY) {
+            scaleX = image.width / viewportWidth;
+            scaleY = image.height / viewportHeight;
+          }
+
+          const sourceOffsetX = Math.max(0, logicalLeft - (scroll.x || targetX));
+          const sourceOffsetY = Math.max(0, logicalTop - (scroll.y || targetY));
+          const cropWidthCss = Math.min(viewportWidth - sourceOffsetX, pageWidth - logicalLeft);
+          const cropHeightCss = Math.min(viewportHeight - sourceOffsetY, pageHeight - logicalTop);
+
+          captures.push({
+            image,
+            sourceOffsetX,
+            sourceOffsetY,
+            cropWidthCss,
+            cropHeightCss,
+            destX: logicalLeft,
+            destY: logicalTop,
+          });
+        }
+      }
+
+      const outputWidth = Math.ceil(pageWidth * scaleX);
+      const outputHeight = Math.ceil(pageHeight * scaleY);
+      const maxCanvasDimension = 32767;
+      const maxCanvasPixels = 160000000;
+      if (outputWidth > maxCanvasDimension || outputHeight > maxCanvasDimension || outputWidth * outputHeight > maxCanvasPixels) {
+        throw new Error(`页面过大，拼接画布 ${outputWidth}x${outputHeight} 超过安全上限`);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const ctx = canvas.getContext('2d');
+      for (const capture of captures) {
+        ctx.drawImage(
+          capture.image,
+          Math.round(capture.sourceOffsetX * scaleX),
+          Math.round(capture.sourceOffsetY * scaleY),
+          Math.round(capture.cropWidthCss * scaleX),
+          Math.round(capture.cropHeightCss * scaleY),
+          Math.round(capture.destX * scaleX),
+          Math.round(capture.destY * scaleY),
+          Math.round(capture.cropWidthCss * scaleX),
+          Math.round(capture.cropHeightCss * scaleY)
+        );
+      }
+
+      const mime = opts.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const quality = opts.format === 'jpeg' && Number.isFinite(opts.quality)
+        ? Math.max(0, Math.min(1, opts.quality / 100))
+        : undefined;
+
+      return {
+        dataUrl: quality === undefined ? canvas.toDataURL(mime) : canvas.toDataURL(mime, quality),
+        format: opts.format,
+        width: outputWidth,
+        height: outputHeight,
+        pageWidth,
+        pageHeight,
+        viewportWidth,
+        viewportHeight,
+        devicePixelRatio: metrics.devicePixelRatio || null,
+        segments: captures.map((capture, index) => ({
+          index,
+          x: capture.destX,
+          y: capture.destY,
+          width: capture.cropWidthCss,
+          height: capture.cropHeightCss,
+        })),
+      };
+    } finally {
+      await this.scrollScreenshotTabTo(tabId, metrics.scrollX || 0, metrics.scrollY || 0).catch(() => {});
+    }
+  }
+
+  async getScreenshotPageMetrics(tabId) {
+    const code = `
+(function() {
+  var doc = document.documentElement || {};
+  var body = document.body || {};
+  var viewportWidth = window.innerWidth || doc.clientWidth || body.clientWidth || 1;
+  var viewportHeight = window.innerHeight || doc.clientHeight || body.clientHeight || 1;
+  var pageWidth = Math.max(
+    doc.scrollWidth || 0, body.scrollWidth || 0,
+    doc.offsetWidth || 0, body.offsetWidth || 0,
+    viewportWidth
+  );
+  var pageHeight = Math.max(
+    doc.scrollHeight || 0, body.scrollHeight || 0,
+    doc.offsetHeight || 0, body.offsetHeight || 0,
+    viewportHeight
+  );
+  return {
+    viewportWidth: viewportWidth,
+    viewportHeight: viewportHeight,
+    pageWidth: pageWidth,
+    pageHeight: pageHeight,
+    scrollX: window.scrollX || window.pageXOffset || 0,
+    scrollY: window.scrollY || window.pageYOffset || 0,
+    devicePixelRatio: window.devicePixelRatio || 1
+  };
+})();
+`;
+    const results = await browser.tabs.executeScript(tabId, { code });
+    return results && results[0] ? results[0] : {};
+  }
+
+  async scrollScreenshotTabTo(tabId, x, y) {
+    const code = `
+(function() {
+  window.scrollTo(${Math.max(0, Math.floor(x))}, ${Math.max(0, Math.floor(y))});
+  return {
+    x: window.scrollX || window.pageXOffset || 0,
+    y: window.scrollY || window.pageYOffset || 0
+  };
+})();
+`;
+    const results = await browser.tabs.executeScript(tabId, { code });
+    return results && results[0] ? results[0] : { x, y };
+  }
+
+  loadScreenshotImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('截图分片解码失败'));
+      image.src = dataUrl;
+    });
+  }
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

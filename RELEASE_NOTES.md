@@ -1,5 +1,39 @@
 # Release Notes
 
+## v2.8.2
+
+> **Firefox full-page screenshots.** This release fixes OpenClaw skill-route
+> stability around hot reloads and adds extension-level `fullPage=true`
+> screenshots for Firefox active tabs.
+
+### Highlights
+
+- **Firefox full-page screenshots**: `capture_screenshot` now supports
+  `fullPage=true` through scroll-and-stitch capture in the Firefox extension.
+- **No html2canvas fallback**: long screenshots no longer rely on CDN injection,
+  raw `eval`, or page-world canvas serialization.
+- **OpenClaw route hardening**: `skillRegistry` reload gaps now return a clear
+  retry message, and `browser_screenshot` is accepted as a compatibility alias
+  for `browser-screenshot`.
+- **Platform bump**: CLI、扩展、OpenClaw plugin、`@js-eyes/*` 核心包同步至 `2.8.2`。
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.2/js-eyes-chrome-v2.8.2.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.2/js-eyes-firefox-v2.8.2.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.8.2/js-eyes-skill-v2.8.2.zip)
+- [ClawHub Skill (`js-eyes@2.8.2`)](https://clawhub.ai/imjszhang/js-eyes)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` bundle to `2.8.2` and run `npm install` in the bundle
+   root.
+2. Install/reload the Firefox extension `2.8.2` to enable full-page screenshot
+   stitching.
+3. Restart OpenClaw if the plugin is loaded so router + skill bindings reload.
+
 ## v2.8.1
 
 > **visualMode 简化 + read-mode 改名。** `@js-eyes/visual-bridge-kit@0.6.0` 将

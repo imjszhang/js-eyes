@@ -354,6 +354,13 @@ function register(api) {
     return { content: [{ type: "text", text }] };
   }
 
+  function normalizeSkillAction(action) {
+    if (action === "skill/js-browser-ops-skill/browser_screenshot") {
+      return "skill/js-browser-ops-skill/browser-screenshot";
+    }
+    return action;
+  }
+
   /** 将 SDK 策略错误转为面向 Agent 的中文说明（含 egress CLI 指引） */
   function formatJsEyesPolicyError(err) {
     if (err instanceof ServerPolicyError) {
@@ -1083,7 +1090,13 @@ function register(api) {
           return core.execute(toolCallId, args);
         }
         if (action.startsWith("skill/")) {
-          return skillRegistry.executeAction(action, toolCallId, args);
+          if (!skillRegistry || typeof skillRegistry.executeAction !== "function") {
+            return textResult(
+              `JS Eyes skill registry 当前不可用，可能正在重载或插件已进入关闭流程。\n` +
+              `请稍后重试 action: ${action}`,
+            );
+          }
+          return skillRegistry.executeAction(normalizeSkillAction(action), toolCallId, args);
         }
         return textResult(
           `不支持的 JS Eyes action: ${action}\n` +

@@ -542,6 +542,32 @@ class BrowserAutomation {
     const response = await this._sendRequest('upload_file_to_tab', payload, options);
     return response.uploadedFiles || [];
   }
+
+  async captureScreenshot(tabId, options = {}) {
+    if (typeof options === 'number') options = { timeout: options };
+    const payload = { tabId: parseInt(tabId, 10) };
+    if (options.format) payload.format = options.format;
+    if (Number.isFinite(options.quality)) payload.quality = options.quality;
+    if (options.fullPage !== undefined) payload.fullPage = !!options.fullPage;
+
+    const response = await this._sendRequest('capture_screenshot', payload, options);
+    return {
+      tabId: response.tabId,
+      windowId: response.windowId ?? null,
+      format: response.format || null,
+      dataUrl: response.dataUrl || null,
+      width: response.width ?? null,
+      height: response.height ?? null,
+      fullPage: !!response.fullPage,
+      pageWidth: response.pageWidth ?? null,
+      pageHeight: response.pageHeight ?? null,
+      viewportWidth: response.viewportWidth ?? null,
+      viewportHeight: response.viewportHeight ?? null,
+      devicePixelRatio: response.devicePixelRatio ?? null,
+      segments: Array.isArray(response.segments) ? response.segments : [],
+      skipped: response.skipped || null,
+    };
+  }
 }
 
 module.exports = {

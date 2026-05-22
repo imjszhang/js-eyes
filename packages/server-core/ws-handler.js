@@ -396,6 +396,13 @@ function handleExtensionMessage(raw, clientId, state) {
         dataUrl: data.dataUrl || null,
         width: data.width ?? null,
         height: data.height ?? null,
+        fullPage: !!data.fullPage,
+        pageWidth: data.pageWidth ?? null,
+        pageHeight: data.pageHeight ?? null,
+        viewportWidth: data.viewportWidth ?? null,
+        viewportHeight: data.viewportHeight ?? null,
+        devicePixelRatio: data.devicePixelRatio ?? null,
+        segments: Array.isArray(data.segments) ? data.segments : [],
         skipped: data.skipped || null,
         requestId,
       }, state);
@@ -565,7 +572,7 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);
       break;
     case 'capture_screenshot':
-      forwardToExtension('capture_screenshot', data, socket, state, ['tabId', 'format', 'quality'], target, clientId);
+      forwardToExtension('capture_screenshot', data, socket, state, ['tabId', 'format', 'quality', 'fullPage'], target, clientId);
       break;
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });
