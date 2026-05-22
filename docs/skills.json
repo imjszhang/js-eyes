@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-05-19T16:57:09.893Z",
+  "generated": "2026-05-22T08:28:02.663Z",
   "baseUrl": "https://js-eyes.com",
   "parentSkill": {
     "id": "js-eyes",
@@ -56,8 +56,8 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-browser-ops-skill/js-browser-ops-skill-skill.zip",
-      "sha256": "ec38a7d1558f67a71391a9a39b4d6e1f9c498d7f4b3c30fa9bc52e8539254162",
-      "size": 36034,
+      "sha256": "077e374bff3537aa98aed58cf41bf8fb9757a202c3f34bab168c7a8d49bd33bd",
+      "size": 36622,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
         "browser_read_page",
@@ -87,7 +87,7 @@
         ]
       },
       "minParentVersion": "2.6.1",
-      "releasedAt": "2026-05-05T02:49:04+08:00",
+      "releasedAt": "2026-05-22T13:54:44+08:00",
       "changelogUrl": "https://github.com/imjszhang/js-eyes/blob/main/skills/js-browser-ops-skill/CHANGELOG.md"
     },
     {
@@ -410,7 +410,7 @@
         ]
       },
       "downloadUrl": "https://js-eyes.com/skills/js-xiaohongshu-ops-skill/js-xiaohongshu-ops-skill-skill.zip",
-      "sha256": "8424100ffaf574649393d7c6944bea547c9cfada90c6d9f0eb21d99901927a9a",
+      "sha256": "3e960665745bf091bbd8cf529381c1f03a708b4ab6f70fd605d27c3c3e3b9a33",
       "size": 150814,
       "homepage": "https://github.com/imjszhang/js-eyes",
       "tools": [
