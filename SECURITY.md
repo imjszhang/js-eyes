@@ -110,7 +110,7 @@ That means a scan of the full repository can surface external URLs that are irre
 
 JS Eyes 2.2.0 treats skill packages as untrusted inputs that must be validated end-to-end before they reach disk or are loaded into the runtime.
 
-- **Registry metadata carries integrity data.** Every entry in `docs/skills.json` now ships with `sha256` and `size`. The CLI (`js-eyes skills install`), the OpenClaw `js-eyes` action `skills/plan-install`, and `install.sh` / `install.ps1` all refuse to install a skill whose downloaded bundle does not match the expected digest.
+- **Registry metadata carries integrity data.** Every entry in `dist/skills.json` now ships with `sha256` and `size`. The CLI (`js-eyes skills install`), the OpenClaw `js-eyes` action `skills/plan-install`, and `install.sh` / `install.ps1` all refuse to install a skill whose downloaded bundle does not match the expected digest.
 - **`@main` fallback URLs are refused.** The installers strip any registry fallback URL that resolves to a mutable `@main` / `refs/heads/main` CDN path. Bundles must be served from an immutable tag, release, or commit pinned URL.
 - **Safe ZIP extraction.** `packages/protocol/zip-extract.js` replaces `execSync unzip` / PowerShell `Expand-Archive` with an in-process ZIP reader that rejects Zip Slip, symlinks, and oversized entries (`maxFileSize`, `maxTotalSize`, `maxEntries`).
 - **Lockfile + `npm ci --ignore-scripts`.** `installSkillDependencies` requires `package-lock.json` and runs `npm ci --ignore-scripts --no-audit --no-fund`. The flag `security.requireLockfile=false` (or `JS_EYES_REQUIRE_LOCKFILE=0` in the install scripts) can be used to relax this during migration; doing so prints a prominent warning.

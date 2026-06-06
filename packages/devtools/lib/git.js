@@ -100,11 +100,11 @@ function generateCommitMessage(files) {
   if (!files || files.length === 0) return 'chore: update files';
 
   const areas = new Set();
-  let hasDocs = false;
+  let hasSiteOutput = false;
   let hasSrc = false;
 
   for (const file of files) {
-    if (file.startsWith('docs/')) hasDocs = true;
+    if (file.startsWith('dist/')) hasSiteOutput = true;
     if (file.startsWith('src/')) hasSrc = true;
 
     if (file.startsWith('extensions/chrome/')) areas.add('chrome');
@@ -112,28 +112,28 @@ function generateCommitMessage(files) {
     else if (file.startsWith('packages/')) areas.add('packages');
     else if (file.startsWith('apps/')) areas.add('apps');
     else if (file.startsWith('src/')) areas.add('site');
-    else if (file.startsWith('docs/')) areas.add('docs');
+    else if (file.startsWith('dist/')) areas.add('site-output');
     else if (file === 'install.sh' || file === 'install.ps1') areas.add('release');
     else if (file.startsWith('skills/')) areas.add('skills');
     else if (file === 'package.json' || file === 'README.md' || file === 'CHANGELOG.md') areas.add('meta');
   }
 
-  if (hasDocs && !hasSrc && areas.size === 1 && areas.has('docs')) {
+  if (hasSiteOutput && !hasSrc && areas.size === 1 && areas.has('site-output')) {
     return 'build: update site output';
   }
 
-  const areaList = [...areas].filter((area) => area !== 'docs');
+  const areaList = [...areas].filter((area) => area !== 'site-output');
 
   if (areaList.length === 0) {
     return `chore: update ${files.length} file(s)`;
   }
   if (areaList.length === 1) {
     const area = areaList[0];
-    if (hasDocs) return `${area}: update and rebuild`;
+    if (hasSiteOutput) return `${area}: update and rebuild`;
     return `${area}: update`;
   }
 
-  if (hasDocs) return `update ${areaList.join(', ')} and rebuild site`;
+  if (hasSiteOutput) return `update ${areaList.join(', ')} and rebuild site`;
   return `update ${areaList.join(', ')}`;
 }
 

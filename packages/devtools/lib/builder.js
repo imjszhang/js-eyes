@@ -3,7 +3,7 @@
 /**
  * JS Eyes Builder
  *
- * Site build:  src/ → docs/
+ * Site build:  src/ → dist/
  * Chrome:      package extensions/chrome/ into ZIP
  * Firefox:     package & sign extensions/firefox/
  * Bump:        sync version across manifests
@@ -16,7 +16,7 @@ const path = require('path');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const SRC_DIR = path.join(PROJECT_ROOT, 'src');
-const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
+const SITE_OUT_DIR = path.join(PROJECT_ROOT, 'dist');
 const EXTENSIONS_DIR = path.join(PROJECT_ROOT, 'extensions');
 const CHROME_DIR = path.join(EXTENSIONS_DIR, 'chrome');
 const FIREFOX_DIR = path.join(EXTENSIONS_DIR, 'firefox');
@@ -63,10 +63,10 @@ function copyDirSync(src, dest) {
 }
 
 function pruneUnavailableExtensionDownloads(assetStates) {
-  const docsIndex = path.join(DOCS_DIR, 'index.html');
-  if (!fs.existsSync(docsIndex)) return;
+  const siteIndex = path.join(SITE_OUT_DIR, 'index.html');
+  if (!fs.existsSync(siteIndex)) return;
 
-  let html = fs.readFileSync(docsIndex, 'utf8');
+  let html = fs.readFileSync(siteIndex, 'utf8');
 
   for (const asset of assetStates) {
     if (asset.exists) continue;
@@ -84,7 +84,7 @@ function pruneUnavailableExtensionDownloads(assetStates) {
     console.log('  ⚠ No extension artifacts found in dist/, hiding site download buttons');
   }
 
-  fs.writeFileSync(docsIndex, html, 'utf8');
+  fs.writeFileSync(siteIndex, html, 'utf8');
 }
 
 function loadEnvFile() {
@@ -426,7 +426,7 @@ async function buildSubSkillZips() {
   const archiver = require('archiver');
 
   for (const skill of skills) {
-    const outDir = path.join(DOCS_DIR, 'skills', skill.dirName);
+    const outDir = path.join(SITE_OUT_DIR, 'skills', skill.dirName);
     ensureDir(outDir);
 
     const zipName = `${skill.id}-skill.zip`;
@@ -482,7 +482,7 @@ async function buildSkillsRegistry(preBuiltSkills) {
       let sha256 = skill._sha256;
       let size = skill._size;
       if (!sha256) {
-        const zipPath = path.join(DOCS_DIR, 'skills', skill.dirName, `${skill.id}-skill.zip`);
+        const zipPath = path.join(SITE_OUT_DIR, 'skills', skill.dirName, `${skill.id}-skill.zip`);
         if (fs.existsSync(zipPath)) {
           const info = hashFile(zipPath);
           sha256 = info.sha256;
@@ -512,9 +512,37 @@ async function buildSkillsRegistry(preBuiltSkills) {
     }),
   };
 
-  const outputFile = path.join(DOCS_DIR, 'skills.json');
+  const outputFile = path.join(SITE_OUT_DIR, 'skills.json');
   fs.writeFileSync(outputFile, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   console.log(`  ✓ Skills registry: skills.json (${skills.length} skill(s))`);
+}
+
+function cleanSiteOutput() {
+  if (!fs.existsSync(SITE_OUT_DIR)) return;
+
+  const generatedEntries = new Set([
+    '.nojekyll',
+    'skills',
+    'skills.json',
+    SKILL_ZIP_NAME,
+    `${SKILL_ZIP_NAME}.sha256`,
+    'js-eyes-chrome-latest.zip',
+    'js-eyes-firefox-latest.xpi',
+    ...INSTALL_SCRIPTS,
+  ]);
+
+  if (fs.existsSync(SRC_DIR)) {
+    for (const entry of fs.readdirSync(SRC_DIR)) {
+      generatedEntries.add(entry);
+    }
+  }
+
+  for (const entry of generatedEntries) {
+    const fullPath = path.join(SITE_OUT_DIR, entry);
+    if (fs.existsSync(fullPath)) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    }
+  }
 }
 
 async function buildSite(t, options = {}) {
@@ -529,22 +557,16 @@ async function buildSite(t, options = {}) {
     process.exit(1);
   }
 
-  if (clean && fs.existsSync(DOCS_DIR)) {
-    const keep = ['README_CN.md', 'CNAME', 'native-messaging.md'];
-    const entries = fs.readdirSync(DOCS_DIR);
-    for (const entry of entries) {
-      if (keep.includes(entry)) continue;
-      const fullPath = path.join(DOCS_DIR, entry);
-      fs.rmSync(fullPath, { recursive: true, force: true });
-    }
+  if (clean) {
+    cleanSiteOutput();
     console.log(`  ${t('site.cleaned')}`);
   }
 
-  ensureDir(DOCS_DIR);
-  copyDirSync(SRC_DIR, DOCS_DIR);
+  ensureDir(SITE_OUT_DIR);
+  copyDirSync(SRC_DIR, SITE_OUT_DIR);
   console.log(`  ✓ ${t('site.copied')}`);
 
-  const nojekyll = path.join(DOCS_DIR, '.nojekyll');
+  const nojekyll = path.join(SITE_OUT_DIR, '.nojekyll');
   if (!fs.existsSync(nojekyll)) {
     fs.writeFileSync(nojekyll, '');
   }
@@ -553,10 +575,10 @@ async function buildSite(t, options = {}) {
   for (const script of INSTALL_SCRIPTS) {
     const src = path.join(PROJECT_ROOT, script);
     if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(DOCS_DIR, script));
+      fs.copyFileSync(src, path.join(SITE_OUT_DIR, script));
     }
   }
-  console.log('  ✓ Install scripts copied to docs/');
+  console.log('  ✓ Install scripts copied to dist/');
 
   const version = getVersion();
   const extensionAssets = [
@@ -576,13 +598,13 @@ async function buildSite(t, options = {}) {
     },
   ];
   for (const asset of extensionAssets) {
-    const docsAssetPath = path.join(DOCS_DIR, asset.dest);
+    const siteAssetPath = path.join(SITE_OUT_DIR, asset.dest);
     asset.exists = fs.existsSync(asset.src);
     if (asset.exists) {
-      fs.copyFileSync(asset.src, docsAssetPath);
+      fs.copyFileSync(asset.src, siteAssetPath);
       console.log(`  ✓ ${asset.dest} (from dist/)`);
-    } else if (fs.existsSync(docsAssetPath)) {
-      fs.unlinkSync(docsAssetPath);
+    } else if (fs.existsSync(siteAssetPath)) {
+      fs.unlinkSync(siteAssetPath);
     }
   }
   pruneUnavailableExtensionDownloads(extensionAssets);
@@ -597,7 +619,7 @@ async function buildSite(t, options = {}) {
 async function buildSkillZip() {
   const archiver = require('archiver');
   const { version, stageDir } = prepareMainSkillBundleStage();
-  const outputFile = path.join(DOCS_DIR, SKILL_ZIP_NAME);
+  const outputFile = path.join(SITE_OUT_DIR, SKILL_ZIP_NAME);
   const distAsset = MAIN_SKILL_DIST_ASSET(version);
 
   if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
@@ -820,11 +842,8 @@ function escapeRegex(str) {
 function collectHeroBadgeFiles() {
   const candidates = [
     'src/index.html',
-    'docs/index.html',
     'src/i18n/locales/en-US.js',
     'src/i18n/locales/zh-CN.js',
-    'docs/i18n/locales/en-US.js',
-    'docs/i18n/locales/zh-CN.js',
   ];
   return candidates
     .map((rel) => ({ rel, abs: path.join(PROJECT_ROOT, rel) }))

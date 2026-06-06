@@ -149,7 +149,6 @@ function cmdCommit(flags) {
 async function cmdSync(flags) {
   try {
     const noBuild = !!flags['no-build'];
-    const noPush = !!flags['no-push'];
 
     const status = gitStatus();
     log(`${t('git.branch')}: ${status.branch}`);
@@ -162,32 +161,7 @@ async function cmdSync(flags) {
       log(t('git.buildSkipped'));
     }
 
-    log('');
-    log(`── ${t('git.stepStage')} ──`);
-    gitAddAll();
-
-    const { files } = gitDiffStat();
-    if (files.length === 0) {
-      log(t('git.cleanAfterBuild'));
-      return;
-    }
-
-    const message = flags.message || flags.m || generateCommitMessage(files);
-    log('');
-    log(`── ${t('git.stepCommit')} ──`);
-    log(`${t('git.message')}: ${message}`);
-    const { hash } = gitCommit(message);
-    log(`${t('git.committed')} ${hash} (${files.length} files)`);
-
-    if (!noPush) {
-      log('');
-      log(`── ${t('git.stepPush')} ──`);
-      log(`${t('git.pushing')} origin/${status.branch} ...`);
-      gitPush('origin', status.branch);
-      log(t('git.pushDone'));
-    } else {
-      log(t('git.pushSkipped'));
-    }
+    log(t('site.done'));
   } catch (error) {
     log(`  ✗ ${error.message}`);
     process.exit(1);

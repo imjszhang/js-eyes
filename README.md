@@ -536,7 +536,7 @@ npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 # Build the main ClawHub/OpenClaw skill bundle only
 npm run build:skill
 
-# Build site (docs/) + skill bundles + skills.json registry
+# Build site (dist/) + skill bundles + skills.json registry
 npm run build:site
 
 # Build all release artifacts
@@ -554,7 +554,7 @@ npm run build:firefox
 npm run bump -- 2.8.2
 ```
 
-Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `docs/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
+Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `dist/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
 
 For ClawHub publishing, use the generated bundle output (`dist/skill-bundle/js-eyes/` or the versioned zip in `dist/`) as the source of truth instead of publishing from the monorepo root.
 

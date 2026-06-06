@@ -16,7 +16,7 @@
     "build:chrome": "node packages/devtools/bin/js-eyes-dev.js build chrome",
     "build:firefox": "node packages/devtools/bin/js-eyes-dev.js build firefox",
     "build:firefox:dev": "node packages/devtools/bin/js-eyes-dev.js build firefox --no-sign",
-    "preview": "npx serve docs -l 3000",
+    "preview": "npx serve dist -l 3000",
     "cli": "node apps/cli/bin/js-eyes.js",
     "devtools": "node packages/devtools/bin/js-eyes-dev.js",
     "bump": "node packages/devtools/bin/js-eyes-dev.js bump",

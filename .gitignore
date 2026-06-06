@@ -16,12 +16,11 @@ yarn-error.log*
 package-lock.json
 
 # Build outputs
+docs/
 dist/
 build/
 *.xpi
 *.zip
-# Allow skill zips so fallback download (jsDelivr/GitHub raw) works
-!docs/skills/**/*.zip
 
 # IDE
 .vscode/

@@ -99,20 +99,15 @@ async function setupGitHubPages(domain, githubRepo, t) {
   console.log(t('ghPages.header'));
   console.log('');
 
-  let source = { branch: 'main', path: '/docs' };
   try {
     const repoInfo = await ghFetch(`/repos/${owner}/${repo}`);
     owner = repoInfo.owner?.login || owner;
     repoName = repoInfo.name || repoName;
-    source.branch = repoInfo.default_branch || 'main';
   } catch {}
 
   const repoSlug = `${owner}/${repoName}`;
   try {
-    const pages = await ghFetch(`/repos/${repoSlug}/pages`);
-    if (pages.source) {
-      source = { branch: pages.source.branch, path: pages.source.path || '/' };
-    }
+    await ghFetch(`/repos/${repoSlug}/pages`);
   } catch (e) {
     if (e.message.includes('404') || e.message.includes('Not Found')) {
       console.log(t('ghPages.creating'));
@@ -120,9 +115,9 @@ async function setupGitHubPages(domain, githubRepo, t) {
         await ghFetch(`/repos/${repoSlug}/pages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source }),
+          body: JSON.stringify({ build_type: 'workflow' }),
         });
-        console.log(t('ghPages.created').replace('{branch}', source.branch).replace('{path}', source.path));
+        console.log(t('ghPages.created'));
       } catch (createErr) {
         if (createErr.message.includes('404') || createErr.message.includes('Not Found')) {
           throw new Error(t('ghPages.createFailed'));
@@ -135,7 +130,8 @@ async function setupGitHubPages(domain, githubRepo, t) {
   }
 
   console.log(t('ghPages.settingDomain').replace('{domain}', dom));
-  await updatePages(owner, repoName, { cname: dom, source });
+  const updateBody = { cname: dom, build_type: 'workflow' };
+  await updatePages(owner, repoName, updateBody);
   console.log(t('ghPages.waitVerify'));
   console.log('');
 
@@ -165,7 +161,7 @@ async function setupGitHubPages(domain, githubRepo, t) {
 
   console.log('');
   console.log(t('ghPages.enableHttps'));
-  await updatePages(owner, repoName, { cname: dom, source, https_enforced: true });
+  await updatePages(owner, repoName, { ...updateBody, https_enforced: true });
   console.log(t('ghPages.httpsDone'));
 }
 
