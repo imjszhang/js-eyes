@@ -27,6 +27,7 @@ const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
 const { runTool } = require('../lib/runTool');
 const { runMonitor } = require('../lib/monitor/dispatcher');
+const { runApi } = require('../lib/official-api/dispatcher');
 const apiLib = require('../lib/api');
 const { warnDeprecatedFlagsOnce } = require('../lib/cliVisualFlags');
 
@@ -461,6 +462,10 @@ async function main(argv) {
   // 早于通用 parseArgv 分派，避免那边对未知选项抛错。
   if (command0 === 'monitor') {
     return await runMonitor(argv.slice(1));
+  }
+
+  if (command0 === 'api') {
+    return await runApi(argv.slice(1));
   }
 
   let parsed;

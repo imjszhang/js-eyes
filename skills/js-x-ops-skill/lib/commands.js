@@ -465,6 +465,7 @@ function printHelp() {
     '',
     'Commands:',
   ];
+  lines.push('  api                <subcommand>    X 官方 API：reply/tweet/quote/thread/upload-media/timeline/tweets/status');
   for (const [name, def] of Object.entries(COMMANDS)) {
     const args = (def.argSpec || []).map((s) => (s.required ? `<${s.name}>` : `[${s.name}]`)).join(' ');
     const pageHint = def.defaultPage
@@ -505,6 +506,8 @@ function printHelp() {
     '  node index.js post https://x.com/user/status/123',
     '  node index.js home --feed foryou --max-pages 1',
     '  node index.js session-state --pretty',
+    '  node index.js api status --pretty',
+    '  node index.js api tweet "hello world" --pretty',
     '  node index.js doctor --pretty',
     '',
     '  # INTERACTIVE 档（仅改 URL，不模拟点击）',

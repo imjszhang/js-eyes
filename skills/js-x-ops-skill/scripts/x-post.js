@@ -20,6 +20,7 @@
  *   --post "内容"              发一条新帖（无需 URL/ID）；与 --reply、--thread、URL 互斥
  *   --quote <url_or_id>        Quote Tweet：引用指定推文并附评论；需与 --post 搭配
  *   --thread "段1" "段2" ...   发串推（第2条起依次回复上一条）；与 --post、--reply、URL 互斥
+ *   --via auto|api|dom         写操作通道：默认官方 API 优先，失败回退 DOM/GraphQL
  *   --thread-delay <ms>        串推每条之间的延迟毫秒（默认 2000）
  *   --thread-max <n>           串推最大条数，超过报错（默认 25）
  * 
@@ -51,6 +52,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const pkg = require('../package.json');
 const { getPost } = require('../lib/api');
+const { createOfficialApiClient } = require('../lib/official-api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const {
     DEFAULT_GRAPHQL_FEATURES,
@@ -94,6 +96,7 @@ function parseArgs() {
         image: null,           // 发帖时附带的图片路径（--image path，仅单条或串推第1条）
         quote: null,           // Quote Tweet 引用目标（URL 或 ID，--quote url，需与 --post 搭配）
         domOnly: false,        // 强制 DOM 模式，跳过 GraphQL CreateTweet（--dom-only）
+        via: 'auto',           // auto=官方 API 优先再 DOM；api=仅官方 API；dom=仅 DOM/GraphQL
         recordingMode: null,
         recordingBaseDir: null,
         noCache: false,
@@ -170,6 +173,13 @@ function parseArgs() {
                     break;
                 case 'domonly':
                     options.domOnly = true;
+                    options.via = 'dom';
+                    break;
+                case 'via':
+                    options.via = ['auto', 'api', 'dom'].includes(String(nextArg || '').toLowerCase())
+                        ? String(nextArg).toLowerCase()
+                        : 'auto';
+                    if (nextArg) i++;
                     break;
                 case 'recordingmode':
                     options.recordingMode = nextArg;
@@ -218,6 +228,7 @@ async function writeOutputEnvelope(options, command, payload) {
             version: pkg.version,
             command,
             duration_ms: null,
+            via: payload.via || options.via || null,
         },
     };
     const outputPath = path.isAbsolute(options.output)
@@ -228,8 +239,12 @@ async function writeOutputEnvelope(options, command, payload) {
 }
 
 async function emitResultPayload(options, command, payload) {
-    console.log('__RESULT_JSON__:' + JSON.stringify(payload));
-    await writeOutputEnvelope(options, command, payload);
+    const enriched = {
+        via: payload.via || options.via || null,
+        ...payload,
+    };
+    console.log('__RESULT_JSON__:' + JSON.stringify(enriched));
+    await writeOutputEnvelope(options, command, enriched);
 }
 
 /**
@@ -307,6 +322,7 @@ function printUsage() {
     console.log('  --post "内容"             发一条新帖（与 URL、--reply、--thread 互斥）');
     console.log('  --quote <url_or_id>       Quote Tweet：引用指定推文并附评论（需与 --post 搭配，与 --reply/--thread 互斥）');
     console.log('  --thread "段1" "段2" ...  发串推（与 URL、--post、--reply 互斥）');
+    console.log('  --via <auto|api|dom>      写操作通道：默认 auto（官方 API 优先，失败回退 DOM/GraphQL）');
     console.log('  --thread-delay <ms>       串推每条之间延迟毫秒（默认 3500，建议 3～5 秒防限流）');
     console.log('  --thread-max <n>          串推最大条数（默认 25）');
     console.log('  --image <path>            发帖时附带图片（仅单条或串推第1条）');
@@ -2394,6 +2410,96 @@ async function getFirstTweetIdFromPage(tabId, safeExecuteScript, matchText) {
 // 主流程
 // ============================================================================
 
+async function tryOfficialApiWrite(options, {
+    isReplyMode,
+    replyTweetId,
+    hasPost,
+    hasThread,
+    hasQuote,
+    quoteTweetId,
+}) {
+    if (options.dryRun || options.domOnly || options.via === 'dom') {
+        return { attempted: false, success: false, result: null };
+    }
+
+    const client = createOfficialApiClient();
+    if (!client.isConfigured) {
+        const result = {
+            success: false,
+            error: 'X API 未配置（缺少环境变量）',
+            errorCode: 'api_not_configured',
+            via: 'official_api',
+        };
+        return { attempted: true, success: false, result };
+    }
+
+    let result;
+    if (isReplyMode) {
+        result = await client.createReply(options.reply, replyTweetId);
+        result = {
+            success: !!result.success,
+            replyTweetId: result.tweet_id || '',
+            error: result.error || '',
+            errorCode: result.errorCode || '',
+            status_code: result.status_code || 0,
+            detail: result.detail || '',
+            via: 'official_api',
+        };
+    } else if (hasQuote) {
+        result = await client.createQuote(options.post, quoteTweetId);
+        result = {
+            success: !!result.success,
+            quoteTweetId: result.tweet_id || '',
+            error: result.error || '',
+            errorCode: result.errorCode || '',
+            status_code: result.status_code || 0,
+            detail: result.detail || '',
+            via: 'official_api',
+        };
+    } else if (hasPost) {
+        const mediaIds = [];
+        if (options.image) {
+            const imagePath = path.isAbsolute(options.image) ? options.image : path.join(process.cwd(), options.image);
+            const upload = await client.uploadMedia(imagePath);
+            if (!upload.success) {
+                return {
+                    attempted: true,
+                    success: false,
+                    result: { ...upload, via: 'official_api' },
+                };
+            }
+            mediaIds.push(upload.media_id);
+        }
+        const posted = await client.createTweet(options.post, mediaIds.length ? mediaIds : undefined);
+        result = {
+            success: !!posted.success,
+            tweetId: posted.tweet_id || '',
+            error: posted.error || '',
+            errorCode: posted.errorCode || '',
+            status_code: posted.status_code || 0,
+            detail: posted.detail || '',
+            via: 'official_api',
+        };
+    } else if (hasThread) {
+        const tweets = options.thread.map((text, idx) => ({
+            text,
+            media_paths: idx === 0 && options.image
+                ? [path.isAbsolute(options.image) ? options.image : path.join(process.cwd(), options.image)]
+                : [],
+        }));
+        const thread = await client.createThread(tweets);
+        result = {
+            success: !!thread.success,
+            postedIds: thread.tweet_ids || [],
+            error: (thread.errors || []).join('; '),
+            errorCode: thread.success ? '' : 'official_api_failed',
+            via: 'official_api',
+        };
+    }
+
+    return { attempted: true, success: !!result?.success, result };
+}
+
 async function main() {
     const options = parseArgs();
 
@@ -2469,6 +2575,37 @@ async function main() {
     }
 
     const isPostMode = hasPost || hasThread;
+    const isWriteMode = isPostMode || isReplyMode;
+
+    if (isWriteMode && !options.dryRun) {
+        const officialAttempt = await tryOfficialApiWrite(options, {
+            isReplyMode,
+            replyTweetId: tweetIds[0],
+            hasPost,
+            hasThread,
+            hasQuote,
+            quoteTweetId,
+        });
+        if (officialAttempt.success) {
+            const commandName = isReplyMode ? 'post reply' : hasQuote ? 'post quote' : hasPost ? 'post new' : 'post thread';
+            console.log(`[官方 API] ${commandName} 成功`);
+            await emitResultPayload(options, commandName, officialAttempt.result);
+            return;
+        }
+        if (officialAttempt.attempted && options.via === 'api') {
+            const commandName = isReplyMode ? 'post reply' : hasQuote ? 'post quote' : hasPost ? 'post new' : 'post thread';
+            console.error(`[官方 API] ${commandName} 失败: ${officialAttempt.result?.error || '未知错误'}`);
+            await emitResultPayload(options, commandName, officialAttempt.result || {
+                success: false,
+                error: 'official api failed',
+                via: 'official_api',
+            });
+            return;
+        }
+        if (officialAttempt.attempted) {
+            console.warn(`[官方 API] 失败，回退到 DOM/GraphQL: ${officialAttempt.result?.error || '未知错误'}`);
+        }
+    }
 
     let outputPath = options.output;
     let outputDir;
