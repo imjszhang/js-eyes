@@ -496,6 +496,7 @@ function printHelp() {
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',
     '  --debug-recording        强制写 debug bundle',
+    '  -V, --version            输出 js-x-ops-skill 版本号',
     '  -h, --help               显示帮助',
     '',
     '示例:',

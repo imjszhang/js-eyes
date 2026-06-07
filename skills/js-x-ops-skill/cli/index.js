@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const pkg = require('../package.json');
 
 const { Session } = require('../lib/session');
 const { COMMANDS, parseArgv, printHelp, hasWriteFlags } = require('../lib/commands');
@@ -41,9 +42,27 @@ function pickPage(commandName, opts) {
   return DEFAULT_PAGE;
 }
 
+function buildEnvelope(value, opts = {}) {
+  const ok = !(value && value.ok === false);
+  return {
+    ok,
+    result: value,
+    error: ok ? null : {
+      code: (value && (value.code || value.errorCode || value.error)) || 'command_failed',
+      message: String((value && (value.message || value.error)) || 'command failed'),
+    },
+    meta: {
+      version: pkg.version,
+      command: opts.command || null,
+      duration_ms: opts.startedAt ? Date.now() - opts.startedAt : null,
+    },
+  };
+}
+
 function printJson(value, opts) {
+  const payload = buildEnvelope(value, opts);
   const indent = opts && opts.pretty ? 2 : 0;
-  const text = JSON.stringify(value, null, indent) + '\n';
+  const text = JSON.stringify(payload, null, indent) + '\n';
   if (opts && opts.output) {
     try {
       const abs = path.resolve(opts.output);
@@ -426,6 +445,11 @@ async function runDoctor(opts) {
 // ---------------------------------------------------------------------------
 
 async function main(argv) {
+  if (argv.includes('--version') || argv.includes('-V')) {
+    process.stdout.write(pkg.version + '\n');
+    return 0;
+  }
+
   // 写操作分支：post 命令带 --reply/--post/--quote/--thread/--media/--dry-run/--confirm
   // 直接透传给 scripts/x-post.js（v2 行为，不解析）。
   const command0 = argv[0];
@@ -448,6 +472,8 @@ async function main(argv) {
   }
   const { opts, positional } = parsed;
   const command = positional.shift();
+  opts.command = command || null;
+  opts.startedAt = Date.now();
   if (!command || opts.help) {
     printHelp();
     return 0;

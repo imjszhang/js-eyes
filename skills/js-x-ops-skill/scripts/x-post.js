@@ -49,6 +49,7 @@
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const path = require('path');
 const fs = require('fs').promises;
+const pkg = require('../package.json');
 const { getPost } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const {
@@ -201,6 +202,34 @@ function parseArgs() {
     }
 
     return options;
+}
+
+async function writeOutputEnvelope(options, command, payload) {
+    if (!options.output) return;
+    const ok = !!payload.success;
+    const envelope = {
+        ok,
+        result: payload,
+        error: ok ? null : {
+            code: payload.errorCode || 'write_failed',
+            message: String(payload.error || 'write operation failed'),
+        },
+        meta: {
+            version: pkg.version,
+            command,
+            duration_ms: null,
+        },
+    };
+    const outputPath = path.isAbsolute(options.output)
+        ? options.output
+        : path.join(process.cwd(), options.output);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, JSON.stringify(envelope, null, options.pretty ? 2 : 0) + '\n', 'utf8');
+}
+
+async function emitResultPayload(options, command, payload) {
+    console.log('__RESULT_JSON__:' + JSON.stringify(payload));
+    await writeOutputEnvelope(options, command, payload);
 }
 
 /**
@@ -2525,7 +2554,7 @@ async function main() {
                 const verifyCheck = await checkForVerificationPage(browser, tabId, safeExecuteScript);
                 if (verifyCheck.blocked) {
                     console.error('[发帖] 检测到验证页: ' + verifyCheck.reason);
-                    console.log('__RESULT_JSON__:' + JSON.stringify({ success: false, error: verifyCheck.reason }));
+                    await emitResultPayload(options, hasQuote ? 'post quote' : hasPost ? 'post new' : 'post thread', { success: false, error: verifyCheck.reason });
                     return;
                 }
 
@@ -2542,6 +2571,14 @@ async function main() {
                         options.thread.forEach((seg, i) => console.log('  ' + (i + 1) + '. ' + seg));
                     }
                     console.log('(未实际发送)');
+                    await emitResultPayload(options, hasQuote ? 'post quote' : hasPost ? 'post new' : 'post thread', {
+                        success: true,
+                        dryRun: true,
+                        quoteTweetId: hasQuote ? quoteTweetId : '',
+                        tweetId: '',
+                        postedIds: [],
+                        error: '',
+                    });
                 } else if (hasQuote) {
                     // Quote Tweet: --dom-only 时直接 DOM，否则 GraphQL 优先 → DOM fallback
                     const quoteUrl = options.quote && options.quote.startsWith('http') && !options.quote.includes('/i/status/')
@@ -2576,7 +2613,7 @@ async function main() {
                         graphqlError: graphqlError,
                     };
                     if (qtResult._debug) resultPayload._debug = qtResult._debug;
-                    console.log('__RESULT_JSON__:' + JSON.stringify(resultPayload));
+                    await emitResultPayload(options, 'post quote', resultPayload);
                 } else if (hasPost) {
                     if (options.image) {
                         const imagePath = path.isAbsolute(options.image) ? options.image : path.join(process.cwd(), options.image);
@@ -2598,6 +2635,11 @@ async function main() {
                     } else {
                         console.error('发新帖失败:', result.error || '未知错误');
                     }
+                    await emitResultPayload(options, 'post new', {
+                        success: !!result.success,
+                        tweetId: result.tweetId || '',
+                        error: result.error || '',
+                    });
                 } else {
                     const postedIds = [];
                     let lastId = null;
@@ -2657,6 +2699,11 @@ async function main() {
                     if (postedIds.length > 0) {
                         console.log('串推已发送 ' + postedIds.length + ' 条，ID: ' + postedIds.join(', '));
                     }
+                    await emitResultPayload(options, 'post thread', {
+                        success: postedIds.length > 0 && postedIds.length === options.thread.length,
+                        postedIds,
+                        error: postedIds.length === options.thread.length ? '' : 'thread_incomplete',
+                    });
                 }
             } finally {
                 await releaseXTab(browser, tabId, !options.closeTab);
@@ -2714,6 +2761,13 @@ async function main() {
                         console.log('--dry-run: 将对该推文发送回复，内容为:');
                         console.log('  ' + String(options.reply));
                         console.log('(未实际发送)');
+                        await emitResultPayload(options, 'post reply', {
+                            success: true,
+                            dryRun: true,
+                            replyTweetId: '',
+                            error: '',
+                            graphqlError: '',
+                        });
                     } else {
                         const safeExecuteScript = createSafeExecuteScript(browser);
 
@@ -2721,7 +2775,7 @@ async function main() {
                         const verifyCheck = await checkForVerificationPage(browser, tabId, safeExecuteScript);
                         if (verifyCheck.blocked) {
                             console.error('[回复] 检测到验证页: ' + verifyCheck.reason);
-                            console.log('__RESULT_JSON__:' + JSON.stringify({ success: false, replyTweetId: '', error: verifyCheck.reason, graphqlError: '' }));
+                            await emitResultPayload(options, 'post reply', { success: false, replyTweetId: '', error: verifyCheck.reason, graphqlError: '' });
                             return;
                         }
 
@@ -2753,7 +2807,7 @@ async function main() {
                             graphqlError: graphqlError,
                         };
                         if (replyResult._debug) replyPayload._debug = replyResult._debug;
-                        console.log('__RESULT_JSON__:' + JSON.stringify(replyPayload));
+                        await emitResultPayload(options, 'post reply', replyPayload);
                     }
                 } finally {
                     await releaseXTab(browser, tabId, !options.closeTab);

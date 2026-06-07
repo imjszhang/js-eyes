@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const pkg = require('../../package.json');
 const { BrowserAutomation } = require('../js-eyes-client');
 const { resolveRuntimeConfig } = require('../runtimeConfig');
 const {
@@ -20,9 +21,10 @@ const {
   defaultConfig,
   ensureBaseDirs,
   effectiveAccountSettings,
+  validateConfig,
 } = require('./config');
 const { loadState } = require('./state');
-const { runCheck } = require('./runCheck');
+const { runCheck, runCheckCore } = require('./runCheck');
 const { resolvePaths } = require('./paths');
 const { fetchAccount } = require('./fetchAccount');
 const { startDaemon, stopDaemon, readExistingPid } = require('./daemon');
@@ -45,6 +47,9 @@ function parseMonitorArgs(argv) {
     interval: null,
     force: false,
     output: null,
+    config: null,
+    stateHome: null,
+    noNotify: false,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -59,7 +64,12 @@ function parseMonitorArgs(argv) {
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a === '--dry-notify') opts.dryNotify = true;
     else if (a === '--dry-state') opts.dryState = true;
+    else if (a === '--no-notify') opts.noNotify = true;
     else if (a === '--force') opts.force = true;
+    else if (a === '--config') eat('config');
+    else if (a.startsWith('--config=')) eatEq('config', '--config=');
+    else if (a === '--state-home') eat('stateHome');
+    else if (a.startsWith('--state-home=')) eatEq('stateHome', '--state-home=');
     else if (a === '--server' || a === '--ws-endpoint' || a === '--browser-server') eat('wsEndpoint');
     else if (a.startsWith('--server=') || a.startsWith('--ws-endpoint=') || a.startsWith('--browser-server=')) {
       opts.wsEndpoint = a.slice(a.indexOf('=') + 1);
@@ -81,9 +91,27 @@ function parseMonitorArgs(argv) {
   return { opts, positional };
 }
 
+function buildEnvelope(value, opts = {}) {
+  const ok = !(value && value.ok === false);
+  return {
+    ok,
+    result: value,
+    error: ok ? null : {
+      code: (value && (value.code || value.errorCode || value.error)) || 'command_failed',
+      message: String((value && (value.message || value.error)) || 'command failed'),
+    },
+    meta: {
+      version: pkg.version,
+      command: opts.command || 'monitor',
+      duration_ms: opts.startedAt ? Date.now() - opts.startedAt : null,
+    },
+  };
+}
+
 function printJson(value, opts) {
+  const payload = buildEnvelope(value, opts);
   const indent = opts && opts.pretty ? 2 : 0;
-  const text = JSON.stringify(value, null, indent) + '\n';
+  const text = JSON.stringify(payload, null, indent) + '\n';
   if (opts && opts.output) {
     try {
       const abs = path.resolve(opts.output);
@@ -112,6 +140,7 @@ function printMonitorHelp() {
     '  status                        汇总 per-account state',
     '  test <username>               对单账号跑一次 fetch（不写 state、不发通知）',
     '  check [username]              真实 check（会写 state + 发通知）；传 username 只跑单账号',
+    '  check --config <file>         使用指定 config JSON 执行批量 check',
     '  daemon [--interval N]         本地守护模式：循环执行 check；SIGINT/SIGTERM 退出',
     '  stop                          向运行中的 daemon 发 SIGTERM',
     '',
@@ -119,6 +148,9 @@ function printMonitorHelp() {
     '  --channels a,b                逗号分隔的 channel name（add 时用）',
     '  --dry-notify                  check 时跳过真实通知（仅打印）',
     '  --dry-state                   check 时不写 state（调试用）',
+    '  --no-notify                   check --config 时仅抓取/去重/写 state，不触发通知',
+    '  --config <file>               check 时从指定 JSON 文件读取完整 monitor config',
+    '  --state-home <dir>            check 时覆盖 monitor state 根目录',
     '  --interval <sec>              daemon 循环间隔秒（最小 30）',
     '  --force                       daemon 启动时忽略残留 pid',
     '  --json / --pretty             输出 JSON / 缩进',
@@ -295,7 +327,30 @@ async function handleTest(username, opts) {
 
 async function handleCheck(username, opts) {
   let config;
-  try { config = loadConfig(); } catch (err) {
+  if (opts.config) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.resolve(opts.config), 'utf8'));
+      const validated = validateConfig(raw);
+      if (!validated.ok) {
+        printJson({
+          ok: false,
+          error: 'E_MONITOR_CONFIG_INVALID',
+          message: `monitor 配置校验失败:\n  - ${validated.errors.join('\n  - ')}`,
+          errors: validated.errors,
+        }, opts);
+        return 1;
+      }
+      config = validated.config;
+    } catch (err) {
+      printJson({
+        ok: false,
+        error: err.code || 'E_LOAD_CONFIG',
+        message: err.message,
+        configFile: path.resolve(opts.config),
+      }, opts);
+      return 1;
+    }
+  } else try { config = loadConfig(); } catch (err) {
     printJson({ ok: false, error: err.code || 'E_LOAD_CONFIG', message: err.message }, opts);
     return 1;
   }
@@ -307,21 +362,32 @@ async function handleCheck(username, opts) {
     logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
   });
   try {
-    const result = await runCheck({
-      config,
-      browser,
-      options: {
-        singleUsername: username || null,
-        dryNotify: !!opts.dryNotify,
-        dryState: !!opts.dryState,
-        recording: runtimeConfig.recording,
-        logger: {
-          info: (...a) => opts.verbose && console.error('[info]', ...a),
-          warn: (...a) => console.error('[warn]', ...a),
-          error: (...a) => console.error('[error]', ...a),
-        },
+    const commonOptions = {
+      singleUsername: username || null,
+      dryState: !!opts.dryState,
+      writeState: opts.dryState ? false : undefined,
+      stateHome: opts.stateHome || undefined,
+      recording: runtimeConfig.recording,
+      logger: {
+        info: (...a) => opts.verbose && console.error('[info]', ...a),
+        warn: (...a) => console.error('[warn]', ...a),
+        error: (...a) => console.error('[error]', ...a),
       },
-    });
+    };
+    const result = opts.noNotify || opts.config
+      ? await runCheckCore({
+        config,
+        browser,
+        options: commonOptions,
+      })
+      : await runCheck({
+        config,
+        browser,
+        options: {
+          ...commonOptions,
+          dryNotify: !!opts.dryNotify,
+        },
+      });
     printJson(result, opts);
     return result.ok ? 0 : 1;
   } finally {
@@ -376,6 +442,8 @@ async function runMonitor(argv) {
   }
   const { opts, positional } = parsed;
   const sub = positional.shift();
+  opts.command = sub ? `monitor ${sub}` : 'monitor';
+  opts.startedAt = Date.now();
   if (!sub || opts.help) { printMonitorHelp(); return 0; }
 
   try {
