@@ -12,10 +12,12 @@
 const cli = require('./cli');
 
 if (require.main === module) {
-  cli.main(process.argv.slice(2)).then((code) => process.exit(code || 0)).catch((err) => {
+  cli.main(process.argv.slice(2)).then((code) => {
+    process.exitCode = code || 0;
+  }).catch((err) => {
     process.stderr.write(`未处理的错误: ${(err && err.message) || err}\n`);
     if (err && err.stack && process.env.JS_X_DEBUG) process.stderr.write(err.stack + '\n');
-    process.exit(1);
+    process.exitCode = 1;
   });
 }
 

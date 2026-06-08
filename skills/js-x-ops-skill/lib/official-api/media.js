@@ -4,8 +4,8 @@ const { randomUUID } = require('crypto');
 const { readFileSync, statSync } = require('fs');
 const { extname } = require('path');
 
-const MEDIA_UPLOAD_ENDPOINT = 'https://upload.twitter.com/1.1/media/upload.json';
-const MEDIA_METADATA_ENDPOINT = 'https://upload.twitter.com/1.1/media/metadata/create.json';
+const MEDIA_UPLOAD_ENDPOINT = 'https://api.x.com/2/media/upload';
+const MEDIA_METADATA_ENDPOINT = 'https://api.x.com/2/media/metadata';
 const CHUNK_SIZE = 4 * 1024 * 1024;
 
 const MEDIA_CATEGORIES = {
@@ -35,6 +35,45 @@ const EXT_TO_MIME = {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, opts = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...opts,
+      headers: { Connection: 'close', ...(opts.headers || {}) },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getMediaData(result) {
+  return result?.data || result || {};
+}
+
+function getMediaId(result) {
+  const data = getMediaData(result);
+  return String(data.id || data.media_id || result?.media_id_string || result?.media_id || '');
+}
+
+function buildMultipartBody(fields, fileField) {
+  const boundary = randomUUID().replace(/-/g, '');
+  const parts = [];
+  for (const [key, val] of Object.entries(fields)) {
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${val}\r\n`);
+  }
+  if (fileField) {
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${fileField.name}"; filename="${fileField.filename || 'blob'}"\r\nContent-Type: ${fileField.contentType || 'application/octet-stream'}\r\n\r\n`);
+  }
+
+  const textParts = Buffer.from(parts.join(''), 'utf-8');
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
+  const body = fileField ? Buffer.concat([textParts, fileField.data, tail]) : Buffer.concat([textParts, tail]);
+  return { boundary, body };
 }
 
 class OfficialApiMediaClient {
@@ -152,7 +191,7 @@ class OfficialApiMediaClient {
     if (result._error) {
       return { success: false, media_id: '', error: `INIT 失败: ${result._error}` };
     }
-    const mediaId = result.media_id_string || String(result.media_id || '');
+    const mediaId = getMediaId(result);
     if (!mediaId) {
       return { success: false, media_id: '', error: `INIT 未返回 media_id: ${JSON.stringify(result)}` };
     }
@@ -160,26 +199,16 @@ class OfficialApiMediaClient {
   }
 
   async _mediaAppend(mediaId, segmentIndex, chunk) {
-    const boundary = randomUUID().replace(/-/g, '');
     const authHeader = this._buildOauthHeader('POST', MEDIA_UPLOAD_ENDPOINT);
     const fields = {
       command: 'APPEND',
       media_id: String(mediaId),
       segment_index: String(segmentIndex),
     };
-
-    const parts = [];
-    for (const [key, val] of Object.entries(fields)) {
-      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${val}\r\n`);
-    }
-    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="media"; filename="blob"\r\nContent-Type: application/octet-stream\r\n\r\n`);
-
-    const textParts = Buffer.from(parts.join(''), 'utf-8');
-    const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
-    const body = Buffer.concat([textParts, chunk, tail]);
+    const { boundary, body } = buildMultipartBody(fields, { name: 'media', data: chunk });
 
     try {
-      const resp = await fetch(MEDIA_UPLOAD_ENDPOINT, {
+      const resp = await fetchWithTimeout(MEDIA_UPLOAD_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -188,8 +217,7 @@ class OfficialApiMediaClient {
           'User-Agent': this._userAgent,
         },
         body,
-        signal: AbortSignal.timeout(120000),
-      });
+      }, 120000);
       if (!resp.ok) {
         const errBody = (await resp.text()).slice(0, 300);
         return { success: false, error: `APPEND #${segmentIndex} 失败: HTTP ${resp.status}: ${errBody}` };
@@ -208,8 +236,8 @@ class OfficialApiMediaClient {
     }
     return {
       success: true,
-      media_id: String(result.media_id_string || result.media_id || ''),
-      processing_info: result.processing_info || null,
+      media_id: getMediaId(result),
+      processing_info: getMediaData(result).processing_info || result.processing_info || null,
     };
   }
 
@@ -234,7 +262,7 @@ class OfficialApiMediaClient {
       if (statusResult._error) {
         return { success: false, media_id: '', error: `STATUS 查询失败: ${statusResult._error}` };
       }
-      current = statusResult.processing_info;
+      current = getMediaData(statusResult).processing_info || statusResult.processing_info;
       if (!current) return { success: true };
     }
 
@@ -248,10 +276,9 @@ class OfficialApiMediaClient {
     const authHeader = this._buildOauthHeader('GET', MEDIA_UPLOAD_ENDPOINT, params);
 
     try {
-      const resp = await fetch(fullUrl, {
+      const resp = await fetchWithTimeout(fullUrl, {
         headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
-        signal: AbortSignal.timeout(30000),
-      });
+      }, 30000);
       if (!resp.ok) {
         const body = (await resp.text()).slice(0, 200);
         return { _error: `HTTP ${resp.status}: ${body}` };
@@ -264,12 +291,14 @@ class OfficialApiMediaClient {
 
   async _mediaSetAltText(mediaId, altText) {
     const body = JSON.stringify({
-      media_id: String(mediaId),
-      alt_text: { text: String(altText).slice(0, 1000) },
+      id: String(mediaId),
+      metadata: {
+        alt_text: { text: String(altText).slice(0, 1000) },
+      },
     });
     const authHeader = this._buildOauthHeader('POST', MEDIA_METADATA_ENDPOINT);
     try {
-      await fetch(MEDIA_METADATA_ENDPOINT, {
+      await fetchWithTimeout(MEDIA_METADATA_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -277,28 +306,27 @@ class OfficialApiMediaClient {
           'User-Agent': this._userAgent,
         },
         body,
-        signal: AbortSignal.timeout(15000),
-      });
+      }, 15000);
     } catch (e) {
       this._log('warning', `[official-api] alt text failed: ${e}`);
     }
   }
 
   async _postForm(url, params) {
-    const authHeader = this._buildOauthHeader('POST', url, params);
-    const body = new URLSearchParams(params).toString();
+    const authHeader = this._buildOauthHeader('POST', url);
+    const { boundary, body } = buildMultipartBody(params);
 
     try {
-      const resp = await fetch(url, {
+      const resp = await fetchWithTimeout(url, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': String(body.length),
           'User-Agent': this._userAgent,
         },
         body,
-        signal: AbortSignal.timeout(60000),
-      });
+      }, 60000);
 
       if (!resp.ok) {
         const bodyText = (await resp.text()).slice(0, 300);

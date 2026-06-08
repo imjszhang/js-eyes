@@ -1,11 +1,16 @@
 'use strict';
 
 const { createHmac, randomUUID } = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { OfficialApiMediaClient } = require('./media');
 
-const TWEETS_ENDPOINT = 'https://api.twitter.com/2/tweets';
-const USER_ME_ENDPOINT = 'https://api.twitter.com/2/users/me';
+const X_API_BASE = 'https://api.x.com';
+const TWEETS_ENDPOINT = `${X_API_BASE}/2/tweets`;
+const USER_ME_ENDPOINT = `${X_API_BASE}/2/users/me`;
+const USER_BY_USERNAME_ENDPOINT = `${X_API_BASE}/2/users/by/username`;
 const USER_AGENT = 'js-x-ops-skill/3 official-api';
+let envFilesLoaded = false;
 
 function percentEncode(s) {
   return encodeURIComponent(String(s))
@@ -20,19 +25,90 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchWithTimeout(url, opts = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...opts,
+      headers: { Connection: 'close', ...(opts.headers || {}) },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeBearerToken(token) {
+  return String(token || '').replace(/^Bearer\s+/i, '').trim();
+}
+
+function unquoteEnvValue(value) {
+  const trimmed = String(value || '').trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function loadEnvFile(filePath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch (_) {
+    return;
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed);
+    if (!m) continue;
+    const key = m[1];
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = unquoteEnvValue(m[2]);
+  }
+}
+
+function loadEnvFilesOnce() {
+  if (envFilesLoaded || process.env.JS_X_SKIP_DOTENV === '1') return;
+  envFilesLoaded = true;
+
+  const startDirs = [process.cwd(), __dirname];
+  const seen = new Set();
+  for (const start of startDirs) {
+    let dir = path.resolve(start);
+    while (!seen.has(dir)) {
+      seen.add(dir);
+      loadEnvFile(path.join(dir, '.env'));
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+}
+
 class OfficialApiClient {
   constructor({
     apiKey,
     apiSecret,
     accessToken,
     accessTokenSecret,
+    bearerToken,
     logger,
     userAgent = USER_AGENT,
   } = {}) {
+    loadEnvFilesOnce();
     this.apiKey = apiKey || process.env.X_API_KEY || '';
     this.apiSecret = apiSecret || process.env.X_API_SECRET || '';
     this.accessToken = accessToken || process.env.X_ACCESS_TOKEN || '';
     this.accessTokenSecret = accessTokenSecret || process.env.X_ACCESS_TOKEN_SECRET || '';
+    this.bearerToken = normalizeBearerToken(
+      bearerToken || process.env.X_BEARER_TOKEN || process.env.X_API_BEARER_TOKEN || '',
+    );
     this._logger = logger || null;
     this._userAgent = userAgent;
     this._cachedUserId = null;
@@ -45,8 +121,16 @@ class OfficialApiClient {
     });
   }
 
-  get isConfigured() {
+  get isWriteConfigured() {
     return !!(this.apiKey && this.apiSecret && this.accessToken && this.accessTokenSecret);
+  }
+
+  get isReadConfigured() {
+    return !!(this.bearerToken || this.isWriteConfigured);
+  }
+
+  get isConfigured() {
+    return this.isWriteConfigured;
   }
 
   _log(level, msg) {
@@ -59,24 +143,26 @@ class OfficialApiClient {
     if (this._readAvailable !== null) {
       return { available: this._readAvailable };
     }
-    if (!this.isConfigured) {
+    if (!this.isReadConfigured) {
       this._readAvailable = false;
       return { available: false, reason: 'api_not_configured' };
     }
     try {
       const params = { 'user.fields': 'id' };
-      const url = `${USER_ME_ENDPOINT}?${new URLSearchParams(params).toString()}`;
-      const authHeader = this._buildOauthHeader('GET', USER_ME_ENDPOINT, params);
-      const resp = await fetch(url, {
+      const baseUrl = this.isWriteConfigured ? USER_ME_ENDPOINT : `${USER_BY_USERNAME_ENDPOINT}/xdevelopers`;
+      const url = `${baseUrl}?${new URLSearchParams(params).toString()}`;
+      const authHeader = this.isWriteConfigured
+        ? this._buildOauthHeader('GET', baseUrl, params)
+        : this._buildReadAuthHeader('GET', baseUrl, params);
+      const resp = await fetchWithTimeout(url, {
         headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
-        signal: AbortSignal.timeout(15000),
-      });
+      }, 15000);
       if (resp.ok) {
         this._readAvailable = true;
         const body = await resp.json();
         const uid = body?.data?.id;
-        if (uid) this._cachedUserId = uid;
-        return { available: true, user_id: uid };
+        if (uid && this.isWriteConfigured) this._cachedUserId = uid;
+        return { available: true, user_id: uid, auth_type: this.isWriteConfigured ? 'oauth1' : 'bearer' };
       }
       let bodyText = '';
       try { bodyText = (await resp.text()).slice(0, 300); } catch (_) {}
@@ -95,15 +181,14 @@ class OfficialApiClient {
 
   async getUserId() {
     if (this._cachedUserId) return this._cachedUserId;
-    if (!this.isConfigured) return null;
+    if (!this.isWriteConfigured) return null;
     try {
       const params = { 'user.fields': 'id' };
       const url = `${USER_ME_ENDPOINT}?${new URLSearchParams(params).toString()}`;
       const authHeader = this._buildOauthHeader('GET', USER_ME_ENDPOINT, params);
-      const resp = await fetch(url, {
+      const resp = await fetchWithTimeout(url, {
         headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
-        signal: AbortSignal.timeout(15000),
-      });
+      }, 15000);
       if (!resp.ok) {
         this._log('warning', `[OfficialApiClient] GET /2/users/me -> HTTP ${resp.status}`);
         return null;
@@ -124,7 +209,7 @@ class OfficialApiClient {
     maxPages = 2,
     excludeRetweets = true,
   } = {}) {
-    if (!this.isConfigured) return [];
+    if (!this.isReadConfigured) return [];
     const uid = userId || await this.getUserId();
     if (!uid) {
       this._log('warning', '[OfficialApiClient] getUserTweets: missing user id');
@@ -142,15 +227,14 @@ class OfficialApiClient {
       if (excludeRetweets) params.exclude = 'retweets';
       if (paginationToken) params.pagination_token = paginationToken;
 
-      const baseUrl = `https://api.twitter.com/2/users/${uid}/tweets`;
+      const baseUrl = `${X_API_BASE}/2/users/${uid}/tweets`;
       const qs = new URLSearchParams(params).toString();
-      const authHeader = this._buildOauthHeader('GET', baseUrl, params);
+      const authHeader = this._buildReadAuthHeader('GET', baseUrl, params);
 
       try {
-        const resp = await fetch(`${baseUrl}?${qs}`, {
+        const resp = await fetchWithTimeout(`${baseUrl}?${qs}`, {
           headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
-          signal: AbortSignal.timeout(30000),
-        });
+        }, 30000);
         if (!resp.ok) {
           this._log('warning', `[OfficialApiClient] GET /2/users/${uid}/tweets page ${page + 1} -> HTTP ${resp.status}`);
           break;
@@ -172,7 +256,7 @@ class OfficialApiClient {
     tweetIds,
     tweetFields = 'id,text,public_metrics,author_id,created_at',
   ) {
-    if (!this.isConfigured || !tweetIds?.length) {
+    if (!this.isReadConfigured || !tweetIds?.length) {
       return { data: [], users: {} };
     }
 
@@ -189,13 +273,12 @@ class OfficialApiClient {
       };
 
       const qs = new URLSearchParams(params).toString();
-      const authHeader = this._buildOauthHeader('GET', TWEETS_ENDPOINT, params);
+      const authHeader = this._buildReadAuthHeader('GET', TWEETS_ENDPOINT, params);
 
       try {
-        const resp = await fetch(`${TWEETS_ENDPOINT}?${qs}`, {
+        const resp = await fetchWithTimeout(`${TWEETS_ENDPOINT}?${qs}`, {
           headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
-          signal: AbortSignal.timeout(30000),
-        });
+        }, 30000);
         if (!resp.ok) {
           this._log('warning', `[OfficialApiClient] GET /2/tweets?ids batch ${Math.floor(i / 100) + 1} -> HTTP ${resp.status}`);
           continue;
@@ -231,7 +314,12 @@ class OfficialApiClient {
   async createQuote(text, quoteTweetId, mediaIds) {
     const body = { text, quote_tweet_id: String(quoteTweetId) };
     if (mediaIds?.length) body.media = { media_ids: mediaIds.map(String) };
-    return this._postTweet(body);
+    const result = await this._postTweet(body);
+    if (!result.success && result.status_code === 403) {
+      result.detail = result.detail || 'Quote-posting requires an Enterprise plan on the X API.';
+      result.error = `${result.error}（Quote Post 需要 X API Enterprise 计划）`;
+    }
+    return result;
   }
 
   async createThread(tweets) {
@@ -301,7 +389,7 @@ class OfficialApiClient {
     const payload = JSON.stringify(body);
 
     try {
-      const resp = await fetch(TWEETS_ENDPOINT, {
+      const resp = await fetchWithTimeout(TWEETS_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -309,8 +397,7 @@ class OfficialApiClient {
           'User-Agent': this._userAgent,
         },
         body: payload,
-        signal: AbortSignal.timeout(30000),
-      });
+      }, 30000);
 
       if (resp.ok) {
         const respBody = await resp.json();
@@ -378,6 +465,11 @@ class OfficialApiClient {
       .map((k) => `${percentEncode(k)}="${percentEncode(oauthParams[k])}"`)
       .join(', ');
     return `OAuth ${headerParts}`;
+  }
+
+  _buildReadAuthHeader(method, url, extraParams) {
+    if (this.bearerToken) return `Bearer ${this.bearerToken}`;
+    return this._buildOauthHeader(method, url, extraParams);
   }
 
   static buildSignatureBase(method, url, params) {

@@ -84,7 +84,7 @@ function printJson(value, opts) {
 
 function printApiHelp() {
   const lines = [
-    'js-x-ops-skill api - X 官方 API (OAuth 1.0a)',
+    'js-x-ops-skill api - X 官方 API (v2 REST)',
     '',
     'Usage: node index.js api <subcommand> [args] [options]',
     '',
@@ -110,7 +110,8 @@ function printApiHelp() {
     '  --pretty                                缩进 JSON',
     '',
     'Credentials:',
-    '  X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET',
+    '  Reads:  X_BEARER_TOKEN（或 OAuth 1.0a 四元组）',
+    '  Writes: X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET',
   ];
   process.stdout.write(lines.join('\n') + '\n');
 }
@@ -153,8 +154,14 @@ async function runApi(argv) {
     if (sub === 'status') {
       const access = await client.checkReadAccess();
       result = {
-        ok: client.isConfigured && access.available !== false,
+        ok: access.available !== false,
         configured: client.isConfigured,
+        read_configured: client.isReadConfigured,
+        write_configured: client.isWriteConfigured,
+        auth: {
+          bearer: !!client.bearerToken,
+          oauth1: client.isWriteConfigured,
+        },
         access,
       };
       if (!result.ok) {

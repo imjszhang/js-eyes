@@ -161,6 +161,32 @@ js-eyes skill run js-x-ops-skill doctor
 node scripts/_dev-probe-dom.js --page search
 ```
 
+## 官方 X API v2 通道
+
+READ 工具默认仍走浏览器同源 GraphQL；官方 REST API 只作为 CLI / `scripts/x-post.js --via auto|api` 的可选通道。端点统一使用 `https://api.x.com`。
+
+凭证从 [console.x.com](https://console.x.com) 的 App 页面获取：
+
+- `X_BEARER_TOKEN`：只读请求优先使用；适用于 `api status` / `api timeline` / `api tweets`
+- `X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET`：OAuth 1.0a 用户上下文四元组；发帖、回复、Quote、媒体上传必须配置
+
+CLI 会从当前目录和 skill 目录向上查找 `.env`，并只填充尚未存在的环境变量；真实环境变量优先级高于 `.env`。
+
+```bash
+# 官方 API 状态与只读
+node index.js api status --pretty
+node index.js api timeline --max-pages 2 --pretty
+node index.js api tweets 1234567890 --pretty
+
+# 官方 API 写入（按 X API pay-per-use 计费）
+node index.js api tweet "新帖内容"
+node index.js api reply 1234567890 "回复内容"
+node index.js api upload-media path/to/image.png --alt "图片说明"
+node index.js api tweet "带图新帖" --media-id 1880028106020515840
+```
+
+注意：`api quote` 使用官方 `quote_tweet_id` 参数；X API 文档标注 Quote-posting 需要 Enterprise 计划，自助按量付费账号可能返回 403。媒体上传已使用 X API v2 的 `POST /2/media/upload` 和 `POST /2/media/metadata`。
+
 ## READ 调度：`readMode`、visual 与重放（v3.2）
 
 READ 单一管道为 **`lib/runTool.js`**：四座 bridge 同时注册 **`api_*`（同源 GraphQL）** 与 **`dom_*`（DOM 抽取）**，`wrapCallApi` / `drainVisualEvents` 由 **`@js-eyes/visual-bridge-kit`** 提供（与 reddit-ops 同主线）。
