@@ -78,6 +78,13 @@ const COMMANDS = {
     defaultPage: null,
     help: 'X.com 账号监控：init/add/remove/list/status/test/check（详细 subcommand: `monitor --help`）',
   },
+  trends: {
+    kind: 'special',
+    argSpec: [],
+    pages: [],
+    defaultPage: null,
+    help: '官方 API 趋势话题：trends [--woeid 1] [--woeid 23424977]',
+  },
 
   // 写操作 post 入口（v2 行为，spawn scripts/x-post.js）
   // 当 positional[0] 是 URL/ID 且无写参数时，直接走 READ kind=tool 路径（见下面 post）。
@@ -465,7 +472,7 @@ function printHelp() {
     '',
     'Commands:',
   ];
-  lines.push('  api                <subcommand>    X 官方 API：reply/tweet/quote/thread/upload-media/timeline/tweets/status');
+  lines.push('  api                <subcommand>    X 官方 API：reply/tweet/quote/thread/upload-media/timeline/tweets/trends/status');
   for (const [name, def] of Object.entries(COMMANDS)) {
     const args = (def.argSpec || []).map((s) => (s.required ? `<${s.name}>` : `[${s.name}]`)).join(' ');
     const pageHint = def.defaultPage
@@ -505,6 +512,7 @@ function printHelp() {
     '  node index.js profile elonmusk --max-pages 2 --include-replies',
     '  node index.js post https://x.com/user/status/123',
     '  node index.js home --feed foryou --max-pages 1',
+    '  node index.js trends --woeid 1 --pretty',
     '  node index.js session-state --pretty',
     '  node index.js api status --pretty',
     '  node index.js api tweet "hello world" --pretty',

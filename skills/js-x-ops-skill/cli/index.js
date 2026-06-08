@@ -468,6 +468,10 @@ async function main(argv) {
     return await runApi(argv.slice(1));
   }
 
+  if (command0 === 'trends') {
+    return await runApi(['trends', ...argv.slice(1)]);
+  }
+
   let parsed;
   try {
     parsed = parseArgv(argv);

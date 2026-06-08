@@ -7,6 +7,7 @@ const { OfficialApiMediaClient } = require('./media');
 
 const X_API_BASE = 'https://api.x.com';
 const TWEETS_ENDPOINT = `${X_API_BASE}/2/tweets`;
+const TRENDS_BY_WOEID_ENDPOINT = `${X_API_BASE}/2/trends/by/woeid`;
 const USER_ME_ENDPOINT = `${X_API_BASE}/2/users/me`;
 const USER_BY_USERNAME_ENDPOINT = `${X_API_BASE}/2/users/by/username`;
 const USER_AGENT = 'js-x-ops-skill/3 official-api';
@@ -322,6 +323,43 @@ class OfficialApiClient {
     return { data: allTweets, users: usersMap };
   }
 
+  async getTrends(woeid = 1) {
+    if (!this.isReadConfigured) {
+      return {
+        ok: false,
+        trends: [],
+        error: 'X API read credentials are not configured',
+        errorCode: 'api_not_configured',
+      };
+    }
+
+    const id = String(woeid || '').trim() || '1';
+    const url = `${TRENDS_BY_WOEID_ENDPOINT}/${encodeURIComponent(id)}`;
+    const authHeader = this._buildReadAuthHeader('GET', url, {});
+
+    try {
+      const resp = await fetchWithTimeout(url, {
+        headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
+      }, 15000);
+
+      if (!resp.ok) {
+        return await OfficialApiClient.parseHttpError(resp);
+      }
+
+      const body = await resp.json();
+      const trends = Array.isArray(body?.data) ? body.data : [];
+      return {
+        ok: true,
+        woeid: id,
+        trends,
+        count: trends.length,
+        meta: body?.meta || {},
+      };
+    } catch (e) {
+      return { ok: false, trends: [], error: String(e), errorCode: 'request_failed' };
+    }
+  }
+
   async createTweet(text, mediaIds) {
     const body = { text };
     if (mediaIds?.length) body.media = { media_ids: mediaIds.map(String) };
@@ -544,5 +582,6 @@ module.exports = {
   OfficialApiClient,
   percentEncode,
   TWEETS_ENDPOINT,
+  TRENDS_BY_WOEID_ENDPOINT,
   USER_ME_ENDPOINT,
 };

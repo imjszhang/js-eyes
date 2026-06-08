@@ -16,6 +16,7 @@ function parseApiArgs(argv) {
     mediaIds: [],
     alt: '',
     userId: null,
+    woeids: [],
     excludeRetweets: true,
   };
   const positional = [];
@@ -41,6 +42,8 @@ function parseApiArgs(argv) {
     else if (a.startsWith('--max-results=')) opts.maxResults = Number(a.slice('--max-results='.length)) || 100;
     else if (a === '--user-id') eat('userId');
     else if (a.startsWith('--user-id=')) eatEq('userId', '--user-id=');
+    else if (a === '--woeid') opts.woeids.push(String(argv[++i] || '').trim());
+    else if (a.startsWith('--woeid=')) opts.woeids.push(a.slice('--woeid='.length).trim());
     else if (a === '--include-retweets') opts.excludeRetweets = false;
     else if (a === '--exclude-retweets') opts.excludeRetweets = true;
     else if (a.startsWith('-')) {
@@ -97,6 +100,7 @@ function printApiHelp() {
     '  upload-media <path> [--alt <text>]      上传媒体，返回 media_id',
     '  timeline [--max-pages N]                读取当前账号时间线',
     '  tweets <id1> [id2...]                  批量读取推文 metrics',
+    '  trends [--woeid id]                     读取指定 WOEID 的趋势话题（可重复）',
     '  delete <tweet_id>                       删除当前账号发布的推文',
     '',
     'Options:',
@@ -106,6 +110,7 @@ function printApiHelp() {
     '  --max-pages <n>                         timeline 页数上限',
     '  --max-results <n>                       timeline 每页数量',
     '  --user-id <id>                          timeline 指定用户 ID',
+    '  --woeid <id>                            trends WOEID（默认 1=Worldwide，可重复）',
     '  --include-retweets / --exclude-retweets timeline 转推控制',
     '  --output <file>                         写入 JSON envelope',
     '  --pretty                                缩进 JSON',
@@ -210,6 +215,42 @@ async function runApi(argv) {
       if (!positional.length) throw Object.assign(new Error('api tweets 需要至少一个 tweet id'), { code: 'E_BAD_ARG' });
       const data = await client.getTweetsByIds(positional);
       result = { ok: true, ...data, via: 'official_api' };
+    } else if (sub === 'trends') {
+      const woeids = [...opts.woeids, ...positional].map((id) => String(id || '').trim()).filter(Boolean);
+      if (!woeids.length) woeids.push('1');
+      const perLocation = [];
+      const trendMap = new Map();
+      for (const woeid of woeids) {
+        const data = await client.getTrends(woeid);
+        if (!data.ok) {
+          result = { ok: false, ...data, woeid, via: 'official_api' };
+          break;
+        }
+        perLocation.push(data);
+        for (const trend of (data.trends || [])) {
+          const name = String(trend.trend_name || trend.name || '').trim();
+          if (!name) continue;
+          const key = name.toLowerCase();
+          const tweetCount = Number(trend.tweet_count ?? trend.tweet_volume ?? 0) || 0;
+          const existing = trendMap.get(key);
+          if (!existing) {
+            trendMap.set(key, {
+              trend_name: name,
+              tweet_count: tweetCount,
+              woeids: [String(woeid)],
+              sources: [{ woeid: String(woeid), tweet_count: tweetCount }],
+            });
+          } else {
+            existing.tweet_count = Math.max(existing.tweet_count || 0, tweetCount);
+            if (!existing.woeids.includes(String(woeid))) existing.woeids.push(String(woeid));
+            existing.sources.push({ woeid: String(woeid), tweet_count: tweetCount });
+          }
+        }
+      }
+      if (!result) {
+        const trends = Array.from(trendMap.values()).sort((a, b) => (b.tweet_count || 0) - (a.tweet_count || 0));
+        result = { ok: true, trends, count: trends.length, woeids, per_location: perLocation, via: 'official_api' };
+      }
     } else if (sub === 'delete') {
       const [tweetId] = positional;
       if (!tweetId) throw Object.assign(new Error('api delete 需要 <tweet_id>'), { code: 'E_BAD_ARG' });

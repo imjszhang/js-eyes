@@ -135,6 +135,20 @@ test('OfficialApiClient uses Bearer token for read requests when available', asy
   }));
 });
 
+test('OfficialApiClient.getTrends reads Trends by WOEID with bearer auth', async () => {
+  await withNoApiEnv(() => withFetchMock(async () => makeResponse({
+    body: { data: [{ trend_name: '#AI', tweet_count: 250000 }] },
+  }), async (calls) => {
+    const client = new OfficialApiClient({ bearerToken: 'read_token' });
+    const result = await client.getTrends(1);
+    assert.equal(result.ok, true);
+    assert.equal(result.woeid, '1');
+    assert.deepEqual(result.trends, [{ trend_name: '#AI', tweet_count: 250000 }]);
+    assert.equal(calls[0].url, 'https://api.x.com/2/trends/by/woeid/1');
+    assert.equal(calls[0].opts.headers.Authorization, 'Bearer read_token');
+  }));
+});
+
 test('OfficialApiClient prefers OAuth1 for user-context read status when configured', async () => {
   await withNoApiEnv(() => withFetchMock(async () => makeResponse({
     body: { data: { id: '99' } },
@@ -219,6 +233,12 @@ test('parseApiArgs supports repeated --media-id flags', () => {
   assert.deepEqual(opts.mediaIds, ['1', '2']);
 });
 
+test('parseApiArgs supports repeated --woeid flags', () => {
+  const { opts, positional } = parseApiArgs(['trends', '--woeid', '1', '--woeid=23424977']);
+  assert.deepEqual(positional, ['trends']);
+  assert.deepEqual(opts.woeids, ['1', '23424977']);
+});
+
 test('runApi status returns structured api_not_configured without network', async () => {
   const { code, output } = await withNoApiEnv(() => silenceStdout(() => runApi(['status', '--pretty'])));
   assert.equal(code, 1);
@@ -241,5 +261,25 @@ test('runApi tweet writes success envelope through dispatcher', async () => {
     assert.equal(envelope.result.tweet_id, '67890');
     assert.equal(envelope.result.via, 'official_api');
     assert.equal(envelope.meta.command, 'api tweet');
+  }));
+});
+
+test('runApi trends merges repeated WOEID results', async () => {
+  await withApiEnv(async () => withFetchMock(async (url) => {
+    if (String(url).endsWith('/1')) {
+      return makeResponse({ body: { data: [{ trend_name: '#AI', tweet_count: 250000 }] } });
+    }
+    return makeResponse({ body: { data: [{ trend_name: '#AI', tweet_count: 180000 }, { trend_name: 'Layoffs', tweet_count: 90000 }] } });
+  }, async () => {
+    const { code, output } = await silenceStdout(() => runApi(['trends', '--woeid', '1', '--woeid', '23424977']));
+    assert.equal(code, 0);
+    const envelope = JSON.parse(output);
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.result.count, 2);
+    assert.deepEqual(envelope.result.woeids, ['1', '23424977']);
+    assert.equal(envelope.result.trends[0].trend_name, '#AI');
+    assert.equal(envelope.result.trends[0].tweet_count, 250000);
+    assert.deepEqual(envelope.result.trends[0].woeids, ['1', '23424977']);
+    assert.equal(envelope.meta.command, 'api trends');
   }));
 });
