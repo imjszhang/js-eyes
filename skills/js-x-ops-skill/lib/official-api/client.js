@@ -406,6 +406,39 @@ class OfficialApiClient {
     return this._media.uploadMediaBytes(data, mediaType, opts);
   }
 
+  async deleteTweet(tweetId) {
+    if (!this.isConfigured) {
+      return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
+    }
+
+    const id = String(tweetId || '').trim();
+    if (!id) {
+      return { success: false, error: '缺少 tweet id', errorCode: 'bad_arg' };
+    }
+
+    const url = `${TWEETS_ENDPOINT}/${encodeURIComponent(id)}`;
+    const authHeader = this._buildOauthHeader('DELETE', url);
+
+    try {
+      const resp = await fetchWithTimeout(url, {
+        method: 'DELETE',
+        headers: {
+          Authorization: authHeader,
+          'User-Agent': this._userAgent,
+        },
+      }, 30000);
+
+      if (resp.ok) {
+        const body = await resp.json();
+        return { success: body?.data?.deleted === true, tweet_id: id, data: body?.data || {} };
+      }
+
+      return await OfficialApiClient.parseHttpError(resp);
+    } catch (e) {
+      return { success: false, error: String(e), errorCode: 'request_failed' };
+    }
+  }
+
   async _postTweet(body) {
     if (!this.isConfigured) {
       return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };

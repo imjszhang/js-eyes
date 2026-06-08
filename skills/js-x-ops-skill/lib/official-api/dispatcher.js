@@ -97,6 +97,7 @@ function printApiHelp() {
     '  upload-media <path> [--alt <text>]      上传媒体，返回 media_id',
     '  timeline [--max-pages N]                读取当前账号时间线',
     '  tweets <id1> [id2...]                  批量读取推文 metrics',
+    '  delete <tweet_id>                       删除当前账号发布的推文',
     '',
     'Options:',
     '  --media <path>                          tweet/thread 第一条媒体路径',
@@ -209,6 +210,10 @@ async function runApi(argv) {
       if (!positional.length) throw Object.assign(new Error('api tweets 需要至少一个 tweet id'), { code: 'E_BAD_ARG' });
       const data = await client.getTweetsByIds(positional);
       result = { ok: true, ...data, via: 'official_api' };
+    } else if (sub === 'delete') {
+      const [tweetId] = positional;
+      if (!tweetId) throw Object.assign(new Error('api delete 需要 <tweet_id>'), { code: 'E_BAD_ARG' });
+      result = normalizeWriteResult(await client.deleteTweet(tweetId), { via: 'official_api' });
     } else {
       process.stderr.write(`未知 api 子命令: ${sub}\n\n`);
       printApiHelp();
