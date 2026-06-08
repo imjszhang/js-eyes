@@ -179,6 +179,32 @@ class OfficialApiClient {
     }
   }
 
+  async getUserByUsername(username, { userFields = 'pinned_tweet_id,description,public_metrics' } = {}) {
+    const clean = String(username || '').replace(/^@/, '').trim();
+    if (!clean) return null;
+    if (!this.isReadConfigured && !this.isWriteConfigured) return null;
+    try {
+      const params = { 'user.fields': userFields };
+      const basePath = `${USER_BY_USERNAME_ENDPOINT}/${encodeURIComponent(clean)}`;
+      const authHeader = this.isWriteConfigured
+        ? this._buildOauthHeader('GET', basePath, params)
+        : this._buildReadAuthHeader('GET', basePath, params);
+      const url = `${basePath}?${new URLSearchParams(params).toString()}`;
+      const resp = await fetchWithTimeout(url, {
+        headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
+      }, 15000);
+      if (!resp.ok) {
+        this._log('warning', `[OfficialApiClient] GET ${basePath} -> HTTP ${resp.status}`);
+        return null;
+      }
+      const body = await resp.json();
+      return body?.data || null;
+    } catch (e) {
+      this._log('warning', `[OfficialApiClient] getUserByUsername failed: ${e}`);
+      return null;
+    }
+  }
+
   async getUserId() {
     if (this._cachedUserId) return this._cachedUserId;
     if (!this.isWriteConfigured) return null;

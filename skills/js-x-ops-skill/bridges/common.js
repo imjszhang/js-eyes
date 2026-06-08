@@ -403,6 +403,9 @@ function parseTweetArticle(article){
     || (article.innerText || '').includes('推广');
   if (isPromoted) return null;
 
+  const socialContext = article.querySelector('[data-testid="socialContext"]');
+  const isPinned = !!(socialContext && /pinned|置顶/i.test(socialContext.textContent || ''));
+
   let authorName = '';
   let authorAvatar = '';
   const userNameElem = article.querySelector('[data-testid="User-Name"]');
@@ -464,6 +467,7 @@ function parseTweetArticle(article){
     stats,
     mediaUrls: Array.from(new Set(mediaUrls)),
     tweetUrl,
+    isPinned,
   };
 }
 

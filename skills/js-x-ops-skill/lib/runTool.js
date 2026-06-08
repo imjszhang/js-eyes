@@ -404,6 +404,15 @@ async function runTool(browser, spec) {
     await session.close();
   }
 
+  if (resp && resp.ok && method === 'getProfile' && resp.data && typeof resp.data === 'object') {
+    const { enrichProfilePinnedTweet, markPinnedTweets } = require('./profile-enrich');
+    const username = (args && args.username) || resp.data.username || '';
+    resp.data.profile = await enrichProfilePinnedTweet(resp.data.profile || null, username, options.logger);
+    if (Array.isArray(resp.data.tweets)) {
+      resp.data.tweets = markPinnedTweets(resp.data.tweets, resp.data.profile && resp.data.profile.pinnedTweetId);
+    }
+  }
+
   const durationMs = Date.now() - startedAt;
   const ok = !!(resp && resp.ok);
   const response = {

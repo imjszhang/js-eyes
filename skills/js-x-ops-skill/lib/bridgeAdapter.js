@@ -202,7 +202,10 @@ async function profileViaBridge(browser, username, options = {}) {
   });
 
   const P = getProfileHelpers();
-  const rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+  const { enrichProfilePinnedTweet, markPinnedTweets } = require('./profile-enrich');
+  const profile = await enrichProfilePinnedTweet(data.profile || null, cleanUsername, opts.logger);
+  let rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+  rawTweets = markPinnedTweets(rawTweets, profile?.pinnedTweetId);
   const { filtered } = P.filterTweets(rawTweets, opts);
 
   let results = filtered;
@@ -218,7 +221,7 @@ async function profileViaBridge(browser, username, options = {}) {
 
   return {
     username: cleanUsername,
-    profile: data.profile || null,
+    profile,
     scrapeOptions: {
       maxPages: opts.maxPages, maxTweets: opts.maxTweets,
       since: opts.since, until: opts.until,

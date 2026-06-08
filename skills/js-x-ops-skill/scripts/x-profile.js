@@ -287,7 +287,15 @@ function buildUserByScreenNameScript(screenName, queryId, features) {
                         avatarUrl: avatar.image_url || legacy.profile_image_url_https || '',
                         bannerUrl: legacy.profile_banner_url || '',
                         isVerified: userResult.is_blue_verified || false,
-                        isProtected: (userResult.privacy && userResult.privacy.protected) || legacy.protected || false
+                        isProtected: (userResult.privacy && userResult.privacy.protected) || legacy.protected || false,
+                        pinnedTweetId: Array.isArray(legacy.pinned_tweet_ids_str) && legacy.pinned_tweet_ids_str.length
+                            ? String(legacy.pinned_tweet_ids_str[0])
+                            : (Array.isArray(legacy.pinned_tweet_ids) && legacy.pinned_tweet_ids.length
+                                ? String(legacy.pinned_tweet_ids[0])
+                                : ''),
+                        pinned_tweet_ids_str: Array.isArray(legacy.pinned_tweet_ids_str)
+                            ? legacy.pinned_tweet_ids_str.map(String)
+                            : [],
                     }
                 };
             } catch (parseError) {

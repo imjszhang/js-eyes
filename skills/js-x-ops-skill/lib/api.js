@@ -177,7 +177,10 @@ async function profileViaRunTool(browser, username, options) {
     if (!rt.ok) throw errFromRunTool(rt);
     const P = getProfile();
     const data = rt.result || {};
-    const rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+    const { enrichProfilePinnedTweet, markPinnedTweets } = require('./profile-enrich');
+    const profile = await enrichProfilePinnedTweet(data.profile || null, cleanUsername, opts.logger);
+    let rawTweets = Array.isArray(data.tweets) ? data.tweets : [];
+    rawTweets = markPinnedTweets(rawTweets, profile?.pinnedTweetId);
     const { filtered } = P.filterTweets(rawTweets, opts);
     let results = filtered;
     if (opts.minLikes > 0 || opts.minRetweets > 0) {
@@ -191,7 +194,7 @@ async function profileViaRunTool(browser, username, options) {
     }
     return {
         username: cleanUsername,
-        profile: data.profile || null,
+        profile,
         scrapeOptions: {
             maxPages: opts.maxPages, maxTweets: opts.maxTweets,
             since: opts.since, until: opts.until,

@@ -139,6 +139,10 @@
       const locStr = (typeof userLocation === 'string')
         ? userLocation
         : (userLocation.location || userLegacy.location || '');
+      const pinnedIds = userLegacy.pinned_tweet_ids_str || userLegacy.pinned_tweet_ids || [];
+      const pinnedTweetId = Array.isArray(pinnedIds) && pinnedIds.length
+        ? String(pinnedIds[0])
+        : '';
       return {
         ok: true,
         userId,
@@ -157,6 +161,8 @@
           bannerUrl: userLegacy.profile_banner_url || '',
           isVerified: userResult.is_blue_verified || false,
           isProtected: (userResult.privacy && userResult.privacy.protected) || userLegacy.protected || false,
+          pinnedTweetId,
+          pinned_tweet_ids_str: Array.isArray(pinnedIds) ? pinnedIds.map(String) : [],
         },
       };
     } catch (e) {
@@ -366,6 +372,7 @@
         followersCount: 0,
         followingCount: 0,
         tweetCount: tweets.length,
+        pinnedTweetId: (tweets.find(function(t){ return t.isPinned; }) || {}).tweetId || '',
       },
       total: tweets.length,
       tweets,
@@ -408,6 +415,10 @@
       }
     }
     if (!resolved.ok) return errResult(resolved.error, { opName: 'UserByScreenName', statusCode: resolved.statusCode });
+
+    const pinnedTweetId = resolved.profile && resolved.profile.pinnedTweetId
+      ? String(resolved.profile.pinnedTweetId)
+      : '';
 
     let result = await _fetchTimelinePages({
       tweetsOp: requestedOp,
@@ -454,6 +465,13 @@
       } else {
         fallbackReason = 'UserTweets_discover_failed';
       }
+    }
+
+    if (pinnedTweetId && result.tweets && result.tweets.length) {
+      result.tweets = result.tweets.map(function(tw){
+        if (String(tw.tweetId) === pinnedTweetId) return Object.assign({}, tw, { isPinned: true });
+        return tw;
+      });
     }
 
     return okResult({
