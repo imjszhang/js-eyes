@@ -18,6 +18,8 @@ function parseApiArgs(argv) {
     userId: null,
     woeids: [],
     excludeRetweets: true,
+    tweetFields: '',
+    includePrivateMetrics: false,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -46,6 +48,9 @@ function parseApiArgs(argv) {
     else if (a.startsWith('--woeid=')) opts.woeids.push(a.slice('--woeid='.length).trim());
     else if (a === '--include-retweets') opts.excludeRetweets = false;
     else if (a === '--exclude-retweets') opts.excludeRetweets = true;
+    else if (a === '--tweet-fields') eat('tweetFields');
+    else if (a.startsWith('--tweet-fields=')) eatEq('tweetFields', '--tweet-fields=');
+    else if (a === '--include-private-metrics') opts.includePrivateMetrics = true;
     else if (a.startsWith('-')) {
       const err = new Error(`api: 未知选项 ${a}`);
       err.code = 'E_BAD_ARG';
@@ -99,6 +104,7 @@ function printApiHelp() {
     '  thread <text1> <text2> ...              发串推',
     '  upload-media <path> [--alt <text>]      上传媒体，返回 media_id',
     '  timeline [--max-pages N]                读取当前账号时间线',
+    '  mentions [--max-pages N]                读取当前账号 mentions',
     '  tweets <id1> [id2...]                  批量读取推文 metrics',
     '  trends [--woeid id]                     读取指定 WOEID 的趋势话题（可重复）',
     '  delete <tweet_id>                       删除当前账号发布的推文',
@@ -111,6 +117,8 @@ function printApiHelp() {
     '  --max-results <n>                       timeline 每页数量',
     '  --user-id <id>                          timeline 指定用户 ID',
     '  --woeid <id>                            trends WOEID（默认 1=Worldwide，可重复）',
+    '  --tweet-fields <csv>                    tweets 自定义 tweet.fields',
+    '  --include-private-metrics               tweets 请求 organic/non-public metrics（仅自有帖子 + user context）',
     '  --include-retweets / --exclude-retweets timeline 转推控制',
     '  --output <file>                         写入 JSON envelope',
     '  --pretty                                缩进 JSON',
@@ -211,9 +219,19 @@ async function runApi(argv) {
         excludeRetweets: opts.excludeRetweets,
       });
       result = { ok: true, tweets, count: tweets.length, via: 'official_api' };
+    } else if (sub === 'mentions') {
+      const tweets = await client.getMentions({
+        userId: opts.userId,
+        maxResults: opts.maxResults,
+        maxPages: opts.maxPages,
+      });
+      result = { ok: true, tweets, count: tweets.length, via: 'official_api' };
     } else if (sub === 'tweets') {
       if (!positional.length) throw Object.assign(new Error('api tweets 需要至少一个 tweet id'), { code: 'E_BAD_ARG' });
-      const data = await client.getTweetsByIds(positional);
+      const data = await client.getTweetsByIds(positional, {
+        tweetFields: opts.tweetFields || undefined,
+        includePrivateMetrics: opts.includePrivateMetrics,
+      });
       result = { ok: true, ...data, via: 'official_api' };
     } else if (sub === 'trends') {
       const woeids = [...opts.woeids, ...positional].map((id) => String(id || '').trim()).filter(Boolean);

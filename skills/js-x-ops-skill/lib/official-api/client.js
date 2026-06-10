@@ -279,9 +279,69 @@ class OfficialApiClient {
     return allTweets;
   }
 
+  async getMentions({
+    userId,
+    maxResults = 100,
+    maxPages = 2,
+  } = {}) {
+    if (!this.isReadConfigured) return [];
+    const uid = userId || await this.getUserId();
+    if (!uid) {
+      this._log('warning', '[OfficialApiClient] getMentions: missing user id');
+      return [];
+    }
+
+    const allTweets = [];
+    let paginationToken = null;
+
+    for (let page = 0; page < maxPages; page++) {
+      const params = {
+        max_results: String(Math.min(maxResults, 100)),
+        'tweet.fields': 'id,text,public_metrics,author_id,created_at,conversation_id,referenced_tweets',
+        expansions: 'author_id',
+        'user.fields': 'username,name',
+      };
+      if (paginationToken) params.pagination_token = paginationToken;
+
+      const baseUrl = `${X_API_BASE}/2/users/${uid}/mentions`;
+      const qs = new URLSearchParams(params).toString();
+      const authHeader = this._buildReadAuthHeader('GET', baseUrl, params);
+
+      try {
+        const resp = await fetchWithTimeout(`${baseUrl}?${qs}`, {
+          headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
+        }, 30000);
+        if (!resp.ok) {
+          this._log('warning', `[OfficialApiClient] GET /2/users/${uid}/mentions page ${page + 1} -> HTTP ${resp.status}`);
+          break;
+        }
+        const body = await resp.json();
+        const users = Object.fromEntries((body?.includes?.users || []).map((user) => [user.id, user]));
+        for (const tweet of (body.data || [])) {
+          const author = users[tweet.author_id] || {};
+          allTweets.push({
+            ...tweet,
+            author_username: author.username || '',
+            author_name: author.name || '',
+          });
+        }
+        paginationToken = body?.meta?.next_token;
+        if (!paginationToken) break;
+      } catch (e) {
+        this._log('warning', `[OfficialApiClient] GET /2/users/${uid}/mentions failed: ${e}`);
+        break;
+      }
+    }
+
+    return allTweets;
+  }
+
   async getTweetsByIds(
     tweetIds,
-    tweetFields = 'id,text,public_metrics,author_id,created_at',
+    {
+      tweetFields = 'id,text,public_metrics,author_id,created_at',
+      includePrivateMetrics = false,
+    } = {},
   ) {
     if (!this.isReadConfigured || !tweetIds?.length) {
       return { data: [], users: {} };
@@ -292,15 +352,26 @@ class OfficialApiClient {
 
     for (let i = 0; i < tweetIds.length; i += 100) {
       const batch = tweetIds.slice(i, i + 100);
+      const fields = new Set(String(tweetFields || '')
+        .split(',')
+        .map((field) => field.trim())
+        .filter(Boolean));
+      if (includePrivateMetrics) {
+        fields.add('organic_metrics');
+        fields.add('non_public_metrics');
+      }
+
       const params = {
         ids: batch.join(','),
-        'tweet.fields': tweetFields,
+        'tweet.fields': [...fields].join(','),
         expansions: 'author_id',
         'user.fields': 'username,name',
       };
 
       const qs = new URLSearchParams(params).toString();
-      const authHeader = this._buildReadAuthHeader('GET', TWEETS_ENDPOINT, params);
+      const authHeader = includePrivateMetrics && this.isWriteConfigured
+        ? this._buildOauthHeader('GET', TWEETS_ENDPOINT, params)
+        : this._buildReadAuthHeader('GET', TWEETS_ENDPOINT, params);
 
       try {
         const resp = await fetchWithTimeout(`${TWEETS_ENDPOINT}?${qs}`, {

@@ -239,6 +239,13 @@ test('parseApiArgs supports repeated --woeid flags', () => {
   assert.deepEqual(opts.woeids, ['1', '23424977']);
 });
 
+test('parseApiArgs supports private tweet metrics flags', () => {
+  const { opts, positional } = parseApiArgs(['tweets', '123', '--include-private-metrics', '--tweet-fields', 'id,text,public_metrics']);
+  assert.deepEqual(positional, ['tweets', '123']);
+  assert.equal(opts.includePrivateMetrics, true);
+  assert.equal(opts.tweetFields, 'id,text,public_metrics');
+});
+
 test('runApi status returns structured api_not_configured without network', async () => {
   const { code, output } = await withNoApiEnv(() => silenceStdout(() => runApi(['status', '--pretty'])));
   assert.equal(code, 1);
@@ -282,4 +289,61 @@ test('runApi trends merges repeated WOEID results', async () => {
     assert.deepEqual(envelope.result.trends[0].woeids, ['1', '23424977']);
     assert.equal(envelope.meta.command, 'api trends');
   }));
+});
+
+test('runApi mentions reads authenticated user mentions', async () => {
+  await withApiEnv(async () => withFetchMock(async (url, opts, calls) => {
+    if (calls.length === 1) {
+      return makeResponse({ body: { data: { id: '99' } } });
+    }
+    const parsed = new URL(String(url));
+    assert.equal(parsed.pathname, '/2/users/99/mentions');
+    assert.equal(parsed.searchParams.get('max_results'), '25');
+    return makeResponse({
+      body: {
+        data: [{ id: 'm1', text: '@imjszhang hello', author_id: 'u1', public_metrics: { like_count: 1 } }],
+        includes: { users: [{ id: 'u1', username: 'alice', name: 'Alice' }] },
+      },
+    });
+  }, async () => {
+    const { code, output } = await silenceStdout(() => runApi(['mentions', '--max-results', '25']));
+    assert.equal(code, 0);
+    const envelope = JSON.parse(output);
+    assert.equal(envelope.result.count, 1);
+    assert.equal(envelope.result.tweets[0].author_username, 'alice');
+    assert.equal(envelope.meta.command, 'api mentions');
+  }));
+});
+
+test('runApi tweets can request private metrics with OAuth user context', async () => {
+  await withApiEnv(async () => {
+    process.env.X_BEARER_TOKEN = 'read_token';
+    await withFetchMock(async (url, opts) => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.pathname, '/2/tweets');
+    assert.equal(parsed.searchParams.get('ids'), '123');
+    assert.match(opts.headers.Authorization, /^OAuth /);
+    const fields = parsed.searchParams.get('tweet.fields');
+    assert.match(fields, /public_metrics/);
+    assert.match(fields, /organic_metrics/);
+    assert.match(fields, /non_public_metrics/);
+    return makeResponse({
+      body: {
+        data: [{
+          id: '123',
+          text: 'hello',
+          public_metrics: { impression_count: 10 },
+          organic_metrics: { user_profile_clicks: 2 },
+        }],
+      },
+    });
+  }, async () => {
+    const { code, output } = await silenceStdout(() => runApi(['tweets', '123', '--include-private-metrics']));
+    assert.equal(code, 0);
+    const envelope = JSON.parse(output);
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.result.data[0].organic_metrics.user_profile_clicks, 2);
+    assert.equal(envelope.meta.command, 'api tweets');
+  });
+  });
 });
