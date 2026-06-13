@@ -281,9 +281,14 @@ async function runTool(browser, spec) {
 
       inner: while (true) {
         resp = await wrapCallApi(session, hint, async () => {
-          return await session.callApi(candidate, [args || {}], {
-            timeoutMs: options.timeoutMs || 90000,
-          });
+          const budgetMs = args && Number.isFinite(Number(args.budgetMs)) && Number(args.budgetMs) > 0
+            ? Number(args.budgetMs)
+            : 0;
+          const timeoutMs = Math.max(
+            options.timeoutMs || 90000,
+            budgetMs > 0 ? budgetMs + 10000 : 0,
+          );
+          return await session.callApi(candidate, [args || {}], { timeoutMs });
         }, wrapHooks);
         usedMethod = candidate;
         usedMode = candidateModeLabel(candidate);

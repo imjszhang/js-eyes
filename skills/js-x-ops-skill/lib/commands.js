@@ -192,9 +192,10 @@ const COMMANDS = {
       readMode: opts.readMode || undefined,
       withThread: !!opts.withThread,
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
+      ...(opts.budgetMs != null && Number(opts.budgetMs) > 0 ? { budgetMs: Number(opts.budgetMs) } : {}),
     }],
     targetUrl: (opts, positional) => targets.postUrl({ url: positional[0] }),
-    help: '推文详情：post <tweetUrl|tweetId> [<tweetUrl|tweetId> ...] [--with-thread] [--with-replies N]（多个 id 批量，单条走 bridge；写操作 --reply/--post/--quote/--thread 走 v2 路径）',
+    help: '推文详情：post <tweetUrl|tweetId> [<tweetUrl|tweetId> ...] [--with-thread] [--with-replies N] [--budget-ms MS]（多个 id 批量，单条走 bridge；写操作 --reply/--post/--quote/--thread 走 v2 路径）',
   },
   home: {
     kind: 'tool',
@@ -304,6 +305,7 @@ function parseArgv(argv) {
     hasLinks: false,
     withThread: false,
     withReplies: null,
+    budgetMs: null,
     anchors: false,
     filter: null,
     limit: null,
@@ -451,6 +453,8 @@ function parseArgv(argv) {
     else if (a.startsWith('--min-replies=')) eatEq('minReplies', '--min-replies=');
     else if (a === '--with-replies') eat('withReplies');
     else if (a.startsWith('--with-replies=')) eatEq('withReplies', '--with-replies=');
+    else if (a === '--budget-ms') eat('budgetMs');
+    else if (a.startsWith('--budget-ms=')) eatEq('budgetMs', '--budget-ms=');
     else if (a.startsWith('-')) {
       // 未知 option（写操作的 --reply/--post/--quote/--thread/--media/--dry-run/--confirm 走 v2 path 在 cli/index.js 直接 spawn）
       const err = new Error(`unknown option: ${a}（运行 \`node index.js --help\` 查看）`);
@@ -496,6 +500,7 @@ function printHelp() {
     '  --min-likes/--min-retweets/--min-replies <n>  互动数过滤',
     '  --exclude-replies/--exclude-retweets/--include-replies/--include-retweets',
     '  --with-thread / --with-replies <n>            post 命令选项',
+    '  --budget-ms <ms>         post bridge wall-clock 预算（默认 60000，最大 300000）',
     '  --read-mode auto|graphql|dom   READ：auto=GraphQL 优先再 DOM（v3.2 由 --mode 重命名而来，与 visual-* 解耦）',
     '  --visual / --no-visual / --visual-hud / --visual-flash / --visual-record / --visual-trace …  见 visual-bridge-kit',
     '  --pretty                 JSON 缩进 2 空格输出',

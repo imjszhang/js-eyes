@@ -306,6 +306,8 @@ async function postViaRunTool(browser, tweetInputs, options) {
             url: /^\d{6,}$/.test(rawStr) ? null : rawStr,
             withThread: !!opts.withThread,
             withReplies: !!(opts.withReplies && opts.withReplies > 0),
+            ...(Number.isFinite(Number(opts.budgetMs)) && Number(opts.budgetMs) > 0
+                ? { budgetMs: Number(opts.budgetMs) } : {}),
         };
         let targetUrl = null;
         if (!/^\d{6,}$/.test(rawStr)) {

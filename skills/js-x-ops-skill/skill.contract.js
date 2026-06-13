@@ -530,6 +530,7 @@ const TOOL_DEFINITIONS = [
         },
         withThread: { type: 'boolean', description: '是否获取对话线程（上文）' },
         withReplies: { type: 'number', description: '获取回复数量（0 = 不获取）' },
+        budgetMs: { type: 'number', description: 'post bridge wall-clock 预算毫秒（默认 60000，最大 300000）' },
         reply: { type: 'string', description: '【deprecated, v3.1 移到 x_reply_tweet】回复文本，需配合 tweetUrl' },
         post: { type: 'string', description: '【deprecated, v3.1 移到 x_create_tweet】发新帖正文（与 tweetUrl 互斥）' },
         quote: { type: 'string', description: '【deprecated, v3.1 移到 x_quote_tweet】引用推文，需配合 post 提供评论文本' },

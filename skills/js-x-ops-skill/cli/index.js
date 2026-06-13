@@ -245,6 +245,7 @@ async function runGetPostBatchCommand(opts, positional) {
     const response = await apiLib.getPost(browser, positional.slice(), {
       withThread: !!opts.withThread,
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
+      ...(opts.budgetMs != null && Number(opts.budgetMs) > 0 ? { budgetMs: Number(opts.budgetMs) } : {}),
       recording: runtimeConfig.recording,
       recordingMode: opts.recordingMode,
       debugRecording: opts.debugRecording,

@@ -252,6 +252,14 @@ function _extractTweetId(input) {
   return m ? m[1] : null;
 }
 
+function postBridgeCallTimeoutMs(budgetMs, override) {
+  if (override != null && Number.isFinite(Number(override)) && Number(override) > 0) {
+    return Number(override);
+  }
+  const budget = Number.isFinite(Number(budgetMs)) && Number(budgetMs) > 0 ? Number(budgetMs) : 60000;
+  return budget + 10000;
+}
+
 /**
  * postViaBridge - 调用 bridges/post-bridge.js::getPost，逐个 tweetId 串行调用，
  *                 输出与 lib/api.js::runGetPost 字段级一致。
@@ -293,13 +301,13 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
         tweetId,
         withThread: !!opts.withThread,
         withReplies: !!(opts.withReplies && opts.withReplies > 0),
+        ...(Number.isFinite(Number(opts.budgetMs)) && Number(opts.budgetMs) > 0
+          ? { budgetMs: Number(opts.budgetMs) } : {}),
       }];
 
       try {
         const resp = await session.callApi('getPost', bridgeArgs, {
-          // v3.0.4：post-bridge 内部 wall-clock budget 默认 60s；
-          // session 给 70s（10s buffer）让 bridge 优先返回 partial 数据。
-          timeoutMs: opts.bridgeTimeoutMs || 70000,
+          timeoutMs: postBridgeCallTimeoutMs(opts.budgetMs, opts.bridgeTimeoutMs),
         });
         if (!resp || resp.ok !== true) {
           allResults.push({

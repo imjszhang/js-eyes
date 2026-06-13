@@ -103,3 +103,31 @@ test('post 命令带 --with-thread / --with-replies 时透传 options', async ()
   assert.equal(getPostCalls[0].options.withThread, true);
   assert.equal(getPostCalls[0].options.withReplies, 5);
 });
+
+test('post 命令 --budget-ms 透传到 getPost options', async () => {
+  getPostCalls = [];
+  runToolCalls = [];
+  await silenceStdout(cli.main)([
+    'post',
+    'https://x.com/a/status/10',
+    'https://x.com/b/status/20',
+    '--with-replies', '5',
+    '--budget-ms', '120000',
+  ]);
+  assert.equal(getPostCalls.length, 1);
+  assert.equal(getPostCalls[0].options.budgetMs, 120000);
+});
+
+test('post 命令单 positional --budget-ms 透传到 runTool args', async () => {
+  getPostCalls = [];
+  runToolCalls = [];
+  await silenceStdout(cli.main)([
+    'post',
+    'https://x.com/user/status/111',
+    '--with-replies', '5',
+    '--budget-ms', '120000',
+  ]);
+  assert.equal(getPostCalls.length, 0);
+  assert.equal(runToolCalls.length, 1);
+  assert.equal(runToolCalls[0].args.budgetMs, 120000);
+});
