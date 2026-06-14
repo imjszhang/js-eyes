@@ -178,6 +178,7 @@ This file is **not** `openclaw.json`. For deployments following this skill, ensu
     "js-bilibili-ops-skill": true,
     "js-browser-ops-skill": true,
     "js-github-ops-skill": true,
+    "js-hn-ops-skill": true,
     "js-jike-ops-skill": true,
     "js-reddit-ops-skill": true,
     "js-wechat-ops-skill": true,
@@ -292,6 +293,7 @@ Bundled first-party skills:
 - `js-bilibili-ops-skill`
 - `js-browser-ops-skill`
 - `js-github-ops-skill`
+- `js-hn-ops-skill`
 - `js-jike-ops-skill`
 - `js-reddit-ops-skill`
 - `js-wechat-ops-skill`
