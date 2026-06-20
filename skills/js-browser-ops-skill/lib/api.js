@@ -22,6 +22,7 @@ const {
   generateWaitForScript,
   generateScrollScript,
 } = require('./browserUtils');
+const { ensureDomainAllowedForUrl } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
 
 const SKILL_ID = 'js-browser-ops-skill';
@@ -143,6 +144,16 @@ async function readPage(browser, params, options = {}) {
         durationMs: Date.now() - startTime,
       });
       return { ...cached, _cached: true, run: { id: runContext.runId } };
+    }
+  }
+
+  if (url && options.autoAllowDomain !== false) {
+    const allowResult = await ensureDomainAllowedForUrl(url, {
+      serverUrl: browser.serverUrl,
+    });
+    if (allowResult.host && allowResult.changed && !allowResult.ready) {
+      const logger = browser.logger || console;
+      logger.warn?.(`[JS-Eyes] 已把 ${allowResult.host} 写入 egressAllowlist，但服务端尚未热加载，仍将继续尝试打开。`);
     }
   }
 

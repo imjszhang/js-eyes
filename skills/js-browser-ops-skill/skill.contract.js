@@ -73,6 +73,10 @@ const TOOL_DEFINITIONS = [
           enum: ['markdown', 'text', 'html'],
           description: '返回格式（默认 markdown）',
         },
+        autoAllowDomain: {
+          type: 'boolean',
+          description: '读取 URL 前是否自动把新域名加入 js-eyes egressAllowlist（默认 true）',
+        },
       },
     },
     optional: true,
@@ -80,6 +84,7 @@ const TOOL_DEFINITIONS = [
       return readPage(runtime.ensureBot(), params, {
         recording: runtime.config.recording,
         runId: context.toolCallId,
+        autoAllowDomain: params.autoAllowDomain !== false,
       });
     },
   },

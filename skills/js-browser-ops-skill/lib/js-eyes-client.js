@@ -21,6 +21,38 @@
 
 const WebSocket = require('ws');
 
+class ServerPolicyError extends Error {
+  constructor(message, info = {}) {
+    super(message);
+    this.name = 'ServerPolicyError';
+    this.code = info.code || 'POLICY_BLOCK';
+    this.status = info.status;
+    this.rule = info.rule;
+    this.reasons = Array.isArray(info.reasons) ? info.reasons : [];
+    this.pendingId = info.pendingId ?? null;
+    this.host = info.host ?? null;
+  }
+}
+
+function policyErrorFromServerMessage(msg) {
+  const reasons = Array.isArray(msg.reasons) ? msg.reasons : [];
+  let host = null;
+  for (const r of reasons) {
+    if (r && r.host) {
+      host = r.host;
+      break;
+    }
+  }
+  return new ServerPolicyError(msg.message || '策略引擎拒绝', {
+    code: msg.code || 'POLICY_BLOCK',
+    status: msg.status || 'error',
+    rule: msg.rule,
+    reasons,
+    pendingId: msg.pendingId ?? null,
+    host,
+  });
+}
+
 // 活跃的 BrowserAutomation 实例集合；进程退出信号只注册一次，避免每个实例都挂
 // SIGINT/SIGTERM/exit 造成 MaxListenersExceededWarning 与 listener 泄漏。
 const _activeAutomations = new Set();
@@ -88,12 +120,13 @@ class BrowserAutomation {
 
   /**
    * 解析 automation 客户端 token。
-   * 优先级：options.token > 环境变量 JS_EYES_TOKEN > ~/.js-eyes/runtime/server.token > ~/.js-eyes/secrets/server-token。
+   * 优先级：options.token > 环境变量 JS_EYES_SERVER_TOKEN / JS_EYES_TOKEN > ~/.js-eyes/runtime/server.token > ~/.js-eyes/secrets/server-token。
    * allowAnonymous=false 时必须带 token，否则被服务端 401。
    */
   _resolveToken() {
     if (this._cachedToken !== undefined) return this._cachedToken;
     if (this._explicitToken) { this._cachedToken = this._explicitToken; return this._cachedToken; }
+    if (process.env.JS_EYES_SERVER_TOKEN) { this._cachedToken = process.env.JS_EYES_SERVER_TOKEN; return this._cachedToken; }
     if (process.env.JS_EYES_TOKEN) { this._cachedToken = process.env.JS_EYES_TOKEN; return this._cachedToken; }
     try {
       const os = require('os');
@@ -272,8 +305,15 @@ class BrowserAutomation {
         clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(msg.requestId);
 
-        if (msg.status === 'error' || msg.type === 'error') {
-          pending.reject(new Error(msg.message || '未知错误'));
+        if (msg.status === 'pending-egress') {
+          pending.reject(policyErrorFromServerMessage(msg));
+        } else if (msg.status === 'error' || msg.type === 'error') {
+          const code = msg.code;
+          if (code && String(code).startsWith('POLICY_')) {
+            pending.reject(policyErrorFromServerMessage(msg));
+          } else {
+            pending.reject(new Error(msg.message || '未知错误'));
+          }
         } else {
           pending.resolve(msg);
         }
@@ -495,4 +535,4 @@ class BrowserAutomation {
   }
 }
 
-module.exports = { BrowserAutomation };
+module.exports = { BrowserAutomation, ServerPolicyError };

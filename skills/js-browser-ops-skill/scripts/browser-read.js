@@ -21,6 +21,7 @@ function parseArgs() {
     recordingMode: null,
     recordingBaseDir: null,
     noCache: false,
+    autoAllowDomain: true,
     debugRecording: false,
     runId: null,
     visual: undefined,
@@ -66,6 +67,10 @@ function parseArgs() {
       i += 1;
     } else if (arg === '--no-cache') {
       options.noCache = true;
+    } else if (arg === '--allow-new-domain' || arg === '--auto-allow-domain') {
+      options.autoAllowDomain = true;
+    } else if (arg === '--no-auto-allow-domain') {
+      options.autoAllowDomain = false;
     } else if (arg === '--debug-recording') {
       options.debugRecording = true;
     } else if (!options.url) {
@@ -81,6 +86,7 @@ async function main() {
   if (!options.url || options.url === '--help' || options.url === '-h') {
     console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
+    console.log('      [--allow-new-domain|--no-auto-allow-domain]');
     console.log('视觉反馈选项:');
     VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
@@ -105,6 +111,7 @@ async function main() {
     }, {
       recording: runtimeConfig.recording,
       noCache: options.noCache,
+      autoAllowDomain: options.autoAllowDomain,
       debugRecording: options.debugRecording,
       runId: options.runId,
       visual,
