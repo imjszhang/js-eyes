@@ -184,14 +184,20 @@ function installCliExitHandlers() {
 
 function register(api) {
   const fullRuntime = isFullRegistration(api);
+  const mode = api.registrationMode ?? "full";
   let previousTeardown = null;
   if (currentRegistration) {
     const previousRegistration = currentRegistration;
     currentRegistration = null;
+    // OpenClaw may call cli-metadata before full in the same process; that pass
+    // never starts sidecars, so handoff to full is expected—not a hot reload.
+    const previousHadSidecars = previousRegistration.hadSidecars === true;
     try {
-      api.logger.warn(
-        "[js-eyes] register() called while a previous registration is still active; tearing down sidecars (server kept if still referenced)",
-      );
+      if (previousHadSidecars) {
+        api.logger.warn(
+          "[js-eyes] register() called while a previous registration is still active; tearing down sidecars (server kept if still referenced)",
+        );
+      }
       previousTeardown = Promise.resolve(
         previousRegistration.teardownSidecars({ logger: api.logger }),
       ).catch((error) => {
@@ -1324,6 +1330,8 @@ function register(api) {
 
   currentRegistration = {
     api,
+    mode,
+    hadSidecars: fullRuntime,
     teardownSidecars,
     teardown: teardownRegistration,
   };
