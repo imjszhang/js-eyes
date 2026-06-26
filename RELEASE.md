@@ -1,6 +1,6 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-04-21
+Last updated: 2026-06-26
 
 ## 2.3.0 Migration Guide (Policy Engine)
 
@@ -158,6 +158,10 @@ Then review:
 - `dist/js-eyes-skill-vX.Y.Z.zip`
 
 Commit the release candidate on `develop` and push it.
+
+> **2.8.3+**: `main` pushes trigger [`.github/workflows/pages.yml`](./.github/workflows/pages.yml)
+> to build `src/` → `dist/` and deploy GitHub Pages. Verify the workflow run after
+> merge; local preview with `npm run preview`.
 
 ## 2. Merge `develop` Into `main`
 

@@ -798,6 +798,16 @@ async function buildFirefox(t, sign = true) {
   }
 }
 
+// Packages with independent semver — not tied to the platform release train.
+const PLATFORM_VERSION_EXCLUDE = new Set([
+  'visual-bridge-kit',
+  'visual-replay-hyperframes',
+]);
+
+const PLATFORM_DEPENDENCY_EXCLUDE = new Set(
+  Array.from(PLATFORM_VERSION_EXCLUDE, (name) => `@js-eyes/${name}`)
+);
+
 function collectVersionFiles() {
   const files = [
     { path: PKG_PATH, name: 'package.json' },
@@ -822,6 +832,7 @@ function collectVersionFiles() {
     if (!fs.existsSync(absRoot)) continue;
     for (const entry of fs.readdirSync(absRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      if (PLATFORM_VERSION_EXCLUDE.has(entry.name)) continue;
       const pkgPath = path.join(absRoot, entry.name, 'package.json');
       if (fs.existsSync(pkgPath)) {
         files.push({ path: pkgPath, name: `${workspaceRoot}/${entry.name}/package.json` });
@@ -873,7 +884,7 @@ function syncInternalDependencyVersions(content, newVersion) {
   for (const field of dependencyFields) {
     if (!content[field] || typeof content[field] !== 'object') continue;
     for (const name of Object.keys(content[field])) {
-      if (name.startsWith('@js-eyes/')) {
+      if (name.startsWith('@js-eyes/') && !PLATFORM_DEPENDENCY_EXCLUDE.has(name)) {
         content[field][name] = newVersion;
       }
     }

@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.3] - 2026-06-26
+
+> **Site pipeline + bundled HN skill + sub-skill feature drops.** Platform/core
+> package versions, extension manifests, and OpenClaw plugin manifests were
+> bumped to `2.8.3`. Sub-skills under `skills/` keep independent version numbers.
+
+### Added
+
+- **GitHub Pages CI**: `.github/workflows/pages.yml` builds `src/` → `dist/` on
+  every push to `main` and deploys via GitHub Actions (`npm run build:site`).
+- **Local server launchers**: `bin/js-eyes-server-start.sh` / `.cmd` start the
+  repo-local CLI without touching the npm registry.
+- **Bundled `js-hn-ops-skill@1.0.0`**: Hacker News read-only + browser navigation
+  (Firebase API + Algolia + DOM fallback). Enabled by default in the stock
+  `skillsEnabled` host config.
+- **`js-x-ops-skill@3.5.0`** (independent sub-skill version):
+  - Official X API v2 channel (`node index.js api …`, `--via auto|api` on write
+    paths) with `status` / `timeline` / `tweets` / `mentions` / `trends` /
+    `delete` / write subcommands.
+  - GraphQL bridge: pinned-tweet marking, profile enrichment, `budgetMs` on
+    `x_get_post`, standalone `trends` CLI.
+- **`js-browser-ops-skill@2.5.1`**: `autoAllowDomain` on `browser_read_page`
+  (default `true`) auto-adds new hosts to `egressAllowlist`; CLI
+  `--allow-new-domain` / `--no-auto-allow-domain`; clearer `ServerPolicyError`
+  feedback on policy blocks.
+
+### Changed
+
+- **Site source layout**: marketing site source lives under `src/`; release
+  artifacts (`skills.json`, skill zips, install scripts) are generated into
+  `dist/` by `npm run build:site`. Developer markdown stays under `docs/`.
+- **`docs/dev/js-eyes-skills/`** restored as the authoring/deployment guide tree;
+  registry references now point at `dist/skills.json` (built artifact) instead
+  of a committed copy under `docs/`.
+- **`npm run bump`** skips `@js-eyes/visual-bridge-kit` and
+  `@js-eyes/visual-replay-hyperframes` — they remain on independent semver
+  (`0.6.x` / `0.7.x`).
+
+### Fixed
+
+- `openclaw-plugin`: silence duplicate register warning during cli-metadata
+  handoff.
+- `packages/devtools/lib/dotenv.js`: map `npm_token` → `NPM_TOKEN` for publish
+  workflows.
+
 ## [2.8.2] - 2026-05-22
 
 > **Firefox full-page screenshots + OpenClaw skill route hardening.** Platform/core

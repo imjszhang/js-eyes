@@ -261,7 +261,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.8.2)
+### Security Posture (2.8.3)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -427,16 +427,16 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.8.2` |
-| Browser extension assets | `2.8.2` |
-| `@js-eyes/server-core` | `2.8.2` |
-| `@js-eyes/client-sdk` | `2.8.2` |
-| `openclaw-plugin` | `2.8.2` |
-| Skills using `@js-eyes/client-sdk` | `2.8.2` |
+| CLI | `2.8.3` |
+| Browser extension assets | `2.8.3` |
+| `@js-eyes/server-core` | `2.8.3` |
+| `@js-eyes/client-sdk` | `2.8.3` |
+| `openclaw-plugin` | `2.8.3` |
+| Bundled sub-skills (`skills/*`) | **Independent** semver — see each skill's `package.json` or `dist/skills.json` |
 
 ## Extension Skills
 
-JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. The main ClawHub bundle is intentionally minimal and does **not** preinstall child skills. Each extension skill adds new AI tools and can be installed independently after the base stack is working.
+JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. The main ClawHub bundle ships first-party skills under `skills/`, and operators can still install or link additional skills independently after the base stack is working.
 
 The recommended hosting model is now:
 - extend the `js-eyes` CLI with skill-specific commands
@@ -444,9 +444,21 @@ The recommended hosting model is now:
 
 Migration note: child skills no longer ship their own `openclaw-plugin` wrapper files. OpenClaw should keep loading only the main `js-eyes` plugin, which then auto-loads enabled local skills.
 
-| Skill | Description | Tools |
-|-------|-------------|-------|
-| [js-x-ops-skill](./skills/js-x-ops-skill/) | X.com (Twitter) content operations — search content, browse timelines and feed, read post details, and handle posting flows | `x_search_tweets`, `x_get_profile`, `x_get_post`, `x_get_home_feed` |
+| Skill | Description | Example tools |
+|-------|-------------|---------------|
+| [js-browser-ops-skill](./skills/js-browser-ops-skill/) | Generic page read, DOM interact, screenshot | `browser_read_page`, `browser_screenshot` |
+| [js-x-ops-skill](./skills/js-x-ops-skill/) | X.com search, timelines, posting, official API v2 | `x_search_tweets`, `x_get_profile`, `x_get_post` |
+| [js-reddit-ops-skill](./skills/js-reddit-ops-skill/) | Reddit browse, search, comments | `reddit_search`, `reddit_get_post` |
+| [js-github-ops-skill](./skills/js-github-ops-skill/) | GitHub repo / issue / PR operations | platform-specific tools in contract |
+| [js-hn-ops-skill](./skills/js-hn-ops-skill/) | Hacker News front page, items, search | `hn_get_front_page`, `hn_get_item`, `hn_search` |
+| [js-zhihu-ops-skill](./skills/js-zhihu-ops-skill/) | Zhihu content operations | `zhihu_search`, `zhihu_get_answer` |
+| [js-xiaohongshu-ops-skill](./skills/js-xiaohongshu-ops-skill/) | Xiaohongshu (RED) content ops | contract tools |
+| [js-bilibili-ops-skill](./skills/js-bilibili-ops-skill/) | Bilibili video / user ops | contract tools |
+| [js-youtube-ops-skill](./skills/js-youtube-ops-skill/) | YouTube browse / search | contract tools |
+| [js-wechat-ops-skill](./skills/js-wechat-ops-skill/) | WeChat public account ops | contract tools |
+| [js-jike-ops-skill](./skills/js-jike-ops-skill/) | Jike (即刻) content ops | contract tools |
+
+Full registry (versions, sha256, `minParentVersion`): [`dist/skills.json`](./dist/skills.json) after `npm run build:site`, or live at [js-eyes.com/skills.json](https://js-eyes.com/skills.json).
 
 ### Discovering Skills
 
@@ -520,7 +532,7 @@ npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 
 > **`@js-eyes/*` scope is reserved for official packages** published by this repository's maintainers. Third-party JS Eyes Skills and integrations must publish under their own npm scope (e.g. `@acme/js-my-cool-skill`) or an unscoped name, never under `@js-eyes/*`. See [docs/dev/js-eyes-skills/README.md](./docs/dev/js-eyes-skills/README.md#npm-scope-治理) for the full governance rule.
 
-> Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map.
+> Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map and site build layout.
 
 ## Building
 
@@ -548,10 +560,8 @@ npm run build:chrome
 # Build and sign Firefox extension
 npm run build:firefox
 
-# Bump version across all manifests (note: this does NOT touch skills/*/package.json —
-# sub-skills keep their own independent versions so users can upgrade them via
-# `js-eyes skills update` without reinstalling the parent bundle)
-npm run bump -- 2.8.2
+# Bump platform version (excludes visual-* packages and skills/* sub-skills)
+npm run bump -- 2.8.3
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `dist/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.

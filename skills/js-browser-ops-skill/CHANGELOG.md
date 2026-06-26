@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.1 — 2026-06-26
+
+### Added
+
+- `browser_read_page` 新增 `autoAllowDomain`（默认 `true`）：读取新 URL 前自动把
+  目标域名写入 `security.egressAllowlist`，减少 `pending-egress` 打断。
+- CLI `read` 子命令：`--allow-new-domain` / `--no-auto-allow-domain`。
+- `ServerPolicyError`：策略拒绝时返回更清晰的错误信息。
+
 ## 2.5.0 — 2026-05-22
 
 ### Added
