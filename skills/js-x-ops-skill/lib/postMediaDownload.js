@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { listMediaFromTweet } = require('./media');
+const { listMediaFromTweet, listMediaFromArticle } = require('./media');
 const { downloadMedia } = require('./downloadMedia');
 
 /**
@@ -20,10 +20,11 @@ async function attachPostMediaDownloads(data, options = {}) {
   if (Array.isArray(data.results)) {
     for (const r of data.results) {
       if (r.success === false) continue;
-      const tweetId = r.tweetId || (r.tweet && r.tweet.tweetId);
-      const tweet = r.tweet || r;
-      const outDir = path.join(baseOut, String(tweetId || 'unknown'));
-      const items = listMediaFromTweet(tweet);
+      const isArticle = r.contentKind === 'article' || r.articleId;
+      const id = isArticle ? (r.articleId || 'unknown') : (r.tweetId || (r.tweet && r.tweet.tweetId));
+      const mediaSource = isArticle ? r : (r.tweet || r);
+      const outDir = path.join(baseOut, String(id || 'unknown'));
+      const items = isArticle ? listMediaFromArticle(mediaSource) : listMediaFromTweet(mediaSource);
       r.media_files = await downloadMedia(items, outDir, { logger: logFn });
       r.media_out_dir = outDir;
     }

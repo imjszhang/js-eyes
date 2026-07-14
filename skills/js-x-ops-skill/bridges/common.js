@@ -16,6 +16,7 @@
 
 // @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
 // @@include ./_visual-x.js
+// @@include ../lib/articleContentState.js
 
 const __jseXCache = {
   graphqlByOp: Object.create(null),  // { [opName]: { queryId, features, variables, savedAt } }
@@ -435,6 +436,34 @@ function parseArticlePageDom(root){
   const ogImage = document.querySelector('meta[property="og:image"]');
   if (ogImage) coverUrl = ogImage.getAttribute('content') || '';
 
+  const mediaUrls = [];
+  const mediaDetails = [];
+  const seenMedia = new Set();
+  const pushMedia = (url, type, extra) => {
+    if (!url || seenMedia.has(url)) return;
+    seenMedia.add(url);
+    mediaUrls.push(url);
+    if (type === 'photo') {
+      mediaDetails.push(Object.assign({ type: 'photo', url, expandedUrl: url, source: 'dom_article_page' }, extra || {}));
+    } else if (type === 'video') {
+      mediaDetails.push(Object.assign({ type: 'video', bestMp4Url: url, posterUrl: (extra && extra.posterUrl) || url, source: 'dom_article_page' }, extra || {}));
+    }
+  };
+
+  if (coverUrl) pushMedia(coverUrl, 'photo', { role: 'cover' });
+
+  const imgNodes = root.querySelectorAll('img[src*="pbs.twimg.com"]');
+  imgNodes.forEach((img) => {
+    const src = img.getAttribute('src') || '';
+    if (!src || src.includes('profile_images')) return;
+    pushMedia(src, 'photo', { alt: img.getAttribute('alt') || '' });
+  });
+
+  root.querySelectorAll('video source[src*="video.twimg.com"], video[src*="video.twimg.com"]').forEach((node) => {
+    const src = node.getAttribute('src') || '';
+    if (src) pushMedia(src, 'video', {});
+  });
+
   let author = { name: '', username: '', avatarUrl: '' };
   const userBlock = root.querySelector('[data-testid="User-Name"]');
   if (userBlock) {
@@ -464,6 +493,8 @@ function parseArticlePageDom(root){
     title,
     content,
     coverUrl,
+    mediaUrls,
+    mediaDetails,
     author,
     publishTime,
     articleUrl: articleId ? ('https://x.com/i/article/' + articleId) : (location.href || ''),
@@ -685,13 +716,15 @@ function parseSingleTweetResult(tweetResult){
   let linkedArticle = null;
   const artResult = actualTweet.article && actualTweet.article.article_results
     && actualTweet.article.article_results.result;
+  const articleContent = parseArticleContentFromTweet(actualTweet);
   if (artResult) {
-    const aid = artResult.rest_id || artResult.id || '';
+    const aid = artResult.rest_id || artResult.id || (articleContent && articleContent.articleId) || '';
     linkedArticle = {
       articleId: String(aid || ''),
-      title: artResult.title || '',
-      previewText: artResult.preview_text || '',
+      title: artResult.title || (articleContent && articleContent.title) || '',
+      previewText: artResult.preview_text || (articleContent && articleContent.previewText) || '',
       articleUrl: aid ? ('https://x.com/i/article/' + aid) : '',
+      coverUrl: (articleContent && articleContent.coverUrl) || '',
       source: 'graphql_article',
     };
   }
@@ -722,9 +755,41 @@ function parseSingleTweetResult(tweetResult){
   }
 
   let articlePlainText = '';
-  const rich = actualTweet.article_rich_content || actualTweet.article_results;
-  if (rich && typeof rich.plain_text === 'string') articlePlainText = rich.plain_text;
-  else if (artResult && typeof artResult.plain_text === 'string') articlePlainText = artResult.plain_text;
+  if (articleContent && articleContent.plainText) {
+    articlePlainText = articleContent.plainText;
+  } else {
+    const rich = actualTweet.article_rich_content || actualTweet.article_results;
+    if (rich && typeof rich.plain_text === 'string') articlePlainText = rich.plain_text;
+    else if (artResult && typeof artResult.plain_text === 'string') articlePlainText = artResult.plain_text;
+  }
+
+  if (articleContent && Array.isArray(articleContent.mediaDetails)) {
+    for (const am of articleContent.mediaDetails) {
+      if (am.type === 'photo' && am.url) {
+        mediaUrls.push(am.url);
+        mediaDetails.push({
+          type: 'photo',
+          url: am.url,
+          expandedUrl: am.url,
+          width: 0,
+          height: 0,
+          caption: am.caption || '',
+          source: am.source || 'article',
+        });
+      } else if (am.type === 'video' && am.url) {
+        mediaUrls.push(am.url);
+        mediaDetails.push({
+          type: 'video',
+          posterUrl: am.posterUrl || am.url,
+          bestMp4Url: am.bestMp4Url || am.url,
+          variants: [{ url: am.url, contentType: 'video/mp4', bitrate: 0 }],
+          source: am.source || 'article',
+        });
+      }
+    }
+  }
+
+  const articleBody = (articleContent && articleContent.contentMarkdown) || articlePlainText || '';
 
   return {
     tweetId,
@@ -738,7 +803,7 @@ function parseSingleTweetResult(tweetResult){
       statusesCount: (userLegacy && userLegacy.statuses_count) || 0,
       bio: ((userLegacy && userLegacy.description) || '').slice(0, 160),
     },
-    content: noteText || legacy.full_text || '',
+    content: noteText || articleBody || legacy.full_text || '',
     publishTime: legacy.created_at || '',
     lang: legacy.lang || '',
     stats: {
@@ -760,6 +825,7 @@ function parseSingleTweetResult(tweetResult){
     quoteTweet,
     card,
     linkedArticle,
+    articleContent,
     articlePlainText: articlePlainText || '',
     source: actualTweet.source || '',
   };

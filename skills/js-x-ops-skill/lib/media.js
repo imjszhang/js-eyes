@@ -111,6 +111,22 @@ function listMediaFromTweet(tweet) {
   return items;
 }
 
+/**
+ * Article 对象（getPost article 路径 / articleContent）媒体列表
+ * @param {object} article
+ */
+function listMediaFromArticle(article) {
+  if (!article || typeof article !== 'object') return [];
+  const synthetic = {
+    mediaDetails: article.mediaDetails,
+    mediaUrls: article.mediaUrls,
+  };
+  if ((!synthetic.mediaDetails || !synthetic.mediaDetails.length) && article.coverUrl) {
+    synthetic.mediaUrls = [article.coverUrl].concat(synthetic.mediaUrls || []);
+  }
+  return listMediaFromTweet(synthetic);
+}
+
 module.exports = {
   ALLOWED_HOSTS,
   isAllowedMediaUrl,
@@ -119,4 +135,5 @@ module.exports = {
   pickBestMp4,
   dedupeUrls,
   listMediaFromTweet,
+  listMediaFromArticle,
 };

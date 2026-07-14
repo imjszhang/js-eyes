@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.8.0';
+  const VERSION = '3.8.1';
 
   // @@include ./common.js
 
@@ -195,9 +195,37 @@
     return dom;
   }
 
+  function _buildArticleFromTweetGraphQL(tweet){
+    if (!tweet || !tweet.linkedArticle || !tweet.linkedArticle.articleId) return null;
+    const la = tweet.linkedArticle;
+    const ac = tweet.articleContent;
+    const content = (ac && ac.contentMarkdown) || tweet.articlePlainText || tweet.content || '';
+    if (!content.trim()) return null;
+    return {
+      articleId: String(la.articleId),
+      title: la.title || (ac && ac.title) || '',
+      content,
+      contentMarkdown: (ac && ac.contentMarkdown) || '',
+      plainText: (ac && ac.plainText) || tweet.articlePlainText || '',
+      coverUrl: (ac && ac.coverUrl) || la.coverUrl || '',
+      mediaUrls: (ac && ac.mediaUrls) || [],
+      mediaDetails: (ac && ac.mediaDetails) || [],
+      articleUrl: la.articleUrl || ('https://x.com/i/article/' + la.articleId),
+      author: tweet.author || { name: '', username: '', avatarUrl: '' },
+      publishTime: tweet.publishTime || '',
+      source: (ac && ac.source) || 'graphql_content_state',
+    };
+  }
+
   function _shouldAutoFetchArticleFromTweet(tweet){
     if (!tweet || !tweet.linkedArticle || !tweet.linkedArticle.articleId) return false;
-    if (tweet.articlePlainText && tweet.articlePlainText.length > 200) return false;
+    if (isArticleGraphQLComplete(tweet.articleContent)) return false;
+    const ac = tweet.articleContent;
+    if (ac && ac.expectedInlineMedia && !(ac.mediaDetails && ac.mediaDetails.length)) return true;
+    if (ac && ac.coverUrl) return false;
+    if (tweet.articlePlainText && tweet.articlePlainText.length > 200) {
+      return !(ac && ac.parsedFromContentState);
+    }
     const content = String(tweet.content || '');
     if (content.length > 280 && !/t\.co\//i.test(content)) return false;
     return true;
@@ -205,25 +233,100 @@
 
   async function _maybeUpgradeTweetToArticle(tweetResult, args){
     if (!tweetResult || !tweetResult.ok || !tweetResult.tweet) return tweetResult;
-    if (!_shouldAutoFetchArticleFromTweet(tweetResult.tweet)) return tweetResult;
-    const la = tweetResult.tweet.linkedArticle;
+    const tweet = tweetResult.tweet;
+    if (!tweet.linkedArticle || !tweet.linkedArticle.articleId) return tweetResult;
+
+    const gqlArticle = _buildArticleFromTweetGraphQL(tweet);
+    if (gqlArticle && isArticleGraphQLComplete(tweet.articleContent)) {
+      return okResult({
+        contentKind: 'article',
+        articleId: gqlArticle.articleId,
+        article: gqlArticle,
+        seedTweet: tweet,
+        tweet: null,
+        thread: [],
+        replies: [],
+        replyCursor: null,
+        meta: Object.assign({}, tweetResult.meta || {}, {
+          autoResolvedFromTweet: true,
+          seedTweetId: tweet.tweetId || null,
+          path: 'graphql_content_state',
+        }),
+      });
+    }
+
+    if (!_shouldAutoFetchArticleFromTweet(tweet)) {
+      if (gqlArticle && gqlArticle.content) {
+        return okResult({
+          contentKind: 'article',
+          articleId: gqlArticle.articleId,
+          article: gqlArticle,
+          seedTweet: tweet,
+          tweet: null,
+          thread: [],
+          replies: [],
+          replyCursor: null,
+          meta: Object.assign({}, tweetResult.meta || {}, {
+            autoResolvedFromTweet: true,
+            seedTweetId: tweet.tweetId || null,
+            path: 'graphql_partial',
+            note: 'dom_skipped_incomplete_media',
+          }),
+        });
+      }
+      return tweetResult;
+    }
+
+    const la = tweet.linkedArticle;
     const art = await getArticle(Object.assign({}, args, {
       contentKind: 'article',
       articleId: la.articleId,
     }));
-    if (!art.ok || !art.article) return tweetResult;
+    if (!art.ok || !art.article) {
+      if (gqlArticle && gqlArticle.content) {
+        return okResult({
+          contentKind: 'article',
+          articleId: gqlArticle.articleId,
+          article: gqlArticle,
+          seedTweet: tweet,
+          tweet: null,
+          thread: [],
+          replies: [],
+          replyCursor: null,
+          meta: Object.assign({}, tweetResult.meta || {}, {
+            autoResolvedFromTweet: true,
+            seedTweetId: tweet.tweetId || null,
+            path: 'graphql_fallback_dom_failed',
+          }),
+        });
+      }
+      return tweetResult;
+    }
+    const merged = Object.assign({}, gqlArticle || {}, art.article, {
+      content: (gqlArticle && gqlArticle.contentMarkdown) || art.article.content || '',
+      contentMarkdown: (gqlArticle && gqlArticle.contentMarkdown) || '',
+      mediaDetails: [].concat((gqlArticle && gqlArticle.mediaDetails) || [], art.article.mediaDetails || []),
+      mediaUrls: Array.from(new Set([].concat(
+        (gqlArticle && gqlArticle.mediaUrls) || [],
+        art.article.mediaUrls || [],
+      ))),
+      coverUrl: art.article.coverUrl || (gqlArticle && gqlArticle.coverUrl) || '',
+      source: (gqlArticle && gqlArticle.mediaDetails && gqlArticle.mediaDetails.length)
+        ? 'graphql_content_state+dom'
+        : (art.article.source || 'dom_article_page'),
+    });
     return okResult({
       contentKind: 'article',
       articleId: String(la.articleId),
-      article: art.article,
-      seedTweet: tweetResult.tweet,
+      article: merged,
+      seedTweet: tweet,
       tweet: null,
       thread: [],
       replies: [],
       replyCursor: null,
       meta: Object.assign({}, art.meta || {}, tweetResult.meta || {}, {
         autoResolvedFromTweet: true,
-        seedTweetId: tweetResult.tweet.tweetId || null,
+        seedTweetId: tweet.tweetId || null,
       }),
     });
   }
