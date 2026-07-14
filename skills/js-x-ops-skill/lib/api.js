@@ -47,6 +47,12 @@ const {
 const { runTool } = require('./runTool');
 const { READ_CMD_DEF } = require('./commands');
 const { attachPostMediaDownloads } = require('./postMediaDownload');
+const {
+  classifyXPostInput,
+  canonicalNavigateUrl,
+  buildPostBridgeArgs,
+  postResultKey,
+} = require('./xUrl');
 
 const SKILL_ID = pkg.name;
 
@@ -288,36 +294,24 @@ async function homeViaRunTool(browser, options) {
 async function postViaRunTool(browser, tweetInputs, options) {
     const opts = { withThread: false, withReplies: 0, ...options };
     const inputs = Array.isArray(tweetInputs) ? tweetInputs : [tweetInputs];
-    const T = getPost_();
-    const tweetIds = inputs.map((inp) => {
-        const id = T.extractTweetId(inp);
-        if (!id) throw new Error(`无法解析推文 ID: "${inp}"`);
-        return id;
+    const classifications = inputs.map((inp) => {
+        const cls = classifyXPostInput(inp);
+        if (cls.kind === 'unknown') {
+            throw new Error(`无法解析帖子 URL 或 ID: "${inp}"`);
+        }
+        return cls;
     });
     let lastTarget = null;
     let lastBridge = null;
     const allResults = [];
 
-    for (let i = 0; i < tweetIds.length; i++) {
-        const tweetId = tweetIds[i];
+    for (let i = 0; i < classifications.length; i++) {
+        const cls = classifications[i];
         const rawInput = inputs[i];
         const rawStr = String(rawInput || '').trim();
-        const bridgeArgs = {
-            tweetId: /^\d{6,}$/.test(rawStr) ? rawStr : null,
-            url: /^\d{6,}$/.test(rawStr) ? null : rawStr,
-            withThread: !!opts.withThread,
-            withReplies: !!(opts.withReplies && opts.withReplies > 0),
-            ...(Number.isFinite(Number(opts.budgetMs)) && Number(opts.budgetMs) > 0
-                ? { budgetMs: Number(opts.budgetMs) } : {}),
-        };
-        let targetUrl = null;
-        if (!/^\d{6,}$/.test(rawStr)) {
-            try {
-                const u = new URL(rawStr.includes('http') ? rawStr : `https://${rawStr}`);
-                if (/(^|\.)x\.com$|(^|\.)twitter\.com$/i.test(u.hostname)) targetUrl = u.href;
-            } catch (_) {}
-        }
-        if (!targetUrl) targetUrl = `https://x.com/i/status/${tweetId}`;
+        const bridgeArgs = buildPostBridgeArgs(cls, opts);
+        const targetUrl = canonicalNavigateUrl(cls, rawStr) || 'https://x.com/';
+        const resultId = cls.kind === 'article' ? cls.articleId : cls.tweetId;
 
         const rt = await runTool(browser, {
             toolName: 'x_get_post',
@@ -333,16 +327,33 @@ async function postViaRunTool(browser, tweetInputs, options) {
 
         if (!rt.ok) {
             allResults.push({
-                tweetId,
+                [postResultKey(cls)]: resultId,
+                contentKind: cls.kind,
                 success: false,
                 error: (rt.error && rt.error.code) || 'runTool_failed',
             });
         } else {
             const data = rt.result || {};
-            if (!data.tweet) {
-                allResults.push({ tweetId, success: false, error: 'no_focal_tweet' });
-            } else {
-                const postData = { tweetId, success: true, ...data.tweet };
+            if (data.contentKind === 'article' && data.article) {
+                const postData = {
+                    contentKind: 'article',
+                    articleId: data.articleId || cls.articleId,
+                    success: true,
+                    ...data.article,
+                };
+                if (data.seedTweet) postData.seedTweet = data.seedTweet;
+                if (data.meta) {
+                    if (data.meta.autoResolvedFromTweet) postData.autoResolvedFromTweet = true;
+                    if (data.meta.seedTweetId) postData.seedTweetId = data.meta.seedTweetId;
+                }
+                allResults.push(postData);
+            } else if (data.tweet) {
+                const postData = {
+                    contentKind: 'tweet',
+                    tweetId: data.tweetId || cls.tweetId,
+                    success: true,
+                    ...data.tweet,
+                };
                 if (Array.isArray(data.thread) && data.thread.length > 0 && opts.withThread) {
                     postData.threadTweets = data.thread;
                 }
@@ -358,16 +369,23 @@ async function postViaRunTool(browser, tweetInputs, options) {
                     if (typeof data.meta.durationMs === 'number') postData.durationMs = data.meta.durationMs;
                 }
                 allResults.push(postData);
+            } else {
+                allResults.push({
+                    [postResultKey(cls)]: resultId,
+                    contentKind: cls.kind,
+                    success: false,
+                    error: cls.kind === 'article' ? 'no_article_body' : 'no_focal_tweet',
+                });
             }
         }
-        if (i < tweetIds.length - 1) await new Promise((r) => setTimeout(r, 1000));
+        if (i < classifications.length - 1) await new Promise((r) => setTimeout(r, 1000));
     }
 
     return {
         scrapeType: 'x_post',
         scrapeOptions: { withThread: !!opts.withThread, withReplies: opts.withReplies || 0 },
         timestamp: new Date().toISOString(),
-        totalRequested: tweetIds.length,
+        totalRequested: classifications.length,
         totalSuccess: allResults.filter((r) => r.success).length,
         totalFailed: allResults.filter((r) => !r.success).length,
         results: allResults,
@@ -1078,6 +1096,10 @@ async function runGetPost(browser, tweetInputs, options = {}) {
 
     const inputs = Array.isArray(tweetInputs) ? tweetInputs : [tweetInputs];
     const tweetIds = inputs.map(inp => {
+        const cls = classifyXPostInput(inp);
+        if (cls.kind === 'article' || cls.kind === 'short') {
+            throw new Error(`Article/短链 URL 需走 bridge 路径读取: "${inp}"`);
+        }
         const id = T.extractTweetId(inp);
         if (!id) throw new Error(`无法解析推文 ID: "${inp}"`);
         return id;

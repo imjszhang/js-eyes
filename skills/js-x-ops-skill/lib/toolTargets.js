@@ -9,6 +9,10 @@
  * 起作用。
  */
 
+const {
+  extractArticleId,
+} = require('./xUrl');
+
 function safeSeg(value) {
   return encodeURIComponent(String(value || '').replace(/^\/+|\/+$/g, ''));
 }
@@ -39,8 +43,13 @@ function profileUrl(args) {
 
 function postUrl(args) {
   if (args && args.url) return String(args.url);
-  const id = (args && args.tweetId) || (args && args.id);
+  if (args && args.contentKind === 'article' && args.articleId) {
+    return `https://x.com/i/article/${encodeURIComponent(String(args.articleId))}`;
+  }
+  const id = (args && args.tweetId) || (args && args.id) || (args && args.articleId);
   if (!id) return 'https://x.com/';
+  const articleId = extractArticleId(String(id));
+  if (articleId) return `https://x.com/i/article/${articleId}`;
   const m = /\/status\/(\d+)/.exec(String(id));
   const tid = m ? m[1] : (/^\d{6,}$/.test(String(id)) ? String(id) : null);
   if (!tid) return 'https://x.com/';

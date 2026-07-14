@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.2.0';
+  const VERSION = '3.8.0';
 
   // @@include ./common.js
 
@@ -34,6 +34,32 @@
     return { username: m[1], tweetId: m[2] };
   }
 
+  function parseArticleFromPath(){
+    return parseArticleFromPathname(location.pathname || '');
+  }
+
+  function resolvePostInput(args){
+    args = args || {};
+    if (args.contentKind === 'article' && args.articleId) {
+      return { kind: 'article', articleId: String(args.articleId) };
+    }
+    if (args.contentKind === 'tweet' && args.tweetId) {
+      return { kind: 'tweet', tweetId: String(args.tweetId) };
+    }
+    const input = args.url != null ? args.url : (args.articleId != null ? args.articleId : args.tweetId);
+    const fromInput = classifyPostInputUrl(input);
+    if (fromInput.kind !== 'unknown') return fromInput;
+    const fromPathArt = parseArticleFromPath();
+    if (fromPathArt.articleId) {
+      return { kind: 'article', articleId: fromPathArt.articleId };
+    }
+    const fromPathPost = parsePostFromPath();
+    if (fromPathPost.tweetId) {
+      return { kind: 'tweet', tweetId: fromPathPost.tweetId };
+    }
+    return { kind: 'unknown' };
+  }
+
   function extractTweetId(input){
     if (input == null) return null;
     const s = String(input).trim();
@@ -44,6 +70,7 @@
 
   async function probe(){
     const { username, tweetId } = parsePostFromPath();
+    const { articleId } = parseArticleFromPath();
     const sessionResp = await sessionStateCommon();
     const dParams = await discoverGraphQLParams(['TweetDetail', 'TweetResultByRestId']);
     return okResult({
@@ -51,6 +78,7 @@
       hostname: location.hostname,
       username,
       tweetId,
+      articleId,
       login: sessionResp && sessionResp.data ? sessionResp.data : null,
       graphql: dParams.data,
       timestamp: new Date().toISOString(),
@@ -60,13 +88,15 @@
 
   async function state(){
     const { username, tweetId } = parsePostFromPath();
-    const ready = !!tweetId;
+    const { articleId } = parseArticleFromPath();
+    const ready = !!tweetId || !!articleId;
     return okResult({
       ready,
-      reason: ready ? null : 'not_on_status_path',
+      reason: ready ? null : 'not_on_post_or_article_path',
       url: location.href,
       username,
       tweetId,
+      articleId,
       bridgeVersion: VERSION,
     });
   }
@@ -110,6 +140,8 @@
     let url = null;
     if (typeof args.url === 'string' && args.url) {
       url = args.url;
+    } else if (args.contentKind === 'article' && args.articleId) {
+      url = 'https://x.com/i/article/' + String(args.articleId);
     } else {
       const username = args.username && String(args.username).replace(/^@/, '');
       const tweetId = extractTweetId(args.tweetId);
@@ -117,6 +149,83 @@
       url = 'https://x.com/' + (username || 'i') + '/status/' + tweetId;
     }
     return navigateLocation(url);
+  }
+
+  async function dom_getArticle(args){
+    args = args || {};
+    const resolved = resolvePostInput(args);
+    const parsed = parseArticleFromPath();
+    const articleId = args.articleId
+      || (resolved.kind === 'article' ? resolved.articleId : null)
+      || parsed.articleId;
+    if (!articleId) return errResult('missing_articleId');
+    if (!parsed.articleId || String(parsed.articleId) !== String(articleId)) {
+      const url = 'https://x.com/i/article/' + articleId;
+      return {
+        ok: false,
+        error: 'dom_navigation_required',
+        to: url,
+        navMethod: 'navigatePost',
+        navArgs: { url, contentKind: 'article', articleId: String(articleId) },
+      };
+    }
+    const article = parseArticlePageDom();
+    if (!article || !(article.content || article.title)) {
+      return errResult('dom_extract_failed', { hint: 'no_article_body' });
+    }
+    return okResult({
+      contentKind: 'article',
+      articleId: String(articleId),
+      article,
+      meta: {
+        bridge: 'post-bridge',
+        version: VERSION,
+        path: 'dom_getArticle',
+      },
+    });
+  }
+
+  async function api_getArticle(args){
+    return dom_getArticle(args);
+  }
+
+  async function getArticle(args){
+    const dom = await dom_getArticle(args);
+    if (dom.ok) return dom;
+    return dom;
+  }
+
+  function _shouldAutoFetchArticleFromTweet(tweet){
+    if (!tweet || !tweet.linkedArticle || !tweet.linkedArticle.articleId) return false;
+    if (tweet.articlePlainText && tweet.articlePlainText.length > 200) return false;
+    const content = String(tweet.content || '');
+    if (content.length > 280 && !/t\.co\//i.test(content)) return false;
+    return true;
+  }
+
+  async function _maybeUpgradeTweetToArticle(tweetResult, args){
+    if (!tweetResult || !tweetResult.ok || !tweetResult.tweet) return tweetResult;
+    if (!_shouldAutoFetchArticleFromTweet(tweetResult.tweet)) return tweetResult;
+    const la = tweetResult.tweet.linkedArticle;
+    const art = await getArticle(Object.assign({}, args, {
+      contentKind: 'article',
+      articleId: la.articleId,
+    }));
+    if (!art.ok || !art.article) return tweetResult;
+    return okResult({
+      contentKind: 'article',
+      articleId: String(la.articleId),
+      article: art.article,
+      seedTweet: tweetResult.tweet,
+      tweet: null,
+      thread: [],
+      replies: [],
+      replyCursor: null,
+      meta: Object.assign({}, art.meta || {}, tweetResult.meta || {}, {
+        autoResolvedFromTweet: true,
+        seedTweetId: tweetResult.tweet.tweetId || null,
+      }),
+    });
   }
 
   function _parseTweetDetail(json, focalTweetId){
@@ -216,7 +325,7 @@
       };
       const fieldToggles = {
         withArticleRichContentState: true,
-        withArticlePlainText: false,
+        withArticlePlainText: true,
         withGrokAnalyze: false,
         withDisallowedReplyControls: false,
       };
@@ -331,7 +440,7 @@
       };
       const fieldToggles = {
         withArticleRichContentState: true,
-        withArticlePlainText: false,
+        withArticlePlainText: true,
         withGrokAnalyze: false,
       };
       let resp = null;
@@ -404,16 +513,57 @@
     });
   }
 
-  async function getPost(args){
+  async function getPostTweet(args){
     const gql = await api_getPost(args);
-    if (gql.ok) return gql;
+    if (gql.ok) return _maybeUpgradeTweetToArticle(gql, args);
     const tryDom = gql.error === 'graphql_discover_failed' || gql.error === 'all_paths_failed';
     if (tryDom) {
       const dom = await dom_getPost(args);
-      if (dom.ok) return dom;
+      if (dom.ok) return _maybeUpgradeTweetToArticle(dom, args);
       return dom;
     }
     return gql;
+  }
+
+  async function getPost(args){
+    args = args || {};
+    const resolved = resolvePostInput(args);
+    if (resolved.kind === 'article') {
+      return getArticle(Object.assign({}, args, {
+        contentKind: 'article',
+        articleId: resolved.articleId,
+      }));
+    }
+    if (resolved.kind === 'short') {
+      const fromPath = parseArticleFromPath();
+      if (fromPath.articleId) {
+        return getArticle(Object.assign({}, args, {
+          contentKind: 'article',
+          articleId: fromPath.articleId,
+        }));
+      }
+      const fromPost = parsePostFromPath();
+      if (fromPost.tweetId) {
+        return getPostTweet(Object.assign({}, args, {
+          contentKind: 'tweet',
+          tweetId: fromPost.tweetId,
+        }));
+      }
+      if (args.url) {
+        return {
+          ok: false,
+          error: 'dom_navigation_required',
+          to: args.url,
+          navMethod: 'navigatePost',
+          navArgs: { url: args.url },
+        };
+      }
+      return errResult('unresolved_short_url');
+    }
+    if (resolved.kind === 'tweet') {
+      return getPostTweet(Object.assign({}, args, { tweetId: resolved.tweetId }));
+    }
+    return errResult('missing_tweetId_or_articleId');
   }
 
   const api = {
@@ -423,8 +573,11 @@
     sessionState,
     navigatePost,
     getPost,
+    getArticle,
     api_getPost,
+    api_getArticle,
     dom_getPost,
+    dom_getArticle,
   };
   window.__jse_x_post__ = api;
   return { ok: true, version: VERSION, name: 'post-bridge' };

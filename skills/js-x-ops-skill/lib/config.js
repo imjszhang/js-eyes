@@ -11,7 +11,7 @@ const DEFAULT_WS_ENDPOINT = process.env.JS_EYES_SERVER_URL
 const DEFAULT_PAGE = process.env.JS_X_DEFAULT_PAGE || 'home';
 
 const SEARCH_PATH_RE = /^\/search(?:\/|\?|$)/i;
-const POST_PATH_RE = /^\/[\w_]+\/status\/\d+/i;
+const POST_PATH_RE = /^\/(?:[\w_]+\/status\/\d+|i\/article\/\d+|i\/status\/\d+)/i;
 const HOME_PATH_RE = /^\/(?:home\/?)?(?:\?|$)/i;
 const COMPOSE_PATH_RE = /^\/(?:compose|messages|i\/|notifications|explore|settings|search|home)/i;
 const PROFILE_PATH_RE = /^\/[\w_]+(?:\/(?:with_replies|media|likes|highlights|articles)?)?\/?(?:$|\?|#)/i;

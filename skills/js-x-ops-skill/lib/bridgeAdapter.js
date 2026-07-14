@@ -244,13 +244,11 @@ async function profileViaBridge(browser, username, options = {}) {
 // postViaBridge
 // ---------------------------------------------------------------------------
 
-function _extractTweetId(input) {
-  if (input == null) return null;
-  const s = String(input).trim();
-  if (/^\d{6,}$/.test(s)) return s;
-  const m = /\/status\/(\d+)/.exec(s);
-  return m ? m[1] : null;
-}
+const {
+  classifyXPostInput,
+  buildPostBridgeArgs,
+  canonicalNavigateUrl,
+} = require('./xUrl');
 
 function postBridgeCallTimeoutMs(budgetMs, override) {
   if (override != null && Number.isFinite(Number(override)) && Number(override) > 0) {
@@ -267,17 +265,20 @@ function postBridgeCallTimeoutMs(budgetMs, override) {
 async function postViaBridge(browser, tweetInputs, options = {}) {
   const opts = { withThread: false, withReplies: 0, ...options };
   const inputs = Array.isArray(tweetInputs) ? tweetInputs : [tweetInputs];
-  const tweetIds = inputs.map((inp) => {
-    const id = _extractTweetId(inp);
-    if (!id) throw new Error(`无法解析推文 ID: "${inp}"`);
-    return id;
+  const classifications = inputs.map((inp) => {
+    const cls = classifyXPostInput(inp);
+    if (cls.kind === 'unknown') {
+      throw new Error(`无法解析帖子 URL 或 ID: "${inp}"`);
+    }
+    return cls;
   });
 
+  const firstNav = canonicalNavigateUrl(classifications[0], inputs[0]) || 'https://x.com/';
   const session = new Session({
     opts: {
       page: 'post',
       bot: browser,
-      targetUrl: tweetIds[0] ? `https://x.com/i/status/${tweetIds[0]}` : null,
+      targetUrl: firstNav,
       verbose: !!opts.verbose,
       createIfMissing: true,
       navigateOnReuse: true,
@@ -295,15 +296,11 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
     target = session.target;
     bridgeMeta = await session.ensureBridge();
 
-    for (let i = 0; i < tweetIds.length; i++) {
-      const tweetId = tweetIds[i];
-      const bridgeArgs = [{
-        tweetId,
-        withThread: !!opts.withThread,
-        withReplies: !!(opts.withReplies && opts.withReplies > 0),
-        ...(Number.isFinite(Number(opts.budgetMs)) && Number(opts.budgetMs) > 0
-          ? { budgetMs: Number(opts.budgetMs) } : {}),
-      }];
+    for (let i = 0; i < classifications.length; i++) {
+      const cls = classifications[i];
+      const rawStr = String(inputs[i] || '').trim();
+      const resultId = cls.kind === 'article' ? cls.articleId : cls.tweetId;
+      const bridgeArgs = [buildPostBridgeArgs(cls, opts)];
 
       try {
         const resp = await session.callApi('getPost', bridgeArgs, {
@@ -311,25 +308,46 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
         });
         if (!resp || resp.ok !== true) {
           allResults.push({
-            tweetId,
+            contentKind: cls.kind,
+            [cls.kind === 'article' ? 'articleId' : 'tweetId']: resultId,
             success: false,
             error: (resp && (resp.error || resp.message)) || 'bridge_returned_not_ok',
           });
           continue;
         }
         const data = resp.data || {};
-        if (!data.tweet) {
-          allResults.push({ tweetId, success: false, error: 'no_focal_tweet' });
+        if (data.contentKind === 'article' && data.article) {
+          const postData = {
+            contentKind: 'article',
+            articleId: data.articleId || cls.articleId,
+            success: true,
+            ...data.article,
+          };
+          if (data.seedTweet) postData.seedTweet = data.seedTweet;
+          allResults.push(postData);
           continue;
         }
-        const postData = { tweetId, success: true, ...data.tweet };
+        if (!data.tweet) {
+          allResults.push({
+            contentKind: cls.kind,
+            tweetId: resultId,
+            success: false,
+            error: cls.kind === 'article' ? 'no_article_body' : 'no_focal_tweet',
+          });
+          continue;
+        }
+        const postData = {
+          contentKind: 'tweet',
+          tweetId: data.tweetId || cls.tweetId,
+          success: true,
+          ...data.tweet,
+        };
         if (Array.isArray(data.thread) && data.thread.length > 0 && opts.withThread) {
           postData.threadTweets = data.thread;
         }
         if (Array.isArray(data.replies) && data.replies.length > 0 && opts.withReplies > 0) {
           postData.replies = data.replies.slice(0, opts.withReplies);
         }
-        // v3.0.4：把 bridge 侧的 timedOut / partial / collectedReplyPages 透传给上层调用方。
         if (data.meta) {
           if (data.meta.timedOut) postData.timedOut = true;
           if (data.meta.partial) postData.partial = true;
@@ -341,12 +359,13 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
         allResults.push(postData);
       } catch (err) {
         allResults.push({
-          tweetId,
+          contentKind: cls.kind,
+          [cls.kind === 'article' ? 'articleId' : 'tweetId']: resultId,
           success: false,
           error: err.message || String(err),
         });
       }
-      if (i < tweetIds.length - 1) await new Promise((r) => setTimeout(r, 1000));
+      if (i < classifications.length - 1) await new Promise((r) => setTimeout(r, 1000));
     }
   } finally {
     await session.close();
@@ -356,7 +375,7 @@ async function postViaBridge(browser, tweetInputs, options = {}) {
     scrapeType: 'x_post',
     scrapeOptions: { withThread: !!opts.withThread, withReplies: opts.withReplies || 0 },
     timestamp: new Date().toISOString(),
-    totalRequested: tweetIds.length,
+    totalRequested: classifications.length,
     totalSuccess: allResults.filter((r) => r.success).length,
     totalFailed: allResults.filter((r) => !r.success).length,
     results: allResults,

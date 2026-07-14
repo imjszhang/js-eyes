@@ -380,6 +380,97 @@ function parseStatNumber(text){
   return parseInt(numStr, 10) || 0;
 }
 
+function parseArticleFromPathname(pathname){
+  const m = /^\/i\/article\/(\d+)/.exec(String(pathname || ''));
+  return m ? { articleId: m[1] } : { articleId: null };
+}
+
+function classifyPostInputUrl(input){
+  const raw = String(input || '').trim();
+  if (!raw) return { kind: 'unknown' };
+  if (/^\d{6,}$/.test(raw)) return { kind: 'tweet', tweetId: raw };
+  let urlStr = raw;
+  if (!/^https?:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr;
+  try {
+    const u = new URL(urlStr);
+    if (/^t\.co$/i.test(u.hostname)) return { kind: 'short', url: u.href };
+    const am = /\/i\/article\/(\d+)/.exec(u.pathname);
+    if (am) return { kind: 'article', articleId: am[1], url: 'https://x.com/i/article/' + am[1] };
+    const sm = /\/status\/(\d+)/.exec(u.pathname + u.search);
+    if (sm) return { kind: 'tweet', tweetId: sm[1], url: u.href };
+  } catch (_) {}
+  const am2 = /\/i\/article\/(\d+)/.exec(raw);
+  if (am2) return { kind: 'article', articleId: am2[1], url: 'https://x.com/i/article/' + am2[1] };
+  const sm2 = /\/status\/(\d+)/.exec(raw);
+  if (sm2) return { kind: 'tweet', tweetId: sm2[1] };
+  return { kind: 'unknown' };
+}
+
+function parseArticlePageDom(root){
+  root = root || document;
+  const fromPath = parseArticleFromPathname(location.pathname || '');
+  const articleId = fromPath.articleId || '';
+
+  let title = '';
+  const titleEl = root.querySelector('[data-testid="article-title"]')
+    || root.querySelector('h1[role="heading"]')
+    || root.querySelector('main h1')
+    || root.querySelector('h1');
+  if (titleEl) title = (titleEl.innerText || titleEl.textContent || '').trim();
+
+  let content = '';
+  const reader = root.querySelector('[data-testid="articleReader"]')
+    || root.querySelector('[data-testid="tweetText"]')
+    || root.querySelector('article [lang]')
+    || root.querySelector('main article');
+  if (reader) {
+    content = (reader.innerText || reader.textContent || '').trim();
+  }
+  if (!content) {
+    const main = root.querySelector('[role="main"]') || root.querySelector('main');
+    if (main) content = (main.innerText || main.textContent || '').trim();
+  }
+
+  let coverUrl = '';
+  const ogImage = document.querySelector('meta[property="og:image"]');
+  if (ogImage) coverUrl = ogImage.getAttribute('content') || '';
+
+  let author = { name: '', username: '', avatarUrl: '' };
+  const userBlock = root.querySelector('[data-testid="User-Name"]');
+  if (userBlock) {
+    const links = userBlock.querySelectorAll('a[href^="/"]');
+    for (const link of links) {
+      const href = link.getAttribute('href') || '';
+      const um = /^\/([\w_]+)$/.exec(href);
+      if (um && um[1] !== 'i') {
+        author.username = '@' + um[1];
+        break;
+      }
+    }
+    const spans = userBlock.querySelectorAll('span');
+    if (spans.length) author.name = (spans[0].innerText || '').trim();
+  }
+  const avatarImg = root.querySelector('img[src*="pbs.twimg.com/profile_images"]');
+  if (avatarImg) author.avatarUrl = avatarImg.getAttribute('src') || '';
+
+  let publishTime = '';
+  const timeEl = root.querySelector('time');
+  if (timeEl) publishTime = timeEl.getAttribute('datetime') || (timeEl.innerText || '').trim();
+
+  if (!title && !content) return null;
+
+  return {
+    articleId,
+    title,
+    content,
+    coverUrl,
+    author,
+    publishTime,
+    articleUrl: articleId ? ('https://x.com/i/article/' + articleId) : (location.href || ''),
+    source: 'dom_article_page',
+  };
+}
+
 function parseTweetArticle(article){
   let tweetId = '';
   let tweetUrl = '';
@@ -591,6 +682,50 @@ function parseSingleTweetResult(tweetResult){
   const noteText = (actualTweet.note_tweet && actualTweet.note_tweet.note_tweet_results
     && actualTweet.note_tweet.note_tweet_results.result && actualTweet.note_tweet.note_tweet_results.result.text) || '';
 
+  let linkedArticle = null;
+  const artResult = actualTweet.article && actualTweet.article.article_results
+    && actualTweet.article.article_results.result;
+  if (artResult) {
+    const aid = artResult.rest_id || artResult.id || '';
+    linkedArticle = {
+      articleId: String(aid || ''),
+      title: artResult.title || '',
+      previewText: artResult.preview_text || '',
+      articleUrl: aid ? ('https://x.com/i/article/' + aid) : '',
+      source: 'graphql_article',
+    };
+  }
+  if (!linkedArticle || !linkedArticle.articleId) {
+    const urlEntities = (legacy.entities && legacy.entities.urls) || [];
+    for (const ent of urlEntities) {
+      const exp = ent.expanded_url || ent.url || ent.display_url || '';
+      const m = /\/i\/article\/(\d+)/.exec(exp);
+      if (m) {
+        linkedArticle = {
+          articleId: m[1],
+          articleUrl: exp.indexOf('http') === 0 ? exp : ('https://x.com/i/article/' + m[1]),
+          source: 'tweet_entities',
+        };
+        break;
+      }
+    }
+  }
+  if ((!linkedArticle || !linkedArticle.articleId) && card && card.url) {
+    const cm = /\/i\/article\/(\d+)/.exec(card.url);
+    if (cm) {
+      linkedArticle = {
+        articleId: cm[1],
+        articleUrl: card.url,
+        source: 'card',
+      };
+    }
+  }
+
+  let articlePlainText = '';
+  const rich = actualTweet.article_rich_content || actualTweet.article_results;
+  if (rich && typeof rich.plain_text === 'string') articlePlainText = rich.plain_text;
+  else if (artResult && typeof artResult.plain_text === 'string') articlePlainText = artResult.plain_text;
+
   return {
     tweetId,
     author: {
@@ -624,6 +759,8 @@ function parseSingleTweetResult(tweetResult){
     conversationId: legacy.conversation_id_str || '',
     quoteTweet,
     card,
+    linkedArticle,
+    articlePlainText: articlePlainText || '',
     source: actualTweet.source || '',
   };
 }

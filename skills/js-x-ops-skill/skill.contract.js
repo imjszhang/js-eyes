@@ -22,6 +22,11 @@
 
 const pkg = require('./package.json');
 const { BrowserAutomation } = require('./lib/js-eyes-client');
+const {
+  classifyXPostInput,
+  buildPostBridgeArgs,
+  canonicalNavigateUrl,
+} = require('./lib/xUrl');
 const { getPost } = require('./lib/api');
 const { runTool } = require('./lib/runTool');
 const { runMonitor } = require('./lib/runMonitor');
@@ -147,8 +152,10 @@ function buildContractPostTargetUrl(p) {
   try {
     const u = new URL(raw.includes('http') ? raw : 'https://' + raw);
     if (/(^|\.)x\.com$|(^|\.)twitter\.com$/i.test(u.hostname)) return u.href;
+    if (/(^|\.)t\.co$/i.test(u.hostname)) return u.href;
   } catch (_) {}
-  return null;
+  const cls = classifyXPostInput(raw);
+  return canonicalNavigateUrl(cls, raw);
 }
 
 function enrichRunToolResult(toolKey, rt) {
@@ -274,13 +281,13 @@ function makeXGetPostReadOrLegacyExecutor() {
       return legacy(runtime, params, context);
     }
     const one = ids[0];
+    const cls = classifyXPostInput(one);
     const targetUrl = buildContractPostTargetUrl({ tweetUrl: one });
-    const bridgeArgs = {
-      tweetId: /^\d{6,}$/.test(one) ? one : null,
-      url: /^\d{6,}$/.test(one) ? null : one,
+    const bridgeArgs = buildPostBridgeArgs(cls, {
       withThread: !!p.withThread,
       withReplies: p.withReplies || 0,
-    };
+      budgetMs: p.budgetMs,
+    });
     const rt = await runTool(runtime.ensureBot(), {
       toolName: 'x_get_post',
       pageKey: 'post',
@@ -784,13 +791,13 @@ const TOOL_DEFINITIONS = [
   {
     name: 'x_get_post',
     label: 'X Ops: Get Post Detail',
-    description: '读取 X.com 帖子的完整详情，包括内容、统计、媒体。可选获取对话线程和回复。**deprecated 写参数**（reply/post/quote/thread/media）会透传到 v2 scripts/x-post.js，将在 v3.1 移到独立工具：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread。',
+    description: '读取 X.com 帖子或 Article 详情（自动识别 t.co / /i/article/ /status/）。包括内容、统计、媒体。可选获取对话线程和回复。**deprecated 写参数**（reply/post/quote/thread/media）会透传到 v2 scripts/x-post.js，将在 v3.1 移到独立工具：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread。',
     parameters: {
       type: 'object',
       properties: {
         tweetUrl: {
           type: 'string',
-          description: '推文 URL 或 ID（如 https://x.com/user/status/123 或纯数字 ID）。多条用逗号分隔。',
+          description: '推文/Article URL 或 ID。支持 /status/、/i/article/、t.co 短链；多条用逗号分隔。',
         },
         withThread: { type: 'boolean', description: '是否获取对话线程（上文）' },
         withReplies: { type: 'number', description: '获取回复数量（0 = 不获取）' },

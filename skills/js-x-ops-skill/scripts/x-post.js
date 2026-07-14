@@ -257,14 +257,7 @@ async function emitResultPayload(options, command, payload) {
  * @returns {string|null} 推文 ID 或 null
  */
 function extractTweetId(input) {
-    // 纯数字 ID
-    if (/^\d+$/.test(input.trim())) {
-        return input.trim();
-    }
-    
-    // URL 格式
-    const match = input.match(/status\/(\d+)/);
-    return match ? match[1] : null;
+    return require('../lib/xUrl').extractTweetId(input);
 }
 
 /**
@@ -2970,6 +2963,7 @@ module.exports = {
     main,
     parseArgs,
     extractTweetId,
+    classifyXPostInput: require('../lib/xUrl').classifyXPostInput,
     buildDiscoverTweetQueryIdsScript,
     buildTweetDetailScript,
     buildTweetDetailCursorScript,
