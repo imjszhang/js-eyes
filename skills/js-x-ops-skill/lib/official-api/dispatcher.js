@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const pkg = require('../../package.json');
 const { createOfficialApiClient } = require('./index');
+const { buildSearchQueryOptions } = require('./buildSearchQuery');
+const { normalizeSearchResults } = require('./normalizeSearchTweet');
 
 function parseApiArgs(argv) {
   const opts = {
@@ -20,6 +22,29 @@ function parseApiArgs(argv) {
     excludeRetweets: true,
     tweetFields: '',
     includePrivateMetrics: false,
+    raw: false,
+    startTime: null,
+    endTime: null,
+    nextToken: null,
+    sortOrder: null,
+    from: null,
+    to: null,
+    since: null,
+    until: null,
+    lang: null,
+    minLikes: 0,
+    minRetweets: 0,
+    minReplies: 0,
+    excludeReplies: false,
+    excludeRetweets: false,
+    hasLinks: false,
+    scope: 'all',
+    bodyFile: null,
+    bodyText: null,
+    cover: null,
+    fetchRemoteImages: false,
+    publish: false,
+    draftOnly: false,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -51,6 +76,45 @@ function parseApiArgs(argv) {
     else if (a === '--tweet-fields') eat('tweetFields');
     else if (a.startsWith('--tweet-fields=')) eatEq('tweetFields', '--tweet-fields=');
     else if (a === '--include-private-metrics') opts.includePrivateMetrics = true;
+    else if (a === '--raw') opts.raw = true;
+    else if (a === '--start-time') eat('startTime');
+    else if (a.startsWith('--start-time=')) eatEq('startTime', '--start-time=');
+    else if (a === '--end-time') eat('endTime');
+    else if (a.startsWith('--end-time=')) eatEq('endTime', '--end-time=');
+    else if (a === '--next-token') eat('nextToken');
+    else if (a.startsWith('--next-token=')) eatEq('nextToken', '--next-token=');
+    else if (a === '--sort-order') eat('sortOrder');
+    else if (a.startsWith('--sort-order=')) eatEq('sortOrder', '--sort-order=');
+    else if (a === '--from') eat('from');
+    else if (a.startsWith('--from=')) eatEq('from', '--from=');
+    else if (a === '--to') eat('to');
+    else if (a.startsWith('--to=')) eatEq('to', '--to=');
+    else if (a === '--since') eat('since');
+    else if (a.startsWith('--since=')) eatEq('since', '--since=');
+    else if (a === '--until') eat('until');
+    else if (a.startsWith('--until=')) eatEq('until', '--until=');
+    else if (a === '--lang') eat('lang');
+    else if (a.startsWith('--lang=')) eatEq('lang', '--lang=');
+    else if (a === '--min-likes') opts.minLikes = Number(argv[++i]) || 0;
+    else if (a.startsWith('--min-likes=')) opts.minLikes = Number(a.slice('--min-likes='.length)) || 0;
+    else if (a === '--min-retweets') opts.minRetweets = Number(argv[++i]) || 0;
+    else if (a.startsWith('--min-retweets=')) opts.minRetweets = Number(a.slice('--min-retweets='.length)) || 0;
+    else if (a === '--min-replies') opts.minReplies = Number(argv[++i]) || 0;
+    else if (a.startsWith('--min-replies=')) opts.minReplies = Number(a.slice('--min-replies='.length)) || 0;
+    else if (a === '--exclude-replies') opts.excludeReplies = true;
+    else if (a === '--exclude-retweets') opts.excludeRetweets = true;
+    else if (a === '--has-links') opts.hasLinks = true;
+    else if (a === '--scope') eat('scope');
+    else if (a.startsWith('--scope=')) eatEq('scope', '--scope=');
+    else if (a === '--body-file') eat('bodyFile');
+    else if (a.startsWith('--body-file=')) eatEq('bodyFile', '--body-file=');
+    else if (a === '--body') eat('bodyText');
+    else if (a.startsWith('--body=')) eatEq('bodyText', '--body=');
+    else if (a === '--cover') eat('cover');
+    else if (a.startsWith('--cover=')) eatEq('cover', '--cover=');
+    else if (a === '--fetch-remote-images') opts.fetchRemoteImages = true;
+    else if (a === '--publish') opts.publish = true;
+    else if (a === '--draft-only') opts.draftOnly = true;
     else if (a.startsWith('-')) {
       const err = new Error(`api: 未知选项 ${a}`);
       err.code = 'E_BAD_ARG';
@@ -107,6 +171,11 @@ function printApiHelp() {
     '  mentions [--max-pages N]                读取当前账号 mentions',
     '  tweets <id1> [id2...]                  批量读取推文 metrics',
     '  trends [--woeid id]                     读取指定 WOEID 的趋势话题（可重复）',
+    '  search-all <query>                      全库搜索（2006 至今，需 Pay-per-use Bearer）',
+    '  search-recent <query>                   近期搜索（7 天窗口）',
+    '  article-draft <title>                   创建 Article 草稿（Markdown）',
+    '  article-publish <article_id>            发布 Article 草稿',
+    '  article <title>                         创建 Article（默认草稿；--publish 发布）',
     '  delete <tweet_id>                       删除当前账号发布的推文',
     '',
     'Options:',
@@ -120,12 +189,38 @@ function printApiHelp() {
     '  --tweet-fields <csv>                    tweets 自定义 tweet.fields',
     '  --include-private-metrics               tweets 请求 organic/non-public metrics（仅自有帖子 + user context）',
     '  --include-retweets / --exclude-retweets timeline 转推控制',
+    '  --start-time <iso>                      search 起始时间（ISO8601）',
+    '  --end-time <iso>                        search 截止时间（ISO8601）',
+    '  --next-token <token>                    search 续页 token',
+    '  --sort-order <recency|relevancy>        search-all 排序（默认 relevancy）',
+    '  --from <user>                           search 作者过滤（不带 @）',
+    '  --to <user>                             search 收件人过滤',
+    '  --since <YYYY-MM-DD>                    search 起始日期',
+    '  --until <YYYY-MM-DD>                    search 截止日期',
+    '  --lang <code>                           search 语言代码',
+    '  --min-likes / --min-retweets / --min-replies  search 互动数过滤',
+    '  --exclude-replies / --exclude-retweets / --has-links  search 操作符',
+    '  --raw                                   search 输出 v2 原始对象（跳过归一化）',
+    '  --body-file <path>                      article Markdown 文件',
+    '  --body <markdown>                       article 内联 Markdown',
+    '  --cover <path>                          article 封面图（本地路径）',
+    '  --fetch-remote-images                   article 下载并上传 https 内嵌图',
+    '  --publish                               article 创建后立即发布',
+    '  --draft-only                            article 仅创建草稿（默认）',
     '  --output <file>                         写入 JSON envelope',
     '  --pretty                                缩进 JSON',
     '',
     'Credentials:',
-    '  Reads:  X_BEARER_TOKEN（或 OAuth 1.0a 四元组）',
+    '  Reads:  X_BEARER_TOKEN（或 OAuth 1.0a 四元组；全库搜索推荐 Bearer + Pay-per-use）',
     '  Writes: X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET',
+    '',
+    'Search notes:',
+    '  search-all / search-recent 走 Official API，可能产生 API 费用。',
+    '  与 node index.js search（浏览器 GraphQL）不同，不支持 top/latest/media 排序。',
+    '',
+    'Article notes:',
+    '  article-* 需要 OAuth 1.0a 写凭证；发布通常需 X Premium。',
+    '  远程 https 图片默认跳过；加 --fetch-remote-images 才会下载上传。',
   ];
   process.stdout.write(lines.join('\n') + '\n');
 }
@@ -140,6 +235,149 @@ function normalizeWriteResult(result, extra = {}) {
     detail: result?.detail || '',
     ...result,
     ...extra,
+  };
+}
+
+function readArticleBody(opts) {
+  if (opts.bodyFile) {
+    const abs = path.resolve(opts.bodyFile);
+    return fs.readFileSync(abs, 'utf8');
+  }
+  if (opts.bodyText) return String(opts.bodyText);
+  return null;
+}
+
+async function runArticleCreateCommand(client, opts, positional, { allowPublish = true } = {}) {
+  const title = positional.join(' ').trim();
+  if (!title) {
+    throw Object.assign(new Error('api article 需要 <title>'), { code: 'E_BAD_ARG' });
+  }
+  const markdown = readArticleBody(opts);
+  if (!markdown || !markdown.trim()) {
+    throw Object.assign(new Error('article 需要 --body-file 或 --body'), { code: 'E_BAD_ARG' });
+  }
+
+  const baseDir = opts.bodyFile ? path.dirname(path.resolve(opts.bodyFile)) : process.cwd();
+  const draftResult = await client.createArticleFromMarkdown({
+    title,
+    markdown,
+    coverPath: opts.cover,
+    fetchRemoteImages: opts.fetchRemoteImages,
+    baseDir,
+  });
+  const normalized = normalizeWriteResult(draftResult, { via: 'official_api', published: false });
+  if (!normalized.ok) return normalized;
+
+  const shouldPublish = allowPublish && opts.publish && !opts.draftOnly;
+  if (!shouldPublish) return normalized;
+
+  const publishResult = await client.publishArticle(normalized.article_id);
+  const pubNormalized = normalizeWriteResult(publishResult, { via: 'official_api' });
+  if (!pubNormalized.ok) {
+    return {
+      ...normalized,
+      publish_error: pubNormalized.error,
+      publish_errorCode: pubNormalized.errorCode,
+      published: false,
+    };
+  }
+
+  return {
+    ok: true,
+    success: true,
+    article_id: normalized.article_id,
+    title: normalized.title,
+    published: true,
+    post_id: pubNormalized.post_id,
+    article_url: pubNormalized.article_url,
+    post_url: pubNormalized.post_url,
+    via: 'official_api',
+  };
+}
+
+async function runSearchCommand(client, opts, positional, scope) {
+  const keyword = positional.join(' ').trim();
+  if (!keyword) {
+    throw Object.assign(new Error(`api search-${scope === 'recent' ? 'recent' : 'all'} 需要 <query>`), { code: 'E_BAD_ARG' });
+  }
+
+  const built = buildSearchQueryOptions({
+    keyword,
+    from: opts.from,
+    to: opts.to,
+    since: opts.since,
+    until: opts.until,
+    lang: opts.lang,
+    minLikes: opts.minLikes,
+    minRetweets: opts.minRetweets,
+    minReplies: opts.minReplies,
+    excludeReplies: opts.excludeReplies,
+    excludeRetweets: opts.excludeRetweets,
+    hasLinks: opts.hasLinks,
+    startTime: opts.startTime,
+    endTime: opts.endTime,
+    nextToken: opts.nextToken,
+    sortOrder: opts.sortOrder,
+    maxResults: opts.maxResults,
+    maxPages: opts.maxPages,
+    scope,
+  });
+
+  const searchOpts = {
+    startTime: built.startTime,
+    endTime: built.endTime,
+    maxResults: built.maxResults,
+    maxPages: built.maxPages,
+    nextToken: built.nextToken,
+    sortOrder: built.sortOrder,
+  };
+
+  const raw = scope === 'recent'
+    ? await client.searchRecent(built.fullQuery, searchOpts)
+    : await client.searchAll(built.fullQuery, searchOpts);
+
+  if (!raw.ok) {
+    const message = raw.errorCode === 'forbidden'
+      ? `${raw.error || 'forbidden'}（全库搜索通常需要 Pay-per-use Bearer 权限）`
+      : (raw.error || 'search failed');
+    return {
+      ok: false,
+      query: keyword,
+      fullQuery: built.fullQuery,
+      tweets: [],
+      count: 0,
+      error: message,
+      errorCode: raw.errorCode || 'search_failed',
+      status_code: raw.status_code || 0,
+      detail: raw.detail || '',
+      via: 'official_api',
+      endpoint: raw.endpoint,
+    };
+  }
+
+  if (opts.raw) {
+    return {
+      ok: true,
+      query: keyword,
+      fullQuery: built.fullQuery,
+      tweets: raw.tweets,
+      count: raw.count,
+      meta: raw.meta,
+      via: 'official_api',
+      endpoint: raw.endpoint,
+    };
+  }
+
+  const normalized = normalizeSearchResults(raw);
+  return {
+    ok: true,
+    query: keyword,
+    fullQuery: built.fullQuery,
+    tweets: normalized.tweets,
+    count: normalized.total,
+    meta: raw.meta,
+    via: 'official_api',
+    endpoint: raw.endpoint,
   };
 }
 
@@ -269,6 +507,21 @@ async function runApi(argv) {
         const trends = Array.from(trendMap.values()).sort((a, b) => (b.tweet_count || 0) - (a.tweet_count || 0));
         result = { ok: true, trends, count: trends.length, woeids, per_location: perLocation, via: 'official_api' };
       }
+    } else if (sub === 'search-all') {
+      result = await runSearchCommand(client, opts, positional, 'all');
+    } else if (sub === 'search-recent') {
+      result = await runSearchCommand(client, opts, positional, 'recent');
+    } else if (sub === 'article-draft') {
+      result = await runArticleCreateCommand(client, opts, positional, { allowPublish: true });
+    } else if (sub === 'article') {
+      result = await runArticleCreateCommand(client, opts, positional, { allowPublish: true });
+    } else if (sub === 'article-publish') {
+      const [articleId] = positional;
+      if (!articleId) throw Object.assign(new Error('api article-publish 需要 <article_id>'), { code: 'E_BAD_ARG' });
+      result = normalizeWriteResult(await client.publishArticle(articleId), {
+        via: 'official_api',
+        published: true,
+      });
     } else if (sub === 'delete') {
       const [tweetId] = positional;
       if (!tweetId) throw Object.assign(new Error('api delete 需要 <tweet_id>'), { code: 'E_BAD_ARG' });
@@ -296,4 +549,7 @@ module.exports = {
   runApi,
   parseApiArgs,
   printApiHelp,
+  runSearchCommand,
+  runArticleCreateCommand,
+  readArticleBody,
 };

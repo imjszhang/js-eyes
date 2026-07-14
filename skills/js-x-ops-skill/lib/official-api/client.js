@@ -4,13 +4,18 @@ const { createHmac, randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { OfficialApiMediaClient } = require('./media');
+const { markdownToDraftJs } = require('./draftJsBuilder');
+const { resolveArticleMedia } = require('./articleMedia');
 
 const X_API_BASE = 'https://api.x.com';
 const TWEETS_ENDPOINT = `${X_API_BASE}/2/tweets`;
 const TRENDS_BY_WOEID_ENDPOINT = `${X_API_BASE}/2/trends/by/woeid`;
+const SEARCH_ALL_ENDPOINT = `${X_API_BASE}/2/tweets/search/all`;
+const SEARCH_RECENT_ENDPOINT = `${X_API_BASE}/2/tweets/search/recent`;
+const ARTICLES_DRAFT_ENDPOINT = `${X_API_BASE}/2/articles/draft`;
 const USER_ME_ENDPOINT = `${X_API_BASE}/2/users/me`;
 const USER_BY_USERNAME_ENDPOINT = `${X_API_BASE}/2/users/by/username`;
-const USER_AGENT = 'js-x-ops-skill/3 official-api';
+const USER_AGENT = 'js-x-ops-skill/3.7 official-api';
 let envFilesLoaded = false;
 
 function percentEncode(s) {
@@ -394,6 +399,149 @@ class OfficialApiClient {
     return { data: allTweets, users: usersMap };
   }
 
+  _enrichSearchTweet(tweet, usersMap, mediaMap) {
+    const author = usersMap[tweet.author_id] || {};
+    const mediaKeys = tweet.attachments?.media_keys || [];
+    const media = mediaKeys.map((key) => mediaMap[key]).filter(Boolean);
+    return {
+      ...tweet,
+      author_username: author.username || '',
+      author_name: author.name || '',
+      author_avatar_url: author.profile_image_url || '',
+      author_verified: !!author.verified,
+      media,
+    };
+  }
+
+  async _searchTweets(endpoint, query, {
+    startTime,
+    endTime,
+    maxResults = 100,
+    maxPages = 1,
+    nextToken,
+    sortOrder,
+  } = {}) {
+    const endpointLabel = endpoint.includes('/search/all') ? 'search/all' : 'search/recent';
+
+    if (!this.isReadConfigured) {
+      return {
+        ok: false,
+        tweets: [],
+        count: 0,
+        error: 'X API read credentials are not configured',
+        errorCode: 'api_not_configured',
+        via: 'official_api',
+        endpoint: endpointLabel,
+      };
+    }
+
+    const cleanQuery = String(query || '').trim();
+    if (!cleanQuery) {
+      return {
+        ok: false,
+        tweets: [],
+        count: 0,
+        error: 'search query is required',
+        errorCode: 'bad_arg',
+        via: 'official_api',
+        endpoint: endpointLabel,
+      };
+    }
+
+    const allTweets = [];
+    let paginationToken = nextToken || null;
+    let lastMeta = {};
+    let partial = false;
+
+    for (let page = 0; page < maxPages; page++) {
+      const params = {
+        query: cleanQuery,
+        max_results: String(Math.max(10, Math.min(maxResults, 500))),
+        'tweet.fields': 'id,text,author_id,created_at,lang,public_metrics,conversation_id,referenced_tweets,attachments',
+        expansions: 'author_id,attachments.media_keys',
+        'user.fields': 'username,name,profile_image_url,verified',
+        'media.fields': 'url,preview_image_url,type,variants,duration_ms',
+      };
+      if (startTime) params.start_time = startTime;
+      if (endTime) params.end_time = endTime;
+      if (sortOrder && endpoint.includes('/search/all')) params.sort_order = sortOrder;
+      if (paginationToken) params.next_token = paginationToken;
+
+      const qs = new URLSearchParams(params).toString();
+      const authHeader = this._buildReadAuthHeader('GET', endpoint, params);
+
+      try {
+        const resp = await fetchWithTimeout(`${endpoint}?${qs}`, {
+          headers: { Authorization: authHeader, 'User-Agent': this._userAgent },
+        }, 30000);
+
+        if (!resp.ok) {
+          if (page === 0) {
+            const err = await OfficialApiClient.parseHttpError(resp);
+            return {
+              ok: false,
+              tweets: [],
+              count: 0,
+              ...err,
+              via: 'official_api',
+              endpoint: endpointLabel,
+            };
+          }
+          this._log('warning', `[OfficialApiClient] GET ${endpointLabel} page ${page + 1} -> HTTP ${resp.status}`);
+          partial = true;
+          break;
+        }
+
+        const body = await resp.json();
+        const usersMap = Object.fromEntries((body?.includes?.users || []).map((user) => [user.id, user]));
+        const mediaMap = Object.fromEntries((body?.includes?.media || []).map((item) => [item.media_key, item]));
+
+        for (const tweet of (body.data || [])) {
+          allTweets.push(this._enrichSearchTweet(tweet, usersMap, mediaMap));
+        }
+
+        lastMeta = body?.meta || {};
+        paginationToken = lastMeta.next_token;
+        if (!paginationToken) break;
+      } catch (e) {
+        if (page === 0) {
+          return {
+            ok: false,
+            tweets: [],
+            count: 0,
+            error: String(e),
+            errorCode: 'request_failed',
+            via: 'official_api',
+            endpoint: endpointLabel,
+          };
+        }
+        this._log('warning', `[OfficialApiClient] GET ${endpointLabel} page ${page + 1} failed: ${e}`);
+        partial = true;
+        break;
+      }
+    }
+
+    const meta = { ...lastMeta };
+    if (partial) meta.partial = true;
+
+    return {
+      ok: true,
+      tweets: allTweets,
+      count: allTweets.length,
+      meta,
+      via: 'official_api',
+      endpoint: endpointLabel,
+    };
+  }
+
+  async searchAll(query, opts = {}) {
+    return this._searchTweets(SEARCH_ALL_ENDPOINT, query, opts);
+  }
+
+  async searchRecent(query, opts = {}) {
+    return this._searchTweets(SEARCH_RECENT_ENDPOINT, query, opts);
+  }
+
   async getTrends(woeid = 1) {
     if (!this.isReadConfigured) {
       return {
@@ -515,6 +663,113 @@ class OfficialApiClient {
     return this._media.uploadMediaBytes(data, mediaType, opts);
   }
 
+  async createArticleFromMarkdown({
+    title,
+    markdown,
+    coverPath,
+    fetchRemoteImages = false,
+    baseDir = process.cwd(),
+  } = {}) {
+    if (!this.isConfigured) {
+      return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
+    }
+    const cleanTitle = String(title || '').trim();
+    if (!cleanTitle) {
+      return { success: false, error: '缺少 article title', errorCode: 'bad_arg' };
+    }
+    const body = String(markdown || '');
+    if (!body.trim()) {
+      return { success: false, error: '缺少 article body', errorCode: 'bad_arg' };
+    }
+
+    const mediaResult = await resolveArticleMedia(this, {
+      markdown: body,
+      coverPath,
+      fetchRemoteImages,
+      baseDir,
+    });
+    if (!mediaResult.ok) {
+      return {
+        success: false,
+        error: mediaResult.errors.join('; '),
+        errorCode: 'media_upload_failed',
+        errors: mediaResult.errors,
+      };
+    }
+
+    const draftJs = markdownToDraftJs(mediaResult.markdown, {
+      imageMediaMap: mediaResult.inlineMediaMap,
+    });
+
+    return this.createArticleDraft({
+      title: cleanTitle,
+      contentState: draftJs.content_state,
+      coverMedia: mediaResult.coverMedia,
+    });
+  }
+
+  async createArticleDraft({ title, contentState, coverMedia } = {}) {
+    if (!this.isConfigured) {
+      return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
+    }
+    const cleanTitle = String(title || '').trim();
+    if (!cleanTitle) {
+      return { success: false, error: '缺少 article title', errorCode: 'bad_arg' };
+    }
+    if (!contentState?.blocks) {
+      return { success: false, error: '缺少 content_state.blocks', errorCode: 'bad_arg' };
+    }
+
+    const payload = {
+      title: cleanTitle,
+      content_state: contentState,
+    };
+    if (coverMedia?.media_id) payload.cover_media = coverMedia;
+
+    const result = await this._postJson('POST', ARTICLES_DRAFT_ENDPOINT, payload, { successStatus: 201 });
+    if (!result.success) return result;
+
+    const articleId = String(result.data?.id || result.data?.article_id || '');
+    return {
+      success: true,
+      article_id: articleId,
+      title: result.data?.title || cleanTitle,
+      data: result.data || {},
+      via: 'official_api',
+    };
+  }
+
+  async publishArticle(articleId) {
+    if (!this.isConfigured) {
+      return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
+    }
+    const id = String(articleId || '').trim();
+    if (!id) {
+      return { success: false, error: '缺少 article id', errorCode: 'bad_arg' };
+    }
+
+    const url = `${X_API_BASE}/2/articles/${encodeURIComponent(id)}/publish`;
+    const result = await this._postJson('POST', url, null, { successStatus: 200 });
+    if (!result.success) {
+      if (result.status_code === 403) {
+        result.detail = result.detail || 'Publishing Articles may require an active X Premium subscription.';
+        result.error = `${result.error}（Article 发布通常需要 X Premium 订阅）`;
+      }
+      return result;
+    }
+
+    const postId = String(result.data?.post_id || '');
+    return {
+      success: true,
+      article_id: id,
+      post_id: postId,
+      article_url: `https://x.com/i/article/${id}`,
+      post_url: postId ? `https://x.com/i/status/${postId}` : '',
+      data: result.data || {},
+      via: 'official_api',
+    };
+  }
+
   async deleteTweet(tweetId) {
     if (!this.isConfigured) {
       return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
@@ -548,35 +803,53 @@ class OfficialApiClient {
     }
   }
 
-  async _postTweet(body) {
+  async _postJson(method, url, body, { successStatus = 200 } = {}) {
     if (!this.isConfigured) {
       return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
     }
 
-    const authHeader = this._buildOauthHeader('POST', TWEETS_ENDPOINT);
-    const payload = JSON.stringify(body);
+    const authHeader = this._buildOauthHeader(method, url);
+    const payload = body == null ? undefined : JSON.stringify(body);
 
     try {
-      const resp = await fetchWithTimeout(TWEETS_ENDPOINT, {
-        method: 'POST',
+      const resp = await fetchWithTimeout(url, {
+        method,
         headers: {
           Authorization: authHeader,
           'Content-Type': 'application/json',
           'User-Agent': this._userAgent,
         },
         body: payload,
-      }, 30000);
+      }, 60000);
 
-      if (resp.ok) {
-        const respBody = await resp.json();
-        const tweetId = respBody?.data?.id || '';
-        return { success: true, tweet_id: String(tweetId), data: respBody?.data || {} };
+      if (resp.status === successStatus || (successStatus === 200 && resp.ok)) {
+        let respBody = {};
+        try {
+          respBody = await resp.json();
+        } catch (_) {}
+        return {
+          success: true,
+          data: respBody?.data || respBody || {},
+          raw: respBody,
+        };
       }
 
       return await OfficialApiClient.parseHttpError(resp);
     } catch (e) {
       return { success: false, error: String(e), errorCode: 'request_failed' };
     }
+  }
+
+  async _postTweet(body) {
+    if (!this.isConfigured) {
+      return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
+    }
+
+    const result = await this._postJson('POST', TWEETS_ENDPOINT, body, { successStatus: 200 });
+    if (!result.success) return result;
+
+    const tweetId = result.data?.id || '';
+    return { success: true, tweet_id: String(tweetId), data: result.data || {} };
   }
 
   static async parseHttpError(resp) {
@@ -654,5 +927,8 @@ module.exports = {
   percentEncode,
   TWEETS_ENDPOINT,
   TRENDS_BY_WOEID_ENDPOINT,
+  SEARCH_ALL_ENDPOINT,
+  SEARCH_RECENT_ENDPOINT,
+  ARTICLES_DRAFT_ENDPOINT,
   USER_ME_ENDPOINT,
 };

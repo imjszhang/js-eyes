@@ -12,9 +12,9 @@
  *
  * | 档        | 工具                                                                       | flag                                              |
  * |-----------|----------------------------------------------------------------------------|---------------------------------------------------|
- * | READ      | x_search_tweets / x_get_profile / x_get_post / x_get_home_feed / x_session_state | interactive=false, destructive=false              |
+ * | READ      | x_search_tweets / x_search_archive / x_get_profile / x_get_post / x_get_home_feed / x_session_state | interactive=false, destructive=false              |
  * | INTERACTIVE | x_navigate_search / x_navigate_profile / x_navigate_post / x_navigate_home | interactive=true,  destructive=false              |
- * | DESTRUCTIVE | (留 v3.1：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread)  | -                                                 |
+ * | DESTRUCTIVE | x_create_article / x_publish_article / (留 v3.1：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread)  | destructive=true                                  |
  *
  * 注意 x_get_post 的 schema 里仍保留 reply/post/quote/thread 等写参数（v2.0.1 行为，CLI 透传 scripts/x-post.js），
  * description 标 deprecated，等 v3.1 拆 compose-bridge 后改用专门的写工具。
@@ -33,6 +33,7 @@ const monitorConfig = require('./lib/monitor/config');
 const monitorState = require('./lib/monitor/state');
 const monitorPaths = require('./lib/monitor/paths');
 const { fetchAccount } = require('./lib/monitor/fetchAccount');
+const { createOfficialApiClient, buildSearchQueryOptions, normalizeSearchResults } = require('./lib/official-api');
 
 const CLI_COMMANDS = [
   { name: 'search', description: '搜索 X 平台内容（READ）' },
@@ -474,6 +475,269 @@ const TOOL_DEFINITIONS = [
       },
       buildTargetUrl: buildContractSearchTargetUrl,
     }),
+  },
+  {
+    name: 'x_search_archive',
+    label: 'X Ops: Search Archive (Official API)',
+    description: '通过 X Official API 搜索推文（全库 search/all 或近期 search/recent）。需要 X_BEARER_TOKEN，可能产生 API 费用。与 x_search_tweets（浏览器 GraphQL 搜索）不同，无需 js-eyes 浏览器连接。',
+    parameters: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '搜索关键词' },
+        scope: {
+          type: 'string',
+          enum: ['all', 'recent'],
+          description: '搜索范围：all=全库（2006 至今），recent=近期（7 天）',
+        },
+        maxPages: { type: 'number', description: '最多翻页数' },
+        maxResults: { type: 'number', description: '每页最大结果数（10-500）' },
+        startTime: { type: 'string', description: '起始时间 ISO8601（如 2020-01-01T00:00:00Z）' },
+        endTime: { type: 'string', description: '截止时间 ISO8601' },
+        sortOrder: {
+          type: 'string',
+          enum: ['recency', 'relevancy'],
+          description: '全库搜索排序（scope=all 时有效）',
+        },
+        from: { type: 'string', description: '指定作者用户名（不带 @）' },
+        to: { type: 'string', description: '发给某用户的推文' },
+        since: { type: 'string', description: '起始日期 YYYY-MM-DD' },
+        until: { type: 'string', description: '截止日期 YYYY-MM-DD' },
+        lang: { type: 'string', description: '搜索语言代码（如 zh、en）' },
+        minLikes: { type: 'number', description: '最低点赞数过滤' },
+        minRetweets: { type: 'number', description: '最低转发数过滤' },
+        minReplies: { type: 'number', description: '最低回复数过滤' },
+        excludeReplies: { type: 'boolean', description: '排除回复' },
+        excludeRetweets: { type: 'boolean', description: '排除转推' },
+        hasLinks: { type: 'boolean', description: '仅含链接的推文' },
+        normalize: { type: 'boolean', description: '是否归一化为 bridge 兼容结构（默认 true）' },
+      },
+      required: ['keyword'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: async function searchArchiveTool(runtime, params) {
+      const p = params || {};
+      const scope = String(p.scope || 'all').toLowerCase() === 'recent' ? 'recent' : 'all';
+      const built = buildSearchQueryOptions({
+        keyword: p.keyword,
+        from: p.from,
+        to: p.to,
+        since: p.since,
+        until: p.until,
+        lang: p.lang,
+        minLikes: p.minLikes,
+        minRetweets: p.minRetweets,
+        minReplies: p.minReplies,
+        excludeReplies: p.excludeReplies,
+        excludeRetweets: p.excludeRetweets,
+        hasLinks: p.hasLinks,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        nextToken: p.nextToken,
+        sortOrder: p.sortOrder,
+        maxResults: p.maxResults,
+        maxPages: p.maxPages,
+        scope,
+      });
+
+      const client = createOfficialApiClient({ logger: runtime?.logger || null });
+      const searchOpts = {
+        startTime: built.startTime,
+        endTime: built.endTime,
+        maxResults: built.maxResults,
+        maxPages: built.maxPages,
+        nextToken: built.nextToken,
+        sortOrder: built.sortOrder,
+      };
+
+      const raw = scope === 'recent'
+        ? await client.searchRecent(built.fullQuery, searchOpts)
+        : await client.searchAll(built.fullQuery, searchOpts);
+
+      if (!raw.ok) {
+        const message = raw.errorCode === 'forbidden'
+          ? `${raw.error || 'forbidden'}（全库搜索通常需要 Pay-per-use Bearer 权限）`
+          : (raw.error || 'search failed');
+        return {
+          ok: false,
+          keyword: p.keyword,
+          fullQuery: built.fullQuery,
+          scope,
+          tweets: [],
+          count: 0,
+          error: message,
+          errorCode: raw.errorCode || 'search_failed',
+          status_code: raw.status_code || 0,
+          detail: raw.detail || '',
+          via: 'official_api',
+          endpoint: raw.endpoint,
+        };
+      }
+
+      const normalize = p.normalize !== false;
+      const tweets = normalize
+        ? normalizeSearchResults(raw).tweets
+        : raw.tweets;
+
+      return {
+        ok: true,
+        keyword: p.keyword,
+        fullQuery: built.fullQuery,
+        scope,
+        tweets,
+        count: tweets.length,
+        meta: raw.meta,
+        via: 'official_api',
+        endpoint: raw.endpoint,
+      };
+    },
+  },
+  {
+    name: 'x_create_article',
+    label: 'X Ops: Create Article (Official API)',
+    description: '通过 X Official API 创建 Article 草稿（Markdown→DraftJS）。需要 OAuth 1.0a 写凭证；publish=true 时可能需 X Premium 并产生公开长文。无需 js-eyes 浏览器。',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Article 标题' },
+        bodyMarkdown: { type: 'string', description: 'Markdown 正文' },
+        bodyFile: { type: 'string', description: 'Markdown 文件路径（与 bodyMarkdown 二选一）' },
+        coverImage: { type: 'string', description: '封面图本地路径' },
+        fetchRemoteImages: { type: 'boolean', description: '是否下载并上传 https 内嵌图（默认 false）' },
+        publish: { type: 'boolean', description: '创建后是否立即发布（默认 false，draft-first）' },
+        confirm: { type: 'boolean', description: 'publish=true 时必须 confirm=true 才会发布' },
+      },
+      required: ['title'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: true,
+    execute: async function createArticleTool(runtime, params) {
+      const p = params || {};
+      const title = String(p.title || '').trim();
+      if (!title) {
+        return { ok: false, error: 'title is required', errorCode: 'bad_arg' };
+      }
+
+      let markdown = String(p.bodyMarkdown || '');
+      if (p.bodyFile) {
+        const fs = require('fs');
+        const path = require('path');
+        markdown = fs.readFileSync(path.resolve(p.bodyFile), 'utf8');
+      }
+      if (!markdown.trim()) {
+        return { ok: false, error: 'bodyMarkdown or bodyFile is required', errorCode: 'bad_arg' };
+      }
+
+      const client = createOfficialApiClient({ logger: runtime?.logger || null });
+      const baseDir = p.bodyFile ? require('path').dirname(require('path').resolve(p.bodyFile)) : process.cwd();
+      const draftResult = await client.createArticleFromMarkdown({
+        title,
+        markdown,
+        coverPath: p.coverImage,
+        fetchRemoteImages: !!p.fetchRemoteImages,
+        baseDir,
+      });
+
+      if (!draftResult.success) {
+        return {
+          ok: false,
+          error: draftResult.error || 'create article draft failed',
+          errorCode: draftResult.errorCode || 'article_draft_failed',
+          errors: draftResult.errors,
+        };
+      }
+
+      const out = {
+        ok: true,
+        title: draftResult.title,
+        article_id: draftResult.article_id,
+        published: false,
+        via: 'official_api',
+      };
+
+      if (!p.publish) return out;
+      if (p.confirm !== true) {
+        return {
+          ok: false,
+          error: 'publish requires confirm=true',
+          errorCode: 'confirm_required',
+          article_id: draftResult.article_id,
+        };
+      }
+
+      const pub = await client.publishArticle(draftResult.article_id);
+      if (!pub.success) {
+        return {
+          ok: false,
+          error: pub.error || 'publish article failed',
+          errorCode: pub.errorCode || 'article_publish_failed',
+          article_id: draftResult.article_id,
+          status_code: pub.status_code || 0,
+          detail: pub.detail || '',
+        };
+      }
+
+      return {
+        ok: true,
+        title: draftResult.title,
+        article_id: draftResult.article_id,
+        published: true,
+        post_id: pub.post_id,
+        article_url: pub.article_url,
+        post_url: pub.post_url,
+        via: 'official_api',
+      };
+    },
+  },
+  {
+    name: 'x_publish_article',
+    label: 'X Ops: Publish Article (Official API)',
+    description: '发布已有 X Article 草稿为公开长文。需要 OAuth 1.0a 写凭证，可能需 X Premium。destructive：会产生公开可见内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        articleId: { type: 'string', description: 'Article 草稿 ID' },
+        confirm: { type: 'boolean', description: '必须为 true 才会发布' },
+      },
+      required: ['articleId'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: true,
+    execute: async function publishArticleTool(runtime, params) {
+      const p = params || {};
+      if (p.confirm !== true) {
+        return { ok: false, error: 'confirm=true is required', errorCode: 'confirm_required' };
+      }
+      const articleId = String(p.articleId || '').trim();
+      if (!articleId) {
+        return { ok: false, error: 'articleId is required', errorCode: 'bad_arg' };
+      }
+
+      const client = createOfficialApiClient({ logger: runtime?.logger || null });
+      const pub = await client.publishArticle(articleId);
+      if (!pub.success) {
+        return {
+          ok: false,
+          error: pub.error || 'publish article failed',
+          errorCode: pub.errorCode || 'article_publish_failed',
+          status_code: pub.status_code || 0,
+          detail: pub.detail || '',
+        };
+      }
+
+      return {
+        ok: true,
+        article_id: pub.article_id,
+        post_id: pub.post_id,
+        published: true,
+        article_url: pub.article_url,
+        post_url: pub.post_url,
+        via: 'official_api',
+      };
+    },
   },
   {
     name: 'x_get_profile',

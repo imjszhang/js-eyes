@@ -2,6 +2,10 @@
 
 const { OfficialApiClient } = require('./client');
 const { OfficialApiMediaClient } = require('./media');
+const { buildSearchQueryOptions } = require('./buildSearchQuery');
+const { normalizeSearchTweet, normalizeSearchResults } = require('./normalizeSearchTweet');
+const { markdownToDraftJs } = require('./draftJsBuilder');
+const { resolveArticleMedia, toArticleMediaRef } = require('./articleMedia');
 
 function createOfficialApiClient(opts = {}) {
   return new OfficialApiClient(opts);
@@ -16,4 +20,10 @@ module.exports = {
   OfficialApiMediaClient,
   createOfficialApiClient,
   isConfigured,
+  buildSearchQueryOptions,
+  normalizeSearchTweet,
+  normalizeSearchResults,
+  markdownToDraftJs,
+  resolveArticleMedia,
+  toArticleMediaRef,
 };
