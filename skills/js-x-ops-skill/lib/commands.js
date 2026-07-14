@@ -193,9 +193,11 @@ const COMMANDS = {
       withThread: !!opts.withThread,
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
       ...(opts.budgetMs != null && Number(opts.budgetMs) > 0 ? { budgetMs: Number(opts.budgetMs) } : {}),
+      downloadMedia: !!opts.downloadMedia,
+      outDir: opts.outDir || undefined,
     }],
     targetUrl: (opts, positional) => targets.postUrl({ url: positional[0] }),
-    help: '推文详情：post <tweetUrl|tweetId> [<tweetUrl|tweetId> ...] [--with-thread] [--with-replies N] [--budget-ms MS]（多个 id 批量，单条走 bridge；写操作 --reply/--post/--quote/--thread 走 v2 路径）',
+    help: '推文详情：post <tweetUrl|tweetId> [<tweetUrl|tweetId> ...] [--with-thread] [--with-replies N] [--budget-ms MS] [--download-media] [--out-dir PATH]（多个 id 批量，单条走 bridge；写操作 --reply/--post/--quote/--thread 走 v2 路径）',
   },
   home: {
     kind: 'tool',
@@ -333,6 +335,8 @@ function parseArgv(argv) {
     visualFramesThrottle: null,
     redactRect: null,
     redactConfig: null,
+    downloadMedia: false,
+    outDir: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -455,6 +459,9 @@ function parseArgv(argv) {
     else if (a.startsWith('--with-replies=')) eatEq('withReplies', '--with-replies=');
     else if (a === '--budget-ms') eat('budgetMs');
     else if (a.startsWith('--budget-ms=')) eatEq('budgetMs', '--budget-ms=');
+    else if (a === '--download-media') opts.downloadMedia = true;
+    else if (a === '--out-dir') eat('outDir');
+    else if (a.startsWith('--out-dir=')) eatEq('outDir', '--out-dir=');
     else if (a.startsWith('-')) {
       // 未知 option（写操作的 --reply/--post/--quote/--thread/--media/--dry-run/--confirm 走 v2 path 在 cli/index.js 直接 spawn）
       const err = new Error(`unknown option: ${a}（运行 \`node index.js --help\` 查看）`);
@@ -501,6 +508,8 @@ function printHelp() {
     '  --exclude-replies/--exclude-retweets/--include-replies/--include-retweets',
     '  --with-thread / --with-replies <n>            post 命令选项',
     '  --budget-ms <ms>         post bridge wall-clock 预算（默认 60000，最大 300000）',
+    '  --download-media         post 命令：下载推文媒体到本地（side effect）',
+    '  --out-dir <path>         post --download-media 输出目录（默认 ./media/<tweetId>）',
     '  --read-mode auto|graphql|dom   READ：auto=GraphQL 优先再 DOM（v3.2 由 --mode 重命名而来，与 visual-* 解耦）',
     '  --visual / --no-visual / --visual-hud / --visual-flash / --visual-record / --visual-trace …  见 visual-bridge-kit',
     '  --pretty                 JSON 缩进 2 空格输出',

@@ -46,6 +46,7 @@ const {
 } = require('./bridgeAdapter');
 const { runTool } = require('./runTool');
 const { READ_CMD_DEF } = require('./commands');
+const { attachPostMediaDownloads } = require('./postMediaDownload');
 
 const SKILL_ID = pkg.name;
 
@@ -1783,6 +1784,13 @@ async function getPost(browser, tweetInputs, options = {}) {
     const cached = readCacheEntry(runContext, 'post');
     const cachedResponse = attachXCacheHit(runContext, cached, startedAtMs);
     if (cachedResponse) {
+        if (options.downloadMedia) {
+            await attachPostMediaDownloads(cachedResponse, {
+                downloadMedia: true,
+                outDir: options.outDir,
+                logger: options.logger,
+            });
+        }
         return cachedResponse;
     }
 
@@ -1793,6 +1801,13 @@ async function getPost(browser, tweetInputs, options = {}) {
 
     try {
         const result = await _postWithBridgeOrFallback(browser, tweetInputs, { ...options, logger });
+        if (options.downloadMedia) {
+            await attachPostMediaDownloads(result, {
+                downloadMedia: true,
+                outDir: options.outDir,
+                logger,
+            });
+        }
         recordDomStat(debugState, 'result_summary', {
             totalRequested: result.totalRequested || 0,
             totalSuccess: result.totalSuccess || 0,

@@ -71,6 +71,7 @@ metadata:
 | READ | `x_search_tweets` | `/search?q=` | 搜索：keyword / sort / maxPages / since / until / lang / from / minLikes / minRetweets / excludeReplies / excludeRetweets |
 | READ | `x_get_profile` | `/<username>` | 用户主页时间线：username / maxPages / includeReplies / since |
 | READ | `x_get_post` | `/<user>/status/<id>` | 推文详情：tweetInputs / withThread / withReplies；同时 v2 写参数透传（**deprecated**，v3.1 拆专用工具） |
+| READ | `x_download_media` | `/<user>/status/<id>` | 读取推文并下载图片/视频到本地（**local file side effect**） |
 | READ | `x_get_home_feed` | `/home` | 首页 Feed：feed=foryou/following / maxPages |
 | READ | `x_session_state` | 任意 X tab | 登录态 + whoami（cookie + `/i/api/1.1/account/settings.json`；返回 `loggedIn / username / screenName / userId? / displayName? / name(=screen_name)`） |
 | INTERACTIVE | `x_navigate_search` | `/search?q=&f=` | 仅 `location.assign` 切搜索页 |
@@ -122,6 +123,7 @@ node index.js profile karpathy --include-replies --max-pages 3
 # READ：推文详情
 node index.js post https://x.com/user/status/123 --with-thread
 node index.js post https://x.com/user/status/123 --with-replies 50 --pretty
+node index.js post https://x.com/user/status/123 --download-media [--out-dir ./media]
 node index.js post <id1> <id2> <id3> --pretty    # PR-2.5+：多 positional 走 lib/api.js::getPost 批量路径
 
 # READ：首页推荐
@@ -244,6 +246,7 @@ const feed = await getHomeFeed(browser, { feed: 'foryou', maxPages: 5 });
 | `quoteTweet` | 引用推文的完整信息（嵌套），无引用为 `null` |
 | `card` | 链接预览卡片（`name`/`title`/`description`/`url`/`thumbnailUrl`/`domain`），无卡片为 `null` |
 | `mediaDetails` | 增强媒体：照片含尺寸，视频含多质量 mp4/m3u8 + 时长 + 海报图 |
+| `media_files` | `--download-media` / `x_download_media` 落盘结果：`{ type, url, localPath, ok, error }[]` |
 | `stats.quotes` | 引用数（与 replies/retweets/likes/views/bookmarks 并列） |
 | `lang` | 语言代码 |
 | `isVerified` | 作者蓝标认证 |

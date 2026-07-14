@@ -553,6 +553,44 @@ const TOOL_DEFINITIONS = [
     execute: makeXGetPostReadOrLegacyExecutor(),
   },
   {
+    name: 'x_download_media',
+    label: 'X Ops: Download Post Media',
+    description: '读取 X 推文并将图片/视频下载到本地目录（会产生 local file side effect，不入 skill READ cache 的纯 JSON 语义）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        tweetUrl: {
+          type: 'string',
+          description: '推文 URL 或 ID（如 https://x.com/user/status/123）',
+        },
+        outDir: {
+          type: 'string',
+          description: '媒体输出目录（默认 ./media/<tweetId>）',
+        },
+        readMode: {
+          type: 'string',
+          enum: ['auto', 'graphql', 'dom'],
+          description: 'READ 数据路径，与 x_get_post 一致',
+        },
+      },
+      required: ['tweetUrl'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    execute: async function downloadMediaTool(runtime, params, context = {}) {
+      const p = params || {};
+      const result = await getPost(runtime.ensureBot(), p.tweetUrl, {
+        downloadMedia: true,
+        outDir: p.outDir,
+        readMode: p.readMode,
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
+      });
+      return Object.assign({ ok: true }, result);
+    },
+  },
+  {
     name: 'x_get_home_feed',
     label: 'X Ops: Get Home Feed',
     description: '浏览 X.com 首页 Feed（For You 或 Following）。返回帖子列表，支持翻页和过滤。',

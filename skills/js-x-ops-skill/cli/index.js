@@ -29,6 +29,7 @@ const { runTool } = require('../lib/runTool');
 const { runMonitor } = require('../lib/monitor/dispatcher');
 const { runApi } = require('../lib/official-api/dispatcher');
 const apiLib = require('../lib/api');
+const { attachPostMediaDownloads } = require('../lib/postMediaDownload');
 const { warnDeprecatedFlagsOnce } = require('../lib/cliVisualFlags');
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,13 @@ async function runToolCommand(commandName, def, opts, positional) {
         maxFrames: opts.maxFrames != null ? Number(opts.maxFrames) : undefined,
       },
     });
+    if (commandName === 'post' && opts.downloadMedia && response && response.ok && response.result) {
+      response.result = await attachPostMediaDownloads(response.result, {
+        downloadMedia: true,
+        outDir: opts.outDir,
+        logger: opts.verbose ? console : { info: () => {} },
+      });
+    }
     printJson(response, opts);
     return response && response.ok === false ? 1 : 0;
   } finally {
@@ -246,6 +254,8 @@ async function runGetPostBatchCommand(opts, positional) {
       withThread: !!opts.withThread,
       withReplies: opts.withReplies ? Number(opts.withReplies) : 0,
       ...(opts.budgetMs != null && Number(opts.budgetMs) > 0 ? { budgetMs: Number(opts.budgetMs) } : {}),
+      downloadMedia: !!opts.downloadMedia,
+      outDir: opts.outDir || undefined,
       recording: runtimeConfig.recording,
       recordingMode: opts.recordingMode,
       debugRecording: opts.debugRecording,
