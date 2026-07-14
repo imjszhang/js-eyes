@@ -221,6 +221,7 @@
     if (!tweet || !tweet.linkedArticle || !tweet.linkedArticle.articleId) return false;
     if (isArticleGraphQLComplete(tweet.articleContent)) return false;
     const ac = tweet.articleContent;
+    if (ac && ac.expectedInlineMedia && ac.inlineMediaComplete === false) return true;
     if (ac && ac.expectedInlineMedia && !(ac.mediaDetails && ac.mediaDetails.length)) return true;
     if (ac && ac.coverUrl) return false;
     if (tweet.articlePlainText && tweet.articlePlainText.length > 200) {

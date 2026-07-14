@@ -89,7 +89,13 @@ function normalizeArticleEntityMap(entityMap) {
   if (!entityMap) return {};
   if (typeof entityMap === 'object' && !Array.isArray(entityMap)) {
     const out = {};
-    for (const [k, v] of Object.entries(entityMap)) out[String(k)] = v;
+    for (const [k, v] of Object.entries(entityMap)) {
+      if (v && typeof v === 'object' && v.value && v.value.type) {
+        out[String(v.key != null ? v.key : k)] = v.value;
+      } else {
+        out[String(k)] = v;
+      }
+    }
     return out;
   }
   if (Array.isArray(entityMap)) {
@@ -150,25 +156,71 @@ function entityType(entity) {
   return String((entity && entity.type) || '').toUpperCase();
 }
 
-function buildArticleMediaUrlMap(articleRoot) {
+function buildMediaByIdMap(articleRoot) {
   const map = {};
   if (!articleRoot || typeof articleRoot !== 'object') return map;
   const candidates = [];
   if (articleRoot.cover_media) candidates.push(articleRoot.cover_media);
-  const mediaEntities = articleRoot.media_entities;
-  if (Array.isArray(mediaEntities)) candidates.push(...mediaEntities);
+  if (Array.isArray(articleRoot.media_entities)) candidates.push(...articleRoot.media_entities);
 
   for (const media of candidates) {
     if (!media || typeof media !== 'object') continue;
-    const info = media.media_info || media;
-    const imageUrl = findArticleImageUrl(info) || findArticleImageUrl(media);
-    if (!imageUrl) continue;
+    const asset = resolveMediaAssetFromInfo(media.media_info || media);
+    if (!asset) continue;
     for (const key of ['media_id', 'media_key', 'id']) {
       const id = media[key];
-      if (typeof id === 'string' && id) map[id] = imageUrl;
+      if (typeof id === 'string' && id) map[id] = asset;
     }
   }
   return map;
+}
+
+function buildArticleMediaUrlMap(articleRoot) {
+  const map = {};
+  const byId = buildMediaByIdMap(articleRoot);
+  for (const [id, asset] of Object.entries(byId)) {
+    if (asset && asset.url) map[id] = asset.url;
+  }
+  return map;
+}
+
+/** MEDIA entity 缺 media_id 时，用相邻 LINK entity 的 url 兜底（baoyu / X 常见形态） */
+function buildMediaLinkMap(entityMap) {
+  const linkMap = {};
+  if (!entityMap || typeof entityMap !== 'object') return linkMap;
+
+  const mediaEntries = [];
+  const linkEntries = [];
+  for (const [idx, entry] of Object.entries(entityMap)) {
+    const entity = unwrapEntity(entry);
+    if (!entity) continue;
+    const type = entityType(entity);
+    const logicalKey = parseInt(entry && entry.key, 10);
+    const keyNum = Number.isFinite(logicalKey) ? logicalKey : parseInt(idx, 10);
+    if (!Number.isFinite(keyNum)) continue;
+    if (type === 'IMAGE' || type === 'MEDIA') {
+      mediaEntries.push({ key: keyNum, idx: parseInt(idx, 10) });
+    } else if (type === 'LINK') {
+      const url = deepGet(entity, 'data', 'url');
+      if (typeof url === 'string' && url.trim()) {
+        linkEntries.push({ key: keyNum, url: url.trim() });
+      }
+    }
+  }
+
+  if (!mediaEntries.length || !linkEntries.length) return linkMap;
+  mediaEntries.sort((a, b) => a.key - b.key);
+  linkEntries.sort((a, b) => a.key - b.key);
+  const pool = linkEntries.slice();
+  for (const media of mediaEntries) {
+    if (!pool.length) break;
+    let linkIdx = pool.findIndex((l) => l.key > media.key);
+    if (linkIdx === -1) linkIdx = 0;
+    const link = pool.splice(linkIdx, 1)[0];
+    linkMap[media.key] = link.url;
+    linkMap[media.idx] = link.url;
+  }
+  return linkMap;
 }
 
 function buildMediaDetailsFromArticleRoot(articleRoot) {
@@ -247,47 +299,84 @@ function extractAtomicMarkdown(block, entityMap, lookup) {
   return parts;
 }
 
-function extractAtomicImages(block, entityMap, lookup, mediaUrlMap, mediaDetails, mediaUrls) {
+function resolveMediaItemAsset(item, mediaUrlMap, mediaByIdMap, mediaLinkMap, entityKey) {
+  const ids = [];
+  if (item && typeof item === 'object') {
+    for (const k of ['mediaId', 'media_id', 'localMediaId', 'local_media_id']) {
+      const v = item[k];
+      if (typeof v === 'string' && v) ids.push(v);
+    }
+  }
+  for (const id of ids) {
+    if (mediaByIdMap[id]) return mediaByIdMap[id];
+    if (mediaUrlMap[id]) {
+      return { type: 'photo', url: mediaUrlMap[id], posterUrl: mediaUrlMap[id] };
+    }
+  }
+  if (entityKey != null && mediaLinkMap[entityKey]) {
+    const url = mediaLinkMap[entityKey];
+    return { type: 'photo', url, posterUrl: url, source: 'media_link_map' };
+  }
+  return null;
+}
+
+function pushInlineMediaAsset(asset, caption, mediaDetails, mediaUrls, lines) {
+  if (!asset || !asset.url) return false;
+  const alt = caption || (asset.type === 'video' ? 'video' : 'image');
+  if (asset.type === 'video') {
+    lines.push(`[${alt}](${asset.url})`);
+  } else {
+    lines.push(caption ? `![${caption}](${asset.url})` : `![image](${asset.url})`);
+  }
+  if (!mediaUrls.includes(asset.url)) mediaUrls.push(asset.url);
+  if (!mediaDetails.some((d) => d.url === asset.url)) {
+    mediaDetails.push(Object.assign({
+      caption: caption || '',
+      source: 'content_state',
+    }, asset));
+  }
+  return true;
+}
+
+function extractAtomicMedia(block, entityMap, lookup, mediaUrlMap, mediaByIdMap, mediaLinkMap, mediaDetails, mediaUrls) {
   const lines = [];
+  let resolved = 0;
+  let expected = 0;
   const ranges = block.entity_ranges || block.entityRanges || [];
   for (const er of ranges || []) {
     const entity = unwrapEntity(resolveEntityEntry(er && er.key, entityMap, lookup));
     if (!entity) continue;
     const type = entityType(entity);
     if (type !== 'IMAGE' && type !== 'MEDIA') continue;
+    expected += 1;
 
-    let imageUrl = findArticleImageUrl(entity) || findArticleImageUrl(deepGet(entity, 'data'));
-    if (!imageUrl) {
+    let asset = resolveMediaAssetFromInfo(deepGet(entity, 'data'))
+      || resolveMediaAssetFromInfo(entity);
+    if (!asset) {
       const mediaItems = deepGet(entity, 'data', 'mediaItems')
         || deepGet(entity, 'data', 'media_items') || [];
       for (const item of mediaItems) {
-        const mediaId = (item && (item.mediaId || item.media_id)) || '';
-        if (mediaId && mediaUrlMap[mediaId]) {
-          imageUrl = mediaUrlMap[mediaId];
-          break;
-        }
+        asset = resolveMediaItemAsset(item, mediaUrlMap, mediaByIdMap, mediaLinkMap, er && er.key);
+        if (asset) break;
       }
     }
-    if (!imageUrl) {
+    if (!asset) {
       const fallback = deepGet(entity, 'data', 'url');
-      if (typeof fallback === 'string') imageUrl = fallback;
+      if (typeof fallback === 'string') {
+        asset = { type: 'photo', url: fallback, posterUrl: fallback };
+      }
     }
-    if (!imageUrl) continue;
+    if (!asset && er && er.key != null && mediaLinkMap[er.key]) {
+      const url = mediaLinkMap[er.key];
+      asset = { type: 'photo', url, posterUrl: url };
+    }
 
     const caption = findArticleCaption(entity);
-    lines.push(caption ? `![${caption}](${imageUrl})` : `![image](${imageUrl})`);
-
-    if (!mediaUrls.includes(imageUrl)) mediaUrls.push(imageUrl);
-    if (!mediaDetails.some((d) => d.url === imageUrl)) {
-      mediaDetails.push({
-        type: 'photo',
-        url: imageUrl,
-        caption,
-        source: 'content_state',
-      });
+    if (pushInlineMediaAsset(asset, caption, mediaDetails, mediaUrls, lines)) {
+      resolved += 1;
     }
   }
-  return lines;
+  return { lines, resolved, expected };
 }
 
 function extractAtomicPostEmbed(block, entityMap, lookup) {
@@ -305,7 +394,15 @@ function extractAtomicPostEmbed(block, entityMap, lookup) {
 function renderContentStateToMarkdown(contentState, articleRoot) {
   const blocks = (contentState && contentState.blocks) || [];
   if (!Array.isArray(blocks) || !blocks.length) {
-    return { contentMarkdown: '', mediaDetails: [], mediaUrls: [], atomicBlockCount: 0, expectedInlineMedia: false };
+    return {
+      contentMarkdown: '',
+      mediaDetails: [],
+      mediaUrls: [],
+      atomicBlockCount: 0,
+      expectedInlineMedia: false,
+      expectedInlineMediaCount: 0,
+      resolvedInlineMediaCount: 0,
+    };
   }
 
   let entityMap = normalizeArticleEntityMap(contentState.entityMap);
@@ -313,13 +410,16 @@ function renderContentStateToMarkdown(contentState, articleRoot) {
     entityMap = normalizeEntitiesArray(contentState.entities);
   }
   const lookup = buildEntityLookup(entityMap);
+  const mediaByIdMap = buildMediaByIdMap(articleRoot || {});
   const mediaUrlMap = buildArticleMediaUrlMap(articleRoot || {});
+  const mediaLinkMap = buildMediaLinkMap(entityMap);
   const mediaDetails = [];
   const mediaUrls = [];
   const parts = [];
   let orderedCounter = 0;
   let atomicBlockCount = 0;
-  let expectedInlineMedia = false;
+  let expectedInlineMediaCount = 0;
+  let resolvedInlineMediaCount = 0;
 
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
@@ -327,14 +427,13 @@ function renderContentStateToMarkdown(contentState, articleRoot) {
 
     if (blockType === 'atomic') {
       atomicBlockCount += 1;
-      const ranges = block.entity_ranges || block.entityRanges || [];
-      for (const er of ranges || []) {
-        const entity = unwrapEntity(resolveEntityEntry(er && er.key, entityMap, lookup));
-        const type = entityType(entity);
-        if (type === 'IMAGE' || type === 'MEDIA') expectedInlineMedia = true;
-      }
       parts.push(...extractAtomicMarkdown(block, entityMap, lookup));
-      parts.push(...extractAtomicImages(block, entityMap, lookup, mediaUrlMap, mediaDetails, mediaUrls));
+      const atomicMedia = extractAtomicMedia(
+        block, entityMap, lookup, mediaUrlMap, mediaByIdMap, mediaLinkMap, mediaDetails, mediaUrls,
+      );
+      parts.push(...atomicMedia.lines);
+      expectedInlineMediaCount += atomicMedia.expected;
+      resolvedInlineMediaCount += atomicMedia.resolved;
       parts.push(...extractAtomicPostEmbed(block, entityMap, lookup));
       orderedCounter = 0;
       continue;
@@ -362,7 +461,9 @@ function renderContentStateToMarkdown(contentState, articleRoot) {
     mediaDetails,
     mediaUrls,
     atomicBlockCount,
-    expectedInlineMedia,
+    expectedInlineMedia: expectedInlineMediaCount > 0,
+    expectedInlineMediaCount,
+    resolvedInlineMediaCount,
   };
 }
 
@@ -370,6 +471,30 @@ function resolveCoverUrl(articleRoot) {
   if (!articleRoot || typeof articleRoot !== 'object') return '';
   const info = articleRoot.cover_media && articleRoot.cover_media.media_info;
   return findArticleImageUrl(info) || findArticleImageUrl(articleRoot.cover_media) || '';
+}
+
+function pickRicherContentState(a, b) {
+  const blocksA = (a && a.blocks && a.blocks.length) || 0;
+  const blocksB = (b && b.blocks && b.blocks.length) || 0;
+  if (blocksB > blocksA) return b;
+  if (blocksA > blocksB) return a;
+  const entsA = Object.keys(normalizeArticleEntityMap(a && a.entityMap)).length;
+  const entsB = Object.keys(normalizeArticleEntityMap(b && b.entityMap)).length;
+  return entsB > entsA ? b : a;
+}
+
+function mergeMediaEntities(listA, listB) {
+  const out = [];
+  const seen = new Set();
+  for (const ent of [].concat(listA || [], listB || [])) {
+    if (!ent || typeof ent !== 'object') continue;
+    const id = ent.media_id || ent.media_key || ent.id || '';
+    const key = id || JSON.stringify(ent);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ent);
+  }
+  return out;
 }
 
 /**
@@ -388,13 +513,14 @@ function extractArticleGraphQLSource(actualTweet) {
     return b != null && b !== '' ? b : '';
   };
 
-  const contentState = (artResult && artResult.content_state)
-    || (rich && (rich.content_state || rich.rich_content_state))
-    || null;
+  const csArt = artResult && artResult.content_state;
+  const csRich = rich && (rich.content_state || rich.rich_content_state);
+  const contentState = pickRicherContentState(csArt, csRich);
 
-  const mediaEntities = []
-    .concat(Array.isArray(artResult && artResult.media_entities) ? artResult.media_entities : [])
-    .concat(Array.isArray(rich && rich.media_entities) ? rich.media_entities : []);
+  const mediaEntities = mergeMediaEntities(
+    artResult && artResult.media_entities,
+    rich && rich.media_entities,
+  );
 
   const root = {
     title: pick(artResult && artResult.title, rich && rich.title),
@@ -416,7 +542,15 @@ function parseArticleContentFromTweet(actualTweet) {
 
   const rendered = source.content_state
     ? renderContentStateToMarkdown(source.content_state, source)
-    : { contentMarkdown: '', mediaDetails: [], mediaUrls: [], atomicBlockCount: 0, expectedInlineMedia: false };
+    : {
+      contentMarkdown: '',
+      mediaDetails: [],
+      mediaUrls: [],
+      atomicBlockCount: 0,
+      expectedInlineMedia: false,
+      expectedInlineMediaCount: 0,
+      resolvedInlineMediaCount: 0,
+    };
 
   const rootMediaDetails = buildMediaDetailsFromArticleRoot(source);
   const coverUrl = resolveCoverUrl(source);
@@ -428,8 +562,9 @@ function parseArticleContentFromTweet(actualTweet) {
     seenUrls.add(d.url);
     mediaDetails.push(d);
   };
-  for (const d of rootMediaDetails) pushDetail(d);
+  // content_state 解析出的 inline 媒体优先（避免被 media_entities 去重吞掉）
   for (const d of rendered.mediaDetails) pushDetail(d);
+  for (const d of rootMediaDetails) pushDetail(d);
 
   const mediaUrls = [];
   const seenMedia = new Set();
@@ -443,11 +578,14 @@ function parseArticleContentFromTweet(actualTweet) {
   const plainText = source.plain_text || '';
   const contentMarkdown = rendered.contentMarkdown || plainText;
   const hasContentState = !!(source.content_state && source.content_state.blocks && source.content_state.blocks.length);
-  const expectedInlineMedia = rendered.expectedInlineMedia;
-  const hasInlineMedia = mediaDetails.some((d) => d.source === 'content_state');
+  const expectedInlineMediaCount = rendered.expectedInlineMediaCount || 0;
+  const resolvedInlineMediaCount = rendered.resolvedInlineMediaCount || 0;
+  const expectedInlineMedia = expectedInlineMediaCount > 0;
+  const inlineMediaComplete = !expectedInlineMedia
+    || resolvedInlineMediaCount >= expectedInlineMediaCount;
   const bodyLen = Math.max(contentMarkdown.trim().length, plainText.trim().length);
   const complete = bodyLen > 50
-    && (!expectedInlineMedia || hasInlineMedia)
+    && inlineMediaComplete
     && (!source.cover_media || !!coverUrl);
 
   return {
@@ -463,6 +601,9 @@ function parseArticleContentFromTweet(actualTweet) {
     parsedFromContentState: hasContentState,
     atomicBlockCount: rendered.atomicBlockCount,
     expectedInlineMedia,
+    expectedInlineMediaCount,
+    resolvedInlineMediaCount,
+    inlineMediaComplete,
     complete,
     source: hasContentState ? 'graphql_content_state' : 'graphql_plain_text',
   };
@@ -480,6 +621,8 @@ if (typeof module !== 'undefined' && module.exports) {
     renderContentStateToMarkdown,
     normalizeArticleEntityMap,
     buildArticleMediaUrlMap,
+    buildMediaLinkMap,
+    buildMediaByIdMap,
     isArticleGraphQLComplete,
     findArticleImageUrl,
   };
