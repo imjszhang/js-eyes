@@ -17,6 +17,7 @@
 // @@include @js-eyes/visual-bridge-kit/bridge/visual.common.js
 // @@include ./_visual-x.js
 // @@include ../lib/articleContentState.js
+// @@include ../lib/promotedDetection.js
 
 const __jseXCache = {
   graphqlByOp: Object.create(null),  // { [opName]: { queryId, features, variables, savedAt } }
@@ -520,10 +521,7 @@ function parseTweetArticle(article){
   }
   if (!tweetId) return null;
 
-  const isPromoted = article.querySelector('[data-testid="placementTracking"]') !== null
-    || (article.innerText || '').includes('Promoted')
-    || (article.innerText || '').includes('推广');
-  if (isPromoted) return null;
+  if (isPromotedTweet(article)) return null;
 
   const socialContext = article.querySelector('[data-testid="socialContext"]');
   const isPinned = !!(socialContext && /pinned|置顶/i.test(socialContext.textContent || ''));
@@ -608,6 +606,47 @@ function collectTweetsFromDom(rootDoc){
     } catch (_) {}
   });
   return tweets;
+}
+
+function collectTweetsFromDomDetailed(rootDoc, seenIds){
+  const root = rootDoc || document;
+  const seen = seenIds || new Set();
+  const tweets = [];
+  const stats = {
+    articleCount: 0,
+    parsedCount: 0,
+    addedCount: 0,
+    skippedPromotedCount: 0,
+    parseRejectedCount: 0,
+    duplicateCount: 0,
+    parseErrorCount: 0,
+  };
+  const articles = root.querySelectorAll('article[data-testid="tweet"]');
+  stats.articleCount = articles.length;
+  articles.forEach((article) => {
+    try {
+      if (isPromotedTweet(article)) {
+        stats.skippedPromotedCount++;
+        return;
+      }
+      const parsed = parseTweetArticle(article);
+      if (!parsed || !parsed.tweetId) {
+        stats.parseRejectedCount++;
+        return;
+      }
+      stats.parsedCount++;
+      if (seen.has(parsed.tweetId)) {
+        stats.duplicateCount++;
+        return;
+      }
+      seen.add(parsed.tweetId);
+      tweets.push(parsed);
+      stats.addedCount++;
+    } catch (_) {
+      stats.parseErrorCount++;
+    }
+  });
+  return { tweets, stats };
 }
 
 // ---------------------------------------------------------------------------

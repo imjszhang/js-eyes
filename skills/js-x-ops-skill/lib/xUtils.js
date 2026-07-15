@@ -14,6 +14,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { existsSync } = require('fs');
+const { isPromotedTweet } = require('./promotedDetection');
 
 // ============================================================================
 // 常量与默认配置
@@ -147,6 +148,8 @@ if (!process[_X_LEGACY_CLEAN_KEY]) {
  */
 function buildTweetParserSnippet() {
     return `
+    ${isPromotedTweet.toString()}
+
     const parseStatNumber = (text) => {
         if (!text) return 0;
         const match = text.match(/([\\d,.]+[KMB]?)\\s/i);
@@ -186,10 +189,7 @@ function buildTweetParserSnippet() {
         if (!tweetId) return null;
 
         // 跳过广告推文
-        const isPromoted = article.querySelector('[data-testid="placementTracking"]') !== null
-            || article.innerText.includes('Promoted')
-            || article.innerText.includes('推广');
-        if (isPromoted) return null;
+        if (isPromotedTweet(article)) return null;
 
         // ---- 提取作者信息 ----
         let authorName = '';
