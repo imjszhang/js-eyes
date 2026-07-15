@@ -5,6 +5,7 @@ const { readFileSync, statSync } = require('fs');
 const { extname } = require('path');
 
 const MEDIA_UPLOAD_ENDPOINT = 'https://api.x.com/2/media/upload';
+const MEDIA_UPLOAD_INIT_ENDPOINT = 'https://api.x.com/2/media/upload/initialize';
 const MEDIA_METADATA_ENDPOINT = 'https://api.x.com/2/media/metadata';
 const CHUNK_SIZE = 4 * 1024 * 1024;
 
@@ -58,6 +59,14 @@ function getMediaData(result) {
 function getMediaId(result) {
   const data = getMediaData(result);
   return String(data.id || data.media_id || result?.media_id_string || result?.media_id || '');
+}
+
+function mediaUploadAppendUrl(mediaId) {
+  return `${MEDIA_UPLOAD_ENDPOINT}/${String(mediaId)}/append`;
+}
+
+function mediaUploadFinalizeUrl(mediaId) {
+  return `${MEDIA_UPLOAD_ENDPOINT}/${String(mediaId)}/finalize`;
 }
 
 function buildMultipartBody(fields, fileField) {
@@ -123,7 +132,7 @@ class OfficialApiMediaClient {
       let segmentIndex = 0;
       for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
         const chunk = data.subarray(offset, offset + CHUNK_SIZE);
-        const appendResult = await this._mediaAppend(mediaId, segmentIndex, chunk);
+        const appendResult = await this._mediaAppend(mediaId, segmentIndex, chunk, resolvedMediaType);
         if (!appendResult.success) return appendResult;
         segmentIndex++;
       }
@@ -165,7 +174,7 @@ class OfficialApiMediaClient {
     let segmentIndex = 0;
     for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
       const chunk = data.subarray(offset, offset + CHUNK_SIZE);
-      const appendResult = await this._mediaAppend(mediaId, segmentIndex, chunk);
+      const appendResult = await this._mediaAppend(mediaId, segmentIndex, chunk, mediaType);
       if (!appendResult.success) return appendResult;
       segmentIndex++;
     }
@@ -181,13 +190,11 @@ class OfficialApiMediaClient {
   }
 
   async _mediaInit(totalBytes, mediaType, mediaCategory) {
-    const formParams = {
-      command: 'INIT',
-      total_bytes: String(totalBytes),
+    const result = await this._postJson(MEDIA_UPLOAD_INIT_ENDPOINT, {
+      total_bytes: totalBytes,
       media_type: mediaType,
       media_category: mediaCategory,
-    };
-    const result = await this._postForm(MEDIA_UPLOAD_ENDPOINT, formParams);
+    });
     if (result._error) {
       return { success: false, media_id: '', error: `INIT 失败: ${result._error}` };
     }
@@ -198,17 +205,21 @@ class OfficialApiMediaClient {
     return { success: true, media_id: mediaId };
   }
 
-  async _mediaAppend(mediaId, segmentIndex, chunk) {
-    const authHeader = this._buildOauthHeader('POST', MEDIA_UPLOAD_ENDPOINT);
+  async _mediaAppend(mediaId, segmentIndex, chunk, contentType = 'application/octet-stream') {
+    const appendUrl = mediaUploadAppendUrl(mediaId);
+    const authHeader = this._buildOauthHeader('POST', appendUrl);
     const fields = {
-      command: 'APPEND',
-      media_id: String(mediaId),
       segment_index: String(segmentIndex),
     };
-    const { boundary, body } = buildMultipartBody(fields, { name: 'media', data: chunk });
+    const { boundary, body } = buildMultipartBody(fields, {
+      name: 'media',
+      filename: 'blob',
+      contentType,
+      data: chunk,
+    });
 
     try {
-      const resp = await fetchWithTimeout(MEDIA_UPLOAD_ENDPOINT, {
+      const resp = await fetchWithTimeout(appendUrl, {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -229,15 +240,16 @@ class OfficialApiMediaClient {
   }
 
   async _mediaFinalize(mediaId) {
-    const formParams = { command: 'FINALIZE', media_id: String(mediaId) };
-    const result = await this._postForm(MEDIA_UPLOAD_ENDPOINT, formParams);
+    const finalizeUrl = mediaUploadFinalizeUrl(mediaId);
+    const result = await this._postJson(finalizeUrl, {});
     if (result._error) {
       return { success: false, media_id: '', error: `FINALIZE 失败: ${result._error}` };
     }
+    const data = getMediaData(result);
     return {
       success: true,
       media_id: getMediaId(result),
-      processing_info: getMediaData(result).processing_info || result.processing_info || null,
+      processing_info: data.processing_info || result.processing_info || null,
     };
   }
 
@@ -309,6 +321,34 @@ class OfficialApiMediaClient {
       }, 15000);
     } catch (e) {
       this._log('warning', `[official-api] alt text failed: ${e}`);
+    }
+  }
+
+  async _postJson(url, payload) {
+    const authHeader = this._buildOauthHeader('POST', url);
+    const body = JSON.stringify(payload || {});
+
+    try {
+      const resp = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+          'User-Agent': this._userAgent,
+        },
+        body,
+      }, 60000);
+
+      if (!resp.ok) {
+        const bodyText = (await resp.text()).slice(0, 300);
+        return { _error: `HTTP ${resp.status}: ${bodyText}` };
+      }
+
+      const raw = await resp.text();
+      if (!raw) return {};
+      return JSON.parse(raw);
+    } catch (e) {
+      return { _error: String(e) };
     }
   }
 
