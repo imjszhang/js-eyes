@@ -33,6 +33,8 @@ function extractTweetId(input) {
   if (u) {
     const m = /\/status\/(\d+)/.exec(`${u.pathname}${u.search}`);
     if (m) return m[1];
+    const articleSeed = /^\/(?!i\/)[^/]+\/article\/(\d+)/.exec(u.pathname);
+    if (articleSeed) return articleSeed[1];
   }
   const m = /\/status\/(\d+)/.exec(raw);
   return m ? m[1] : null;
@@ -81,6 +83,10 @@ function classifyXPostInput(input) {
           url: `https://x.com/i/article/${articleId}`,
           raw,
         };
+      }
+      const canonicalArticle = /^\/(?!i\/)[^/]+\/article\/(\d+)/.exec(u.pathname);
+      if (canonicalArticle) {
+        return { kind: 'tweet', tweetId: canonicalArticle[1], url: u.href, raw };
       }
       const tweetId = extractTweetId(u.href);
       if (tweetId) {

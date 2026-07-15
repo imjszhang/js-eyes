@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// 目标：验证 post CLI 在多 positional 下会走 lib/api.js::getPost 批量路径
-// （而不是 runTool 单 URL 路径），且传入的 tweetInputs 是 positional 数组。
+// 目标：验证 post CLI 的 READ 请求统一走 lib/api.js::getPost，
+// 由它负责 Tweet / Article 的单条、批量和混合输入分派。
 //
 // 做法：在 require('../cli') 之前，把 lib/api / lib/runTool / lib/js-eyes-client
 // 三个模块的 require cache 换成 stub，观察 CLI 分派。
@@ -61,14 +61,13 @@ function silenceStdout(run) {
   };
 }
 
-test('post 命令单 positional 走 runTool 路径', async () => {
+test('post 命令单 positional 走统一 getPost 路径', async () => {
   getPostCalls = [];
   runToolCalls = [];
   await silenceStdout(cli.main)(['post', 'https://x.com/user/status/111']);
-  assert.equal(getPostCalls.length, 0, '单 URL 不应走 getPost 批量路径');
-  assert.equal(runToolCalls.length, 1, '单 URL 应走 runTool 路径');
-  assert.equal(runToolCalls[0].toolName, 'x_get_post');
-  assert.equal(runToolCalls[0].args.url, 'https://x.com/user/status/111');
+  assert.equal(getPostCalls.length, 1);
+  assert.equal(runToolCalls.length, 0);
+  assert.deepEqual(getPostCalls[0].tweetInputs, ['https://x.com/user/status/111']);
 });
 
 test('post 命令多 positional 走 lib/api.js::getPost 批量路径', async () => {
@@ -118,7 +117,7 @@ test('post 命令 --budget-ms 透传到 getPost options', async () => {
   assert.equal(getPostCalls[0].options.budgetMs, 120000);
 });
 
-test('post 命令单 positional --budget-ms 透传到 runTool args', async () => {
+test('post 命令单 positional --budget-ms 透传到统一 getPost options', async () => {
   getPostCalls = [];
   runToolCalls = [];
   await silenceStdout(cli.main)([
@@ -127,7 +126,16 @@ test('post 命令单 positional --budget-ms 透传到 runTool args', async () =>
     '--with-replies', '5',
     '--budget-ms', '120000',
   ]);
-  assert.equal(getPostCalls.length, 0);
-  assert.equal(runToolCalls.length, 1);
-  assert.equal(runToolCalls[0].args.budgetMs, 120000);
+  assert.equal(getPostCalls.length, 1);
+  assert.equal(runToolCalls.length, 0);
+  assert.equal(getPostCalls[0].options.budgetMs, 120000);
+});
+
+test('post 命令单 Article URL 交给统一 getPost 路径分类', async () => {
+  getPostCalls = [];
+  runToolCalls = [];
+  await silenceStdout(cli.main)(['post', 'https://x.com/i/article/2076371937744302080']);
+  assert.equal(getPostCalls.length, 1);
+  assert.equal(runToolCalls.length, 0);
+  assert.deepEqual(getPostCalls[0].tweetInputs, ['https://x.com/i/article/2076371937744302080']);
 });

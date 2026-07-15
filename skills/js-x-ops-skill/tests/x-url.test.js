@@ -23,6 +23,10 @@ describe('lib/xUrl', () => {
   it('extractTweetId: t.co 与 article URL 返回 null', () => {
     assert.equal(extractTweetId('https://t.co/irHOIYXWF2'), null);
     assert.equal(extractTweetId('https://x.com/i/article/2062147039652155392'), null);
+    assert.equal(
+      extractTweetId('https://x.com/0xMoysei/article/2076385221633774022'),
+      '2076385221633774022',
+    );
   });
 
   it('extractArticleId: /i/article/', () => {
@@ -45,6 +49,12 @@ describe('lib/xUrl', () => {
       raw: 'https://x.com/i/article/2062147039652155392',
     });
     assert.equal(classifyXPostInput('https://x.com/foo/status/99').kind, 'tweet');
+    assert.deepEqual(classifyXPostInput('https://x.com/0xMoysei/article/2076385221633774022'), {
+      kind: 'tweet',
+      tweetId: '2076385221633774022',
+      url: 'https://x.com/0xMoysei/article/2076385221633774022',
+      raw: 'https://x.com/0xMoysei/article/2076385221633774022',
+    });
     assert.equal(classifyXPostInput('not-a-url').kind, 'unknown');
   });
 

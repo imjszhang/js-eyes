@@ -313,11 +313,12 @@ async function postViaRunTool(browser, tweetInputs, options) {
         const targetUrl = canonicalNavigateUrl(cls, rawStr) || 'https://x.com/';
         const resultId = cls.kind === 'article' ? cls.articleId : cls.tweetId;
 
+        const dispatch = postRunToolDispatch(cls);
         const rt = await runTool(browser, {
             toolName: 'x_get_post',
             pageKey: 'post',
-            method: 'getPost',
-            cmdDef: READ_CMD_DEF.post,
+            method: dispatch.method,
+            cmdDef: dispatch.cmdDef,
             args: bridgeArgs,
             targetUrl,
             options: commonRunToolOptions(browser, opts, targetUrl),
@@ -394,6 +395,16 @@ async function postViaRunTool(browser, tweetInputs, options) {
             bridge: lastBridge,
         },
     };
+}
+
+function postRunToolDispatch(classification) {
+    if (classification && classification.kind === 'article') {
+        return {
+            method: 'getArticle',
+            cmdDef: { ...READ_CMD_DEF.post, methodBase: 'getArticle' },
+        };
+    }
+    return { method: 'getPost', cmdDef: READ_CMD_DEF.post };
 }
 
 /**
@@ -1974,4 +1985,10 @@ async function getHomeFeed(browser, options = {}) {
     }
 }
 
-module.exports = { searchTweets, getProfileTweets, getPost, getHomeFeed };
+module.exports = {
+    searchTweets,
+    getProfileTweets,
+    getPost,
+    getHomeFeed,
+    postRunToolDispatch,
+};

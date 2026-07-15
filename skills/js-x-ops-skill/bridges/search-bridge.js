@@ -15,7 +15,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.2.0';
+  const VERSION = '3.2.1';
 
   // @@include ./common.js
 
@@ -158,18 +158,7 @@
   }
 
   function _extractTweetsFromDom(seenIds){
-    const found = [];
-    const articles = document.querySelectorAll('article[data-testid="tweet"]');
-    articles.forEach(function(article){
-      try {
-        const tw = parseTweetArticle(article);
-        if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
-          seenIds.add(tw.tweetId);
-          found.push(tw);
-        }
-      } catch (_) {}
-    });
-    return found;
+    return collectTweetsFromDomDetailed(document, seenIds);
   }
 
   async function searchViaDom(opts){
@@ -205,8 +194,11 @@
     }
 
     const initial = _extractTweetsFromDom(seenIds);
-    for (const tw of initial) allTweets.push(tw);
-    pageMeta.push({ page: 1, ok: true, returned: initial.length, added: initial.length, scrollRound: 0 });
+    for (const tw of initial.tweets) allTweets.push(tw);
+    if (initial.stats.articleCount > 0 && initial.stats.parsedCount === 0) {
+      return errResult('dom_extract_failed', { hint: 'search_tweets_present_but_unparsed', domStats: initial.stats });
+    }
+    pageMeta.push({ page: 1, ok: true, returned: initial.tweets.length, added: initial.tweets.length, scrollRound: 0, domStats: initial.stats });
 
     const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
     let noNewCount = 0;
@@ -214,9 +206,9 @@
       window.scrollTo(0, document.documentElement.scrollHeight);
       await delay(SCROLL_DELAY_MS);
       const more = _extractTweetsFromDom(seenIds);
-      for (const tw of more) allTweets.push(tw);
-      pageMeta.push({ page: round + 1, ok: true, returned: more.length, added: more.length, scrollRound: round });
-      if (more.length === 0) {
+      for (const tw of more.tweets) allTweets.push(tw);
+      pageMeta.push({ page: round + 1, ok: true, returned: more.tweets.length, added: more.tweets.length, scrollRound: round, domStats: more.stats });
+      if (more.tweets.length === 0) {
         noNewCount++;
         if (noNewCount >= SCROLL_NO_NEW_THRESHOLD) break;
       } else {

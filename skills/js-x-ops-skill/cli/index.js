@@ -508,9 +508,9 @@ async function main(argv) {
   if (command === 'doctor') return runDoctor(opts);
   if (command === 'dom-dump') return runDomDump(opts);
   if (command === 'xhr-log') return runXhrLog(opts);
-  // post 命令 >=2 个 positional 时走 lib/api.js::getPost 批量路径；
-  // 1 个 positional 仍走 runTool（bridge 直调，行为与之前完全一致）。
-  if (command === 'post' && positional.length >= 2) {
+  // READ post 统一走 lib/api.js::getPost；它会按输入类型分派到
+  // getPost 或 getArticle，并同时支持单条、批量和混合输入。
+  if (command === 'post' && positional.length >= 1) {
     return runGetPostBatchCommand(opts, positional);
   }
   if (def.kind === 'call') return runCallCommand(command, def, opts, positional);

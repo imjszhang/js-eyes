@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.2.0';
+  const VERSION = '3.2.1';
 
   // @@include ./common.js
 
@@ -93,28 +93,24 @@
     const seenIds = new Set();
     const pageMeta = [];
     function extractOnce(){
-      const articles = document.querySelectorAll('article[data-testid="tweet"]');
-      let added = 0;
-      articles.forEach(function(article){
-        try {
-          const tw = parseTweetArticle(article);
-          if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
-            seenIds.add(tw.tweetId);
-            allTweets.push(tw);
-            added++;
-          }
-        } catch (_) {}
-      });
-      return added;
+      const detail = collectTweetsFromDomDetailed(document, seenIds);
+      for (const tw of detail.tweets) allTweets.push(tw);
+      return detail;
     }
 
     let contentReady = false;
+    let lastDomStats = null;
     for (let i = 0; i < 10; i++) {
-      if (extractOnce() > 0) { contentReady = true; break; }
+      const detail = extractOnce();
+      lastDomStats = detail.stats;
+      if (detail.stats.addedCount > 0) { contentReady = true; break; }
       await delay(800);
     }
     if (!contentReady) {
-      return errResult('dom_extract_failed', { hint: 'home_no_tweets_in_dom' });
+      const hint = lastDomStats && lastDomStats.articleCount > 0
+        ? 'home_tweets_present_but_unparsed'
+        : 'home_no_tweets_in_dom';
+      return errResult('dom_extract_failed', { hint, domStats: lastDomStats });
     }
 
     const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
@@ -122,8 +118,9 @@
     for (let round = 1; round < maxScrollRounds; round++) {
       window.scrollTo(0, document.documentElement.scrollHeight);
       await delay(PAGE_DELAY_MS);
-      const more = extractOnce();
-      pageMeta.push({ page: round + 1, ok: true, added: more, scrollRound: round });
+      const detail = extractOnce();
+      const more = detail.stats.addedCount;
+      pageMeta.push({ page: round + 1, ok: true, added: more, scrollRound: round, domStats: detail.stats });
       if (more === 0) {
         noNewCount++;
         if (noNewCount >= 2) break;
@@ -143,6 +140,7 @@
         opName: 'DOM_HOME',
         path: 'dom_getHome',
         endedReason: 'dom_extracted',
+        domStats: lastDomStats,
       },
     });
   }

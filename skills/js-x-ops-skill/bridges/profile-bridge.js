@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.2.0';
+  const VERSION = '3.2.1';
 
   // @@include ./common.js
 
@@ -327,33 +327,33 @@
     const seenIds = new Set();
     const pageMeta = [];
     function extractOnce(){
-      let added = 0;
-      document.querySelectorAll('article[data-testid="tweet"]').forEach(function(article){
-        try {
-          const tw = parseTweetArticle(article);
-          if (tw && tw.tweetId && !seenIds.has(tw.tweetId)) {
-            seenIds.add(tw.tweetId);
-            tweets.push(tw);
-            added++;
-          }
-        } catch (_) {}
-      });
-      return added;
+      const detail = collectTweetsFromDomDetailed(document, seenIds);
+      for (const tw of detail.tweets) tweets.push(tw);
+      return detail;
     }
     let ready = false;
+    let lastDomStats = null;
     for (let i = 0; i < 10; i++) {
-      if (extractOnce() > 0) { ready = true; break; }
+      const detail = extractOnce();
+      lastDomStats = detail.stats;
+      if (detail.stats.addedCount > 0) { ready = true; break; }
       await delay(800);
     }
-    if (!ready) return errResult('dom_extract_failed', { hint: 'profile_no_tweets' });
+    if (!ready) {
+      const hint = lastDomStats && lastDomStats.articleCount > 0
+        ? 'profile_tweets_present_but_unparsed'
+        : 'profile_no_tweets';
+      return errResult('dom_extract_failed', { hint, domStats: lastDomStats });
+    }
 
     const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
     let noNew = 0;
     for (let round = 1; round < maxScrollRounds; round++) {
       window.scrollTo(0, document.documentElement.scrollHeight);
       await delay(PAGE_DELAY_MS);
-      const more = extractOnce();
-      pageMeta.push({ page: round + 1, added: more });
+      const detail = extractOnce();
+      const more = detail.stats.addedCount;
+      pageMeta.push({ page: round + 1, added: more, domStats: detail.stats });
       if (more === 0) {
         noNew++;
         if (noNew >= 2) break;
