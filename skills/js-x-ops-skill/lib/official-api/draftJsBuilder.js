@@ -212,6 +212,23 @@ function appendPostEmbedBlock(state, { postId }) {
   });
 }
 
+function appendMarkdownBlock(state, markdown) {
+  const body = String(markdown || '').trim();
+  if (!body) return;
+  const key = nextEntityKey(state);
+  state.entities.push({
+    key,
+    value: makeEntity('markdown', { markdown: body }, 'immutable'),
+  });
+  state.blocks.push({
+    text: ' ',
+    type: 'atomic',
+    inline_style_ranges: [],
+    entity_ranges: [{ offset: 0, length: 1, key: Number(key) }],
+    data: {},
+  });
+}
+
 function emptyDraftJsParagraph(text = '') {
   return {
     content_state: {
@@ -281,7 +298,24 @@ function markdownToDraftJs(markdown, { imageMediaMap } = {}) {
   const state = createEmptyState();
   const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (/^(```|~~~)/.test(trimmed)) {
+      const fenceLines = [];
+      index += 1;
+      while (index < lines.length) {
+        const inner = lines[index];
+        if (/^(```|~~~)/.test(inner.trim())) break;
+        fenceLines.push(inner);
+        index += 1;
+      }
+      const codeBody = fenceLines.join('\n');
+      appendMarkdownBlock(state, `\`\`\`\n${codeBody}\n\`\`\``);
+      continue;
+    }
+
     const info = classifyLine(line);
     if (info.kind === 'blank') continue;
     if (info.kind === 'tweet') {
@@ -321,6 +355,7 @@ module.exports = {
   markdownToDraftJs,
   emptyDraftJsParagraph,
   appendImageBlock,
+  appendMarkdownBlock,
   appendPostEmbedBlock,
   parseInlineMarkdown,
   classifyLine,

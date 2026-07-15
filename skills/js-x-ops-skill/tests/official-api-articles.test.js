@@ -118,6 +118,29 @@ test('markdownToDraftJs creates link entity with correct range', () => {
   assert.equal(cs.entities[0].value.data.url, 'https://example.com');
 });
 
+test('markdownToDraftJs converts fenced code to markdown atomic entity', () => {
+  const md = [
+    'Intro',
+    '',
+    '```',
+    'You are a research agent',
+    '1. step one',
+    '- bullet',
+    '```',
+    '',
+    'Outro',
+  ].join('\n');
+  const { content_state: cs } = markdownToDraftJs(md);
+  const atomic = cs.blocks.find((b) => b.type === 'atomic');
+  assert.ok(atomic);
+  const entity = cs.entities[0].value;
+  assert.equal(entity.type, 'markdown');
+  assert.match(entity.data.markdown, /You are a research agent/);
+  assert.match(entity.data.markdown, /1\. step one/);
+  assert.ok(cs.blocks.some((b) => b.text === 'Intro'));
+  assert.ok(cs.blocks.some((b) => b.text === 'Outro'));
+});
+
 test('markdownToDraftJs embeds tweet blocks', () => {
   const { content_state: cs } = markdownToDraftJs('{{tweet:1234567890}}');
   assert.equal(cs.blocks[0].type, 'atomic');
