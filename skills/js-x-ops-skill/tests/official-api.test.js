@@ -195,18 +195,24 @@ test('Official API media upload runs INIT / APPEND / FINALIZE', async () => {
   try {
     await withFetchMock(async (url, opts, calls) => {
       if (calls.length === 1) {
-        assert.equal(String(url), 'https://api.x.com/2/media/upload');
-        assert.match(String(opts.body), /name="command"/);
-        assert.match(String(opts.body), /INIT/);
+        assert.equal(String(url), 'https://api.x.com/2/media/upload/initialize');
+        assert.equal(opts.headers['Content-Type'], 'application/json');
+        assert.deepEqual(JSON.parse(String(opts.body)), {
+          total_bytes: 3,
+          media_type: 'image/png',
+          media_category: 'tweet_image',
+        });
         return makeResponse({ body: { data: { id: 'media123' } } });
       }
       if (calls.length === 2) {
+        assert.equal(String(url), 'https://api.x.com/2/media/upload/media123/append');
         assert.match(opts.headers['Content-Type'], /^multipart\/form-data/);
         return makeResponse({ body: '' });
       }
       if (calls.length === 3) {
-        assert.match(String(opts.body), /name="command"/);
-        assert.match(String(opts.body), /FINALIZE/);
+        assert.equal(String(url), 'https://api.x.com/2/media/upload/media123/finalize');
+        assert.equal(opts.headers['Content-Type'], 'application/json');
+        assert.deepEqual(JSON.parse(String(opts.body)), {});
         return makeResponse({ body: { data: { id: 'media123' } } });
       }
       throw new Error(`unexpected fetch ${url}`);
