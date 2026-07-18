@@ -1,7 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('crypto');
-const { readFileSync, statSync } = require('fs');
+const { readFileSync, statSync, openSync, readSync, closeSync } = require('fs');
 const { extname } = require('path');
 
 const MEDIA_UPLOAD_ENDPOINT = 'https://api.x.com/2/media/upload';
@@ -36,6 +36,18 @@ const EXT_TO_MIME = {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 按文件魔数嗅探真实图片/视频 MIME（扩展名与内容不符时以内容为准）。 */
+function sniffMimeFromBytes(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+    && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
+  if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) return 'video/mp4';
+  return null;
 }
 
 async function fetchWithTimeout(url, opts = {}, timeoutMs = 30000) {
@@ -111,7 +123,16 @@ class OfficialApiMediaClient {
       return { success: false, media_id: '', error: `文件不存在: ${filePath}` };
     }
 
-    const resolvedMediaType = mediaType || EXT_TO_MIME[extname(filePath).toLowerCase()] || 'application/octet-stream';
+    let sniffedType = null;
+    try {
+      const fd = openSync(filePath, 'r');
+      const head = Buffer.alloc(12);
+      readSync(fd, head, 0, 12, 0);
+      closeSync(fd);
+      sniffedType = sniffMimeFromBytes(head);
+    } catch (_) {}
+
+    const resolvedMediaType = mediaType || sniffedType || EXT_TO_MIME[extname(filePath).toLowerCase()] || 'application/octet-stream';
     const mediaCategory = MEDIA_CATEGORIES[resolvedMediaType] || 'tweet_image';
     const maxSize = MAX_SIZES[mediaCategory] || 5 * 1024 * 1024;
 

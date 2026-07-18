@@ -803,24 +803,36 @@ class OfficialApiClient {
     }
   }
 
-  async _postJson(method, url, body, { successStatus = 200 } = {}) {
+  async _postJson(method, url, body, { successStatus = 200, maxAttempts = 3 } = {}) {
     if (!this.isConfigured) {
       return { success: false, error: 'X API 未配置（缺少环境变量）', errorCode: 'api_not_configured' };
     }
 
-    const authHeader = this._buildOauthHeader(method, url);
     const payload = body == null ? undefined : JSON.stringify(body);
+    let lastError = null;
 
-    try {
-      const resp = await fetchWithTimeout(url, {
-        method,
-        headers: {
-          Authorization: authHeader,
-          'Content-Type': 'application/json',
-          'User-Agent': this._userAgent,
-        },
-        body: payload,
-      }, 60000);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // OAuth 1.0a nonce/timestamp 每次请求必须重新生成
+      const authHeader = this._buildOauthHeader(method, url);
+      let resp;
+      try {
+        resp = await fetchWithTimeout(url, {
+          method,
+          headers: {
+            Authorization: authHeader,
+            'Content-Type': 'application/json',
+            'User-Agent': this._userAgent,
+          },
+          body: payload,
+        }, 60000);
+      } catch (e) {
+        lastError = { success: false, error: String(e), errorCode: 'request_failed' };
+        if (attempt < maxAttempts) {
+          await sleep(2000 * attempt);
+          continue;
+        }
+        return lastError;
+      }
 
       if (resp.status === successStatus || (successStatus === 200 && resp.ok)) {
         let respBody = {};
@@ -834,10 +846,20 @@ class OfficialApiClient {
         };
       }
 
-      return await OfficialApiClient.parseHttpError(resp);
-    } catch (e) {
-      return { success: false, error: String(e), errorCode: 'request_failed' };
+      const retryable = resp.status === 429 || resp.status === 500 || resp.status === 502 || resp.status === 503;
+      lastError = await OfficialApiClient.parseHttpError(resp);
+      if (!retryable || attempt >= maxAttempts) {
+        if (retryable) lastError.retries_exhausted = true;
+        return lastError;
+      }
+
+      const retryAfterSecs = Number(resp.headers?.get?.('retry-after')) || 0;
+      const waitMs = Math.min(Math.max(retryAfterSecs * 1000, 3000 * attempt), 60000);
+      this._log('warning', `[official-api] ${method} ${url} -> HTTP ${resp.status}，${(waitMs / 1000).toFixed(0)}s 后重试（${attempt}/${maxAttempts - 1}）`);
+      await sleep(waitMs);
     }
+
+    return lastError || { success: false, error: 'request failed', errorCode: 'request_failed' };
   }
 
   async _postTweet(body) {
