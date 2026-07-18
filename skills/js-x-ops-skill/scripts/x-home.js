@@ -517,6 +517,7 @@ async function resumeHome(options) {
     const partialTweets = await loadPartialTweets(resumeDir);
     const allTweets = [...partialTweets];
     const seenIds = new Set(state.seenIds || partialTweets.map(t => t.tweetId));
+    let browser = null;
     
     console.log(`✓ 已恢复 ${allTweets.length} 条推文`);
     
@@ -531,7 +532,7 @@ async function resumeHome(options) {
         const mergedOptions = { ...options, ...state.options };
         const homeUrl = 'https://x.com/home';
         
-        const browser = new BrowserAutomation(mergedOptions.browserServer || options.browserServer);
+        browser = new BrowserAutomation(mergedOptions.browserServer || options.browserServer);
         const safeExecuteScript = createSafeExecuteScript(browser);
         let tabId = null;
         
@@ -733,7 +734,7 @@ async function resumeHome(options) {
     await saveToFile(outputPath, output);
     await cleanupTempFiles(resumeDir);
     printSummary(filteredTweets, '抓取完成');
-    browser.disconnect();
+    browser?.disconnect();
 }
 
 module.exports = {
@@ -744,4 +745,3 @@ module.exports = {
     feedToOperationName,
     feedToCacheKey
 };
-

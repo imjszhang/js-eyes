@@ -268,7 +268,7 @@ function cleanSubtitleContent(content, format) {
         trimmed.startsWith('WEBVTT') ||
         trimmed.startsWith('Kind:') ||
         trimmed.startsWith('Language:') ||
-        /^\d{2}:\d{2}:\d{2}[\.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[\.,]\d{3}/.test(trimmed) ||
+        /^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}/.test(trimmed) ||
         /^\d+$/.test(trimmed)
       ) {
         continue;

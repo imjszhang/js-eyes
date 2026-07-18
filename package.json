@@ -31,12 +31,21 @@
     "release:dry-run": "node packages/devtools/bin/js-eyes-dev.js release --dry-run",
     "setup:gh-pages": "node packages/devtools/bin/js-eyes-dev.js setup-github-pages",
     "setup:cloudflare": "node packages/devtools/bin/js-eyes-dev.js setup-cloudflare",
-    "test": "node --test test/ws-handler.test.js test/utils.test.js test/js-eyes-client.test.js test/npm-cli.test.js test/skill-bundle.test.js test/skill-sources.test.js test/skill-registry.test.js test/skill-registry.integration.test.js test/skill-update.test.js test/security-hot-reload.test.js test/import-boundaries.test.js test/safe-npm.test.js test/extra-integrity.test.js test/doctor-json.test.js test/openclaw-single-tool.test.js test/openclaw-plugin-lifecycle.test.js",
+    "test": "npm run test:all",
+    "test:all": "npm run test:root && npm run test:workspaces",
+    "test:root": "node --test test/*.test.js",
+    "test:workspaces": "npm run test --workspaces --if-present",
+    "lint": "eslint apps packages skills extensions openclaw-plugin test scripts src",
+    "lint:fix": "npm run lint -- --fix",
+    "typecheck": "npm run typecheck:core",
+    "typecheck:core": "tsc -p jsconfig.core.json",
+    "package:smoke": "node scripts/package-smoke.js",
     "scan:security": "node scripts/scan-clawhub-patterns.js",
     "test:server": "node --test test/ws-handler.test.js",
     "test:extension": "node --test test/utils.test.js",
     "test:client": "node --test test/js-eyes-client.test.js",
     "test:cli": "node --test test/npm-cli.test.js",
+    "test:native-host": "node --test test/native-host.test.js test/native-host-installer.test.js test/openclaw-native-host-setup.test.js",
     "server": "node apps/cli/bin/js-eyes.js server start --foreground"
   },
   "engines": {
@@ -49,6 +58,12 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.1",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.39.5",
+    "globals": "^17.7.0",
+    "typescript": "^7.0.2",
     "web-ext": "^10.1.0"
   }
 }

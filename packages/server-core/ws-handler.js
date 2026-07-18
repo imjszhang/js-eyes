@@ -638,7 +638,7 @@ function registerPending(requestId, automationSocket, operationType, state, clie
       message: `Request timed out after ${timeoutMs}ms`,
     };
 
-    send(info.socket, { type: `${operationType}_response`, requestId, ...timeoutResponse });
+    send(info.socket, timeoutResponse);
     state.callbackResponses.set(requestId, timeoutResponse);
   }, timeoutMs);
 

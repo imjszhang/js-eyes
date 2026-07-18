@@ -57,6 +57,7 @@ function whoami() {
   if (result.error || result.status !== 0) return null;
   const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
   // Strip ANSI so spinner libs don't confuse the regex.
+  // eslint-disable-next-line no-control-regex -- ANSI escapes are the input being stripped.
   const clean = combined.replace(/\u001b\[[0-9;]*m/g, '');
   // clawhub v0.9.0+: "✔ imjszhang" / "√ imjszhang" (no @, optional spinner prefix).
   // clawhub legacy:  "✔ OK. Logged in as @imjszhang."

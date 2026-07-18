@@ -175,7 +175,7 @@ function buildSteps(samples, opts = {}) {
 function parseJsonOutput(stdout) {
   const lines = String(stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (!/^[{\[]/.test(lines[i])) continue;
+    if (!lines[i].startsWith('{') && !lines[i].startsWith('[')) continue;
     try { return JSON.parse(lines[i]); } catch (_) {}
   }
   throw new Error('stdout did not contain JSON');

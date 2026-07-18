@@ -1123,8 +1123,8 @@ function register(api) {
   // 忽略这些噪音源；对于真正发生变化的文件，再在下面用 sha1 指纹二次过滤，
   // 保证 scheduleReload 只在内容真变时调用，避免空跑 reload 放大泄漏。
   const WATCHER_IGNORED = [
-    /(^|[\/\\])\.DS_Store$/,
-    /(^|[\/\\])\.git([\/\\]|$)/,
+    /(^|[/\\])\.DS_Store$/,
+    /(^|[/\\])\.git([/\\]|$)/,
     /\.sw[pox]$/i,
     /~$/,
   ];

@@ -213,7 +213,7 @@ class BrowserAutomation {
 
           this.ws.removeAllListeners('message');
           this.ws.on('message', (data) => this._handleMessage(data));
-          resolve();
+          resolve(undefined);
         }
       });
 
@@ -357,10 +357,12 @@ class BrowserAutomation {
     const requestId = this._generateRequestId();
     const timeoutSec = options.timeout || this.defaultTimeout;
 
-    const message = { type: action, requestId, ...payload };
-    if (options.target) {
-      message.target = options.target;
-    }
+    const message = {
+      type: action,
+      requestId,
+      ...payload,
+      ...(options.target ? { target: options.target } : {}),
+    };
 
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {

@@ -19,7 +19,6 @@ function parseApiArgs(argv) {
     alt: '',
     userId: null,
     woeids: [],
-    excludeRetweets: true,
     tweetFields: '',
     includePrivateMetrics: false,
     raw: false,
@@ -102,7 +101,6 @@ function parseApiArgs(argv) {
     else if (a === '--min-replies') opts.minReplies = Number(argv[++i]) || 0;
     else if (a.startsWith('--min-replies=')) opts.minReplies = Number(a.slice('--min-replies='.length)) || 0;
     else if (a === '--exclude-replies') opts.excludeReplies = true;
-    else if (a === '--exclude-retweets') opts.excludeRetweets = true;
     else if (a === '--has-links') opts.hasLinks = true;
     else if (a === '--scope') eat('scope');
     else if (a.startsWith('--scope=')) eatEq('scope', '--scope=');

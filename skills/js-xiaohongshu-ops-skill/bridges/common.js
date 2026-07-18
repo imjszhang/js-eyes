@@ -83,7 +83,7 @@ function isOnXhs() {
 
 function getCookieValue(name) {
   try {
-    var re = new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\[\]\\\/+^]/g, '\\$&') + '=([^;]*)');
+    var re = new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)');
     var m = document.cookie.match(re);
     return m ? decodeURIComponent(m[1]) : null;
   } catch (_) { return null; }
