@@ -22,7 +22,7 @@ const pkg = require('../package.json');
 const { Session } = require('../lib/session');
 const { COMMANDS, parseArgv, printHelp, hasWriteFlags } = require('../lib/commands');
 const { PAGE_PROFILES, DEFAULT_PAGE } = require('../lib/config');
-const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
+const { resolveRequestTimeoutSec, resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { BrowserAutomation } = require('../lib/js-eyes-client');
 const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
 const { runTool } = require('../lib/runTool');
@@ -77,6 +77,26 @@ function printJson(value, opts) {
     }
   }
   process.stdout.write(text);
+}
+
+function createBrowserAutomation(runtimeConfig, opts) {
+  const requestTimeoutSec = resolveRequestTimeoutSec({
+    requestTimeout: opts.requestTimeout,
+  });
+  const browserOpts = {
+    defaultTimeout: requestTimeoutSec,
+  };
+  if (!opts.verbose) {
+    browserOpts.logger = {
+      info: () => {},
+      warn: (...a) => console.error(...a),
+      error: (...a) => console.error(...a),
+    };
+  }
+  return {
+    browser: new BrowserAutomation(runtimeConfig.serverUrl, browserOpts),
+    requestTimeoutSec,
+  };
 }
 
 function buildSessionOpts(commandName, opts, extra = {}) {
@@ -136,14 +156,13 @@ async function runToolCommand(commandName, def, opts, positional) {
 
   const runtimeConfig = resolveRuntimeConfig({
     browserServer: opts.wsEndpoint || process.env.JS_EYES_WS_URL,
+    requestTimeout: opts.requestTimeout,
     recording: {
       ...(opts.recordingMode ? { mode: opts.recordingMode } : {}),
       ...(opts.recordingBaseDir ? { baseDir: opts.recordingBaseDir } : {}),
     },
   });
-  const browser = new BrowserAutomation(runtimeConfig.serverUrl, opts.verbose ? {} : {
-    logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
-  });
+  const { browser, requestTimeoutSec } = createBrowserAutomation(runtimeConfig, opts);
   try {
     const vp = parseVisualFlags(opts);
     warnDeprecatedFlagsOnce(vp.deprecatedFlags);
@@ -166,6 +185,7 @@ async function runToolCommand(commandName, def, opts, positional) {
         reuseAnyXTab: true,
         createUrl: targetUrl || 'https://x.com/',
         readMode: opts.readMode || 'auto',
+        timeoutMs: requestTimeoutSec * 1000,
         visualConfig: vp.config,
         visualTrace: vp.tracePath || undefined,
         visualRecord: vp.recordDir || undefined,
@@ -241,14 +261,13 @@ async function runNavigateCommand(commandName, def, opts, positional) {
 async function runGetPostBatchCommand(opts, positional) {
   const runtimeConfig = resolveRuntimeConfig({
     browserServer: opts.wsEndpoint || process.env.JS_EYES_WS_URL,
+    requestTimeout: opts.requestTimeout,
     recording: {
       ...(opts.recordingMode ? { mode: opts.recordingMode } : {}),
       ...(opts.recordingBaseDir ? { baseDir: opts.recordingBaseDir } : {}),
     },
   });
-  const browser = new BrowserAutomation(runtimeConfig.serverUrl, opts.verbose ? {} : {
-    logger: { info: () => {}, warn: (...a) => console.error(...a), error: (...a) => console.error(...a) },
-  });
+  const { browser, requestTimeoutSec } = createBrowserAutomation(runtimeConfig, opts);
   try {
     const response = await apiLib.getPost(browser, positional.slice(), {
       withThread: !!opts.withThread,
@@ -263,6 +282,7 @@ async function runGetPostBatchCommand(opts, positional) {
       wsEndpoint: runtimeConfig.serverUrl,
       verbose: opts.verbose,
       tab: opts.tab,
+      bridgeTimeoutMs: requestTimeoutSec * 1000,
     });
     printJson(response, opts);
     return response && response.ok === false ? 1 : 0;

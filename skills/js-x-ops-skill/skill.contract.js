@@ -224,7 +224,7 @@ function makeReadToolExecutor({ toolName, toolKey, pageKey, method, cmdDef, buil
         navigateOnReuse: false,
         reuseAnyXTab: true,
         createUrl: targetUrl || 'https://x.com/',
-        timeoutMs: (runtime.config.requestTimeout || 90) * 1000,
+        timeoutMs: (runtime.config.requestTimeout || 1800) * 1000,
         readMode: p.readMode,
       },
     });
@@ -307,7 +307,7 @@ function makeXGetPostReadOrLegacyExecutor() {
         navigateOnReuse: false,
         reuseAnyXTab: true,
         createUrl: targetUrl || 'https://x.com/',
-        timeoutMs: (runtime.config.requestTimeout || 90) * 1000,
+        timeoutMs: (runtime.config.requestTimeout || 1800) * 1000,
         readMode: p.readMode,
       },
     });

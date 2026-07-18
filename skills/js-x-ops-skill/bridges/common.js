@@ -180,26 +180,60 @@ function _scanPerformanceForOp(opName){
   return null;
 }
 
+function _extractQueryIdFromBundleText(text, opName){
+  if (typeof text !== 'string' || typeof opName !== 'string' || !opName) return null;
+  const safeOp = opName.replace(/[^A-Za-z0-9_]/g, '');
+  if (!safeOp) return null;
+  const quotedOp = '["\\\']' + safeOp + '["\\\']';
+  const quotedId = '["\\\']([A-Za-z0-9_-]+)["\\\']';
+  const patterns = [
+    new RegExp('queryId\\s*:\\s*' + quotedId + '[\\s\\S]{0,600}?operationName\\s*:\\s*' + quotedOp),
+    new RegExp('operationName\\s*:\\s*' + quotedOp + '[\\s\\S]{0,600}?queryId\\s*:\\s*' + quotedId),
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+
 async function _scanBundlesForOp(opName, maxBundles){
-  const max = Math.max(1, Math.min(maxBundles || 6, 10));
+  const max = Math.max(1, Math.min(maxBundles || 12, 24));
   try {
     const scripts = document.querySelectorAll('script[src]');
     const bundleUrls = [];
+    const seenUrls = new Set();
+    function addBundleUrl(raw){
+      if (typeof raw !== 'string' || !raw) return;
+      if (!raw.includes('/client-web/') && !raw.includes('/responsive-web/')
+          && !/\.(?:js|mjs)(?:\?|$)/i.test(raw)) return;
+      const url = raw.startsWith('http') ? raw : ('https://' + location.hostname + raw);
+      if (seenUrls.has(url)) return;
+      seenUrls.add(url);
+      bundleUrls.push(url);
+    }
     for (const script of scripts) {
       const src = script.getAttribute('src') || '';
-      if (src.includes('/client-web/') || src.includes('main.') || src.includes('/responsive-web/')) {
-        bundleUrls.push(src.startsWith('http') ? src : ('https://' + location.hostname + src));
-      }
+      addBundleUrl(src);
     }
-    const safeOp = opName.replace(/[^A-Za-z0-9_]/g, '');
-    const re = new RegExp('queryId:"([A-Za-z0-9_-]+)",operationName:"' + safeOp + '"');
-    for (const bundleUrl of bundleUrls.slice(0, max)) {
+    try {
+      const resources = performance.getEntriesByType('resource');
+      for (let i = resources.length - 1; i >= 0; i--) {
+        addBundleUrl(resources[i] && resources[i].name);
+      }
+    } catch (_) {}
+    const bundleTexts = await Promise.all(bundleUrls.slice(0, max).map(async (bundleUrl) => {
       try {
         const resp = await fetch(bundleUrl, { credentials: 'include' });
-        if (!resp.ok) continue;
-        const text = await resp.text();
-        const m = text.match(re);
-        if (m) return { queryId: m[1] };
+        if (!resp.ok) return null;
+        return await resp.text();
+      } catch (_) { return null; }
+    }));
+    for (const text of bundleTexts) {
+      try {
+        if (!text) continue;
+        const queryId = _extractQueryIdFromBundleText(text, opName);
+        if (queryId) return { queryId };
       } catch (_) {}
     }
   } catch (_) {}

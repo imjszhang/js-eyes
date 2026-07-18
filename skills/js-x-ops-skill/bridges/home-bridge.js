@@ -16,7 +16,7 @@
 
 (function install(){
   'use strict';
-  const VERSION = '3.2.1';
+  const VERSION = '3.2.4';
 
   // @@include ./common.js
 
@@ -98,8 +98,52 @@
       return detail;
     }
 
-    let contentReady = false;
-    let lastDomStats = null;
+    function currentDomTweetIds(){
+      const ids = [];
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      for (const article of articles) {
+        const link = article.querySelector('a[href*="/status/"]');
+        const href = link && link.getAttribute('href');
+        const m = href && href.match(/\/status\/(\d+)/);
+        if (m) ids.push(m[1]);
+      }
+      return ids;
+    }
+
+    async function refreshForYouBatch(){
+      if (feed !== 'foryou') return { added: 0, refreshed: false, domStats: null };
+      const homeLink = document.querySelector('[data-testid="AppTabBar_Home_Link"]');
+      if (!homeLink || typeof homeLink.click !== 'function') {
+        return { added: 0, refreshed: false, domStats: null };
+      }
+      const before = currentDomTweetIds().join(',');
+      homeLink.click();
+      await delay(750);
+      // X 的 Home 导航有两态：离开顶部时第一次点击只回到顶部；
+      // 已在顶部时再次点击才会请求新的推荐批次。
+      if (currentDomTweetIds().join(',') === before) {
+        const activeHomeLink = document.querySelector('[data-testid="AppTabBar_Home_Link"]');
+        if (activeHomeLink && typeof activeHomeLink.click === 'function') activeHomeLink.click();
+      }
+      const deadline = Date.now() + 8000;
+      let added = 0;
+      let lastDetail = null;
+      do {
+        await delay(500);
+        const current = currentDomTweetIds().join(',');
+        lastDetail = extractOnce();
+        added += lastDetail.stats.addedCount;
+        if (added > 0 || (current && current !== before)) break;
+      } while (Date.now() < deadline);
+      return { added, refreshed: true, domStats: lastDetail && lastDetail.stats };
+    }
+
+    // X 会长期保留一个已失活的 Home DOM。先点击当前 Home 导航刷新推荐批次，
+    // 避免从数天前的首屏快照开始采集。
+    const initialRefresh = await refreshForYouBatch();
+
+    let contentReady = allTweets.length > 0;
+    let lastDomStats = initialRefresh.domStats;
     for (let i = 0; i < 10; i++) {
       const detail = extractOnce();
       lastDomStats = detail.stats;
@@ -116,11 +160,39 @@
     const maxScrollRounds = Math.max(1, Math.min((maxPages | 0), 50));
     let noNewCount = 0;
     for (let round = 1; round < maxScrollRounds; round++) {
-      window.scrollTo(0, document.documentElement.scrollHeight);
-      await delay(PAGE_DELAY_MS);
-      const detail = extractOnce();
-      const more = detail.stats.addedCount;
-      pageMeta.push({ page: round + 1, ok: true, added: more, scrollRound: round, domStats: detail.stats });
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      const lastArticle = articles.length ? articles[articles.length - 1] : null;
+      if (lastArticle && typeof lastArticle.scrollIntoView === 'function') {
+        lastArticle.scrollIntoView({ block: 'end', behavior: 'auto' });
+      }
+      window.scrollBy(0, Math.max(600, Math.floor((window.innerHeight || 800) * 0.85)));
+
+      const deadline = Date.now() + Math.max(PAGE_DELAY_MS * 3, 6000);
+      let more = 0;
+      let detail = null;
+      do {
+        await delay(500);
+        detail = extractOnce();
+        more += detail.stats.addedCount;
+        if (more > 0) break;
+      } while (Date.now() < deadline);
+
+      let refreshed = false;
+      if (more === 0) {
+        const refreshResult = await refreshForYouBatch();
+        more += refreshResult.added;
+        refreshed = refreshResult.refreshed;
+        if (refreshResult.domStats) detail = { stats: refreshResult.domStats };
+      }
+
+      pageMeta.push({
+        page: round + 1,
+        ok: true,
+        added: more,
+        scrollRound: round,
+        refreshed,
+        domStats: detail ? Object.assign({}, detail.stats, { addedCount: more }) : null,
+      });
       if (more === 0) {
         noNewCount++;
         if (noNewCount >= 2) break;
