@@ -429,6 +429,8 @@ function parseArgv(argv) {
     else if (a.startsWith('--recording-base-dir=')) eatEq('recordingBaseDir', '--recording-base-dir=');
     else if (a === '--run-id') eat('runId');
     else if (a.startsWith('--run-id=')) eatEq('runId', '--run-id=');
+    else if (a === '--request-timeout') eat('requestTimeout');
+    else if (a.startsWith('--request-timeout=')) eatEq('requestTimeout', '--request-timeout=');
     else if (a === '--max-pages') eat('maxPages');
     else if (a.startsWith('--max-pages=')) eatEq('maxPages', '--max-pages=');
     else if (a === '--max-tweets') eat('maxTweets');
@@ -515,6 +517,7 @@ function printHelp() {
     '  --pretty                 JSON 缩进 2 空格输出',
     '  --output <file>          同时将 JSON 结果写入文件（与 stdout 内容一致；目录不存在会自动创建）',
     '  -v, --verbose            session 流转日志输出到 stderr',
+    '  --request-timeout <sec>  bridge / execute_script 超时（默认 1800；可用 JS_X_OPS_REQUEST_TIMEOUT 覆盖）',
     '  --server <ws-url>        js-eyes WS endpoint（默认 ws://localhost:18080）',
     '  --recording-mode <mode>  off|history|standard|debug',
     '  --debug-recording        强制写 debug bundle',
