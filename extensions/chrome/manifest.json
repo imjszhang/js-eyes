@@ -41,6 +41,7 @@
     "cookies",
     "storage",
     "scripting",
+    "userScripts",
     "contextMenus",
     "webNavigation",
     "nativeMessaging"

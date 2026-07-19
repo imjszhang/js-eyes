@@ -122,8 +122,8 @@ JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when
 ### Clients
 
 - **CLI / OpenClaw plugin:** read the token from `runtime/server.token` automatically. No code changes required unless you override the config path.
-- **Browser extensions:** open the extension popup, paste the `server.token` contents into the new "Server Token (2.2.0+)" field, and save. The background service worker forwards the token via `Sec-WebSocket-Protocol: bearer.<token>` and as `?token=<token>` on the WebSocket URL.
-- **Custom WebSocket clients:** include the token in either the `Sec-WebSocket-Protocol` subprotocol list (`bearer.<token>, js-eyes`) or as a loopback-only `?token=<token>` query parameter. Remote clients **must** use the header form.
+- **Browser extensions:** open the extension popup, paste the `server.token` contents into the new "Server Token (2.2.0+)" field, and save. The background service worker forwards the token via `Sec-WebSocket-Protocol: bearer.<token>`. Current servers also accept the SDK form `jse-token.<token>`.
+- **Custom WebSocket clients:** include the token in the `Sec-WebSocket-Protocol` subprotocol list (`bearer.<token>, js-eyes` or `jse-token.<token>`). A loopback-only `?token=<token>` query parameter remains available for legacy/custom clients. Remote clients **must** use the header form.
 
 ### Skills
 

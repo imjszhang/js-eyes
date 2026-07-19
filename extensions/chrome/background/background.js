@@ -18,6 +18,7 @@ import './operations-methods.js';
 import './routing-methods.js';
 import './tabs-methods.js';
 import './browser-control-methods.js';
+import './user-script-executor.js';
 import './platform-connection-methods.js';
 import './platform-server-methods.js';
 import './platform-operations-methods.js';

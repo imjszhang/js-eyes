@@ -20,7 +20,7 @@ const {
 } = require('@js-eyes/protocol');
 const { ensureToken } = require('@js-eyes/runtime-paths/token');
 const { getPaths } = require('@js-eyes/runtime-paths');
-const { checkAccess, WS_SUBPROTOCOL_PREFIX } = require('./auth');
+const { checkAccess, isTokenSubprotocol } = require('./auth');
 const { createAuditLogger, NOOP_AUDIT } = require('./audit');
 const { loadConfig, resolveHotReloadableSecurity } = tryLoadConfigModule();
 const pkg = require('./package.json');
@@ -328,7 +328,7 @@ function createServer(options = {}) {
     server: httpServer,
     handleProtocols: (protocols) => {
       for (const p of protocols) {
-        if (typeof p === 'string' && p.startsWith(WS_SUBPROTOCOL_PREFIX)) {
+        if (isTokenSubprotocol(p)) {
           return p;
         }
       }
