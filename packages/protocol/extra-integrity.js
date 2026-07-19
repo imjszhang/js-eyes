@@ -174,6 +174,10 @@ function clearSnapshotForExtraDir(absPath, options = {}) {
 
 // Returns one of: 'verified' | 'drifted' | 'missing-snapshot' | 'off' | 'error'.
 // `off` means the global toggle is disabled.
+/**
+ * @param {string} absPath
+ * @param {{ enabled?: boolean, options?: object }} [settings]
+ */
 function classifyExtraDir(absPath, { enabled, options = {} } = {}) {
   if (!enabled) return { state: 'off' };
   let result;

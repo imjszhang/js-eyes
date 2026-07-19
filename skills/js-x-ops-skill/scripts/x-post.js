@@ -143,11 +143,12 @@ function parseArgs() {
                 case 'dryrun':
                     options.dryRun = true;
                     break;
-                case 'replystyle':
+                case 'replystyle': {
                     const style = (nextArg || '').toLowerCase();
                     if (style === 'thread' || style === 'reply') options.replyStyle = style;
                     if (nextArg) i++;
                     break;
+                }
                 case 'post':
                     options.post = typeof nextArg === 'string' ? nextArg : '';
                     if (options.post) i++;
@@ -1970,7 +1971,7 @@ function buildSetComposerImageApplyScript(mimeType, fileName) {
             if (!fileInput) {
                 return { success: false, error: '未找到发推框中的文件输入' };
             }
-            var b64 = (window.__imgB64 || "").replace(/\s/g, "");
+            var b64 = (window.__imgB64 || "").replace(/\\s/g, "");
             if (!b64) {
                 return { success: false, error: '未找到图片数据' };
             }

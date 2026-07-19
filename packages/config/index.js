@@ -274,7 +274,9 @@ function computeHostDiff(prevList, nextList) {
  *     arrays when `egressAllowlist` is unchanged).
  */
 function resolveHotReloadableSecurity(nextSecurity, prevSecurity) {
+  /** @type {Record<string, any>} */
   const prev = prevSecurity || {};
+  /** @type {Record<string, any>} */
   const next = nextSecurity || {};
 
   const applied = {};

@@ -660,6 +660,7 @@ async function resumeProfile(options) {
     const partialTweets = await loadPartialTweets(resumeDir);
     const allTweets = [...partialTweets];
     const seenIds = new Set(state.seenIds || partialTweets.map(t => t.tweetId));
+    let browser = null;
     
     console.log(`✓ 已恢复 ${allTweets.length} 条推文`);
     
@@ -674,7 +675,7 @@ async function resumeProfile(options) {
         const mergedOptions = { ...options, ...state.options };
         const profileUrl = `https://x.com/${state.username}`;
         
-        const browser = new BrowserAutomation(mergedOptions.browserServer || options.browserServer);
+        browser = new BrowserAutomation(mergedOptions.browserServer || options.browserServer);
         const safeExecuteScript = createSafeExecuteScript(browser);
         let tabId = null;
         
@@ -882,7 +883,7 @@ async function resumeProfile(options) {
     await saveToFile(outputPath, output);
     await cleanupTempFiles(resumeDir);
     printSummary(filteredTweets, '抓取完成');
-    browser.disconnect();
+    browser?.disconnect();
 }
 
 module.exports = {
@@ -892,4 +893,3 @@ module.exports = {
     buildProfileDomScript,
     filterTweets
 };
-

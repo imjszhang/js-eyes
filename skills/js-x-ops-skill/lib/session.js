@@ -16,7 +16,7 @@ function parseMaybeJson(value){
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   if (!trimmed) return value;
-  if (!/^[\[{"]/.test(trimmed) && !/^(true|false|null|-?\d)/.test(trimmed)) return value;
+  if (!/^[[{"]/.test(trimmed) && !/^(true|false|null|-?\d)/.test(trimmed)) return value;
   try { return JSON.parse(trimmed); } catch { return value; }
 }
 

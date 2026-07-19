@@ -303,7 +303,9 @@ function resolveOpenClawPluginEntry(definition) {
 }
 
 function getSkillsState(config = {}) {
-  const state = config && typeof config === 'object' ? config.skillsEnabled : null;
+  const state = config && typeof config === 'object'
+    ? /** @type {Record<string, any>} */ (config).skillsEnabled
+    : null;
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return {};
   }

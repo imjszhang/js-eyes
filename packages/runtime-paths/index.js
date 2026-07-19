@@ -104,7 +104,11 @@ function writeSecretFile(filePath, contents, options = {}) {
   try {
     const fd = fs.openSync(filePath, 'w', mode);
     try {
-      fs.writeSync(fd, typeof contents === 'string' ? contents : Buffer.from(contents));
+      if (typeof contents === 'string') {
+        fs.writeSync(fd, contents);
+      } else {
+        fs.writeSync(fd, Buffer.from(contents));
+      }
     } finally {
       fs.closeSync(fd);
     }

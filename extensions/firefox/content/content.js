@@ -379,20 +379,22 @@ class ContentScript {
             sendResponse({ success: true, data: this.getAllForms() });
             break;
             
-          case 'execute_script':
+          case 'execute_script': {
             const result = this.executeCustomScript(message.code);
             sendResponse({ success: true, data: result });
             break;
+          }
             
           case 'inject_css':
             this.injectCSS(message.css);
             sendResponse({ success: true });
             break;
             
-          case 'find_elements':
+          case 'find_elements': {
             const elements = this.findElements(message.selector);
             sendResponse({ success: true, data: elements });
             break;
+          }
             
           case 'click_element':
             this.clickElement(message.selector);

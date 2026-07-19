@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "packages/runtime-paths/**/*.js",
+    "packages/config/**/*.js",
+    "packages/protocol/**/*.js",
+    "packages/client-sdk/**/*.js",
+    "packages/server-core/**/*.js",
+    "types/**/*.d.ts"
+  ],
+  "exclude": ["**/node_modules/**"]
+}

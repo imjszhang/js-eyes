@@ -29,6 +29,7 @@ const path = require('path');
 
 // Use a lazy module reference to avoid a circular require hazard: skills.js also
 // re-exports factories from this module.
+/** @type {Record<string, (...args: any[]) => any>} */
 const skillsApi = require('./skills');
 function buildAdapterTools(...args) { return skillsApi.buildAdapterTools(...args); }
 function discoverSkillsFromSources(...args) { return skillsApi.discoverSkillsFromSources(...args); }
@@ -536,7 +537,7 @@ function createSkillRegistry(options = {}) {
 
   async function init() {
     if (disposed) throw new Error('SkillRegistry disposed');
-    return _reloadCore({ isInit: true });
+    return _reloadCore({ isInit: true, reason: 'init' });
   }
 
   async function reload(reason = 'manual') {
