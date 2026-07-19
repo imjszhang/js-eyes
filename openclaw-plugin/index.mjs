@@ -24,16 +24,18 @@ const {
 const { ensureRuntimePaths, chmodBestEffort } = require("../packages/runtime-paths");
 const { ensureToken } = require("../packages/runtime-paths/token.js");
 import { createAuthHelpers } from "./auth.mjs";
-import { hashFileSha1Sync } from "./fs-utils/hash.mjs";
 import { ensureNativeHost, logNativeHostResult } from "./native-host-setup.mjs";
-
-function tryLoadChokidar() {
-  try {
-    return require("chokidar");
-  } catch {
-    return null;
-  }
-}
+import { createSharedServerManager } from "./shared-server.mjs";
+import { createHotReloadWatchers } from "./watchers.mjs";
+import { createRegistrationContext } from "./registration-context.mjs";
+import { registerPluginCli } from "./cli-registration.mjs";
+import { createToolPolicy } from "./tool-policy.mjs";
+import { registerServerService } from "./server-service.mjs";
+import { registerToolRouter } from "./tool-router.mjs";
+import { createPluginLifecycle } from "./lifecycle.mjs";
+import { registerBrowserActions } from "./actions/browser.mjs";
+import { registerSkillDiscoveryActions } from "./actions/skills.mjs";
+import { registerManagementActions } from "./actions/management.mjs";
 
 const nodeCrypto = require("node:crypto");
 const nodeFs = require("node:fs");
@@ -78,134 +80,23 @@ function resolvePluginEntry(definition) {
   return definition.register;
 }
 
-// 模块级单例：防止 OpenClaw host 直接重跑 register() 时 chokidar watcher /
-// skillRegistry 被重复创建（老的没关 → listener + fd 持续累积）。
-// WebSocket server 单独用 sharedServerState 跨 register() 复用，避免重复 register
-// 时 teardown 关掉仍在监听的端口（OpenClaw deferred reload / 插件热重载）。
-// OpenClaw 当前要求 register() 同步返回；如存在上一轮注册，先启动异步清理 sidecars，
-// 需要绑定端口的 service.start() 再等待它完成，避免 register() 返回 Promise。
-let currentRegistration = null;
-
-/** @type {{ instance: { stop: () => Promise<void> | void } | null, configKey: string | null, startPromise: Promise<void> | null, refs: number }} */
-const sharedServerState = {
-  instance: null,
-  configKey: null,
-  startPromise: null,
-  refs: 0,
-};
-
-function sharedServerConfigKey(host, port) {
-  return `${host}:${port}`;
-}
+const sharedServer = createSharedServerManager(createServer);
+const lifecycle = createPluginLifecycle(sharedServer);
 
 function isFullRegistration(api) {
   const mode = api.registrationMode;
   return mode === undefined || mode === "full";
 }
 
-async function stopSharedServerInstance() {
-  const instance = sharedServerState.instance;
-  sharedServerState.instance = null;
-  sharedServerState.configKey = null;
-  sharedServerState.startPromise = null;
-  sharedServerState.refs = 0;
-  if (instance) {
-    try {
-      await instance.stop();
-    } catch {}
-  }
-}
-
-async function acquireSharedServer(createOptions) {
-  const key = sharedServerConfigKey(createOptions.host, createOptions.port);
-  if (sharedServerState.instance && sharedServerState.configKey !== key) {
-    await stopSharedServerInstance();
-  }
-  if (!sharedServerState.instance) {
-    if (!sharedServerState.startPromise) {
-      sharedServerState.startPromise = (async () => {
-        const instance = createServer(createOptions);
-        await instance.start();
-        sharedServerState.instance = instance;
-        sharedServerState.configKey = key;
-      })();
-    }
-    try {
-      await sharedServerState.startPromise;
-    } catch (err) {
-      sharedServerState.instance = null;
-      sharedServerState.configKey = null;
-      throw err;
-    } finally {
-      sharedServerState.startPromise = null;
-    }
-  }
-  sharedServerState.refs += 1;
-  return sharedServerState.instance;
-}
-
-async function releaseSharedServer() {
-  if (sharedServerState.refs > 0) {
-    sharedServerState.refs -= 1;
-  }
-  if (sharedServerState.refs === 0) {
-    await stopSharedServerInstance();
-  }
-}
-
-// CLI 子进程退出辅助：先 teardown chokidar / skillRegistry / WS bot 让 event loop
-// 自然清空，再 setTimeout 兜底强退避免任何残留 handle 钉住进程。
-// .unref() 保证 event loop 真空了不必等满 100ms。
-async function exitCli(success) {
-  process.exitCode = success ? 0 : 1;
-  if (currentRegistration) {
-    try {
-      await currentRegistration.teardownSidecars({});
-      await releaseSharedServer();
-    } catch {}
-    currentRegistration = null;
-  }
-  setTimeout(() => process.exit(process.exitCode || 0), 100).unref();
-}
-
-let _cliExitHandlersInstalled = false;
-function installCliExitHandlers() {
-  if (_cliExitHandlersInstalled) return;
-  _cliExitHandlersInstalled = true;
-  process.on("uncaughtException", (err) => {
-    console.error("[js-eyes] uncaughtException:", err?.stack || err);
-    exitCli(false);
-  });
-  process.on("unhandledRejection", (err) => {
-    console.error("[js-eyes] unhandledRejection:", err instanceof Error ? err.stack : err);
-    exitCli(false);
-  });
-}
-
 function register(api) {
   const fullRuntime = isFullRegistration(api);
   const mode = api.registrationMode ?? "full";
-  let previousTeardown = null;
-  if (currentRegistration) {
-    const previousRegistration = currentRegistration;
-    currentRegistration = null;
-    // OpenClaw may call cli-metadata before full in the same process; that pass
-    // never starts sidecars, so handoff to full is expected—not a hot reload.
-    const previousHadSidecars = previousRegistration.hadSidecars === true;
-    try {
-      if (previousHadSidecars) {
-        api.logger.warn(
-          "[js-eyes] register() called while a previous registration is still active; tearing down sidecars (server kept if still referenced)",
-        );
-      }
-      previousTeardown = Promise.resolve(
-        previousRegistration.teardownSidecars({ logger: api.logger }),
-      ).catch((error) => {
-        api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
-      });
-    } catch (error) {
-      api.logger.warn(`[js-eyes] previous teardown failed: ${error.message}`);
-    }
+  let previousTeardown = lifecycle.beginRegistration(api);
+
+  async function consumePreviousTeardown() {
+    if (!previousTeardown) return;
+    await previousTeardown;
+    previousTeardown = null;
   }
 
   const pluginCfg = api.pluginConfig ?? {};
@@ -227,181 +118,35 @@ function register(api) {
   const hostConfig = loadConfig();
   const security = resolveSecurityConfig(hostConfig);
 
-  let bot = null;
-  let server = null;
-  // 以下变量随 register() 深入才被赋值，但 teardown() 闭包需要能读到，故提前声明。
-  let skillRegistry = null;
-  let configWatcher = null;
-  let skillDirWatcher = null;
-  let reloadTimer = null;
-
-  async function teardownSidecars(_ctx) {
-    if (reloadTimer) {
-      try { clearTimeout(reloadTimer); } catch {}
-      reloadTimer = null;
-    }
-    if (configWatcher) {
-      try { await configWatcher.close(); } catch {}
-      configWatcher = null;
-    }
-    if (skillDirWatcher) {
-      try { await skillDirWatcher.close(); } catch {}
-      skillDirWatcher = null;
-    }
-    if (skillRegistry) {
-      try { await skillRegistry.disposeAll(); } catch {}
-      skillRegistry = null;
-    }
-    if (bot) {
-      try { bot.disconnect(); } catch {}
-      bot = null;
-    }
-    server = null;
-  }
-
-  async function teardownRegistration(ctx) {
-    const log = (ctx && ctx.logger) || api.logger;
-    await teardownSidecars(ctx);
-    if (serverUsesSharedRef) {
-      serverUsesSharedRef = false;
-      await releaseSharedServer();
-    } else if (server) {
-      try { await server.stop(); } catch {}
-      server = null;
-    }
-    try { log.info("[js-eyes] Service stopped"); } catch {}
-  }
-
-  let serverUsesSharedRef = false;
-
-  function getActiveServer() {
-    return server || sharedServerState.instance;
-  }
-
   const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
+  const registration = createRegistrationContext({
+    api,
+    BrowserAutomation,
+    getServerToken,
+    requestTimeout,
+    serverHost,
+    serverPort,
+    sharedServer,
+  });
+  const { ensureBot, getActiveServer, state, teardownRegistration, teardownSidecars } = registration;
 
-  function ensureBot() {
-    if (!bot) {
-      bot = new BrowserAutomation(`ws://${serverHost}:${serverPort}`, {
-        defaultTimeout: requestTimeout,
-        token: getServerToken(),
-        logger: {
-          info: (msg) => api.logger.info(msg),
-          warn: (msg) => api.logger.warn(msg),
-          error: (msg) => api.logger.error(msg),
-        },
-      });
-    }
-    return bot;
-  }
-
-  const sensitiveToolNames = new Set([
-    ...SENSITIVE_TOOL_NAMES,
-    ...(Object.keys(security.toolPolicies || {}).filter((name) => security.toolPolicies[name] === 'confirm' || security.toolPolicies[name] === 'deny')),
-  ]);
-
-  function summarizeParams(params = {}) {
-    try {
-      const json = JSON.stringify(params);
-      return json.length > 200 ? json.slice(0, 200) + `…(+${json.length - 200})` : json;
-    } catch {
-      return '[unserializable]';
-    }
-  }
-
-  function recordConsentDecision(toolName, params, decision) {
-    try {
-      const id = nodeCrypto.randomBytes(8).toString('hex');
-      const filePath = nodePath.join(runtimePaths.consentsDir, `${id}.json`);
-      const record = {
-        id,
-        toolName,
-        decision,
-        requestedAt: new Date().toISOString(),
-        decidedAt: new Date().toISOString(),
-        summary: summarizeParams(params),
-        status: decision,
-      };
-      nodeFs.writeFileSync(filePath, JSON.stringify(record, null, 2) + '\n');
-      chmodBestEffort(filePath, 0o600);
-    } catch (error) {
-      api.logger.warn(`[js-eyes] Failed to record consent log: ${error.message}`);
-    }
-  }
-
-  function wrapSensitiveTool(definition, ctx = {}) {
-    if (!definition || !definition.name) return definition;
-    const policyMap = security.toolPolicies || {};
-    const policy = policyMap[definition.name]
-      || (sensitiveToolNames.has(definition.name) ? 'confirm' : 'allow');
-    if (policy === 'allow') return definition;
-
-    const originalExecute = definition.execute;
-    return {
-      ...definition,
-      async execute(toolCallId, params) {
-        if (policy === 'deny') {
-          recordConsentDecision(definition.name, params, 'deny');
-          api.logger.warn(`[js-eyes] Tool "${definition.name}" denied by policy`);
-          return { content: [{ type: 'text', text: `Tool "${definition.name}" denied by JS Eyes policy (security.toolPolicies).` }] };
-        }
-        // policy === 'confirm'
-        recordConsentDecision(definition.name, params, 'auto-confirm');
-        api.logger.warn(
-          `[js-eyes] Tool "${definition.name}" requires confirmation (policy=confirm). source=${ctx.source || 'core'} params=${summarizeParams(params)}`,
-        );
-        return originalExecute(toolCallId, params);
-      },
-    };
-  }
-
-  function textResult(text) {
-    return { content: [{ type: "text", text }] };
-  }
-
-  function normalizeSkillAction(action) {
-    if (action === "skill/js-browser-ops-skill/browser_screenshot") {
-      return "skill/js-browser-ops-skill/browser-screenshot";
-    }
-    return action;
-  }
-
-  /** 将 SDK 策略错误转为面向 Agent 的中文说明（含 egress CLI 指引） */
-  function formatJsEyesPolicyError(err) {
-    if (err instanceof ServerPolicyError) {
-      if (err.code === "POLICY_PENDING_EGRESS") {
-        const hostLine = err.host ? `目标主机: ${err.host}\n` : "";
-        const pendingLine = err.pendingId ? `pendingId: ${err.pendingId}\n` : "";
-        return (
-          `JS Eyes 出站策略未允许打开该 URL（pending-egress），浏览器未执行导航。\n` +
-          `${hostLine}` +
-          `${pendingLine}` +
-          `可执行: js-eyes egress list 查看待审批；js-eyes egress approve <id> 批准该条；` +
-          `js-eyes egress allow <域名> 写入 security.egressAllowlist；` +
-          `js-eyes security show 查看 egressAllowlist 与 taskOrigin。\n` +
-          `服务端说明: ${err.message}`
-        );
-      }
-      if (err.code === "POLICY_SOFT_BLOCK") {
-        return (
-          `JS Eyes 服务端策略拦截了该操作（多为任务范围 L4a、污点 L4b 等，与出站 egress 不同）。\n` +
-          `规则: ${err.rule || "unknown"}\n` +
-          `详情: ${err.message}`
-        );
-      }
-      return `JS Eyes 服务端策略拒绝: ${err.message} (code=${err.code})`;
-    }
-    if (err instanceof PolicyBlockError) {
-      return err.message;
-    }
-    return null;
-  }
-
-  function policyTextResultOrThrow(err) {
-    const text = formatJsEyesPolicyError(err);
-    if (text) return textResult(text);
-    throw err;
-  }
+  const {
+    normalizeSkillAction,
+    policyTextResultOrThrow,
+    textResult,
+    wrapSensitiveTool,
+  } = createToolPolicy({
+    api,
+    chmodBestEffort,
+    nodeCrypto,
+    nodeFs,
+    nodePath,
+    PolicyBlockError,
+    runtimePaths,
+    security,
+    ServerPolicyError,
+    sensitiveToolDefaults: SENSITIVE_TOOL_NAMES,
+  });
 
   const coreActions = new Map();
 
@@ -412,543 +157,32 @@ function register(api) {
     );
   }
 
-  if (fullRuntime) {
-    api.registerService({
-      id: "js-eyes-server",
-      async start(ctx) {
-        if (!autoStart) {
-          ctx.logger.info("[js-eyes] autoStartServer=false, skipping server start");
-          return;
-        }
-        try {
-          if (previousTeardown) {
-            await previousTeardown;
-            previousTeardown = null;
-          }
-          const tokenInfo = security.allowAnonymous ? null : ensureToken();
-          try {
-            const nativeHostResult = ensureNativeHost(pluginCfg.nativeHost);
-            logNativeHostResult(nativeHostResult, ctx.logger);
-          } catch (error) {
-            ctx.logger.warn(`[js-eyes] Native host check failed: ${error.message}`);
-          }
-          server = await acquireSharedServer({
-            port: serverPort,
-            host: serverHost,
-            token: tokenInfo?.token || undefined,
-            security,
-            config: hostConfig,
-            requestTimeout,
-            pendingEgressDir: runtimePaths.pendingEgressDir,
-            auditLogFile: runtimePaths.auditLogFile,
-            logger: {
-              info: (msg) => ctx.logger.info(msg),
-              warn: (msg) => ctx.logger.warn(msg),
-              error: (msg) => ctx.logger.error(msg),
-            },
-          });
-          serverUsesSharedRef = true;
-          if (tokenInfo?.path) {
-            ctx.logger.info(`[js-eyes] Server token file: ${tokenInfo.path}`);
-          }
-          if (sharedServerState.refs === 1) {
-            ctx.logger.info(`[js-eyes] Server started on ws://${serverHost}:${serverPort}`);
-          } else {
-            ctx.logger.info(
-              `[js-eyes] Reusing server on ws://${serverHost}:${serverPort} (refs=${sharedServerState.refs})`,
-            );
-          }
-        } catch (err) {
-          ctx.logger.error(`[js-eyes] Failed to start server: ${err.message}`);
-          if (serverUsesSharedRef) {
-            serverUsesSharedRef = false;
-            await releaseSharedServer();
-          }
-          server = null;
-        }
-      },
-      async stop(ctx) {
-        await teardownRegistration(ctx);
-        if (currentRegistration && currentRegistration.api === api) {
-          currentRegistration = null;
-        }
-      },
-    });
-  }
+  registerServerService({
+    api,
+    autoStart,
+    clearCurrentRegistration: lifecycle.clearCurrentRegistration,
+    consumePreviousTeardown,
+    ensureNativeHost,
+    ensureToken,
+    fullRuntime,
+    hostConfig,
+    logNativeHostResult,
+    pluginConfig: pluginCfg,
+    requestTimeout,
+    runtimePaths,
+    security,
+    serverHost,
+    serverPort,
+    sharedServer,
+    state,
+    teardownRegistration,
+  });
 
-  registerCoreAction(
-    "browser/get-tabs",
-    {
-      name: "browser/get-tabs",
-      label: "JS Eyes: Get Tabs",
-      description: "获取浏览器中所有已打开的标签页列表，包含每个标签页的 ID、URL、标题等信息。",
-      parameters: {
-        type: "object",
-        properties: {
-          target: {
-            type: "string",
-            description: "目标浏览器的 clientId 或名称（如 'firefox'、'chrome'）。省略则返回所有浏览器的标签页。",
-          },
-        },
-      },
-      async execute(_toolCallId, params) {
-        const b = ensureBot();
-        const result = await b.getTabs({ target: params.target });
-        const lines = [];
-        if (result.browsers && result.browsers.length > 0) {
-          for (const browser of result.browsers) {
-            lines.push(`## ${browser.browserName} (${browser.clientId})`);
-            for (const tab of browser.tabs) {
-              const active = tab.id === result.activeTabId ? " [ACTIVE]" : "";
-              lines.push(`  - [${tab.id}] ${tab.title || "(untitled)"}${active}`);
-              lines.push(`    ${tab.url}`);
-            }
-          }
-        } else {
-          lines.push("当前没有浏览器扩展连接。");
-        }
-        return textResult(lines.join("\n"));
-      },
-    },
-  );
+  registerBrowserActions({ ensureBot, policyTextResultOrThrow, registerCoreAction, textResult });
 
-  registerCoreAction(
-    "browser/list-clients",
-    {
-      name: "browser/list-clients",
-      label: "JS Eyes: List Clients",
-      description: "获取当前已连接到 JS-Eyes 服务器的浏览器扩展客户端列表。",
-      parameters: { type: "object", properties: {} },
-      async execute() {
-        const b = ensureBot();
-        const clients = await b.listClients();
-        if (clients.length === 0) {
-          return textResult("当前没有浏览器扩展连接到服务器。");
-        }
-        const lines = clients.map(
-          (c) => `- ${c.browserName} (clientId: ${c.clientId}, tabs: ${c.tabCount})`,
-        );
-        return textResult(lines.join("\n"));
-      },
-    },
-  );
+  registerSkillDiscoveryActions({ api, chmodBestEffort, discoverSkillsFromSources, fetchSkillsRegistry, loadConfig, nodeFs, nodePath, planSkillInstall, registerCoreAction, resolveSkillSources, runtimePaths, skillToolActionName, skillsDir, skillsRegistryUrl, textResult });
 
-  registerCoreAction(
-    "browser/open-url",
-    {
-      name: "browser/open-url",
-      label: "JS Eyes: Open URL",
-      description: "在浏览器中打开指定 URL。可以打开新标签页，也可以在已有标签页中导航。返回标签页 ID。",
-      parameters: {
-        type: "object",
-        properties: {
-          url: { type: "string", description: "要打开的 URL" },
-          tabId: {
-            type: "number",
-            description: "已有标签页 ID（传入则在该标签页导航，省略则新开标签页）",
-          },
-          windowId: {
-            type: "number",
-            description: "窗口 ID（新开标签页时可指定窗口）",
-          },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["url"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const tabId = await b.openUrl(
-            params.url,
-            params.tabId ?? null,
-            params.windowId ?? null,
-            { target: params.target },
-          );
-          return textResult(`已打开 ${params.url}，标签页 ID: ${tabId}`);
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/close-tab",
-    {
-      name: "browser/close-tab",
-      label: "JS Eyes: Close Tab",
-      description: "关闭浏览器中指定 ID 的标签页。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "要关闭的标签页 ID" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          await b.closeTab(params.tabId, { target: params.target });
-          return textResult(`已关闭标签页 ${params.tabId}`);
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/get-html",
-    {
-      name: "browser/get-html",
-      label: "JS Eyes: Get HTML",
-      description: "获取指定标签页的完整 HTML 内容。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const html = await b.getTabHtml(params.tabId, { target: params.target });
-          return textResult(html);
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/execute-script",
-    {
-      name: "browser/execute-script",
-      label: "JS Eyes: Execute Script",
-      description: "在指定标签页中执行 JavaScript 代码并返回执行结果。可用于提取页面数据、操作 DOM 等。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          code: { type: "string", description: "要执行的 JavaScript 代码" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId", "code"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const result = await b.executeScript(params.tabId, params.code, {
-            target: params.target,
-          });
-          const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-          return textResult(text);
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/get-cookies",
-    {
-      name: "browser/get-cookies",
-      label: "JS Eyes: Get Cookies",
-      description: "获取指定标签页对应域名的所有 Cookie。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const cookies = await b.getCookies(params.tabId, { target: params.target });
-          if (cookies.length === 0) {
-            return textResult("该标签页没有 Cookie。");
-          }
-          return textResult(JSON.stringify(cookies, null, 2));
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/inject-css",
-    {
-      name: "browser/inject-css",
-      label: "JS Eyes: Inject CSS",
-      description: "向指定标签页注入自定义 CSS 样式。可用于隐藏页面元素、调整布局等。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          css: { type: "string", description: "要注入的 CSS 代码" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId", "css"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          await b.injectCss(params.tabId, params.css, { target: params.target });
-          return textResult(`已向标签页 ${params.tabId} 注入 CSS 样式`);
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/get-cookies-by-domain",
-    {
-      name: "browser/get-cookies-by-domain",
-      label: "JS Eyes: Get Cookies By Domain",
-      description: "按域名获取浏览器中的所有 Cookie，无需指定标签页。支持包含子域名。",
-      parameters: {
-        type: "object",
-        properties: {
-          domain: { type: "string", description: "目标域名（如 'example.com'）" },
-          includeSubdomains: {
-            type: "boolean",
-            description: "是否包含子域名的 Cookie（默认 true）",
-          },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["domain"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const cookies = await b.getCookiesByDomain(params.domain, {
-            includeSubdomains: params.includeSubdomains,
-            target: params.target,
-          });
-          if (cookies.length === 0) {
-            return textResult(`域名 ${params.domain} 没有 Cookie。`);
-          }
-          return textResult(JSON.stringify(cookies, null, 2));
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/get-page-info",
-    {
-      name: "browser/get-page-info",
-      label: "JS Eyes: Get Page Info",
-      description: "获取指定标签页的页面信息，包括 URL、标题、状态和图标。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const info = await b.getPageInfo(params.tabId, { target: params.target });
-          return textResult(JSON.stringify(info, null, 2));
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "browser/upload-file",
-    {
-      name: "browser/upload-file",
-      label: "JS Eyes: Upload File",
-      description: "向指定标签页的文件上传控件上传文件。文件以 Base64 编码传入，自动设置到页面的 file input 元素。",
-      parameters: {
-        type: "object",
-        properties: {
-          tabId: { type: "number", description: "标签页 ID" },
-          files: {
-            type: "array",
-            description: "要上传的文件列表",
-            items: {
-              type: "object",
-              properties: {
-                base64: { type: "string", description: "文件内容的 Base64 编码" },
-                name: { type: "string", description: "文件名" },
-                type: { type: "string", description: "MIME 类型（如 'image/png'）" },
-              },
-              required: ["base64", "name", "type"],
-            },
-          },
-          targetSelector: {
-            type: "string",
-            description: "目标 file input 的 CSS 选择器（默认 'input[type=\"file\"]'）",
-          },
-          target: { type: "string", description: "目标浏览器 clientId 或名称" },
-        },
-        required: ["tabId", "files"],
-      },
-      async execute(_toolCallId, params) {
-        try {
-          const b = ensureBot();
-          const result = await b.uploadFileToTab(params.tabId, params.files, {
-            targetSelector: params.targetSelector,
-            target: params.target,
-          });
-          return textResult(JSON.stringify({ success: true, uploadedFiles: result }, null, 2));
-        } catch (err) {
-          return policyTextResultOrThrow(err);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "skills/discover",
-    {
-      name: "skills/discover",
-      label: "JS Eyes: Discover Skills",
-      description: "查询 JS Eyes 扩展技能注册表，列出可安装的扩展技能（如 X.com 搜索等）。返回每个技能的 ID、名称、描述、版本、可通过 js-eyes 调用的 action 和安装命令。",
-      parameters: {
-        type: "object",
-        properties: {
-          registryUrl: {
-            type: "string",
-            description: "自定义注册表 URL（默认使用 js-eyes.com/skills.json）",
-          },
-        },
-      },
-      async execute(_toolCallId, params) {
-        const url = params.registryUrl || skillsRegistryUrl;
-        try {
-          const registry = await fetchSkillsRegistry(url);
-          // Re-resolve sources at call time so freshly linked extras are reflected.
-          const freshConfig = loadConfig();
-          const freshSources = resolveSkillSources({
-            primary: skillsDir,
-            extras: Array.isArray(freshConfig.extraSkillDirs) ? freshConfig.extraSkillDirs : [],
-          });
-          const installedSkills = new Set(
-            discoverSkillsFromSources(freshSources).skills.map((skill) => skill.id),
-          );
-
-          if (!registry.skills || registry.skills.length === 0) {
-            return textResult("当前没有可用的扩展技能。");
-          }
-
-          const lines = [
-            `## JS Eyes 扩展技能 (${registry.skills.length} 个)`,
-            `Parent: js-eyes v${registry.parentSkill?.version || "?"}`,
-            "",
-          ];
-
-          for (const s of registry.skills) {
-            const installed = installedSkills.has(s.id);
-            const status = installed ? "✓ 已安装" : "○ 未安装";
-            lines.push(`### ${s.emoji || ""} ${s.name} (${s.id}) — ${status}`);
-            lines.push(`  ${s.description}`);
-            lines.push(`  版本: ${s.version}`);
-            const actions = Array.isArray(s.actions)
-              ? s.actions
-              : (Array.isArray(s.tools) ? s.tools.map((tool) => skillToolActionName(s.id, tool)) : []);
-            if (actions.length > 0) {
-              lines.push(`  Actions: ${actions.join(", ")}`);
-            }
-            if (s.commands && s.commands.length > 0) {
-              lines.push(`  CLI 命令: ${s.commands.join(", ")}`);
-            }
-            if (s.requires?.skills?.length > 0) {
-              lines.push(`  依赖: ${s.requires.skills.join(", ")}`);
-            }
-            if (!installed) {
-              lines.push(`  安装: 调用 js-eyes 工具，action="skills/plan-install"，args.skillId="${s.id}"`);
-              lines.push(`  或命令行: curl -fsSL https://js-eyes.com/install.sh | bash -s -- ${s.id}`);
-            }
-            lines.push("");
-          }
-
-          return textResult(lines.join("\n"));
-        } catch (err) {
-          return textResult(`获取技能注册表失败 (${url}): ${err.message}`);
-        }
-      },
-    },
-  );
-
-  registerCoreAction(
-    "skills/plan-install",
-    {
-      name: "skills/plan-install",
-      label: "JS Eyes: Plan Skill Install",
-      description: "下载并校验一个 JS Eyes 扩展技能的安装计划：核对 SHA-256、解到 staging 目录、列出工具/依赖。出于安全考虑，不会自动启用或写入到 skills 目录；需要用户在终端执行 `js-eyes skills approve <skillId>` 才会真正落地。",
-      parameters: {
-        type: "object",
-        properties: {
-          skillId: {
-            type: "string",
-            description: "要安装的技能 ID（如 'js-x-ops-skill'）",
-          },
-          force: {
-            type: "boolean",
-            description: "如果该技能已经安装，是否允许覆盖（仍然只生成计划）",
-          },
-        },
-        required: ["skillId"],
-      },
-      async execute(_toolCallId, params) {
-        const { skillId, force } = params;
-        try {
-          const planResult = await planSkillInstall({
-            skillId,
-            registryUrl: skillsRegistryUrl,
-            skillsDir,
-            force,
-            logger: api.logger,
-          });
-          const plan = planResult.plan;
-          const planFile = nodePath.join(runtimePaths.runtimeDir, 'pending-skills', `${skillId}.json`);
-          nodeFs.mkdirSync(nodePath.dirname(planFile), { recursive: true });
-          nodeFs.writeFileSync(planFile, JSON.stringify(plan, null, 2) + '\n');
-          chmodBestEffort(planFile, 0o600);
-
-          const lines = [
-            `已生成安装计划，但未执行。请人工 review 后批准。`,
-            `  技能: ${planResult.skill.name} (${skillId})`,
-            `  来源: ${plan.sourceUrl}`,
-            `  SHA-256: ${plan.bundleSha256}`,
-            `  Bundle 大小: ${plan.bundleSize} bytes`,
-            `  声明 actions: ${(plan.declaredTools || []).map((tool) => skillToolActionName(skillId, tool)).join(', ') || '(none)'}`,
-            `  依赖锁文件: ${plan.hasLockfile ? '存在' : '缺失'}`,
-            `  Staging: ${plan.stagingDir}`,
-            `  目标: ${plan.targetDir}`,
-            ``,
-            `请在主机终端执行: js-eyes skills approve ${skillId}`,
-            `（也可以直接执行 \`js-eyes skills install ${skillId}\` 来在终端审阅+安装）`,
-          ];
-          return textResult(lines.join("\n"));
-        } catch (err) {
-          return textResult(`生成安装计划失败 (${skillId}): ${err.message}`);
-        }
-      },
-    },
-  );
-
-  skillRegistry = createSkillRegistry({
+  state.skillRegistry = createSkillRegistry({
     api,
     pluginConfig: pluginCfg,
     wrapSensitiveTool,
@@ -965,375 +199,50 @@ function register(api) {
   });
 
   if (fullRuntime) {
-    const initPromise = skillRegistry.init().catch((error) => {
+    const initPromise = state.skillRegistry.init().catch((error) => {
       api.logger.warn(`[js-eyes] SkillRegistry init failed: ${error.message}`);
     });
     void initPromise;
   }
 
-  registerCoreAction(
-    "skills/reload",
-    {
-      name: "skills/reload",
-      label: "JS Eyes: Reload Skills",
-      description: "重新扫描 primary + extraSkillDirs，应用 skillsEnabled 与配置变更（热加载/卸载技能），无需重启 OpenClaw。",
-      parameters: {
-        type: "object",
-        properties: {
-          reason: {
-            type: "string",
-            description: "触发原因，仅用于日志（如 'agent-call', 'user-link'）",
-          },
-        },
-      },
-      async execute(_toolCallId, params) {
-        const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
-        try {
-          const summary = await skillRegistry.reload(reason);
-          const lines = [
-            `[js-eyes] reload 完成 (reason=${summary.reason || reason})`,
-            `  added:    ${summary.added.join(', ') || '(none)'}`,
-            `  removed:  ${summary.removed.join(', ') || '(none)'}`,
-            `  reloaded: ${summary.reloaded.join(', ') || '(none)'}`,
-            `  toggled-off: ${summary.toggledOff.join(', ') || '(none)'}`,
-          ];
-          if (Array.isArray(summary.conflicts) && summary.conflicts.length > 0) {
-            lines.push(`  conflicts:`);
-            for (const c of summary.conflicts) {
-              lines.push(`    - ${c.id}: kept ${c.winner.source} ${c.winner.path}, skipped ${c.loser.source} ${c.loser.path}`);
-            }
-          }
-          if (Array.isArray(summary.failedDispatchers) && summary.failedDispatchers.length > 0) {
-            lines.push(`  binding-failures:`);
-            for (const f of summary.failedDispatchers) {
-              lines.push(`    - ${f.skillId}: ${f.toolNames.join(', ')}`);
-            }
-          }
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        } catch (error) {
-          return { content: [{ type: 'text', text: `reload 失败: ${error.message}` }] };
-        }
-      },
-    },
-  );
+  registerManagementActions({ getActiveServer, registerCoreAction, skillRegistry: state.skillRegistry });
 
-  registerCoreAction(
-    "security/reload",
-    {
-      name: "security/reload",
-      label: "JS Eyes: Reload Security",
-      description: "热加载 ~/.js-eyes/config/config.json 中的安全配置（egressAllowlist / toolPolicies / enforcement 等），无需重启 OpenClaw 或 JS Eyes 服务器。下一次 open_url 会立即生效。非热加载字段（serverHost/serverPort/allowAnonymous/token 等）会出现在 ignored 字段中，仍需重启。",
-      parameters: {
-        type: "object",
-        properties: {
-          reason: {
-            type: "string",
-            description: "触发原因，仅用于日志（如 'agent-call', 'user-link'）",
-          },
-        },
-      },
-      async execute(_toolCallId, params) {
-        const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
-        const activeServer = getActiveServer();
-        if (!activeServer || typeof activeServer.reloadSecurity !== 'function') {
-          return { content: [{ type: 'text', text: '[js-eyes] 服务器未启动或未暴露 reloadSecurity（可能 autoStartServer=false 或版本过旧）。' }] };
-        }
-        try {
-          const summary = activeServer.reloadSecurity({ source: `tool:${reason}` });
-          const lines = [
-            `[js-eyes] security reload (source=tool:${reason})`,
-            `  changed:    ${summary.changed}`,
-            `  generation: ${summary.generation}`,
-            `  applied:    ${Object.keys(summary.applied || {}).join(', ') || '(none)'}`,
-            `  ignored:    ${Object.keys(summary.ignored || {}).join(', ') || '(none)'}`,
-            `  egressAllowlist: ${JSON.stringify(summary.egressAllowlist || [])}`,
-          ];
-          if (summary.error) {
-            lines.push(`  error: ${summary.error}`);
-          }
-          if (Object.keys(summary.ignored || {}).length > 0) {
-            lines.push('  (ignored fields require a server restart to take effect.)');
-          }
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        } catch (error) {
-          return { content: [{ type: 'text', text: `security reload 失败: ${error.message}` }] };
-        }
-      },
-    },
-  );
+  registerToolRouter({
+    api,
+    coreActions,
+    getSkillRegistry: () => state.skillRegistry,
+    normalizeSkillAction,
+    textResult,
+  });
 
-  api.registerTool(
-    {
-      name: "js-eyes",
-      label: "JS Eyes",
-      description: "JS Eyes 单一入口。使用路径式 action 调用浏览器、技能与安全管理能力，例如 browser/open-url、skills/reload、skill/<skillId>/<action>。",
-      parameters: {
-        type: "object",
-        properties: {
-          action: {
-            type: "string",
-            description: "路径式动作名，例如 browser/get-tabs、browser/open-url、skills/reload、security/reload、skill/<skillId>/<action>。",
-          },
-          args: {
-            type: "object",
-            description: "传给 action 的参数对象。",
-            additionalProperties: true,
-          },
-        },
-        required: ["action"],
-      },
-      async execute(toolCallId, params = {}) {
-        const action = typeof params.action === "string" ? params.action.trim() : "";
-        const args = params.args && typeof params.args === "object" && !Array.isArray(params.args)
-          ? params.args
-          : {};
-        if (!action) {
-          return textResult("缺少 action。请使用路径式 action，例如 browser/get-tabs 或 browser/open-url。");
-        }
-        const core = coreActions.get(action);
-        if (core) {
-          return core.execute(toolCallId, args);
-        }
-        if (action.startsWith("skill/")) {
-          if (!skillRegistry || typeof skillRegistry.executeAction !== "function") {
-            return textResult(
-              `JS Eyes skill registry 当前不可用，可能正在重载或插件已进入关闭流程。\n` +
-              `请稍后重试 action: ${action}`,
-            );
-          }
-          return skillRegistry.executeAction(normalizeSkillAction(action), toolCallId, args);
-        }
-        return textResult(
-          `不支持的 JS Eyes action: ${action}\n` +
-          `请使用路径式 action，例如 browser/get-tabs、browser/open-url、skills/reload、security/reload 或 skill/<skillId>/<action>。`,
-        );
-      },
-    },
-    { optional: true },
-  );
+  state.watchers = createHotReloadWatchers({
+    api,
+    fullRuntime,
+    pluginConfig: pluginCfg,
+    runtimePaths,
+    skillRegistry: state.skillRegistry,
+    skillSources,
+  });
 
-  // Host-config chokidar watcher: triggers a debounced registry.reload() whenever
-  // ~/.js-eyes/config/config.json is written (by `js-eyes skills link`, toggles, etc.).
-  const watchConfig = pluginCfg.watchConfig !== false;
-  const devWatchSkills = pluginCfg.devWatchSkills !== false;
-  const chokidar = watchConfig || devWatchSkills ? tryLoadChokidar() : null;
+  registerPluginCli({
+    api,
+    createServer,
+    exitCli: lifecycle.exitCli,
+    getLocalRequestHeaders,
+    installCliExitHandlers: lifecycle.installCliExitHandlers,
+    serverHost,
+    serverPort,
+    sharedServer,
+    state,
+  });
 
-  // macOS 下编辑器原子写、.DS_Store 抖动、swap 文件等会刷 chokidar 事件。
-  // 忽略这些噪音源；对于真正发生变化的文件，再在下面用 sha1 指纹二次过滤，
-  // 保证 scheduleReload 只在内容真变时调用，避免空跑 reload 放大泄漏。
-  const WATCHER_IGNORED = [
-    /(^|[/\\])\.DS_Store$/,
-    /(^|[/\\])\.git([/\\]|$)/,
-    /\.sw[pox]$/i,
-    /~$/,
-  ];
-
-  const _lastHashByPath = new Map();
-
-  /**
-   * 只有当 filePath 的内容 sha1 与上次记录不同时才触发 reason 对应的 reload。
-   * 对删除事件（sha1='' 且之前没记录过）直接放行。
-   */
-  function scheduleReloadIfChanged(reason, filePath) {
-    if (!filePath) {
-      scheduleReload(reason);
-      return;
-    }
-    const prev = _lastHashByPath.get(filePath);
-    const next = hashFileSha1Sync(filePath);
-    if (prev === next && prev !== undefined) {
-      // 内容未变（或读失败两次都拿到空串），视为噪音，忽略。
-      return;
-    }
-    _lastHashByPath.set(filePath, next);
-    scheduleReload(reason);
-  }
-
-  function scheduleReload(reason) {
-    if (reloadTimer) clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => {
-      reloadTimer = null;
-      skillRegistry.reload(reason).catch((error) => {
-        api.logger.warn(`[js-eyes] Hot reload failed: ${error.message}`);
-      });
-    }, 300);
-  }
-
-  if (fullRuntime && watchConfig && chokidar) {
-    try {
-      configWatcher = chokidar.watch(runtimePaths.configFile, {
-        persistent: true,
-        ignoreInitial: true,
-        ignored: WATCHER_IGNORED,
-        awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
-      });
-      configWatcher.on('all', (_event, path) => scheduleReloadIfChanged('config-watch', path || runtimePaths.configFile));
-      configWatcher.on('error', (error) => {
-        api.logger.warn(`[js-eyes] config watcher error: ${error.message}`);
-      });
-      api.logger.info(`[js-eyes] Watching host config: ${runtimePaths.configFile}`);
-    } catch (error) {
-      api.logger.warn(`[js-eyes] Failed to start config watcher: ${error.message}`);
-    }
-  } else if (fullRuntime && watchConfig && !chokidar) {
-    api.logger.warn(`[js-eyes] chokidar not installed; host-config hot reload disabled. Install chokidar to enable.`);
-  }
-
-  if (fullRuntime && devWatchSkills && chokidar) {
-    try {
-      const watchGlobs = [];
-      if (skillSources && skillSources.primary && nodeFs.existsSync(skillSources.primary)) {
-        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'skill.contract.js'));
-        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'package.json'));
-      }
-      for (const extra of (skillSources && skillSources.extras) || []) {
-        if (extra.kind === 'skill') {
-          watchGlobs.push(nodePath.join(extra.path, 'skill.contract.js'));
-          watchGlobs.push(nodePath.join(extra.path, 'package.json'));
-        } else {
-          watchGlobs.push(nodePath.join(extra.path, '*', 'skill.contract.js'));
-          watchGlobs.push(nodePath.join(extra.path, '*', 'package.json'));
-        }
-      }
-      if (watchGlobs.length > 0) {
-        skillDirWatcher = chokidar.watch(watchGlobs, {
-          persistent: true,
-          ignoreInitial: true,
-          ignored: WATCHER_IGNORED,
-          awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
-        });
-        skillDirWatcher.on('all', (_event, path) => scheduleReloadIfChanged('skill-dir-watch', path));
-        skillDirWatcher.on('error', (error) => {
-          api.logger.warn(`[js-eyes] skill dir watcher error: ${error.message}`);
-        });
-        api.logger.info(`[js-eyes] Watching ${watchGlobs.length} skill path(s) for hot reload`);
-      }
-    } catch (error) {
-      api.logger.warn(`[js-eyes] Failed to start skill-dir watcher: ${error.message}`);
-    }
-  }
-
-  api.registerCli(
-    ({ program }) => {
-      installCliExitHandlers();
-
-      const jsEyes = program
-        .command("js-eyes")
-        .description("JS Eyes — 浏览器自动化工具");
-
-      jsEyes
-        .command("status")
-        .description("查看 JS-Eyes 服务器连接状态")
-        .action(async () => {
-          try {
-            const url = `http://${serverHost}:${serverPort}/api/browser/status`;
-            const resp = await fetch(url, { headers: getLocalRequestHeaders() });
-            const data = await resp.json();
-            const d = data.data;
-            console.log("\n=== JS-Eyes Server Status ===");
-            console.log(`  运行时间: ${d.uptime}s`);
-            console.log(`  浏览器扩展: ${d.connections.extensions.length} 个`);
-            for (const ext of d.connections.extensions) {
-              console.log(`    - ${ext.browserName} (${ext.clientId}), ${ext.tabCount} 个标签页`);
-            }
-            console.log(`  自动化客户端: ${d.connections.automationClients} 个`);
-            console.log(`  标签页总数: ${d.tabs}`);
-            console.log(`  待处理请求: ${d.pendingRequests}\n`);
-            await exitCli(true);
-          } catch (err) {
-            console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
-            await exitCli(false);
-          }
-        });
-
-      jsEyes
-        .command("tabs")
-        .description("列出所有浏览器标签页")
-        .action(async () => {
-          try {
-            const url = `http://${serverHost}:${serverPort}/api/browser/tabs`;
-            const resp = await fetch(url, { headers: getLocalRequestHeaders() });
-            const data = await resp.json();
-            if (!data.browsers || data.browsers.length === 0) {
-              console.log("\n当前没有浏览器扩展连接。\n");
-              await exitCli(true);
-              return;
-            }
-            console.log("");
-            for (const browser of data.browsers) {
-              console.log(`=== ${browser.browserName} (${browser.clientId}) ===`);
-              for (const tab of browser.tabs) {
-                const active = tab.id === data.activeTabId ? " [ACTIVE]" : "";
-                console.log(`  [${tab.id}] ${tab.title || "(untitled)"}${active}`);
-                console.log(`       ${tab.url}`);
-              }
-            }
-            console.log("");
-            await exitCli(true);
-          } catch (err) {
-            console.error(`无法连接到服务器 (${serverHost}:${serverPort}): ${err.message}`);
-            await exitCli(false);
-          }
-        });
-
-      const serverCmd = jsEyes.command("server").description("管理 JS-Eyes 内置服务器");
-
-      serverCmd
-        .command("start")
-        .description("启动内置服务器")
-        .action(async () => {
-          if (server || sharedServerState.instance) {
-            console.log("服务器已在运行中。");
-            return;
-          }
-          try {
-            server = createServer({
-              port: serverPort,
-              host: serverHost,
-              logger: console,
-            });
-            await server.start();
-            console.log(`服务器已启动: ws://${serverHost}:${serverPort}`);
-          } catch (err) {
-            console.error(`启动失败: ${err.message}`);
-            server = null;
-          }
-        });
-
-      serverCmd
-        .command("stop")
-        .description("停止内置服务器")
-        .action(async () => {
-          try {
-            if (!server) {
-              console.log("服务器未在运行。");
-              await exitCli(true);
-              return;
-            }
-            await server.stop();
-            server = null;
-            if (bot) {
-              try { bot.disconnect(); } catch {}
-              bot = null;
-            }
-            console.log("服务器已停止。");
-            await exitCli(true);
-          } catch (err) {
-            console.error(`停止失败: ${err.message}`);
-            await exitCli(false);
-          }
-        });
-    },
-    { commands: ["js-eyes"] },
-  );
-
-  currentRegistration = {
+  lifecycle.setCurrentRegistration({
     api,
     mode,
     hadSidecars: fullRuntime,
     teardownSidecars,
     teardown: teardownRegistration,
-  };
+  });
 }
 
 const definition = {
