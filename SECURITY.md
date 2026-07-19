@@ -12,6 +12,12 @@
 > changes are install-time UX only and do not touch the runtime callsites
 > tracked by the scan).
 
+## Reporting a vulnerability
+
+Use GitHub's private vulnerability reporting flow from the repository's **Security** tab. Include the affected component and version or commit, reproduction steps, expected and observed impact, and any known mitigation.
+
+Do not open a public issue for a suspected vulnerability or disclose it before a fix or coordinated disclosure plan is available. Routine dependency updates and non-sensitive bugs can use normal GitHub issues.
+
 ## Overview
 
 JS Eyes is a **local-first** browser automation stack. Its normal runtime loop talks only to the JS Eyes server you configure, which defaults to `localhost:18080`.
