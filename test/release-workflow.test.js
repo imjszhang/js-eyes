@@ -33,7 +33,7 @@ describe('controlled release contract', () => {
     assert.match(workflow, /environment: release-production/);
     assert.match(workflow, /id-token: write/);
     assert.match(workflow, /node-version: 24/);
-    assert.match(workflow, /npm@11\.5\.1/);
+    assert.match(workflow, /npm@11\.18\.0/);
     assert.doesNotMatch(workflow, /NPM_TOKEN|npm_key/);
   });
 
