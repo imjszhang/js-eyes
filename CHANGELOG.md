@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.4] - 2026-07-19
+
+> **Browser compatibility fixes, reproducible release gates, and hotspot
+> refactoring.** Platform/core package versions, extension manifests, and the
+> OpenClaw plugin are synchronized to `2.8.4`; bundled sub-skills retain their
+> independent versions.
+
+### Added
+
+- Chrome MV3 `userScripts` execution path for approved arbitrary JavaScript,
+  with explicit availability errors and Promise-result support.
+- WebSocket handshake coverage for both `jse-token.<token>` SDK clients and
+  `bearer.<token>` browser-extension clients.
+- Repository-wide lint, typecheck, coverage, package-smoke, extension-sync, and
+  controlled release workflows.
+- Contributor automation, Dependabot configuration, ownership-oriented tests,
+  and modular boundary checks.
+- `js-x-ops-skill@3.8.5` media download/upload, Article/DraftJS processing,
+  official API routing and retry improvements, promoted-content detection, and
+  expanded tests.
+
+### Changed
+
+- Split CLI commands, OpenClaw registration, devtools build responsibilities,
+  browser background orchestration, and X skill post/API hotspots into bounded
+  modules.
+- Consolidated browser-neutral extension behavior under `extensions/shared`
+  with generated-copy consistency checks.
+- Browser tokens are carried in the WebSocket subprotocol and are no longer
+  duplicated into connection URLs.
+- Normal local builds are unsigned; signing and external publication are
+  isolated behind the protected release workflow.
+
+### Fixed
+
+- Chrome handshake failures caused by the server not echoing the extension's
+  requested `bearer.<token>` subprotocol.
+- Chrome `execute_script` returning `null` under Manifest V3 CSP.
+- Firefox background startup failures caused by classic-script scope
+  collisions after module extraction.
+- Unchecked Chrome popup `runtime.lastError` noise when an extension reload
+  temporarily removes the message receiver.
+
 ## [2.8.3] - 2026-06-26
 
 > **Site pipeline + bundled HN skill + sub-skill feature drops.** Platform/core
