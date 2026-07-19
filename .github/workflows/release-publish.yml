@@ -154,9 +154,9 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
-      - name: Install OIDC-capable npm CLI
+      - name: Install npm CLI with trusted publishing support
         if: inputs.publish_npm
-        run: npm install --global npm@11.5.1
+        run: npm install --global npm@11.18.0
 
       - name: Publish npm packages through OIDC
         if: inputs.publish_npm
