@@ -130,6 +130,53 @@ describe('extension shared runtime contract', () => {
     }
   });
 
+  it('uses the published browser token subprotocol without leaking it into WebSocket URLs', () => {
+    for (const platform of ['chrome', 'firefox']) {
+      const source = read(`extensions/${platform}/background/platform-connection-methods.js`);
+      assert.match(source, /`bearer\.\$\{this\.serverToken\}`/);
+      assert.match(source, /new WebSocket\(this\.serverUrl, wsProtocols\)/);
+      assert.doesNotMatch(source, /searchParams\.set\(['"]token['"]/);
+      assert.doesNotMatch(source, /encodeURIComponent\(this\.serverToken\)/);
+    }
+  });
+
+  it('consumes Chrome runtime.lastError when the popup message receiver is unavailable', () => {
+    const popup = read('extensions/chrome/popup/popup.js');
+    assert.match(popup, /sendRuntimeMessage\(message, callback/);
+    assert.match(popup, /const error = chrome\.runtime\.lastError/);
+    assert.equal((popup.match(/chrome\.runtime\.sendMessage/g) || []).length, 1);
+  });
+
+  it('uses the Chrome userScripts API for arbitrary code instead of CSP-blocked eval', async () => {
+    const manifest = JSON.parse(read('extensions/chrome/manifest.json'));
+    assert.ok(manifest.permissions.includes('userScripts'));
+    assert.match(read('extensions/chrome/background/background.js'), /import '\.\/user-script-executor\.js';/);
+
+    const { executeUserScript } = require('../extensions/chrome/background/user-script-executor');
+    const calls = [];
+    const chromeApi = {
+      userScripts: {
+        async execute(injection) {
+          calls.push(injection);
+          return [{ frameId: 0, result: { answer: 42 } }];
+        },
+      },
+    };
+
+    assert.deepEqual(await executeUserScript('7', '({ answer: 42 })', chromeApi), { answer: 42 });
+    assert.deepEqual(calls, [{ target: { tabId: 7 }, js: [{ code: '({ answer: 42 })' }] }]);
+    await assert.rejects(
+      executeUserScript(7, '1 + 1', {}),
+      (error) => error.code === 'USER_SCRIPTS_UNAVAILABLE',
+    );
+
+    for (const moduleName of ['operations', 'runtime']) {
+      const source = read(`extensions/chrome/background/platform-${moduleName}-methods.js`);
+      assert.match(source, /executeUserScript\(/);
+      assert.doesNotMatch(source, /eval\(scriptCode\)/);
+    }
+  });
+
   it('keeps the compatibility facade thin and each method module bounded', () => {
     assert.ok(read('extensions/shared/browser-control-methods.js').split('\n').length <= 50);
     for (const name of methodModuleNames) {

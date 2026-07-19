@@ -1,6 +1,7 @@
 'use strict';
 
 function createMethods() {
+  const { executeUserScript } = globalThis.JSEyesChromeUserScriptExecutor;
   return {
 setupMessageListeners() {
     // 监听来自popup和content script的消息
@@ -164,37 +165,21 @@ async handleExecuteScriptRequest(payload, sender) {
         return { success: false, error: '无法确定目标标签页' };
       }
 
-      const executeCode = async function(scriptCode) {
-        try {
-          const result = eval(scriptCode);
-          if (result && typeof result.then === 'function') {
-            return await result;
-          }
-          return result;
-        } catch (error) {
-          throw new Error('脚本执行错误: ' + error.message);
-        }
-      };
-
-      const results = await this.withTimeout(
-        chrome.scripting.executeScript({
-          target: { tabId: targetTabId },
-          func: executeCode,
-          args: [code]
-        }),
+      const result = await this.withTimeout(
+        executeUserScript(targetTabId, code),
         timeout,
         '脚本执行超时'
       );
 
       return {
         success: true,
-        data: { result: results[0]?.result, tabId: targetTabId }
+        data: { result, tabId: targetTabId }
       };
     } catch (error) {
       return {
         success: false,
         error: error.message,
-        code: error.message.includes('超时') ? 'TIMEOUT' : 'SCRIPT_ERROR'
+        code: error.code || (error.message.includes('超时') ? 'TIMEOUT' : 'SCRIPT_ERROR')
       };
     }
   },

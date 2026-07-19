@@ -100,6 +100,21 @@ class JSEyesPopup {
   }
 
   /**
+   * 发送消息并消费 Chrome callback API 的 runtime.lastError，避免扩展重载后
+   * 旧 popup/content 上下文产生 "Receiving end does not exist" 未处理告警。
+   */
+  sendRuntimeMessage(message, callback = () => {}) {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        const error = chrome.runtime.lastError;
+        callback(error ? undefined : response, error || null);
+      });
+    } catch (error) {
+      callback(undefined, error);
+    }
+  }
+
+  /**
    * 设置事件监听器
    */
   setupEventListeners() {
@@ -164,7 +179,7 @@ class JSEyesPopup {
   async syncTokenFromNativeHost() {
     const statusEl = document.getElementById('sync-token-status');
     if (statusEl) statusEl.textContent = 'Syncing...';
-    chrome.runtime.sendMessage({ type: 'sync_token_from_native' }, (response) => {
+    this.sendRuntimeMessage({ type: 'sync_token_from_native' }, (response) => {
       if (response && response.success) {
         if (statusEl) statusEl.textContent = 'Synced';
         if (this.showStatus) this.showStatus('Token synced from local host', 'success');
@@ -183,7 +198,7 @@ class JSEyesPopup {
       this.showStatus && this.showStatus('Server token cannot be empty', 'error');
       return;
     }
-    chrome.runtime.sendMessage({ type: 'save_server_token', token }, (response) => {
+    this.sendRuntimeMessage({ type: 'save_server_token', token }, (response) => {
       if (response && response.success) {
         input.value = '';
         if (this.showStatus) this.showStatus('Server token saved', 'success');
@@ -194,7 +209,7 @@ class JSEyesPopup {
   }
 
   async clearServerToken() {
-    chrome.runtime.sendMessage({ type: 'clear_server_token' }, (response) => {
+    this.sendRuntimeMessage({ type: 'clear_server_token' }, (response) => {
       if (response && response.success && this.showStatus) {
         this.showStatus('Server token cleared', 'success');
       }
@@ -254,7 +269,7 @@ class JSEyesPopup {
       await this.saveSetting('autoConnect', enabled);
       
       // 通知background script更新自动连接设置
-      chrome.runtime.sendMessage({
+      this.sendRuntimeMessage({
         type: 'set_auto_connect',
         autoConnect: enabled
       }, (response) => {
@@ -319,7 +334,7 @@ class JSEyesPopup {
   async updateStatus() {
     try {
       // 获取background script的连接状态
-      chrome.runtime.sendMessage({
+      this.sendRuntimeMessage({
         type: 'get_connection_status'
       }, (response) => {
         if (response) {
@@ -328,7 +343,7 @@ class JSEyesPopup {
       });
       
       // 获取扩展状态（包含健康检查等新信息）
-      chrome.runtime.sendMessage({
+      this.sendRuntimeMessage({
         type: 'get_extended_status'
       }, (extendedStatus) => {
         if (extendedStatus) {
@@ -519,7 +534,7 @@ class JSEyesPopup {
       this.addLog(chrome.i18n.getMessage('logReconnecting'));
       
       // 通知background script使用新设置重新连接
-      chrome.runtime.sendMessage({
+      this.sendRuntimeMessage({
         type: 'reconnect'
       }, (response) => {
         if (response && response.success) {
@@ -548,7 +563,7 @@ class JSEyesPopup {
       this.addLog(chrome.i18n.getMessage('logSendingData'));
       
       // 通知background script发送数据
-      chrome.runtime.sendMessage({
+      this.sendRuntimeMessage({
         type: 'send_tabs_data'
       }, (response) => {
         if (response && response.success) {

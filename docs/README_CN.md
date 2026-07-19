@@ -86,7 +86,7 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 - **健康检查与熔断** — 服务健康监控，自动熔断保护
 - **限流与去重** — 请求速率限制和去重，提升稳定性
 - **Native Messaging Token 同步（2.4.0+）** — 浏览器扩展通过 Native Messaging 自动从本机 CLI 获取 `server.token` 与 HTTP 地址，默认无需手动粘贴
-- **Bearer Token 认证** — WebSocket 升级通过 `Sec-WebSocket-Protocol: bearer.<token>` 与 `?token=<token>`（仅 loopback）认证；匿名模式由 `security.allowAnonymous` 控制
+- **Bearer Token 认证** — 浏览器扩展通过 `Sec-WebSocket-Protocol: bearer.<token>` 完成 WebSocket 升级认证；服务端同时接受 SDK 使用的 `jse-token.<token>` 和仅限 loopback 的旧版 `?token=<token>` fallback；匿名模式由 `security.allowAnonymous` 控制
 - **扩展技能** — 发现并安装高级技能（如 X.com 搜索），基于基础自动化之上构建
 
 ## 支持的浏览器
@@ -116,6 +116,8 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 2. 开启右上角的"开发者模式"
 3. 点击"加载已解压的扩展程序"
 4. 选择 `extensions/chrome` 文件夹
+
+Chrome/Edge 的原始 `execute_script` 额外需要 135+ 版本。138+ 请进入扩展详情页开启“允许用户脚本”；135-137 保持开发者模式即可。其他扩展功能仍支持上表中的基础版本。
 
 #### Firefox
 

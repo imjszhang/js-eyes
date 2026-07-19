@@ -300,20 +300,12 @@ connect() {
 
       this.authState = 'disconnected';
 
-      let wsUrl = this.serverUrl;
-      let wsProtocols = undefined;
-      if (this.serverToken && typeof this.serverToken === 'string') {
-        try {
-          const u = new URL(this.serverUrl);
-          u.searchParams.set('token', this.serverToken);
-          wsUrl = u.toString();
-        } catch (_) {
-          const sep = this.serverUrl.includes('?') ? '&' : '?';
-          wsUrl = `${this.serverUrl}${sep}token=${encodeURIComponent(this.serverToken)}`;
-        }
-        wsProtocols = [`bearer.${this.serverToken}`, 'js-eyes'];
-      }
-      this.ws = wsProtocols ? new WebSocket(wsUrl, wsProtocols) : new WebSocket(wsUrl);
+      const wsProtocols = this.serverToken && typeof this.serverToken === 'string'
+        ? [`bearer.${this.serverToken}`, 'js-eyes']
+        : undefined;
+      this.ws = wsProtocols
+        ? new WebSocket(this.serverUrl, wsProtocols)
+        : new WebSocket(this.serverUrl);
 
       this.ws.onopen = () => {
         if (connectionId !== this._currentConnectionId) {

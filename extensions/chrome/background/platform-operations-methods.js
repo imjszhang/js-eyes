@@ -1,6 +1,7 @@
 'use strict';
 
 function createMethods() {
+  const { executeUserScript } = globalThis.JSEyesChromeUserScriptExecutor;
   return {
 async handleOpenUrl(message) {
     const { url, tabId, windowId, requestId } = message;
@@ -156,24 +157,8 @@ async handleExecuteScript(message) {
     }
 
     try {
-      const executeCode = async function(scriptCode) {
-        try {
-          const result = eval(scriptCode);
-          if (result && typeof result.then === 'function') {
-            return await result;
-          }
-          return result;
-        } catch (error) {
-          throw new Error('脚本执行错误: ' + error.message);
-        }
-      };
-
       const results = await this.withTimeout(
-        chrome.scripting.executeScript({
-          target: { tabId: parseInt(tabId) },
-          func: executeCode,
-          args: [code]
-        }),
+        executeUserScript(tabId, code),
         timeout,
         '脚本执行超时'
       );
@@ -181,7 +166,7 @@ async handleExecuteScript(message) {
       this.sendMessage({
         type: 'execute_script_complete',
         tabId: tabId,
-        result: results[0]?.result,
+        result: results,
         requestId: requestId,
         timestamp: new Date().toISOString()
       });
@@ -192,7 +177,7 @@ async handleExecuteScript(message) {
         type: 'error',
         message: error.message,
         requestId: requestId,
-        code: error.message.includes('超时') ? 'TIMEOUT' : 'SCRIPT_ERROR'
+        code: error.code || (error.message.includes('超时') ? 'TIMEOUT' : 'SCRIPT_ERROR')
       });
     } finally {
       if (this.queueManager && requestId) {

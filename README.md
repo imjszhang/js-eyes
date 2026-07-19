@@ -100,7 +100,7 @@ Development requires Node.js 22 or newer. Install the committed dependency graph
 - **Health Check & Circuit Breaker** — Service health monitoring with automatic circuit breaker protection
 - **Rate Limiting & Deduplication** — Request rate limiting and deduplication for stability
 - **Native Messaging Token Sync (2.4.0+)** — Browser extensions auto-fetch `server.token` and HTTP URL from the local CLI via Native Messaging; no manual copy-paste in the default flow
-- **Bearer Token Authentication** — WebSocket upgrades authenticated via `Sec-WebSocket-Protocol: bearer.<token>` and `?token=<token>` (loopback only). Anonymous mode gated by `security.allowAnonymous`
+- **Bearer Token Authentication** — Browser extensions authenticate WebSocket upgrades via `Sec-WebSocket-Protocol: bearer.<token>`; the server also accepts the SDK form `jse-token.<token>` and the legacy loopback-only `?token=<token>` fallback. Anonymous mode gated by `security.allowAnonymous`
 - **Extension Skills** — Discover and install higher-level skills (e.g. X.com search) on top of base automation
 
 ## Supported Browsers
@@ -130,6 +130,8 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 2. Enable "Developer mode" in the top right
 3. Click "Load unpacked"
 4. Select the `extensions/chrome` folder
+
+Raw `execute_script` support on Chrome/Edge additionally requires version 135+. On version 138+, open the extension details and enable **Allow User Scripts**; on versions 135-137, keeping Developer mode enabled is sufficient. Other extension features remain available on the baseline versions above.
 
 #### Firefox
 

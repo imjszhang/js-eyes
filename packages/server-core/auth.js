@@ -7,6 +7,11 @@ const {
 } = require('@js-eyes/protocol');
 
 const WS_SUBPROTOCOL_PREFIX = 'jse-token.';
+const LEGACY_WS_SUBPROTOCOL_PREFIX = 'bearer.';
+const WS_SUBPROTOCOL_PREFIXES = Object.freeze([
+  WS_SUBPROTOCOL_PREFIX,
+  LEGACY_WS_SUBPROTOCOL_PREFIX,
+]);
 
 function getQueryToken(requestUrl, host) {
   try {
@@ -31,11 +36,18 @@ function getSubprotocolToken(headers) {
   if (!raw) return null;
   const items = String(raw).split(',').map((s) => s.trim()).filter(Boolean);
   for (const item of items) {
-    if (item.startsWith(WS_SUBPROTOCOL_PREFIX)) {
-      return item.slice(WS_SUBPROTOCOL_PREFIX.length);
+    for (const prefix of WS_SUBPROTOCOL_PREFIXES) {
+      if (item.startsWith(prefix)) {
+        return item.slice(prefix.length);
+      }
     }
   }
   return null;
+}
+
+function isTokenSubprotocol(protocol) {
+  return typeof protocol === 'string'
+    && WS_SUBPROTOCOL_PREFIXES.some((prefix) => protocol.startsWith(prefix));
 }
 
 function extractToken({ headers, url, host }) {
@@ -86,9 +98,12 @@ function checkAccess(options) {
 
 module.exports = {
   WS_SUBPROTOCOL_PREFIX,
+  LEGACY_WS_SUBPROTOCOL_PREFIX,
+  WS_SUBPROTOCOL_PREFIXES,
   checkAccess,
   extractToken,
   getBearerToken,
   getQueryToken,
   getSubprotocolToken,
+  isTokenSubprotocol,
 };
