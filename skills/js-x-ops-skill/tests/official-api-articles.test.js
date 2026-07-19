@@ -107,6 +107,15 @@ test('markdownToDraftJs converts headers lists quote and inline styles', () => {
   assert.ok(cs.blocks.some((b) => b.type === 'blockquote'));
 });
 
+test('markdownToDraftJs downgrades ### to header-two (X API rejects header-three)', () => {
+  const { content_state: cs } = markdownToDraftJs('## Section\n\n### Subsection\n\nBody');
+  assert.equal(cs.blocks[0].type, 'header-two');
+  assert.equal(cs.blocks[0].text, 'Section');
+  assert.equal(cs.blocks[1].type, 'header-two');
+  assert.equal(cs.blocks[1].text, 'Subsection');
+  assert.ok(!cs.blocks.some((b) => b.type === 'header-three'));
+});
+
 test('markdownToDraftJs creates link entity with correct range', () => {
   const { content_state: cs } = markdownToDraftJs('See [Docs](https://example.com) now');
   const block = cs.blocks[0];
