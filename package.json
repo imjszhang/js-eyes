@@ -35,6 +35,7 @@
     "test:all": "npm run test:root && npm run test:workspaces",
     "test:root": "node --test test/*.test.js",
     "test:workspaces": "npm run test --workspaces --if-present",
+    "test:coverage": "node scripts/test-coverage.js",
     "lint": "eslint apps packages skills extensions openclaw-plugin test scripts src",
     "lint:fix": "npm run lint -- --fix",
     "typecheck": "npm run typecheck:core",
