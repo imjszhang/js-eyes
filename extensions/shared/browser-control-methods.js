@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 function resolveMethodModules() {
   if (typeof module !== 'undefined' && module.exports) {
     return [
@@ -30,3 +31,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = sharedBrowserControl;
 }
 globalThis.JSEyesSharedBrowserControl = sharedBrowserControl;
+})();

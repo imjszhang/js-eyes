@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 function createMethods() {
   return {
 async sendTabsData() {
@@ -42,3 +43,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = platformMethods;
 }
 globalThis.JSEyesPlatformTabsMethods = platformMethods;
+})();

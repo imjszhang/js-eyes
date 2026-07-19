@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 const EXTENSION_CONFIG = globalThis.EXTENSION_CONFIG;
 const ExtensionUtils = globalThis.ExtensionUtils;
 
@@ -702,3 +703,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = platformMethods;
 }
 globalThis.JSEyesPlatformConnectionMethods = platformMethods;
+})();

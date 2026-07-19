@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 function createMethods() {
   return {
 async handleOpenUrl(message) {
@@ -585,3 +586,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = platformMethods;
 }
 globalThis.JSEyesPlatformOperationsMethods = platformMethods;
+})();

@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 function createMethods(extensionApi) {
   if (!extensionApi) throw new TypeError('extensionApi is required');
   return {
@@ -206,3 +207,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = sharedMethods;
 }
 globalThis.JSEyesConnectionMethods = sharedMethods;
+})();
