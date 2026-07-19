@@ -248,7 +248,9 @@ function classifyLine(line) {
   const header = trimmed.match(/^(#{1,3})\s+(.+)$/);
   if (header) {
     const level = header[1].length;
-    const type = level === 1 ? 'header-one' : level === 2 ? 'header-two' : 'header-three';
+    // X 的 /2/articles/draft 对 header-three 返回 503（尽管官方 OpenAPI
+    // enum 包含它，编辑器实际只有两级标题），### 降级为 header-two。
+    const type = level === 1 ? 'header-one' : 'header-two';
     return { kind: 'block', type, text: header[2] };
   }
 
