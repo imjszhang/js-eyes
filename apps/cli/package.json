@@ -11,6 +11,11 @@
     "js-eyes": "bin/js-eyes.js"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "apps/cli"
+  },
   "dependencies": {
     "@js-eyes/config": "2.8.3",
     "@js-eyes/native-host": "2.8.3",

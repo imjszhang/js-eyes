@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "npx serve src",
-    "build": "node packages/devtools/bin/js-eyes-dev.js build all --clean",
+    "build": "node packages/devtools/bin/js-eyes-dev.js build all --clean --no-sign",
     "build:skill": "node packages/devtools/bin/js-eyes-dev.js build skill",
     "build:site": "node packages/devtools/bin/js-eyes-dev.js build site --clean",
     "build:chrome": "node packages/devtools/bin/js-eyes-dev.js build chrome",
@@ -29,6 +29,9 @@
     "publish:clawhub": "node packages/devtools/bin/js-eyes-dev.js release --skip-bundle --skip-extensions --skip-npm --skip-tag --skip-github",
     "release": "node packages/devtools/bin/js-eyes-dev.js release",
     "release:dry-run": "node packages/devtools/bin/js-eyes-dev.js release --dry-run",
+    "release:verify": "node scripts/verify-release.js",
+    "release:prepare-packages": "node scripts/prepare-release-packages.js dist/release-packages",
+    "release:publish-packages": "node scripts/publish-release-packages.js",
     "setup:gh-pages": "node packages/devtools/bin/js-eyes-dev.js setup-github-pages",
     "setup:cloudflare": "node packages/devtools/bin/js-eyes-dev.js setup-cloudflare",
     "test": "npm run test:all",

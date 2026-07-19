@@ -39,6 +39,11 @@ npm run build:chrome
 npm run build:firefox:dev
 ```
 
+Release candidates can be checked locally with `npm run release:verify` and
+`npm run release:prepare-packages`. Real publication is intentionally restricted
+to the manual `release-publish.yml` workflow and its `release-production`
+environment.
+
 Useful focused commands include:
 
 ```bash

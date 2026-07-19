@@ -9,7 +9,7 @@
  * Bump:        sync version across manifests
  */
 
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -767,7 +767,7 @@ async function buildFirefox(t, sign = true) {
 
   console.log(`  ${t('firefox.checkPrereqs')}`);
   try {
-    execSync('web-ext --version', { stdio: 'pipe' });
+    execFileSync('web-ext', ['--version'], { stdio: 'pipe' });
     console.log(`  ✓ ${t('firefox.webextOk')}`);
   } catch {
     console.error(`  ✗ ${t('firefox.webextMissing')}`);
@@ -804,20 +804,27 @@ async function buildFirefox(t, sign = true) {
 
   console.log(`  ${t('firefox.signing')}`);
   try {
-    const cmd = `web-ext sign --api-key="${apiCfg.apiKey}" --api-secret="${apiCfg.apiSecret}" --artifacts-dir="${SIGNED_DIR}" --channel=unlisted`;
-    console.log(`  ${t('firefox.execCmd').replace('{cmd}', cmd.replace(apiCfg.apiKey, '***').replace(apiCfg.apiSecret, '***'))}`);
+    const args = [
+      'sign',
+      `--api-key=${apiCfg.apiKey}`,
+      `--api-secret=${apiCfg.apiSecret}`,
+      `--artifacts-dir=${SIGNED_DIR}`,
+      '--channel=unlisted',
+    ];
+    console.log(`  ${t('firefox.execCmd').replace('{cmd}', 'web-ext sign --api-key=*** --api-secret=*** --channel=unlisted')}`);
 
-    execSync(cmd, { cwd: FIREFOX_DIR, stdio: 'inherit' });
+    execFileSync('web-ext', args, { cwd: FIREFOX_DIR, stdio: 'inherit' });
     console.log(`  ✓ ${t('firefox.signOk')}`);
     finalizeFirefoxArtifact(t, version);
   } catch (e) {
-    const message = e && typeof e.message === 'string' ? e.message : '';
+    const message = e && e.stderr ? String(e.stderr) : '';
     if (message.includes('This upload has already been submitted.')) {
       console.log(`  ⚠ Firefox ${version} has already been submitted to AMO, reusing the existing signed artifact`);
       finalizeFirefoxArtifact(t, version);
       return;
     }
-    console.error(`  ✗ ${t('firefox.signFailed').replace('{msg}', e.message)}`);
+    const exitCode = e && typeof e.status === 'number' ? `exit code ${e.status}` : 'web-ext failed';
+    console.error(`  ✗ ${t('firefox.signFailed').replace('{msg}', exitCode)}`);
     process.exit(1);
   }
 }
