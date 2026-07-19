@@ -59,7 +59,7 @@ describe('controlled release contract', () => {
   });
 
   it('uses argument-based Firefox signing and keeps normal builds unsigned', () => {
-    const builder = read('packages/devtools/lib/builder.js');
+    const builder = read('packages/devtools/lib/build/extensions.js');
     const pkg = JSON.parse(read('package.json'));
     assert.match(builder, /execFileSync\('web-ext', args/);
     assert.doesNotMatch(builder, /execSync\(cmd, \{ cwd: FIREFOX_DIR/);
