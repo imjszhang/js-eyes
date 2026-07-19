@@ -29,5 +29,6 @@
 
 ## 维护者流程
 
+- [代码热点拆分实施计划](hotspot-refactor-plan.zh.md) — CLI、OpenClaw、构建器、扩展后台与 X Skill 的分阶段重构方案
 - [Release SOP](../../RELEASE.md) — 从 `develop` 切到 `main` 的完整清单
 - [发布 `@js-eyes/*` 运行时包](../../RELEASE.md#25-publish-js-eyes-workspace-packages-first-time-or-version-bump) — `npm run publish:workspaces` 逐包拓扑发布（幂等，已发版本会跳过）
