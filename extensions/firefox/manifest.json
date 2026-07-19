@@ -20,6 +20,7 @@
     "scripts": [
       "config.js",
       "background/utils.js",
+      "background/browser-control-methods.js",
       "background/background.js"
     ],
     "persistent": true

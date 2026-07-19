@@ -24,6 +24,7 @@ Run the complete local quality gate before opening a pull request:
 npm test
 npm run lint
 npm run typecheck
+npm run check:extension-shared
 npm run scan:security
 npm audit
 npm run package:smoke
@@ -48,6 +49,11 @@ npm run test:extension
 npm run test:client
 npm run test:cli
 ```
+
+Cross-browser background configuration, stability helpers, and shared
+`BrowserControl` methods live in `extensions/shared`. After editing them, run
+`npm run sync:extension-shared`; CI and both extension builders reject stale
+Chrome/Firefox runtime copies.
 
 ## Dependency changes
 

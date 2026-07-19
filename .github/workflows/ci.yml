@@ -37,6 +37,9 @@ jobs:
       - name: Type-check core runtime
         run: npm run typecheck
 
+      - name: Verify generated extension shared runtime
+        run: npm run check:extension-shared
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -79,8 +82,8 @@ jobs:
         run: >-
           node --test
           test/import-boundaries.test.js
-          test/safe-npm.test.js
-          test/extra-integrity.test.js
+          packages/protocol/tests/safe-npm.test.js
+          packages/protocol/tests/extra-integrity.test.js
 
       - name: Audit production dependencies
         run: npm audit --omit=dev

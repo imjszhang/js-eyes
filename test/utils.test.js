@@ -9,7 +9,7 @@ const {
   RequestDeduplicator,
   RequestQueueManager,
   HealthChecker,
-} = require('../extensions/firefox/background/utils');
+} = require('../extensions/shared/utils');
 
 // ── withTimeout ──────────────────────────────────────────────────────
 

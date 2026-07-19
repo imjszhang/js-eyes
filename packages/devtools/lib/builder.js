@@ -26,6 +26,12 @@ const PKG_PATH = path.join(PROJECT_ROOT, 'package.json');
 const CHROME_MANIFEST = path.join(CHROME_DIR, 'manifest.json');
 const FIREFOX_MANIFEST = path.join(FIREFOX_DIR, 'manifest.json');
 
+const EXTENSION_SHARED_COPIES = [
+  ['config.js', 'config.js'],
+  ['utils.js', path.join('background', 'utils.js')],
+  ['browser-control-methods.js', path.join('background', 'browser-control-methods.js')],
+];
+
 const EXCLUDE_PATTERNS = [
   '.git/**', '**/.git/**', '**/.DS_Store', '**/Thumbs.db',
   '**/*.swp', '**/*.swo', '.amo-upload-uuid', 'node_modules/**',
@@ -41,6 +47,17 @@ function getVersion() {
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function assertExtensionSharedRuntime(extensionDir) {
+  const sharedDir = path.join(EXTENSIONS_DIR, 'shared');
+  for (const [sourceName, targetName] of EXTENSION_SHARED_COPIES) {
+    const source = fs.readFileSync(path.join(sharedDir, sourceName));
+    const targetPath = path.join(extensionDir, targetName);
+    if (!fs.existsSync(targetPath) || !source.equals(fs.readFileSync(targetPath))) {
+      throw new Error(`${path.relative(PROJECT_ROOT, targetPath)} is stale; run npm run sync:extension-shared`);
+    }
+  }
 }
 
 function formatSize(bytes) {
@@ -662,6 +679,7 @@ async function buildChrome(t) {
     console.error(`  ✗ ${t('chrome.dirMissing')}`);
     process.exit(1);
   }
+  assertExtensionSharedRuntime(CHROME_DIR);
 
   ensureDir(DIST_DIR);
 
@@ -736,6 +754,7 @@ async function buildFirefox(t, sign = true) {
     console.error(`  ✗ ${t('firefox.manifestMissing')}`);
     process.exit(1);
   }
+  assertExtensionSharedRuntime(FIREFOX_DIR);
 
   if (!sign) {
     console.log(`  ⚠ ${t('firefox.skipSign')}`);
