@@ -1,5 +1,6 @@
 'use strict';
 
+(() => {
 function createMethods() {
   return {
 sendNotification(message) {
@@ -274,3 +275,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = platformMethods;
 }
 globalThis.JSEyesPlatformServerMethods = platformMethods;
+})();

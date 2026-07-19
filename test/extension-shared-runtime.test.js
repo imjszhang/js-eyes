@@ -4,6 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.join(__dirname, '..');
 const config = require('../extensions/shared/config');
@@ -56,6 +57,77 @@ describe('extension shared runtime contract', () => {
       'background/platform-tabs-methods.js',
       'background/background.js',
     ]);
+  });
+
+  it('loads Firefox background dependencies in one classic-script scope', () => {
+    const firefoxManifest = JSON.parse(read('extensions/firefox/manifest.json'));
+    const context = vm.createContext({ console });
+    const dependencyScripts = firefoxManifest.background.scripts.slice(0, -1);
+
+    for (const relativePath of dependencyScripts) {
+      vm.runInContext(read(path.join('extensions/firefox', relativePath)), context, {
+        filename: relativePath,
+      });
+    }
+
+    for (const globalName of [
+      'JSEyesConnectionMethods',
+      'JSEyesMessagingMethods',
+      'JSEyesBrowserOperationMethods',
+      'JSEyesRuntimeRoutingMethods',
+      'JSEyesTabSyncMethods',
+      'JSEyesSharedBrowserControl',
+      'JSEyesPlatformConnectionMethods',
+      'JSEyesPlatformServerMethods',
+      'JSEyesPlatformOperationsMethods',
+      'JSEyesPlatformRuntimeMethods',
+      'JSEyesPlatformTabsMethods',
+    ]) {
+      assert.equal(typeof context[globalName]?.createMethods, 'function', globalName);
+    }
+  });
+
+  it('keeps the Firefox popup connection-status message contract', () => {
+    let listener;
+    const previousBrowser = globalThis.browser;
+    globalThis.browser = {
+      runtime: {
+        id: 'js-eyes-test',
+        onMessage: {
+          addListener(callback) {
+            listener = callback;
+          },
+        },
+      },
+    };
+
+    try {
+      const runtimeMethods = require('../extensions/firefox/background/platform-runtime-methods').createMethods();
+      const control = {
+        ...runtimeMethods,
+        isConnected: false,
+        serverUrl: 'ws://localhost:18080',
+        reconnectAttempts: 0,
+      };
+      control.setupMessageListeners();
+
+      let response;
+      const keepsChannelOpen = listener(
+        { type: 'get_connection_status' },
+        { id: 'js-eyes-test' },
+        (value) => { response = value; },
+      );
+
+      assert.equal(keepsChannelOpen, true);
+      assert.deepEqual(response, {
+        isConnected: false,
+        serverUrl: 'ws://localhost:18080',
+        reconnectAttempts: 0,
+      });
+    } finally {
+      if (previousBrowser === undefined) delete globalThis.browser;
+      else globalThis.browser = previousBrowser;
+    }
   });
 
   it('keeps the compatibility facade thin and each method module bounded', () => {
