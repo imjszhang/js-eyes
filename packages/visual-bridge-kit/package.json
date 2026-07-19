@@ -3,6 +3,9 @@
   "version": "0.6.0",
   "description": "Reusable in-page visual feedback (HUD + flash overlays + jsonl trace + session bundles) for js-eyes bridge skills",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
   "exports": {
     ".": "./index.js",
     "./dev": "./dev/index.js",

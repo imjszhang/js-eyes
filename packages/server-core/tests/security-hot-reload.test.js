@@ -1,5 +1,7 @@
 'use strict';
 
+// Package-owned security reload and policy generation tests.
+
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

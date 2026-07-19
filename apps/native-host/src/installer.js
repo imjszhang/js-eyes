@@ -121,6 +121,11 @@ function defaultRegRun(argv) {
   execFileSync(cmd, args, { stdio: 'ignore' });
 }
 
+/**
+ * @param {{ browser: string, platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv,
+ *   home?: string, launcherDir?: string, hostScriptPath?: string, nodeExec?: string,
+ *   runRegistry?: (argv: string[]) => void }} options
+ */
 function installForBrowser({
   browser,
   platform = process.platform,
@@ -177,6 +182,10 @@ function installForBrowser({
   };
 }
 
+/**
+ * @param {{ browser: string, platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv,
+ *   home?: string, launcherDir?: string, runRegistry?: (argv: string[]) => void }} options
+ */
 function uninstallForBrowser({
   browser,
   platform = process.platform,

@@ -84,7 +84,7 @@ function ensureLoggedIn() {
   );
 }
 
-function publish({ skillDir, slug, version, changelog, tags, dryRun = false }) {
+function publish({ skillDir, slug, version, changelog, tags = null, dryRun = false }) {
   if (!available()) {
     throw new Error('clawhub CLI not installed (npm install -g clawhub)');
   }

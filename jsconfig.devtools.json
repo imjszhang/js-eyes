@@ -1,0 +1,7 @@
+{
+  "extends": "./jsconfig.core.json",
+  "include": [
+    "packages/devtools/**/*.js",
+    "types/**/*.d.ts"
+  ]
+}

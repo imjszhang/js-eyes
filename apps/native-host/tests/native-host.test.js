@@ -3,7 +3,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { encodeMessage, createFrameReader, MAX_MESSAGE_BYTES } = require('../apps/native-host/src/codec');
+const { encodeMessage, createFrameReader, MAX_MESSAGE_BYTES } = require('../src/codec');
 
 describe('native-host codec', () => {
   it('encodes JSON with 4-byte little-endian length header', () => {
@@ -69,7 +69,7 @@ describe('native-host codec', () => {
 });
 
 describe('native-host handleMessage', () => {
-  const { handleMessage } = require('../apps/native-host/src/host');
+  const { handleMessage } = require('../src/host');
 
   it('returns pong for ping', () => {
     const reply = handleMessage({ type: 'ping' });

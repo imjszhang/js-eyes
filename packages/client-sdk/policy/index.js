@@ -134,8 +134,6 @@ class PolicyContext {
   async evaluate(toolName, params = {}) {
     const reasons = [];
     let transformedParams = params;
-    const meta = { tool: toolName };
-
     if (this.taintEnabled && params && typeof params === 'object') {
       const scan = this.taint.scan(params);
       if (scan.hit) {

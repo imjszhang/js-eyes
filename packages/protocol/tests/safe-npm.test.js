@@ -7,7 +7,7 @@ const {
   ALLOWED_SUBCOMMANDS,
   SAFE_ENV_KEYS,
   buildSafeEnv,
-} = require('../packages/protocol/safe-npm');
+} = require('../safe-npm');
 
 describe('safe-npm allowlists', () => {
   it('ALLOWED_SUBCOMMANDS contains exactly ci and install', () => {
@@ -72,7 +72,7 @@ describe('safe-npm env construction', () => {
 
 describe('safe-npm rejects calls outside the allowlist', () => {
   it('exported runNpm-backed helpers never accept arbitrary subcommands', () => {
-    const mod = require('../packages/protocol/safe-npm');
+    const mod = require('../safe-npm');
     assert.equal(typeof mod.safeNpmCi, 'function');
     assert.equal(typeof mod.safeNpmInstall, 'function');
     assert.equal(mod.runAnything, undefined);

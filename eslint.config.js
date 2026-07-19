@@ -48,6 +48,30 @@ module.exports = [
   },
   {
     files: [
+      'apps/**/*.js',
+      'openclaw-plugin/**/*.mjs',
+      'packages/protocol/**/*.js',
+      'packages/runtime-paths/**/*.js',
+      'packages/config/**/*.js',
+      'packages/client-sdk/**/*.js',
+      'packages/server-core/**/*.js',
+      'packages/devtools/**/*.js',
+    ],
+    rules: {
+      'no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrors: 'none',
+          ignoreRestSiblings: true,
+        },
+      ],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: [
       'extensions/**/*.js',
       'src/**/*.js',
       'skills/*/bridges/**/*.js',

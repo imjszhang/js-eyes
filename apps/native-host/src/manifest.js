@@ -9,6 +9,7 @@ const FIREFOX_ALLOWED_EXTENSION_IDS = Object.freeze([FIREFOX_EXTENSION_ID]);
 
 const CHROME_ALLOWED_EXTENSION_IDS = Object.freeze([CHROME_EXTENSION_ID]);
 
+/** @param {{ launcherPath?: string, allowedExtensionIds?: readonly string[] }} [options] */
 function buildChromeManifest({ launcherPath, allowedExtensionIds = CHROME_ALLOWED_EXTENSION_IDS } = {}) {
   if (!launcherPath) {
     throw new Error('launcherPath is required');
@@ -23,6 +24,7 @@ function buildChromeManifest({ launcherPath, allowedExtensionIds = CHROME_ALLOWE
   };
 }
 
+/** @param {{ launcherPath?: string, allowedExtensionIds?: readonly string[] }} [options] */
 function buildFirefoxManifest({ launcherPath, allowedExtensionIds = FIREFOX_ALLOWED_EXTENSION_IDS } = {}) {
   if (!launcherPath) {
     throw new Error('launcherPath is required');

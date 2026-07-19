@@ -114,7 +114,7 @@ function versionExists(pkgName, version) {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    return out.trim() === version;
+    return String(out).trim() === version;
   } catch {
     return false;
   }
@@ -131,7 +131,7 @@ function whoami() {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
     });
-    return out.trim();
+    return String(out).trim();
   } catch {
     return null;
   } finally {

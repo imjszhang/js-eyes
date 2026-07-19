@@ -127,7 +127,7 @@ module that now owns the operation in 2.6.2.
 - **Scanner impact**: the `child_process` call now lives in a small, dedicated
   file that does no network I/O and reads no env directly; the finding should
   reclassify as *reviewed / hardened* on the next scan.
-- **Tests**: [`test/safe-npm.test.js`](test/safe-npm.test.js).
+- **Tests**: [`packages/protocol/tests/safe-npm.test.js`](packages/protocol/tests/safe-npm.test.js).
 
 ### 2. `openclaw-plugin/index.mjs:204` — Env + network send
 
@@ -246,7 +246,7 @@ module that now owns the operation in 2.6.2.
 - **Residual risk**: the switch stays **off by default** to preserve 2.6.1
   compatibility for existing operators. The 2.7 plan is to flip it on by
   default and require explicit opt-out.
-- **Tests**: [`test/extra-integrity.test.js`](test/extra-integrity.test.js).
+- **Tests**: [`packages/protocol/tests/extra-integrity.test.js`](packages/protocol/tests/extra-integrity.test.js).
 
 ### D. `npx js-eyes native-host install` runs remote code
 
@@ -333,8 +333,8 @@ module that now owns the operation in 2.6.2.
 - `scripts/scan-clawhub-patterns.js` **new** local reproduction of the ClawHub
   heuristic with an `EXPECTED_RESIDUALS` allowlist; wired into
   `npm run scan:security`.
-- `test/import-boundaries.test.js`, `test/safe-npm.test.js`,
-  `test/extra-integrity.test.js`, `test/doctor-json.test.js` **new**.
+- `test/import-boundaries.test.js`, `packages/protocol/tests/safe-npm.test.js`,
+  `packages/protocol/tests/extra-integrity.test.js`, `test/doctor-json.test.js` **new**.
 - `bin/js-eyes-native-host-install.{sh,ps1}` **new** local launchers.
 - Docs: `SKILL.md`, `docs/native-messaging.md`, `README.md`, `CHANGELOG.md`,
   `RELEASE_NOTES.md` refreshed.

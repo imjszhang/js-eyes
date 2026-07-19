@@ -1,5 +1,7 @@
 'use strict';
 
+// Package-owned WebSocket protocol and policy tests.
+
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -50,7 +52,7 @@ function createMockRequest(query = '') {
 }
 
 function clearPendingTimers(state) {
-  for (const [id, info] of state.pendingResponses) {
+  for (const info of state.pendingResponses.values()) {
     clearTimeout(info.timeoutId);
   }
   state.pendingResponses.clear();

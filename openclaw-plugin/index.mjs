@@ -21,7 +21,7 @@ const {
   resolveSkillSources,
   skillToolActionName,
 } = require("../packages/protocol/skills");
-const { ensureRuntimePaths, getPaths, chmodBestEffort } = require("../packages/runtime-paths");
+const { ensureRuntimePaths, chmodBestEffort } = require("../packages/runtime-paths");
 const { ensureToken } = require("../packages/runtime-paths/token.js");
 import { createAuthHelpers } from "./auth.mjs";
 import { hashFileSha1Sync } from "./fs-utils/hash.mjs";
@@ -86,7 +86,7 @@ function resolvePluginEntry(definition) {
 // 需要绑定端口的 service.start() 再等待它完成，避免 register() 返回 Promise。
 let currentRegistration = null;
 
-/** @type {{ instance: object | null, configKey: string | null, startPromise: Promise<void> | null, refs: number }} */
+/** @type {{ instance: { stop: () => Promise<void> | void } | null, configKey: string | null, startPromise: Promise<void> | null, refs: number }} */
 const sharedServerState = {
   instance: null,
   configKey: null,
@@ -177,7 +177,7 @@ function installCliExitHandlers() {
     exitCli(false);
   });
   process.on("unhandledRejection", (err) => {
-    console.error("[js-eyes] unhandledRejection:", err?.stack || err);
+    console.error("[js-eyes] unhandledRejection:", err instanceof Error ? err.stack : err);
     exitCli(false);
   });
 }
@@ -235,8 +235,7 @@ function register(api) {
   let skillDirWatcher = null;
   let reloadTimer = null;
 
-  async function teardownSidecars(ctx) {
-    const log = (ctx && ctx.logger) || api.logger;
+  async function teardownSidecars(_ctx) {
     if (reloadTimer) {
       try { clearTimeout(reloadTimer); } catch {}
       reloadTimer = null;

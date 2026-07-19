@@ -8,7 +8,6 @@ const { loadConfig, getConfigValue, parseConfigValue, setConfigValue } = require
 const {
   chmodBestEffort,
   ensureRuntimePaths,
-  ensureSecretFilePermissions,
   getPaths,
   resolveSkillRecordsDir,
 } = require('@js-eyes/runtime-paths');
@@ -29,7 +28,6 @@ const {
   resolveSecurityConfig,
 } = require('@js-eyes/protocol');
 const {
-  ALL_BROWSERS: NATIVE_HOST_ALL_BROWSERS,
   NATIVE_HOST_NAME,
   installBrowsers: installNativeHostBrowsers,
   resolveHostScriptPath: resolveNativeHostScript,
@@ -43,12 +41,10 @@ const {
   discoverSkillsFromSources,
   fetchSkillsRegistry,
   getLegacyOpenClawSkillState,
-  installSkillFromRegistry,
   isSkillEnabled,
   planSkillInstall,
   readSkillById,
   readSkillByIdFromSources,
-  readSkillIntegrity,
   resolveSkillSources,
   resolveSkillsDir,
   runSkillCli,
@@ -57,7 +53,6 @@ const {
 } = require('@js-eyes/protocol/skills');
 const {
   snapshotExtraDir,
-  verifyExtraDir,
   clearSnapshotForExtraDir,
   classifyExtraDir,
 } = require('@js-eyes/protocol/extra-integrity');
@@ -723,6 +718,7 @@ async function runForegroundServer(flags) {
     pendingEgressDir: paths.pendingEgressDir,
   });
 
+  /** @type {((exitCode?: number) => Promise<void>) & { done?: boolean }} */
   const cleanup = async (exitCode = 0) => {
     if (cleanup.done) {
       return;
@@ -939,7 +935,7 @@ async function commandConsent(positionals) {
   }
 }
 
-async function commandEgress(positionals, flags) {
+async function commandEgress(positionals, _flags) {
   const action = positionals[1];
   const paths = ensureRuntimePaths();
   const dir = paths.pendingEgressDir;
@@ -1023,7 +1019,7 @@ async function commandEgress(positionals, flags) {
   }
 }
 
-async function commandSecurity(positionals, flags) {
+async function commandSecurity(positionals, _flags) {
   const action = positionals[1];
 
   switch (action) {
@@ -1843,7 +1839,7 @@ async function main(argv = process.argv.slice(2)) {
       await commandDoctor(flags);
       return;
     case 'config':
-      await commandConfig(positionals, flags);
+      await commandConfig(positionals);
       return;
     case 'skills':
       await commandSkills(positionals, flags);
@@ -1861,7 +1857,7 @@ async function main(argv = process.argv.slice(2)) {
       await commandAudit(positionals, flags);
       return;
     case 'consent':
-      await commandConsent(positionals, flags);
+      await commandConsent(positionals);
       return;
     case 'egress':
       await commandEgress(positionals, flags);
