@@ -1,5 +1,66 @@
 # Release Notes
 
+## v2.8.4
+
+> **Browser reliability + maintainability release.** Chrome and Firefox regain
+> reliable authenticated connections and script-result parity, while the CLI,
+> OpenClaw plugin, extension background runtime, build tooling, and X skill are
+> split into smaller, testable modules.
+
+### Highlights
+
+- **Chrome WebSocket compatibility**: browser extensions authenticate with the
+  published `bearer.<token>` subprotocol, the server echoes the selected
+  protocol, and credentials are no longer duplicated into WebSocket URLs.
+- **Chrome `execute_script` restored**: approved arbitrary JavaScript runs in
+  Chrome's isolated `userScripts` world instead of MV3 CSP-blocked extension
+  `eval`, including synchronous values, objects, and Promise results.
+- **Firefox startup restored**: classic background scripts now load without
+  global-scope collisions after the extension hotspot split.
+- **Quieter extension reloads**: expected missing-receiver errors are consumed
+  by the Chrome popup instead of surfacing as unchecked runtime errors.
+- **js-x-ops-skill 3.8.5**: media download/upload, Article and DraftJS support,
+  improved official API routing, retries/timeouts, promoted-content detection,
+  and expanded post/search coverage.
+- **Reproducible quality gates**: workspace tests, lint, type checking, coverage,
+  dependency audit, package smoke tests, extension sync checks, and controlled
+  release verification now run in CI.
+- **Hotspot refactor**: CLI commands, OpenClaw registration, build tooling,
+  browser background orchestration, and X post/API code are separated into
+  bounded modules without changing protocol version `1.0`.
+- **Platform bump**: CLI, extensions, OpenClaw plugin, and the eight published
+  npm packages are synchronized to `2.8.4`.
+
+### Migration Notes
+
+- Reload both browser extensions after upgrading. Existing local server tokens
+  are synchronized through Native Messaging; do not place tokens in URLs.
+- Chrome raw `execute_script` requires Chrome 135+. On Chrome 138+, open the
+  extension details and enable **Allow User Scripts**. Other extension features
+  retain the existing Chrome 88+ baseline.
+- Restart OpenClaw after updating so the refactored plugin modules and skill
+  bindings are loaded.
+- Update bundled sub-skills with `js-eyes skills update --all`; the X skill uses
+  its independent `3.8.5` version.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.4/js-eyes-chrome-v2.8.4.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.4/js-eyes-firefox-v2.8.4.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.8.4/js-eyes-skill-v2.8.4.zip)
+- [ClawHub Skill (`js-eyes@2.8.4`)](https://clawhub.ai/imjszhang/js-eyes)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` bundle to `2.8.4` and run `npm install` in the bundle
+   root.
+2. Reload the Chrome/Edge and Firefox extensions to `2.8.4`.
+3. On Chrome 138+, enable **Allow User Scripts** if raw script execution is
+   required.
+4. Run `js-eyes skills update --all` and restart OpenClaw.
+
 ## v2.8.3
 
 > **Site CI + HN skill + sub-skill upgrades.** Platform packages sync to
