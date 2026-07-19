@@ -1,0 +1,204 @@
+name: Controlled Release Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Release source; only main or the matching vX.Y.Z tag is allowed
+        required: true
+        default: main
+        type: string
+      confirm_version:
+        description: Exact X.Y.Z version to publish
+        required: true
+        type: string
+      npm_tag:
+        description: npm distribution tag
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+          - next
+      publish_npm:
+        description: Publish all eight npm packages
+        required: true
+        default: true
+        type: boolean
+      sign_firefox:
+        description: Sign the Firefox XPI with AMO environment secrets
+        required: true
+        default: false
+        type: boolean
+      create_github_release:
+        description: Create or update the GitHub Release and tag
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      sha: ${{ steps.metadata.outputs.sha }}
+    steps:
+      - name: Restrict publish source
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
+          RELEASE_VERSION: ${{ inputs.confirm_version }}
+        run: |
+          if [ "$RELEASE_REF" != "main" ] && [ "$RELEASE_REF" != "v$RELEASE_VERSION" ]; then
+            echo "ref must be main or v$RELEASE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release metadata
+        id: metadata
+        env:
+          EXPECTED_VERSION: ${{ inputs.confirm_version }}
+        run: |
+          npm run release:verify -- --write-notes dist/release-notes.md
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run complete release gate
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run check:extension-shared
+          npm run test:coverage
+          npm run scan:security
+          npm audit --omit=dev
+          npm audit
+          npm run package:smoke
+
+      - name: Build unsigned release assets
+        run: |
+          npm run build:site
+          npm run build:skill
+          npm run build:chrome
+          npm run build:firefox:dev
+          npx web-ext lint --source-dir extensions/firefox
+          npx web-ext build --source-dir extensions/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
+          npm run release:prepare-packages
+
+      - name: Write artifact checksums
+        run: |
+          find dist -maxdepth 2 -type f \( -name '*.zip' -o -name '*.tgz' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > dist/release-checksums.sha256
+
+      - name: Upload exact verified inputs for the gated publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: controlled-release-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/js-eyes-chrome-v*.zip
+            dist/js-eyes-skill-v*.zip
+            dist/js-eyes-skill.zip
+            dist/firefox-unsigned/*.zip
+            dist/release-packages/*.tgz
+            dist/release-packages/manifest.json
+            dist/release-notes.md
+            dist/release-checksums.sha256
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release-production
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout exact verified source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+
+      - name: Download verified release inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: controlled-release-${{ github.run_id }}
+          path: dist
+
+      - name: Setup Node.js for npm trusted publishing
+        if: inputs.publish_npm
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install OIDC-capable npm CLI
+        if: inputs.publish_npm
+        run: npm install --global npm@11.5.1
+
+      - name: Publish npm packages through OIDC
+        if: inputs.publish_npm
+        env:
+          RELEASE_PUBLISH_CONFIRMED: ${{ needs.verify.outputs.version }}
+        run: node scripts/publish-release-packages.js dist/release-packages "${{ inputs.npm_tag }}"
+
+      - name: Setup Node.js for Firefox signing
+        if: inputs.sign_firefox
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Firefox signing dependencies
+        if: inputs.sign_firefox
+        run: npm ci
+
+      - name: Sign Firefox extension
+        if: inputs.sign_firefox
+        env:
+          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
+          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        run: npm run build:firefox
+
+      - name: Create or update GitHub Release
+        if: inputs.create_github_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ needs.verify.outputs.version }}
+          RELEASE_SHA: ${{ needs.verify.outputs.sha }}
+        run: |
+          assets=(dist/js-eyes-chrome-v*.zip dist/js-eyes-skill-v*.zip)
+          if [ "${{ inputs.sign_firefox }}" = "true" ]; then
+            assets+=(dist/js-eyes-firefox-v*.xpi)
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md --title "JS Eyes $RELEASE_TAG"
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --target "$RELEASE_SHA" \
+              --title "JS Eyes $RELEASE_TAG" \
+              --notes-file dist/release-notes.md
+          fi

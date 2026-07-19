@@ -1,6 +1,53 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-06-26
+Last updated: 2026-07-19
+
+## Preferred Release Path
+
+Formal releases now use two separate GitHub Actions workflows:
+
+- **Release Verification** (`release-verify.yml`) is read-only. It runs every
+  quality, coverage, security, package, and extension check; builds unsigned
+  browser candidates; creates all eight npm tarballs; and uploads checksummed
+  artifacts for inspection.
+- **Controlled Release Publish** (`release-publish.yml`) is manual, accepts only
+  `main` or the matching `vX.Y.Z` tag, requires the exact version to be typed,
+  reruns the complete release gate, and pauses at the protected
+  `release-production` environment before any external write.
+
+The gated publish job can independently publish npm packages, sign Firefox, and
+create/update the GitHub Release. Ordinary `npm run build` is deliberately
+unsigned and never reads AMO credentials.
+
+### One-time repository and registry setup
+
+1. Keep the GitHub `release-production` environment restricted to `main` and
+   release tags, with a required maintainer review.
+2. Store `AMO_API_KEY` and `AMO_API_SECRET` as environment secrets only if the
+   Firefox signing option will be used.
+3. On npmjs.com, configure a GitHub Actions trusted publisher for each of the
+   seven `@js-eyes/*` packages and `js-eyes` with these exact values:
+   - owner: `imjszhang`
+   - repository: `js-eyes`
+   - workflow filename: `release-publish.yml`
+   - environment: `release-production`
+   - allowed action: `npm publish`
+
+Trusted publishing requires npm 11.5.1+ and Node 22.14+. The publish job pins
+Node 24 and npm 11.5.1, requests `id-token: write`, and uses short-lived OIDC
+credentials; no long-lived npm token is stored in GitHub.
+
+### Operator flow
+
+1. Merge the release candidate to `main` and ensure normal CI and Pages pass.
+2. Run **Release Verification** for `main`; download and inspect its artifact.
+3. Run **Controlled Release Publish**, enter the exact `X.Y.Z`, select channels,
+   and approve the `release-production` deployment after the verification job.
+4. Verify npm versions, GitHub assets, the signed XPI (when selected), Pages,
+   and ClawHub. ClawHub/AMO public-listing submission remains a separate manual
+   step.
+
+The remainder of this document is the detailed/manual fallback SOP.
 
 ## 2.3.0 Migration Guide (Policy Engine)
 

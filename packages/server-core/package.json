@@ -17,7 +17,7 @@
   "homepage": "https://js-eyes.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/imjszhang/JS-Eyes.git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
     "directory": "packages/server-core"
   },
   "bugs": {

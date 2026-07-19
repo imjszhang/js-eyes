@@ -555,7 +555,7 @@ npm run build:skill
 # Build site (dist/) + skill bundles + skills.json registry
 npm run build:site
 
-# Build all release artifacts
+# Build all unsigned, locally verifiable release artifacts
 npm run build
 
 # Build Chrome extension only
@@ -573,6 +573,10 @@ Output files are saved to the `dist/` directory. The main skill bundle is staged
 For ClawHub publishing, use the generated bundle output (`dist/skill-bundle/js-eyes/` or the versioned zip in `dist/`) as the source of truth instead of publishing from the monorepo root.
 
 For the maintainer release checklist (`develop` -> `main`, npm CLI publish, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
+
+Repository releases use a read-only verification workflow followed by a manual,
+environment-gated publish workflow. npm publication uses GitHub OIDC trusted
+publishing; normal builds remain unsigned and do not consume release secrets.
 
 ## Smoke Test
 

@@ -3,26 +3,17 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { RELEASE_PACKAGES } = require('./release-packages');
 
 const repoRoot = path.resolve(__dirname, '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const publishableWorkspaces = [
-  '@js-eyes/protocol',
-  '@js-eyes/runtime-paths',
-  '@js-eyes/config',
-  '@js-eyes/skill-recording',
-  '@js-eyes/client-sdk',
-  '@js-eyes/server-core',
-  '@js-eyes/native-host',
-];
 
 function fail(message) {
   process.stderr.write(`package-smoke: ${message}\n`);
   process.exitCode = 1;
 }
 
-function validateEntryFiles(workspace, packed) {
-  const workspaceDir = path.dirname(require.resolve(`${workspace}/package.json`, { paths: [repoRoot] }));
+function validateEntryFiles(workspace, workspaceDir, packed) {
   const manifest = JSON.parse(fs.readFileSync(path.join(workspaceDir, 'package.json'), 'utf8'));
   const packedFiles = new Set((packed.files || []).map((item) => item.path));
   const entries = [manifest.main || 'index.js'];
@@ -48,15 +39,15 @@ function validateEntryFiles(workspace, packed) {
   }
 }
 
-for (const workspace of publishableWorkspaces) {
+for (const workspace of RELEASE_PACKAGES) {
   const result = spawnSync(
     npmCommand,
-    ['pack', '--dry-run', '--json', '--workspace', workspace],
+    ['pack', '--dry-run', '--json', '--workspace', workspace.name],
     { cwd: repoRoot, encoding: 'utf8', shell: false },
   );
 
   if (result.status !== 0) {
-    fail(`${workspace} pack failed: ${(result.stderr || result.stdout || '').trim()}`);
+    fail(`${workspace.name} pack failed: ${(result.stderr || result.stdout || '').trim()}`);
     continue;
   }
 
@@ -64,17 +55,17 @@ for (const workspace of publishableWorkspaces) {
   try {
     output = JSON.parse(result.stdout);
   } catch (error) {
-    fail(`${workspace} returned invalid npm pack JSON: ${error.message}`);
+    fail(`${workspace.name} returned invalid npm pack JSON: ${error.message}`);
     continue;
   }
 
   const packed = output[0];
-  if (!packed || packed.name !== workspace) {
-    fail(`${workspace} returned unexpected pack metadata`);
+  if (!packed || packed.name !== workspace.name) {
+    fail(`${workspace.name} returned unexpected pack metadata`);
     continue;
   }
 
-  validateEntryFiles(workspace, packed);
+  validateEntryFiles(workspace.name, path.join(repoRoot, workspace.dir), packed);
   process.stdout.write(`✓ ${packed.id}: ${packed.entryCount} files, ${packed.size} bytes\n`);
 }
 

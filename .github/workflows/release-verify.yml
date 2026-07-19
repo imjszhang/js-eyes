@@ -1,0 +1,85 @@
+name: Release Verification
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to verify
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-verify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release metadata
+        run: npm run release:verify -- --write-notes dist/release-notes.md
+
+      - name: Run quality and security gates
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run check:extension-shared
+          npm run test:coverage
+          npm run scan:security
+          npm audit --omit=dev
+          npm audit
+          npm run package:smoke
+
+      - name: Build release candidates without signing or publishing
+        run: |
+          npm run build:site
+          npm run build:skill
+          npm run build:chrome
+          npm run build:firefox:dev
+          npx web-ext lint --source-dir extensions/firefox
+          npx web-ext build --source-dir extensions/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
+          npm run release:prepare-packages
+
+      - name: Write artifact checksums
+        run: |
+          find dist -maxdepth 2 -type f \( -name '*.zip' -o -name '*.tgz' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > dist/release-checksums.sha256
+
+      - name: Upload verified release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/js-eyes-chrome-v*.zip
+            dist/js-eyes-skill-v*.zip
+            dist/js-eyes-skill.zip
+            dist/firefox-unsigned/*.zip
+            dist/release-packages/*.tgz
+            dist/release-packages/manifest.json
+            dist/release-notes.md
+            dist/release-checksums.sha256
