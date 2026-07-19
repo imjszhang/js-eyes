@@ -20,7 +20,17 @@
     "scripts": [
       "config.js",
       "background/utils.js",
+      "background/connection-methods.js",
+      "background/messaging-methods.js",
+      "background/operations-methods.js",
+      "background/routing-methods.js",
+      "background/tabs-methods.js",
       "background/browser-control-methods.js",
+      "background/platform-connection-methods.js",
+      "background/platform-server-methods.js",
+      "background/platform-operations-methods.js",
+      "background/platform-runtime-methods.js",
+      "background/platform-tabs-methods.js",
       "background/background.js"
     ],
     "persistent": true
