@@ -1,7 +1,6 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const {
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
   DEFAULT_SECURITY_CONFIG,

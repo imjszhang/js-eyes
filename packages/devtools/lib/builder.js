@@ -436,8 +436,9 @@ async function buildSubSkillZips() {
     const output = fs.createWriteStream(outputFile);
     const archive = archiver('zip', { zlib: { level: 9 } });
 
-    await new Promise((resolve, reject) => {
-      output.on('close', resolve);
+    /** @type {Promise<void>} */
+    const archiveComplete = new Promise((resolve, reject) => {
+      output.on('close', () => resolve());
       archive.on('error', reject);
       archive.pipe(output);
       archive.glob('**/*', {
@@ -447,6 +448,7 @@ async function buildSubSkillZips() {
       });
       archive.finalize();
     });
+    await archiveComplete;
 
     const stats = fs.statSync(outputFile);
     const { sha256 } = hashFile(outputFile);
@@ -629,14 +631,16 @@ async function buildSkillZip() {
   const output = fs.createWriteStream(outputFile);
   const archive = archiver('zip', { zlib: { level: 9 } });
 
-  await new Promise((resolve, reject) => {
-    output.on('close', resolve);
+  /** @type {Promise<void>} */
+  const archiveComplete = new Promise((resolve, reject) => {
+    output.on('close', () => resolve());
     archive.on('error', reject);
     archive.pipe(output);
 
     archive.directory(stageDir, false);
     archive.finalize();
   });
+  await archiveComplete;
 
   const stats = fs.statSync(outputFile);
   const { sha256 } = hashFile(outputFile);
@@ -672,6 +676,7 @@ async function buildChrome(t) {
   const output = fs.createWriteStream(outputFile);
   const archive = archiver('zip', { zlib: { level: 9 } });
 
+  /** @type {Promise<void>} */
   return new Promise((resolve, reject) => {
     output.on('close', () => {
       const stats = fs.statSync(outputFile);

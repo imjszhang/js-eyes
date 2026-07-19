@@ -62,6 +62,7 @@ function hasExpectedAllowedExtension(status) {
 }
 
 export function resolveNativeHostConfig(config = {}) {
+  /** @type {{ autoInstall?: boolean, browser?: string, repairStale?: boolean, warnOnly?: boolean }} */
   const source = config && typeof config === "object" ? config : {};
   return {
     autoInstall: source.autoInstall ?? DEFAULT_NATIVE_HOST_CONFIG.autoInstall,
@@ -200,4 +201,3 @@ export function logNativeHostResult(result, logger = console) {
     logger.warn?.('[js-eyes] Native host changed; restart the browser before using "Sync Token From Host".');
   }
 }
-

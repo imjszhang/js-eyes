@@ -474,8 +474,6 @@ function isMainRefUrl(url) {
   return /\/(refs\/heads\/)?main(?=[/?])/.test(url);
 }
 
-const detectPackageManager = safeNpm.detectPackageManager;
-
 function installSkillDependencies(targetDir, options = {}) {
   return safeNpm.installSkillDependencies(targetDir, options);
 }
@@ -752,6 +750,15 @@ Object.assign(module.exports, {
   verifySkillIntegrity,
   writeIntegrityManifest,
 });
+
+// Keep explicit CommonJS assignments for checkJs consumers that resolve this
+// file by relative path; TypeScript does not infer named exports from
+// Object.assign(module.exports, ...).
+module.exports.discoverSkillsFromSources = discoverSkillsFromSources;
+module.exports.fetchSkillsRegistry = fetchSkillsRegistry;
+module.exports.planSkillInstall = planSkillInstall;
+module.exports.resolveSkillSources = resolveSkillSources;
+module.exports.skillToolActionName = skillToolActionName;
 
 // After our own exports are populated, pull in the registry factory. This must
 // happen last so skill-registry.js sees a fully-populated skills API.

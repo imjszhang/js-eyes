@@ -12,7 +12,7 @@ const {
   clearSnapshotForExtraDir,
   classifyExtraDir,
   getSnapshotPath,
-} = require('../packages/protocol/extra-integrity');
+} = require('../extra-integrity');
 
 describe('extra-integrity snapshot + verify', () => {
   let tempHome = null;

@@ -20,7 +20,6 @@ const {
   gitStatus,
   gitAddAll,
   gitCommit,
-  gitPush,
   gitPushTag,
   gitDiffStat,
   gitTag,

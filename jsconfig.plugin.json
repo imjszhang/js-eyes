@@ -1,0 +1,7 @@
+{
+  "extends": "./jsconfig.core.json",
+  "include": [
+    "openclaw-plugin/**/*.mjs",
+    "types/**/*.d.ts"
+  ]
+}

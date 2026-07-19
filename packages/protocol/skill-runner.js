@@ -20,7 +20,6 @@
 // See SECURITY_SCAN_NOTES.md ("Shell command execution").
 
 const fs = require('fs');
-const path = require('path');
 const { spawnSync } = require('child_process');
 
 function runSkillCli(options) {

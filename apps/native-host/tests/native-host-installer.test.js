@@ -14,7 +14,7 @@ const {
   ALL_BROWSERS,
   CHROMIUM_BROWSERS,
   FIREFOX_BROWSERS,
-} = require('../apps/native-host/src/paths');
+} = require('../src/paths');
 
 const {
   buildChromeManifest,
@@ -22,13 +22,13 @@ const {
   NATIVE_HOST_NAME,
   CHROME_ALLOWED_EXTENSION_IDS,
   FIREFOX_ALLOWED_EXTENSION_IDS,
-} = require('../apps/native-host/src/manifest');
+} = require('../src/manifest');
 
 const {
   installForBrowser,
   uninstallForBrowser,
   statusForBrowser,
-} = require('../apps/native-host/src/installer');
+} = require('../src/installer');
 
 function slashPath(value) {
   return String(value).replace(/\\/g, '/');

@@ -6,7 +6,7 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSkillRegistry, purgeRequireCacheFor } = require('../packages/protocol/skills');
+const { createSkillRegistry, purgeRequireCacheFor } = require('../skills');
 
 function writeSkill(dir, id, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });

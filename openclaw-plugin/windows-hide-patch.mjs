@@ -18,6 +18,7 @@ export function patchWindowsHide() {
   if (process.platform !== "win32") return;
   try {
     const require = createRequire(import.meta.url);
+    /** @type {any} */
     const cp = require("node:child_process");
 
     const _spawn = cp.spawn;

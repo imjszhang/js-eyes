@@ -1,5 +1,7 @@
 'use strict';
 
+// Package-owned client contract and transport tests.
+
 const { describe, it, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { WebSocketServer } = require('ws');
@@ -608,7 +610,7 @@ describe('disconnect rejects pending requests', () => {
   let server, bot;
 
   before(async () => {
-    server = await createMockServer((ws, data) => {
+    server = await createMockServer((_ws, _data) => {
       // intentionally don't respond — simulate hung request
     });
     bot = new BrowserAutomation(server.url, {
@@ -646,7 +648,7 @@ describe('client-side timeout', () => {
   let server, bot;
 
   before(async () => {
-    server = await createMockServer((ws, data) => {
+    server = await createMockServer((_ws, _data) => {
       // never respond
     });
     bot = new BrowserAutomation(server.url, {
