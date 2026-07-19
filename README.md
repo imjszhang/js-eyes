@@ -76,6 +76,10 @@ JS Eyes now uses a publish-oriented monorepo layout:
 
 The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, or `cli/`. The `openclaw-plugin/` directory is now a first-class optional component at the repo root.
 
+### Development
+
+Development requires Node.js 22 or newer. Install the committed dependency graph with `npm ci`, then run `npm test`, `npm run lint`, `npm run typecheck`, `npm run scan:security`, `npm audit`, and `npm run package:smoke` before opening a pull request. See [CONTRIBUTING.md](./CONTRIBUTING.md) for build commands, dependency policy, and the complete contribution workflow. Security issues should be reported privately as described in [SECURITY.md](./SECURITY.md).
+
 ### Supported Agent Frameworks
 
 | Framework | Description |
