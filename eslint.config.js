@@ -47,6 +47,12 @@ module.exports = [
     },
   },
   {
+    files: ['extensions/chrome/background/background.js'],
+    languageOptions: {
+      sourceType: 'module',
+    },
+  },
+  {
     files: [
       'apps/**/*.js',
       'openclaw-plugin/**/*.mjs',

@@ -33,6 +33,7 @@ const coverageArgs = [
   '--test',
   '--experimental-test-coverage',
   '--test-coverage-include=apps/**/*.js',
+  '--test-coverage-include=extensions/shared/**/*.js',
   '--test-coverage-include=packages/**/*.js',
   '--test-coverage-include=openclaw-plugin/**/*.mjs',
   '--test-coverage-include=skills/**/*.js',

@@ -71,7 +71,7 @@ JS Eyes now uses a publish-oriented monorepo layout:
 | `packages/server-core` | HTTP + WebSocket server core |
 | `openclaw-plugin` | Optional OpenClaw plugin component |
 | `packages/devtools` | Internal build/release tooling |
-| `extensions/*` | Browser extension source assets for Chrome/Edge and Firefox |
+| `extensions/*` | Browser extension assets; `extensions/shared` is the canonical cross-browser background runtime |
 | `skills/*` | Independent extension skills built on `@js-eyes/client-sdk` |
 
 The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, or `cli/`. The `openclaw-plugin/` directory is now a first-class optional component at the repo root.
