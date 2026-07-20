@@ -96,7 +96,7 @@ const fallbackMethods = require('./api/fallback').createMethods({
 const publicMethods = require('./api/public').createMethods({
   ...bridgeRouting, ...fallbackMethods, ...runtime, ...searchMethods, ...profileMethods, ...postMethods,
   ...homeMethods, appendHistory, attachPostMediaDownloads, buildPostBridgeArgs, classifyXPostInput,
-  createDebugState, postResultKey, readCacheEntry, writeCacheEntry, writeDebugBundle,
+  createDebugState, postResultKey, readCacheEntry, recordDomStat, writeCacheEntry, writeDebugBundle,
 });
 
 module.exports = {
