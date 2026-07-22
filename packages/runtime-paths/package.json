@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/runtime-paths",
-  "version": "2.8.4",
+  "version": "2.8.5",
   "description": "Runtime directories for JS Eyes CLI and services",
   "main": "index.js",
   "files": [
