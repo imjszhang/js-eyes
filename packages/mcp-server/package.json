@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/mcp-server",
-  "version": "2.8.4",
+  "version": "2.8.5",
   "description": "Native Model Context Protocol facade for JS Eyes browser automation",
   "main": "index.js",
   "bin": {
@@ -35,8 +35,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/client-sdk": "2.8.4",
-    "@js-eyes/config": "2.8.4",
+    "@js-eyes/client-sdk": "2.8.5",
+    "@js-eyes/config": "2.8.5",
     "zod": "^4.4.3"
   }
 }

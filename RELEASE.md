@@ -26,7 +26,7 @@ unsigned and never reads AMO credentials.
 2. Store `AMO_API_KEY` and `AMO_API_SECRET` as environment secrets only if the
    Firefox signing option will be used.
 3. On npmjs.com, configure a GitHub Actions trusted publisher for each of the
-   seven `@js-eyes/*` packages and `js-eyes` with these exact values:
+   eight `@js-eyes/*` packages and `js-eyes` with these exact values:
    - owner: `imjszhang`
    - repository: `js-eyes`
    - workflow filename: `release-publish.yml`
@@ -34,7 +34,7 @@ unsigned and never reads AMO credentials.
    - allowed action: `npm publish`
 
 Trusted publishing requires npm 11.5.1+ and Node 22.14+. The publish job pins
-Node 24 and npm 11.5.1, requests `id-token: write`, and uses short-lived OIDC
+Node 24 and npm 11.18.0, requests `id-token: write`, and uses short-lived OIDC
 credentials; no long-lived npm token is stored in GitHub.
 
 ### Operator flow
@@ -223,7 +223,7 @@ If you must merge locally, do it from a clean `main` and avoid tagging from `dev
 
 ## 2.5 Publish `@js-eyes/*` Workspace Packages (first-time or version bump)
 
-The seven scoped runtime packages are published directly from the workspace (without vendoring):
+The eight scoped runtime packages are published directly from the workspace (without vendoring):
 
 - `@js-eyes/protocol`
 - `@js-eyes/runtime-paths`
@@ -231,6 +231,7 @@ The seven scoped runtime packages are published directly from the workspace (wit
 - `@js-eyes/skill-recording`
 - `@js-eyes/client-sdk`
 - `@js-eyes/server-core`
+- `@js-eyes/mcp-server`
 - `@js-eyes/native-host`
 
 They belong to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization.
@@ -252,7 +253,7 @@ The command is idempotent — packages whose `<name>@<version>` already exist on
 Verify:
 
 ```bash
-for p in protocol runtime-paths config skill-recording client-sdk server-core native-host; do
+for p in protocol runtime-paths config skill-recording client-sdk server-core mcp-server native-host; do
   printf "%-32s %s\n" "@js-eyes/$p" "$(npm view @js-eyes/$p version)"
 done
 ```

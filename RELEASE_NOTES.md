@@ -1,5 +1,68 @@
 # Release Notes
 
+## v2.8.5
+
+> **Native MCP release.** JS Eyes can now be used directly from Codex, Claude,
+> Cursor, VS Code, and other local MCP hosts through a safe-by-default stdio
+> facade, without loading the OpenClaw plugin.
+
+### Highlights
+
+- **Native MCP facade**: the new public `@js-eyes/mcp-server` package exposes
+  the existing Client SDK and browser-extension runtime over standard MCP
+  stdio JSON-RPC.
+- **Safe-by-default tools**: eight browser status, tab, navigation, HTML,
+  metadata, and screenshot tools are available by default. JavaScript, CSS,
+  cookies, and file upload require the explicit `full` profile.
+- **Structured MCP results**: normal operations return both readable content
+  and `structuredContent`; screenshots use native MCP image blocks instead of
+  embedding data URLs in text.
+- **Deterministic browser targeting**: exact extension client IDs take
+  precedence, browser-name matches must be unique, and ambiguous calls fail
+  instead of selecting an arbitrary browser.
+- **Security-preserving errors**: policy approval IDs and stable error codes
+  are retained while tokens, scripts, file payloads, HTML, cookies, and image
+  base64 are excluded from logs and unknown error responses.
+- **Protocol and end-to-end coverage**: tests use the official MCP client over
+  both in-memory and real stdio transports and exercise the full MCP → Client
+  SDK → Server Core → browser-extension route.
+- **Configurable Client SDK connection timeout**: MCP status checks and lazy
+  connections can use a bounded connection timeout instead of the previous
+  fixed ten-second value.
+- **Nine-package release pipeline**: release verification and OIDC publishing
+  now include `@js-eyes/mcp-server` alongside the existing runtime packages and
+  CLI.
+
+### Migration Notes
+
+- Existing CLI, OpenClaw, server, and browser-extension behavior is unchanged.
+- Start the normal JS Eyes server and connect at least one browser extension
+  before calling browser-scoped MCP tools. MCP initialization itself remains
+  available while the browser runtime is offline.
+- The default MCP profile is `safe`. Use `--tool-profile full` only for trusted
+  MCP hosts that require JavaScript, CSS, cookie, or upload access.
+- When several extensions are connected, pass the `clientId` returned by
+  `browser_list_clients`, or configure a unique browser name as the target.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Native MCP server (`@js-eyes/mcp-server`)](https://www.npmjs.com/package/@js-eyes/mcp-server)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.5/js-eyes-chrome-v2.8.5.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.8.5/js-eyes-firefox-v2.8.5.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.8.5/js-eyes-skill-v2.8.5.zip)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` CLI and reload browser extensions to `2.8.5`.
+2. Start the local server and verify the extension connection with
+   `js-eyes doctor`.
+3. Add an MCP server command such as
+   `npx -y @js-eyes/mcp-server` to the trusted local MCP host.
+4. Call `browser_status`, then `browser_list_clients` or `browser_list_tabs`
+   before the first browser-scoped operation.
+
 ## v2.8.4
 
 > **Browser reliability + maintainability release.** Chrome and Firefox regain

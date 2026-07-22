@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.5] - 2026-07-22
+
+> **Native MCP facade release.** Standard MCP hosts can now use the existing JS
+> Eyes browser runtime directly through a safe-by-default stdio adapter.
+
+### Added
+
+- New public `@js-eyes/mcp-server` package with a host-neutral stdio MCP
+  implementation, CLI configuration, lazy BrowserAutomation lifecycle, and
+  structured diagnostics.
+- Eight-tool `safe` profile plus an explicit thirteen-tool `full` profile for
+  JavaScript, CSS, cookies, and file uploads.
+- Deterministic multi-browser target resolution, native MCP screenshot image
+  blocks, stable/redacted error payloads, bounded HTML output, and stderr-only
+  diagnostics.
+- Official MCP client conformance tests for in-memory and stdio transports,
+  plus an end-to-end MCP → Client SDK → Server Core → extension test.
+- MCP architecture decision record, host configuration guide, package README,
+  and nine-package release integration.
+
+### Changed
+
+- Client SDK connection timeout is now configurable for bounded MCP status and
+  lazy-connect operations.
+- Release verification, package smoke tests, documentation, and controlled npm
+  publishing now include `@js-eyes/mcp-server`.
+
+### Security
+
+- Sensitive MCP operations are absent from discovery in the default profile.
+- Unknown upstream errors are converted to stable generic errors to avoid
+  leaking authentication tokens or browser payloads.
+- The published MCP package has no official SDK runtime dependency and passes
+  an isolated production dependency audit with zero known vulnerabilities.
+
 ## [2.8.4] - 2026-07-19
 
 > **Browser compatibility fixes, reproducible release gates, and hotspot
