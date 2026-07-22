@@ -18,6 +18,7 @@
     "packages/protocol/**/*.js",
     "packages/client-sdk/**/*.js",
     "packages/server-core/**/*.js",
+    "packages/mcp-server/**/*.js",
     "types/**/*.d.ts"
   ],
   "exclude": ["**/node_modules/**", "**/tests/**"]

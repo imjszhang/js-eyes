@@ -21,7 +21,7 @@ on:
           - latest
           - next
       publish_npm:
-        description: Publish all eight npm packages
+        description: Publish all nine npm packages
         required: true
         default: true
         type: boolean

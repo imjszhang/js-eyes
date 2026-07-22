@@ -99,6 +99,7 @@ class BrowserAutomation {
     this.serverUrl = this._normalizeWsUrl(serverUrl || DEFAULT_SERVER_URL);
     this.logger = options.logger || console;
     this.defaultTimeout = options.defaultTimeout || DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    this.connectTimeout = options.connectTimeout || 10;
     if (Object.prototype.hasOwnProperty.call(options, 'token')) {
       this.token = options.token || null;
     } else if (process.env.JS_EYES_SERVER_TOKEN) {
@@ -191,9 +192,9 @@ class BrowserAutomation {
           this.ws.terminate();
           this._wsState = 'disconnected';
           this._connectPromise = null;
-          reject(new Error('WebSocket 连接超时 (10s)'));
+          reject(new Error(`WebSocket 连接超时 (${this.connectTimeout}s)`));
         }
-      }, 10000);
+      }, this.connectTimeout * 1000);
 
       this.ws.on('open', () => {
         this.logger.info('[JS-Eyes] TCP 连接已建立，等待服务端确认...');

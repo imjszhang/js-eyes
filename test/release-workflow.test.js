@@ -14,9 +14,10 @@ function read(relativePath) {
 }
 
 describe('controlled release contract', () => {
-  it('publishes the seven runtime workspaces followed by the public CLI', () => {
-    assert.equal(RELEASE_PACKAGES.length, 8);
-    assert.deepEqual(RELEASE_PACKAGES.slice(-2).map((entry) => entry.name), [
+  it('publishes the eight runtime workspaces followed by the public CLI', () => {
+    assert.equal(RELEASE_PACKAGES.length, 9);
+    assert.deepEqual(RELEASE_PACKAGES.slice(-3).map((entry) => entry.name), [
+      '@js-eyes/mcp-server',
       '@js-eyes/native-host',
       'js-eyes',
     ]);

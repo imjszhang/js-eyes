@@ -689,10 +689,12 @@ describe('constructor', () => {
       logger: silentLogger,
       requestInterval: 500,
       defaultTimeout: 120,
+      connectTimeout: 3,
     });
     assert.equal(bot.serverUrl, 'ws://myhost:9999');
     assert.equal(bot.requestInterval, 500);
     assert.equal(bot.defaultTimeout, 120);
+    assert.equal(bot.connectTimeout, 3);
     bot.disconnect();
   });
 });

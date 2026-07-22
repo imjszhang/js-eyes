@@ -9,6 +9,7 @@ const RELEASE_PACKAGES = [
   { name: '@js-eyes/skill-recording', dir: 'packages/skill-recording' },
   { name: '@js-eyes/client-sdk', dir: 'packages/client-sdk' },
   { name: '@js-eyes/server-core', dir: 'packages/server-core' },
+  { name: '@js-eyes/mcp-server', dir: 'packages/mcp-server' },
   { name: '@js-eyes/native-host', dir: 'apps/native-host' },
   { name: 'js-eyes', dir: 'apps/cli' },
 ];

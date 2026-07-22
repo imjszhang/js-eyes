@@ -69,6 +69,7 @@ JS Eyes now uses a publish-oriented monorepo layout:
 | `packages/config` | CLI config loading and persistence |
 | `packages/client-sdk` | Browser automation SDK for Node.js / skills |
 | `packages/server-core` | HTTP + WebSocket server core |
+| `packages/mcp-server` | Native stdio MCP facade for Codex, Claude, Cursor, and other MCP clients |
 | `openclaw-plugin` | Optional OpenClaw plugin component |
 | `packages/devtools` | Internal build/release tooling |
 | `extensions/*` | Browser extension assets; `extensions/shared` is the canonical cross-browser background runtime |
@@ -84,9 +85,31 @@ Development requires Node.js 22 or newer. Install the committed dependency graph
 
 | Framework | Description |
 |-----------|-------------|
+| MCP clients + [`@js-eyes/mcp-server`](./packages/mcp-server) | Native stdio MCP facade with a safe-by-default browser tool profile |
 | [apps/cli](./apps/cli) + [packages/server-core](./packages/server-core) | Lightweight built-in server and published npm CLI |
 | [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](./openclaw-plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | Full-featured agent framework (separate WS port, HMAC auth, SSE, rate limiting) |
+
+### Native MCP Server
+
+JS Eyes can be used by any local MCP client without loading the OpenClaw
+plugin. Start the normal JS Eyes server and browser extension, then configure
+the client to spawn the stdio facade:
+
+```json
+{
+  "mcpServers": {
+    "js-eyes": {
+      "command": "npx",
+      "args": ["-y", "@js-eyes/mcp-server"]
+    }
+  }
+}
+```
+
+The default `safe` profile excludes JavaScript execution, cookies, CSS
+injection, and file upload. See [docs/mcp.md](./docs/mcp.md) for tool profiles,
+target selection, environment variables, and troubleshooting.
 
 ## Features
 

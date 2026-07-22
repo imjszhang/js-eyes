@@ -8,7 +8,7 @@ Formal releases now use two separate GitHub Actions workflows:
 
 - **Release Verification** (`release-verify.yml`) is read-only. It runs every
   quality, coverage, security, package, and extension check; builds unsigned
-  browser candidates; creates all eight npm tarballs; and uploads checksummed
+  browser candidates; creates all nine npm tarballs; and uploads checksummed
   artifacts for inspection.
 - **Controlled Release Publish** (`release-publish.yml`) is manual, accepts only
   `main` or the matching `vX.Y.Z` tag, requires the exact version to be typed,

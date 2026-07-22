@@ -16,6 +16,12 @@ yarn-error.log*
 
 # Build outputs
 docs/
+!docs/
+docs/*
+!docs/mcp.md
+!docs/architecture/
+docs/architecture/*
+!docs/architecture/mcp-facade.md
 dist/
 build/
 *.xpi

@@ -61,6 +61,13 @@
     "node": ">=22.0.0"
   },
   "overrides": {
+    "@modelcontextprotocol/sdk": {
+      "@hono/node-server": "2.0.11"
+    },
+    "brace-expansion@<1.1.16": "1.1.16",
+    "brace-expansion@>=2.0.0 <2.1.2": "2.1.2",
+    "fast-uri": "4.1.1",
+    "shell-quote": "1.10.0",
     "firefox-profile": {
       "adm-zip": "0.6.0"
     }
@@ -73,6 +80,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@types/node": "^22.20.1",
     "@types/ws": "^8.18.1",
     "eslint": "^9.39.5",
