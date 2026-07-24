@@ -17,6 +17,7 @@ const {
   getVersion,
   path,
 } = require('./context');
+const { createZipArchive } = require('./zip-archive');
 
 function assertExtensionSharedRuntime(extensionDir) {
   const sharedDir = path.join(EXTENSIONS_DIR, 'shared');
@@ -81,9 +82,8 @@ async function buildChrome(t) {
     console.log(`  ${t('chrome.deletedOld')}`);
   }
 
-  const archiver = require('archiver');
   const output = fs.createWriteStream(outputFile);
-  const archive = archiver('zip', { zlib: { level: 9 } });
+  const archive = createZipArchive({ zlib: { level: 9 } });
 
   /** @type {Promise<void>} */
   return new Promise((resolve, reject) => {

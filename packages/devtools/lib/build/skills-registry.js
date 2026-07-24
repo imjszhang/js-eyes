@@ -15,6 +15,7 @@ const {
   path,
   writeShaSidecar,
 } = require('./context');
+const { createZipArchive } = require('./zip-archive');
 
 function parseSkillFrontmatter(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -198,8 +199,6 @@ async function buildSubSkillZips() {
   const skills = discoverSubSkills();
   if (skills.length === 0) return;
 
-  const archiver = require('archiver');
-
   for (const skill of skills) {
     const outDir = path.join(SITE_OUT_DIR, 'skills', skill.dirName);
     ensureDir(outDir);
@@ -209,7 +208,7 @@ async function buildSubSkillZips() {
     if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
 
     const output = fs.createWriteStream(outputFile);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = createZipArchive({ zlib: { level: 9 } });
 
     /** @type {Promise<void>} */
     const archiveComplete = new Promise((resolve, reject) => {
