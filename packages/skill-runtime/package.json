@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/skill-runtime",
-  "version": "2.8.5",
+  "version": "2.9.0",
   "description": "Host-owned execution runtime for JS Eyes Skills",
   "main": "index.js",
   "exports": {
@@ -32,12 +32,12 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@js-eyes/client-sdk": "2.8.5",
-    "@js-eyes/config": "2.8.5",
-    "@js-eyes/protocol": "2.8.5",
-    "@js-eyes/runtime-paths": "2.8.5",
-    "@js-eyes/skill-contract": "2.8.5",
-    "@js-eyes/skill-recording": "2.8.5",
-    "@js-eyes/skill-worker": "2.8.5"
+    "@js-eyes/client-sdk": "2.9.0",
+    "@js-eyes/config": "2.9.0",
+    "@js-eyes/protocol": "2.9.0",
+    "@js-eyes/runtime-paths": "2.9.0",
+    "@js-eyes/skill-contract": "2.9.0",
+    "@js-eyes/skill-recording": "2.9.0",
+    "@js-eyes/skill-worker": "2.9.0"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/skill-worker",
-  "version": "2.8.5",
+  "version": "2.9.0",
   "description": "Isolated process execution backend for external JS Eyes Skills",
   "main": "index.js",
   "scripts": {
