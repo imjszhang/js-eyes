@@ -1,5 +1,70 @@
 # Release Notes
 
+## v2.9.0
+
+> **Host-neutral Skill Runtime V2 release.** JS Eyes Skills can now be
+> discovered and invoked from the CLI or MCP without OpenClaw, while the
+> OpenClaw integration remains available as an optional adapter.
+
+### Highlights
+
+- **Host-neutral Skill Runtime V2**: the new public
+  `@js-eyes/skill-contract`, `@js-eyes/skill-runtime`, and
+  `@js-eyes/skill-worker` packages define static manifests, discovery,
+  invocation, trust, and Worker execution independently of any host.
+- **CLI and MCP skill host**: invoke skills with `js-eyes skill call`; MCP
+  clients can discover, describe, and call the same skills through
+  `skill_list`, `skill_describe`, and `skill_call`.
+- **External-skill trust policy**: prompt and strict modes bind trust to a
+  source digest and declared permissions, with explicit inspect, trust, and
+  revoke flows.
+- **Optional OpenClaw adapter**: OpenClaw-specific configuration migration,
+  routing, watchers, and registration now live in the plugin instead of the
+  core runtime.
+- **Reliable hot reload**: linked skill directories and configuration changes
+  rebuild the runtime; updated per-skill configuration reaches the replacement
+  Worker.
+- **Static official manifests**: all eleven bundled skills expose V2 manifests
+  and entries while retaining the V1 `createOpenClawAdapter` compatibility
+  shim.
+- **Real-host validation**: the release was exercised through the CLI, MCP
+  stdio, and OpenClaw 2026.6.10, including Worker isolation and plugin hot
+  reload.
+
+### Migration Notes
+
+- Existing OpenClaw configuration remains supported, and V1 skills can keep
+  using `createOpenClawAdapter` during migration.
+- External V2 skills may require inspection and explicit trust when prompt or
+  strict policy is enabled. A changed source digest invalidates prior trust.
+- The three Skill Runtime V2 packages are first published in this release, so
+  upgrade the coordinated JS Eyes packages together to `2.9.0`.
+- Worker execution limits JavaScript reachability but is not an operating
+  system sandbox. Only trust skills whose source and permissions you accept.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Skill contract (`@js-eyes/skill-contract`)](https://www.npmjs.com/package/@js-eyes/skill-contract)
+- [Skill runtime (`@js-eyes/skill-runtime`)](https://www.npmjs.com/package/@js-eyes/skill-runtime)
+- [Skill worker (`@js-eyes/skill-worker`)](https://www.npmjs.com/package/@js-eyes/skill-worker)
+- [Native MCP server (`@js-eyes/mcp-server`)](https://www.npmjs.com/package/@js-eyes/mcp-server)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.9.0/js-eyes-chrome-v2.9.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.9.0/js-eyes-firefox-v2.9.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.9.0/js-eyes-skill-v2.9.0.zip)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` CLI and coordinated `@js-eyes/*` packages to `2.9.0`,
+   then reload the browser extensions.
+2. Start the local server and verify the extension connection with
+   `js-eyes doctor`.
+3. Use the CLI directly, add `@js-eyes/mcp-server` to a trusted MCP host, or
+   install the optional OpenClaw plugin according to the host you need.
+4. Inspect and trust external V2 skills before first use when prompt or strict
+   trust policy is enabled.
+
 ## v2.8.5
 
 > **Native MCP release.** JS Eyes can now be used directly from Codex, Claude,

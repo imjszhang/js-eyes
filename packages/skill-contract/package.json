@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/skill-contract",
-  "version": "2.8.5",
+  "version": "2.9.0",
   "description": "Host-neutral contracts and static manifests for JS Eyes Skills",
   "main": "index.js",
   "scripts": {
