@@ -191,6 +191,7 @@ function register(api) {
     configLoader: loadEffectiveSkillConfig,
     setConfigValue: (key, value) => setConfigValue(key, value),
     logger: api.logger,
+    invocationSource: "openclaw",
     externalSkillPolicy: externalSkills.policy || "legacy",
     externalSkillPolicyProvider: () => (
       pluginCfg.externalSkills?.policy || loadConfig().externalSkills?.policy || "legacy"
