@@ -4,7 +4,6 @@ const {
   compareSemver,
   discoverSkillsFromSources,
   fetchSkillsRegistry,
-  getLegacyOpenClawSkillState,
   isSkillEnabled,
   print,
   skillActions,
@@ -13,9 +12,6 @@ const {
 async function handleList({ config, flags, skillsDir, sources }) {
 const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
       const installedMap = new Map(installed.map((skill) => [skill.id, skill]));
-      const legacyState = getLegacyOpenClawSkillState({
-        skillIds: installed.map((skill) => skill.id),
-      });
       const registryUrl = flags.registry || config.skillsRegistryUrl;
 
       const wantJson = Boolean(flags.json);
@@ -63,7 +59,7 @@ const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
               skillDir: skill.skillDir,
               actions: skillActions(skill),
               commands: skill.commands,
-              enabled: isSkillEnabled(config, skill.id, legacyState),
+              enabled: isSkillEnabled(config, skill.id),
               latestVersion,
               updateAvailable,
             };
@@ -103,7 +99,7 @@ const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
             lines.push(`  Actions: ${actions.join(', ')}`);
           }
           if (local) {
-            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
+            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${local.skillDir}`);
             lines.push(renderSourceLine(local));
             if (local.source === 'primary' && compareSemver(local.version || '0.0.0', skill.version) < 0) {
@@ -122,7 +118,7 @@ const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
             if (skill.commands.length > 0) lines.push(`  Commands: ${skill.commands.join(', ')}`);
             const actions = skillActions(skill);
             if (actions.length > 0) lines.push(`  Actions: ${actions.join(', ')}`);
-            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
+            lines.push(`  Enabled: ${isSkillEnabled(config, skill.id) ? 'yes' : 'no'}`);
             lines.push(`  Installed at: ${skill.skillDir}`);
             lines.push(renderSourceLine(skill));
             lines.push('');
@@ -161,7 +157,7 @@ const { skills: installed, conflicts } = discoverSkillsFromSources(sources);
         if (actions.length > 0) {
           lines.push(`  Actions: ${actions.join(', ')}`);
         }
-        lines.push(`  Enabled: ${isSkillEnabled(config, skill.id, legacyState) ? 'yes' : 'no'}`);
+        lines.push(`  Enabled: ${isSkillEnabled(config, skill.id) ? 'yes' : 'no'}`);
         lines.push(`  Installed at: ${skill.skillDir}`);
         lines.push(renderSourceLine(skill));
         lines.push('');

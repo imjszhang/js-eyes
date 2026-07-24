@@ -6,7 +6,7 @@
 // Kept separate from skills.js / fs-io.js so the scanner never sees `fetch(…)`
 // co-located with `fs.readFileSync(…)` or `fs.createReadStream(…)`. The
 // invariant is enforced by test/import-boundaries.test.js (inverse direction:
-// `fs-io.js` / `openclaw-paths.js` MUST NOT import anything network-capable,
+// Filesystem-only configuration modules MUST NOT import anything network-capable,
 // and vice-versa this module MUST NOT re-introduce `fs.readFile*` /
 // `fs.createReadStream*`).
 //

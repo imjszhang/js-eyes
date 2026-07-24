@@ -46,7 +46,8 @@ other clients that support local stdio MCP servers.
 
 ## Safe and full profiles
 
-The default `safe` profile registers eight tools:
+The default `safe` profile registers eleven tools: eight browser tools plus the
+three generic Skill Runtime tools below.
 
 - `browser_status`
 - `browser_list_clients`
@@ -56,6 +57,9 @@ The default `safe` profile registers eight tools:
 - `browser_get_html`
 - `browser_get_page_info`
 - `browser_take_screenshot`
+- `skill_list`
+- `skill_describe`
+- `skill_call`
 
 The `full` profile additionally registers JavaScript execution, CSS injection,
 cookie access, and file upload. Enable it only for an MCP host you trust:
@@ -70,6 +74,13 @@ cookie access, and file upload. Enable it only for an MCP host you trust:
 Tool profiles control discovery, not only execution: sensitive tools are absent
 from `tools/list` in the safe profile. JS Eyes server policy remains active in
 both profiles.
+
+`skill_list`, `skill_describe`, and `skill_call` use the same manifest,
+compatibility, trust, capability, and Worker rules as the CLI and OpenClaw.
+In the default `safe` profile, `skill_call` can invoke only tools whose manifest
+risk is `read`; attempts to call `interactive`, `administrative`, or
+`destructive` Skill tools return `SKILL_RISK_DENIED`. The `full` profile permits
+all four risk classes and should be enabled only for a trusted MCP host.
 
 ## Browser selection
 
@@ -121,6 +132,8 @@ it.
   a limit between 1,000 and 1,000,000 characters.
 - Policy and egress failures return stable error codes and retain approval IDs
   without logging sensitive payloads.
+- Skill inputs are validated against each tool's manifest JSON Schema; invalid
+  calls return `SKILL_INPUT_INVALID` without entering the Skill handler.
 
 ## Troubleshooting
 

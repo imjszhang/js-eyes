@@ -28,8 +28,8 @@ if (!skillId) {
       if (skill.source === 'extra') {
         print(`Source: extra (${skill.sourcePath})`);
       }
-      print('If the OpenClaw plugin is running, it will hot-reload this change within ~300ms via the config watcher.');
-      print('Otherwise, restart OpenClaw or start a new session for the change to take effect.');
+      print('Running host integrations with config watching enabled will hot-reload this change within ~300ms.');
+      print('Otherwise, restart the host integration for the change to take effect.');
       return;
 }
 

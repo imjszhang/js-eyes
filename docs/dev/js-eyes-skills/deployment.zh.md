@@ -1,22 +1,27 @@
 # JS Eyes Skills 部署与启用（中文）
 
-> 写完一个 skill 后，四种部署模式任选（A 仓库内 / B 外部 `skillsDir` / C ClawHub 注册表 / D primary + `extraSkillDirs` 混合）；启用流程统一走 `js-eyes skills enable`。
+> 写完一个 skill 后，四种部署模式任选（A 仓库内 / B 外部 `skillsDir` / C ClawHub 注册表 / D primary + `extraSkillDirs` 混合）。V2 外部 Skill 还应经过 `inspect` / `permissions` / `trust`。
 > 编写 skill 看 [authoring.zh.md](authoring.zh.md)；契约细节看 [contract.zh.md](contract.zh.md)。
 
 ## 1. skillsDir 解析优先级
 
-主插件 [`openclaw-plugin/index.mjs`](../../../openclaw-plugin/index.mjs) 第 210-212 行决定扫描哪个目录：
+主插件按以下顺序决定扫描目录：
 
 ```js
-const skillsDir = pluginCfg.skillsDir
-    ? nodePath.resolve(pluginCfg.skillsDir)
+const skillsDir = pluginCfg.skillsDir || hostConfig.skillsDir
+    ? nodePath.resolve(pluginCfg.skillsDir || hostConfig.skillsDir)
     : nodePath.join(SKILL_ROOT, "skills");
 ```
 
 优先级：
 
 1. OpenClaw `plugins.entries["js-eyes"].config.skillsDir`（绝对路径，推荐）；
-2. `SKILL_ROOT/skills`（`SKILL_ROOT` = 插件目录上溯能找到 `skills/` 的位置，即 ClawHub bundle 根 / git 仓库根）。
+2. `~/.js-eyes/config/config.json` 的 `skillsDir`；
+3. `SKILL_ROOT/skills`（ClawHub bundle 根 / git 仓库根）。
+
+`extraSkillDirs` 会合并 host config 与插件 config（去重）；插件中的
+`externalSkills` 和 `skills.<id>.config` 覆盖同名 host config。host config
+热更新时，注册表和 chokidar 监听路径都会重新计算。
 
 `skillsDir` 只指向**一个 primary 目录**（所有 `install` / `approve` / `uninstall` / 完整性校验都作用在它上面）。
 如果还想把**其他目录**下的 skill 一起纳入（不让 js-eyes 接管其生命周期、只做发现），用 `extraSkillDirs`：见下面[部署模式 D：primary + extraSkillDirs](#5-部署模式-dprimary--extraskilldirs)。
@@ -168,9 +173,9 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
 ### 5.1 语义
 
 - `skillsDir` 仍然是 **primary**：`install` / `approve` / `uninstall` / `.integrity.json` 校验只作用于它。
-- `extraSkillDirs` 是 **extras**：js-eyes 只负责发现和注册，不接管生命周期（不做完整性校验、不改它目录下的文件）。
+- `extraSkillDirs` 是 **extras**：js-eyes 不改它目录下的文件。V2 approval 绑定真实路径、manifest、全部源码/依赖摘要、能力集合和执行模式；V1 可继续使用目录完整性快照。
 - 每个 extra 条目自动判定：
-  - 自身含 `skill.contract.js` → 视作**单个 skill 目录**；
+  - 自身含 `skill.manifest.json` 或 `skill.contract.js` → 视作**单个 skill 目录**；
   - 否则 → 视作**父目录**，只扫 1 层子目录（与 primary 相同规则）。
 - 同 id 多源命中时 **primary 优先**；extras 里的重名 skill 会被跳过并在启动日志打 warn。
 - 忽略不存在 / 非目录条目，启动日志会列出被忽略的路径。
@@ -203,7 +208,7 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
 
 ### 5.3 零重启部署（`skills link/unlink/reload`，推荐）
 
-从 2026-04-19 起，OpenClaw 运行中也可以**零重启**挂/卸外部 skill。底层由 [`packages/protocol/skill-registry.js`](../../../packages/protocol/skill-registry.js) 提供的 `SkillRegistry`（工具级 dispatcher 间接层）+ chokidar 监听 `~/.js-eyes/config/config.json` 实现。
+从 2026-04-19 起，OpenClaw 运行中也可以**零重启**挂/卸外部 skill。底层由宿主中立的 [`packages/protocol/skill-registry.js`](../../../packages/protocol/skill-registry.js) 维护 action binding，OpenClaw 插件用 chokidar 监听 `~/.js-eyes/config/config.json` 并触发 reload。
 
 ```bash
 # 把一个外部 skill 目录接入当前主机
@@ -218,21 +223,19 @@ js-eyes skills reload
 
 `link` 会把路径去重追加到 `extraSkillDirs`；如果 OpenClaw 插件已在运行，300ms 内会触发 `skillRegistry.reload()`：
 
-- 发现新增 skill → 懒加载 contract、构建 adapter、写入 toolBindings。
+- 发现新增 skill → 懒加载 contract、构建宿主定义、写入 action bindings。
 - 对**首次发现的 extras** 会自动 `skillsEnabled.<id> = true`（primary 仍保持"显式 opt-in"）。
 - 对移除的 skill 调 `runtime.dispose()` 后清理 binding。
 - 重名冲突：primary 优先，extras 被跳过并 log warn。
+- 在 `prompt` / `strict` 下，新 Skill 或源码变化只会被发现，不会执行；完成 `inspect` / `permissions` / `trust` 后再 reload。
 
-另外可在 Agent 侧调用 `js_eyes_reload_skills` 工具强制 reload 并拿到 diff 摘要；这对"我刚 link 了一个目录，帮我看一下加载情况"这类对话尤其方便。
+另外可在 Agent 侧通过 `js-eyes` 总线调用 `skills/reload` 强制 reload 并拿到 diff 摘要；这对"我刚 link 了一个目录，帮我看一下加载情况"这类对话尤其方便。
 
 #### 零重启的**前置条件**与边界
 
-- skill contract 的 **tool name 集合**稳定时零重启；如果新 skill 带来了一个**从未见过的 tool name**，少数 OpenClaw 宿主可能拒绝运行时新增 tool。此时：
-  - 其它变更（替换实现、禁用旧 skill、hot-dispose）仍 0 重启；
-  - `js_eyes_reload_skills` 返回值里会列 `dispatcher-failures: { skillId, toolNames }`；
-  - 届时需要**一次性**重启 OpenClaw 以暴露该新工具。
+- OpenClaw 只注册稳定的 `js-eyes` 总线工具；新增或删除 Skill 工具只更新内部 action binding，不要求宿主动态注册新的工具名。
 - 写 `skill.contract.js`/`package.json` 时的深清：`SkillRegistry` 会递归删除 `skillDir` 下（排除 `node_modules`）的 `require.cache`，保证修改后的代码会被重新 `require`。
-- **工具 schema 透传**：dispatcher 现在会携带 skill contract 里声明的真实 `label`/`description`/`parameters`（含 `required`/`anyOf` 等），让 OpenClaw / LLM 看到完整入参约束。首次 `registerTool` 注册的就是真实 schema；之后若 contract 改了 schema，热加载时会**按引用 mutate** 同一个 dispatcher 对象把新 schema 同步过去，并打印 `Refreshed dispatcher schema for tool "…"` 的 info 日志。少数 OpenClaw 宿主在 registerTool 时会对 tool 对象做快照/深拷贝，这种情况下热加载期间的 schema 变更不会被 LLM 看到，需要**一次性**重启 OpenClaw（工具实际 execute 行为仍然是最新的，不受影响）。
+- 工具 schema 保存在宿主中立的 Skill 描述中，CLI、MCP 和 OpenClaw action introspection 读取同一份定义。
 - `pluginCfg.watchConfig = false` 可关闭 host config 监听；`pluginCfg.devWatchSkills = false` 可关闭"改 skill 目录自动 reload"（默认都启用）。
 - 建议在 skill 的 `createRuntime()` 里实现 `async dispose()` 以清理 WebSocket / 定时器：参见 [`examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js`](../../../examples/js-eyes-skills/js-hello-ops-skill/skill.contract.js)。
 

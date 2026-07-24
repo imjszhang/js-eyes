@@ -89,10 +89,30 @@ afterEach(async () => {
 });
 
 describe('native MCP protocol', () => {
+  it('closes the skill service with the server lifecycle', async () => {
+    let disposed = 0;
+    let disconnected = 0;
+    let serverClosed = 0;
+    const instance = createMcpServer(config(), {
+      skillService: { async dispose() { disposed += 1; } },
+      session: { async disconnect() { disconnected += 1; } },
+      server: {
+        registerTool() {},
+        async close() { serverClosed += 1; },
+      },
+      logger: silentLogger,
+    });
+    await instance.close();
+    await instance.close();
+    assert.deepEqual({ disposed, disconnected, serverClosed }, {
+      disposed: 1, disconnected: 1, serverClosed: 1,
+    });
+  });
+
   it('exposes only safe tools by default with annotations', async () => {
     const { client } = await connect('safe');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 8);
+    assert.equal(listed.tools.length, 11);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_execute_script'), false);
     const tabs = listed.tools.find((tool) => tool.name === 'browser_list_tabs');
     assert.equal(tabs.annotations.readOnlyHint, true);
@@ -101,7 +121,7 @@ describe('native MCP protocol', () => {
   it('exposes sensitive tools only in the full profile', async () => {
     const { client } = await connect('full');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 13);
+    assert.equal(listed.tools.length, 16);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_get_cookies'), true);
   });
 

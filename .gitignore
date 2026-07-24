@@ -22,6 +22,7 @@ docs/*
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/mcp-facade.md
+!docs/architecture/skill-runtime-v2.md
 dist/
 build/
 *.xpi

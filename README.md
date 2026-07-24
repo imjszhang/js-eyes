@@ -2,9 +2,9 @@
 
 <div align="center">
 
-**Browser Automation for AI Agent Frameworks**
+**Browser Automation and Skills for AI Agent Frameworks**
 
-Give your AI agents real eyes into the browser — WebSocket-powered automation with native OpenClaw support
+Give your AI agents real eyes into the browser through a standalone server, CLI, MCP facade, or optional OpenClaw integration
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-imjszhang%2Fjs--eyes-181717?logo=github)](https://github.com/imjszhang/js-eyes)
@@ -33,7 +33,7 @@ curl -fsSL https://js-eyes.com/install.sh | bash
 irm https://js-eyes.com/install.ps1 | iex
 ```
 
-This downloads the skill bundle, installs dependencies, and prints the OpenClaw registration path. The standard ClawHub/OpenClaw path expects Node.js 22+ for plugin mode. See [Manual Installation](#manual-installation) for other options.
+This installs the standalone JS Eyes runtime and skill bundle. OpenClaw registration is optional and can be added later; plugin mode expects Node.js 22+. See [Manual Installation](#manual-installation) for other options.
 
 ### Optional: Auto-sync token to browser extensions
 
@@ -52,8 +52,8 @@ See [docs/native-messaging.md](./docs/native-messaging.md) for details and the [
 JS Eyes is a browser extension + WebSocket server that gives AI agents full browser automation capabilities. It connects to AI agent frameworks (OpenClaw, DeepSeek Cowork, or custom) and provides tools for tab management, content extraction, script execution, cookie access, and more.
 
 ```
-Browser Extension  <── WebSocket ──>  JS-Eyes Server  <── WebSocket ──>  AI Agent (OpenClaw)
- (Chrome/Edge/FF)                     (packages/server-core)            (openclaw-plugin)
+Browser Extension  <── WebSocket ──>  JS-Eyes Server  <──>  CLI / MCP / optional OpenClaw
+ (Chrome/Edge/FF)                     (packages/server-core)       (independent host integrations)
 ```
 
 ### Monorepo Layout
@@ -447,7 +447,9 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | `requestTimeout` | number | `1800` | Request timeout in seconds (default 30 minutes; server reads this value on startup) |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | URL of the extension skill registry |
 | `skillsDir` | string | `""` | Primary skill install directory — empty = auto-detect `skills/` under skill root. All `install` / `approve` / `uninstall` / integrity checks target this directory only. |
-| `extraSkillDirs` | string[] | `[]` | Additional read-only skill sources. Each entry can be a single skill directory (contains `skill.contract.js`) or a parent directory (scanned 1 level deep). Primary wins on id conflicts; extras skip integrity checks. See [deployment mode D](./docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs). |
+| `extraSkillDirs` | string[] | `[]` | Additional read-only skill sources. An entry can be a V2 directory containing `skill.manifest.json`, a legacy `skill.contract.js` directory, or a parent directory. Primary wins on id conflicts. |
+| `externalSkills.policy` | string | `"legacy"` | External Skill policy: `legacy`, `prompt`, or `strict`. `prompt`/`strict` require approval bound to path, manifest, source/dependency digest, and execution mode. |
+| `externalSkills.defaultExecution` | string | `"worker"` | Execution mode recorded when external V2 Skills are approved: `worker` or `in-process`. Worker is an isolation boundary, not an OS sandbox. |
 
 ## Compatibility Matrix
 
@@ -456,11 +458,11 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.8.3` |
-| Browser extension assets | `2.8.3` |
-| `@js-eyes/server-core` | `2.8.3` |
-| `@js-eyes/client-sdk` | `2.8.3` |
-| `openclaw-plugin` | `2.8.3` |
+| CLI | `2.8.5` |
+| Browser extension assets | `2.8.5` |
+| `@js-eyes/server-core` | `2.8.5` |
+| `@js-eyes/client-sdk` | `2.8.5` |
+| `openclaw-plugin` | `2.8.5` |
 | Bundled sub-skills (`skills/*`) | **Independent** semver — see each skill's `package.json` or `dist/skills.json` |
 
 ## Extension Skills
@@ -535,6 +537,7 @@ bundle `sha256`. `JS_EYES_SKILL=all` iterates every directory under
 js-eyes skills install js-x-ops-skill
 js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+js-eyes skill call js-x-ops-skill x_get_profile --args '{"username":"openai"}' --json
 ```
 
 **Manual:** download the skill zip from [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip), extract to `skills/js-eyes/skills/js-x-ops-skill/`, run `npm install`, then `js-eyes skills enable js-x-ops-skill`. A running OpenClaw + `js-eyes` plugin will hot-load the skill via the config watcher; call `js-eyes skills reload` or `action: skills/reload` through the `js-eyes` tool to force a reload.
@@ -546,11 +549,12 @@ Custom skills don't have to live inside this repository. Two ways to hook them i
 - Point `skillsDir` at the parent folder that contains your skills (js-eyes takes full lifecycle ownership — `install` / `approve` / `verify` all act on this dir).
 - Keep the default `skillsDir` and add individual skill folders (or parent folders) to `extraSkillDirs`. Extras are **read-only**: they're discovered and routed through `js-eyes`, but js-eyes never mutates them.
 
-The fastest path for an external custom skill is **zero-restart**: `js-eyes skills link /abs/path/to/my-skill` appends the directory to `extraSkillDirs` and triggers an in-memory `registry.reload()` on the running plugin. `js-eyes skills unlink <path>` / `js-eyes skills reload` (or `action: skills/reload` through the `js-eyes` tool) cover the rest of the lifecycle. See [deployment.zh.md §5.3](./docs/dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐).
+The fastest path for an external custom skill is **zero-restart**: `js-eyes skills link /abs/path/to/my-skill` appends the directory to `extraSkillDirs`. For V2 Skills, review it with `js-eyes skills inspect <id>` and `js-eyes skills permissions <id>`, then approve it using `js-eyes skills trust <id> --execution worker`. Changes to the path, manifest, source files, installed dependencies, capabilities, or execution mode invalidate approval. Use `skills revoke`, `unlink`, and `reload` for the remaining lifecycle.
 
 See:
 
-- [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring guide, `skill.contract.js` reference, deployment modes (Chinese first).
+- [Skill Runtime V2 architecture](./docs/architecture/skill-runtime-v2.md) — host contract, trust, Worker isolation, and shared host surfaces.
+- [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring and deployment guides. V1 contracts remain supported during migration.
 - [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).
 
 The runtime packages are published to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization under the `@js-eyes/*` scope, so external skills can depend on them directly:

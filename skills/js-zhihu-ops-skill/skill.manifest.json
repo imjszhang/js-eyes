@@ -1,0 +1,648 @@
+{
+  "manifestVersion": 2,
+  "id": "js-zhihu-ops-skill",
+  "name": "JS Zhihu Ops Skill",
+  "version": "3.0.0",
+  "publisher": "js-eyes",
+  "description": "知乎内容读取 skill：多 profile READ + 受控 INTERACTIVE 导航（PAGE_PROFILES + Bridges + Session）",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "zhihu.com",
+      "zhuanlan.zhihu.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "page.read",
+      "navigation",
+      "script.execute",
+      "screenshot"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "doctor",
+        "description": "连通性 + bridge 注入 + state 汇总（多 profile 诊断）"
+      },
+      {
+        "name": "records",
+        "description": "查看最近的 records：records [--last N] [--tool zhihu_get_answer]"
+      },
+      {
+        "name": "monitor",
+        "description": "知乎用户/问题/搜索监控：init/add/remove/list/status/test"
+      },
+      {
+        "name": "session-state",
+        "description": "读取知乎登录态与页面阻断状态"
+      },
+      {
+        "name": "answer",
+        "description": "回答详情：answer <url>"
+      },
+      {
+        "name": "article",
+        "description": "专栏详情：article <url>"
+      },
+      {
+        "name": "question-answers",
+        "description": "问题回答列表：question-answers <url|questionId> [--limit N] [--max-pages N]"
+      },
+      {
+        "name": "search",
+        "description": "搜索：search <keyword> [--type content|people|topic] [--limit N] [--max-pages N]"
+      },
+      {
+        "name": "user",
+        "description": "用户主页：user <url|slug>"
+      },
+      {
+        "name": "user-answers",
+        "description": "用户回答列表：user-answers <url|slug> [--limit N] [--max-pages N]"
+      },
+      {
+        "name": "user-articles",
+        "description": "用户文章列表：user-articles <url|slug> [--limit N] [--max-pages N]"
+      },
+      {
+        "name": "navigate-answer",
+        "description": "导航到知乎回答：navigate-answer <url>"
+      },
+      {
+        "name": "navigate-article",
+        "description": "导航到知乎专栏：navigate-article <url>"
+      },
+      {
+        "name": "navigate-question",
+        "description": "导航到知乎问题：navigate-question <url|questionId>"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航到知乎搜索：navigate-search [keyword]"
+      },
+      {
+        "name": "navigate-user",
+        "description": "导航到知乎用户：navigate-user <url|slug>"
+      },
+      {
+        "name": "navigate-home",
+        "description": "导航到知乎首页"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "zhihu_get_answer",
+      "title": "Zhihu Ops: Get Answer",
+      "description": "读取知乎回答详情，返回标题、作者、正文、点赞和评论数。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎回答 URL"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "dom",
+              "api"
+            ],
+            "description": "读取模式（当前默认 dom）"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_get_article",
+      "title": "Zhihu Ops: Get Article",
+      "description": "读取知乎专栏详情，返回标题、作者、发布时间和正文。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎专栏 URL"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "dom",
+              "api"
+            ],
+            "description": "读取模式（当前默认 dom）"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_session_state",
+      "title": "Zhihu Ops: Session State",
+      "description": "读取知乎登录态、cookie 标记与页面阻断状态。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "zhihu_get_question_answers",
+      "title": "Zhihu Ops: Get Question Answers",
+      "description": "读取知乎问题页标题、描述与回答列表摘要。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎问题 URL（与 questionId 二选一）"
+          },
+          "questionId": {
+            "type": "string",
+            "description": "知乎问题 ID"
+          },
+          "limit": {
+            "type": "number",
+            "description": "回答数上限（默认 10，最多 100）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大 DOM 滚动轮次（默认 1，最多 20）"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_search",
+      "title": "Zhihu Ops: Search",
+      "description": "知乎搜索结果读取（DOM 路径，支持关键词、类型和 limit）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "type": {
+            "type": "string",
+            "description": "搜索类型（如 content/people/topic，按知乎当前 URL 参数透传）"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限（默认 10，最多 100）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大 DOM 滚动轮次（默认 1，最多 20）"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_get_user",
+      "title": "Zhihu Ops: Get User",
+      "description": "读取知乎用户主页资料。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎用户 URL（与 userSlug 二选一）"
+          },
+          "userSlug": {
+            "type": "string",
+            "description": "知乎用户 slug"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_get_user_answers",
+      "title": "Zhihu Ops: Get User Answers",
+      "description": "读取知乎用户主页上的回答列表摘要。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎用户 URL（与 userSlug 二选一）"
+          },
+          "userSlug": {
+            "type": "string",
+            "description": "知乎用户 slug"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限（默认 10，最多 100）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大 DOM 滚动轮次（默认 1，最多 20）"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_get_user_articles",
+      "title": "Zhihu Ops: Get User Articles",
+      "description": "读取知乎用户主页上的文章列表摘要。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎用户 URL（与 userSlug 二选一）"
+          },
+          "userSlug": {
+            "type": "string",
+            "description": "知乎用户 slug"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限（默认 10，最多 100）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大 DOM 滚动轮次（默认 1，最多 20）"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_navigate_answer",
+      "title": "Zhihu Ops: Navigate Answer",
+      "description": "导航到知乎回答页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎回答 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_navigate_article",
+      "title": "Zhihu Ops: Navigate Article",
+      "description": "导航到知乎专栏页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "知乎专栏 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_navigate_question",
+      "title": "Zhihu Ops: Navigate Question",
+      "description": "导航到知乎问题页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "questionId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_navigate_search",
+      "title": "Zhihu Ops: Navigate Search",
+      "description": "导航到知乎搜索页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_navigate_user",
+      "title": "Zhihu Ops: Navigate User",
+      "description": "导航到知乎用户主页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "userSlug": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "zhihu_navigate_home",
+      "title": "Zhihu Ops: Navigate Home",
+      "description": "导航到知乎首页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "zhihu_monitor_list_targets",
+      "title": "Zhihu Monitor: List Targets",
+      "description": "列出知乎 monitor users/questions/searches/channels。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "zhihu_monitor_get_status",
+      "title": "Zhihu Monitor: Get Status",
+      "description": "读取知乎 monitor 初始化和 daemon 状态。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "zhihu_monitor_add_target",
+      "title": "Zhihu Monitor: Add Target",
+      "description": "增加一个 user/question/search target（仅写 config，不发通知）。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "question",
+              "search"
+            ]
+          },
+          "userSlug": {
+            "type": "string"
+          },
+          "questionId": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_monitor_remove_target",
+      "title": "Zhihu Monitor: Remove Target",
+      "description": "删除一个 user/question/search target。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "question",
+              "search"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ]
+      }
+    },
+    {
+      "name": "zhihu_monitor_test_target",
+      "title": "Zhihu Monitor: Test Target",
+      "description": "单 target dry run（不写 state、不发通知）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "question",
+              "search"
+            ]
+          },
+          "userSlug": {
+            "type": "string"
+          },
+          "questionId": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      }
+    }
+  ]
+}

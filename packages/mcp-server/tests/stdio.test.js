@@ -24,7 +24,7 @@ describe('published stdio entrypoint', () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      assert.equal(tools.tools.length, 8);
+      assert.equal(tools.tools.length, 11);
       assert.equal(tools.tools[0].name, 'browser_status');
     } finally {
       await client.close();

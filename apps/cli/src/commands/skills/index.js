@@ -7,6 +7,7 @@ const { handleLink, handleReload, handleRelink, handleUnlink } = require('./link
 const { handleList } = require('./list');
 const { handleUpdate } = require('./update');
 const { handleVerify } = require('./verify');
+const { handleTrustAction } = require('./trust');
 
 async function commandSkills(positionals, flags) {
   const action = positionals[1];
@@ -29,8 +30,12 @@ async function commandSkills(positionals, flags) {
     case 'unlink': return handleUnlink(context);
     case 'relink': return handleRelink(context);
     case 'reload': return handleReload(context);
+    case 'inspect':
+    case 'permissions':
+    case 'trust':
+    case 'revoke': return handleTrustAction(context);
     default:
-      throw new Error('支持的命令: `js-eyes skills list` / `install <skillId> [--plan]` / `update <skillId|--all> [--dry-run]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `relink <path>` / `reload`');
+      throw new Error('支持的命令: `js-eyes skills list` / `inspect <skillId>` / `permissions <skillId>` / `trust <skillId>` / `revoke <skillId>` / `install <skillId> [--plan]` / `update <skillId|--all> [--dry-run]` / `approve <skillId>` / `verify [skillId]` / `enable <skillId>` / `disable <skillId>` / `link <path>` / `unlink <path>` / `relink <path>` / `reload`');
   }
 }
 

@@ -8,7 +8,6 @@ const {
   ensureRuntimePaths,
   fetchJson,
   fs,
-  getLegacyOpenClawSkillState,
   getPaths,
   getServerOptions,
   getTokenFilePath,
@@ -132,10 +131,6 @@ function buildDoctorPosture(flags) {
   const skillsDir = sources.primary;
   const verifyEnabled = Boolean(security.verifyExtraSkillDirs);
 
-  const legacyState = getLegacyOpenClawSkillState({
-    skillIds: (sources.extras || []).length > 0 ? null : [],
-  });
-
   const skillsSummary = [];
   if (fs.existsSync(skillsDir)) {
     for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
@@ -156,7 +151,7 @@ function buildDoctorPosture(flags) {
         source: 'primary',
         sourcePath: skillsDir,
         integrity,
-        enabled: isSkillEnabled(config, id, legacyState),
+        enabled: isSkillEnabled(config, id),
       });
     }
   }
@@ -170,7 +165,7 @@ function buildDoctorPosture(flags) {
         source: 'extra',
         sourcePath: extra.path,
         integrity: classification.state,
-        enabled: isSkillEnabled(config, skill.id, legacyState),
+        enabled: isSkillEnabled(config, skill.id),
       });
     }
     return {

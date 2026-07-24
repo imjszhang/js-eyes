@@ -21,6 +21,9 @@ function writeSkill(dir, id, opts = {}) {
         // runtime.dispose is invoked during hot-unload
         runtime.dispose = async () => { global.__jsEyesTestDisposeCalls = (global.__jsEyesTestDisposeCalls || 0) + 1; };`
     : '';
+  const resultText = opts.withConfigValue
+    ? `String(pluginConfig.skills?.['${id}']?.config?.value)`
+    : `'from ${id}: ' + (params && params.msg ? params.msg : '')`;
   fs.writeFileSync(
     path.join(dir, 'skill.contract.js'),
     `'use strict';
@@ -37,7 +40,7 @@ function createOpenClawAdapter(pluginConfig, logger) {
       parameters: { type: 'object', properties: { msg: { type: 'string' } } },
       optional: true,
       async execute(toolCallId, params) {
-        return { content: [{ type: 'text', text: 'from ${id}: ' + (params && params.msg ? params.msg : '') }] };
+        return { content: [{ type: 'text', text: ${resultText} }] };
       },
     }],
   };
@@ -73,6 +76,14 @@ function createFakeApi(overrides = {}) {
       }
       registered.set(definition.name, { definition, options });
     }),
+  };
+}
+
+function registryHostOptions(api) {
+  return {
+    logger: api.logger,
+    registerTool: api.registerTool.bind(api),
+    directActionsOnly: false,
   };
 }
 
@@ -113,7 +124,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -144,7 +155,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { beta: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -168,7 +179,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -187,7 +198,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       type: 'object',
       properties: { msg: { type: 'string' } },
     });
-    // Optional flag is also forwarded so OpenClaw tool-allowlist semantics still apply.
+    // Optional flag is forwarded to the host registration callback.
     assert.deepEqual(entry.options, { optional: true });
   });
 
@@ -200,7 +211,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -312,7 +323,7 @@ module.exports = {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { gamma: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -331,7 +342,7 @@ module.exports = {
   });
 });
 
-describe('createSkillRegistry — router mode', () => {
+describe('createSkillRegistry — direct action mode', () => {
   let tempDir = null;
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-router-'));
@@ -341,7 +352,7 @@ describe('createSkillRegistry — router mode', () => {
     tempDir = null;
   });
 
-  it('does not register skill tools with OpenClaw and executes path-style skill actions', async () => {
+  it('does not register individual tools and executes path-style skill actions', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });
     writeSkill(path.join(primary, 'mock-skill'), 'mock-skill', { tool: 'mock_tool' });
@@ -349,13 +360,11 @@ describe('createSkillRegistry — router mode', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { 'mock-skill': true } });
     const registry = createSkillRegistry({
-      api,
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      routerMode: true,
       suppressSelfWrites: false,
     });
 
@@ -400,7 +409,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { core: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
@@ -432,7 +441,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: {} });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [externalDir],
       configLoader: io.loader,
@@ -460,7 +469,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: {} });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
@@ -490,7 +499,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { togl: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -507,6 +516,41 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     assert.ok(!registry._internals.toolBindings.has('togl_tool'));
   });
 
+  it('rebuilds an active skill with its latest runtime config', async () => {
+    const primary = path.join(tempDir, 'primary');
+    fs.mkdirSync(primary, { recursive: true });
+    writeSkill(path.join(primary, 'configured'), 'configured', {
+      tool: 'configured_tool',
+      withConfigValue: true,
+    });
+
+    const api = createFakeApi();
+    const io = stubConfigIo({
+      skillsEnabled: { configured: true },
+      skills: { configured: { config: { value: 1 } } },
+    });
+    const registry = createSkillRegistry({
+      ...registryHostOptions(api),
+      hostConfig: io.loader(),
+      skillsDir: primary,
+      extrasProvider: () => [],
+      configLoader: io.loader,
+      setConfigValue: io.setter,
+      logger: api.logger,
+      suppressSelfWrites: false,
+    });
+    await registry.init();
+
+    const dispatcher = api._registered.get('configured_tool').definition;
+    assert.equal((await dispatcher.execute('first', {})).content[0].text, '1');
+
+    io.setter('skills.configured.config.value', 2);
+    const summary = await registry.reload('config-watch');
+    assert.deepEqual(summary.reloaded, ['configured']);
+    assert.equal((await dispatcher.execute('second', {})).content[0].text, '2');
+    assert.equal(api._registered.size, 1, 'config reload keeps the stable dispatcher');
+  });
+
   it('serialises concurrent reload() calls', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });
@@ -515,7 +559,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { seq: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -557,12 +601,11 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
 
     const io = stubConfigIo({ skillsEnabled: { ok: true } });
     const registry = createSkillRegistry({
-      api: flaky,
+      ...registryHostOptions(flaky),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
       setConfigValue: io.setter,
-      logger: flaky.logger,
       suppressSelfWrites: false,
     });
     await registry.init();

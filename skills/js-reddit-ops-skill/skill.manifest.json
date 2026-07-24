@@ -1,0 +1,780 @@
+{
+  "manifestVersion": 2,
+  "id": "js-reddit-ops-skill",
+  "name": "JS Reddit Ops Skill",
+  "version": "3.9.0",
+  "publisher": "js-eyes",
+  "description": "Reddit 内容读取 + 浏览器导航技能：PAGE_PROFILES + Bridges + Session 架构，READ + INTERACTIVE 两档（不做 DESTRUCTIVE）",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "reddit.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "page.read",
+      "navigation",
+      "script.execute",
+      "screenshot"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "post",
+        "description": "读取 Reddit 帖子详情"
+      },
+      {
+        "name": "doctor",
+        "description": "连通性 + 登录态 + bridge 注入 + probe + state 汇总"
+      },
+      {
+        "name": "probe",
+        "description": "采集页面指纹（按 page profile）"
+      },
+      {
+        "name": "state",
+        "description": "读取当前 page profile 状态"
+      },
+      {
+        "name": "session-state",
+        "description": "读取登录态"
+      },
+      {
+        "name": "list-subreddit",
+        "description": "列出 subreddit 内帖子"
+      },
+      {
+        "name": "subreddit-about",
+        "description": "读取 subreddit 元信息"
+      },
+      {
+        "name": "search",
+        "description": "搜索 Reddit"
+      },
+      {
+        "name": "user-profile",
+        "description": "读取 user 页（overview/submitted/comments/...）"
+      },
+      {
+        "name": "inbox-list",
+        "description": "读取私信/通知"
+      },
+      {
+        "name": "my-feed",
+        "description": "读取主 feed / popular / all"
+      },
+      {
+        "name": "expand-more",
+        "description": "展开评论树 more 节点（/api/morechildren）"
+      },
+      {
+        "name": "navigate-post",
+        "description": "导航到帖子页（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-subreddit",
+        "description": "导航到 subreddit（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航到搜索结果（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-user",
+        "description": "导航到 user 页（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-inbox",
+        "description": "导航到收件箱（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-home",
+        "description": "导航到 home/popular/all（INTERACTIVE）"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "reddit_get_post",
+      "title": "Reddit Ops: Get Post",
+      "description": "读取 Reddit 帖子详情，返回正文、subreddit、图片和评论树。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Reddit 帖子 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "reddit_session_state",
+      "title": "Reddit Ops: Session State",
+      "description": "读取当前浏览器中 Reddit 的登录态（/api/v1/me.json，未登录回 {loggedIn:false}）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_list_subreddit",
+      "title": "Reddit Ops: List Subreddit",
+      "description": "列出 subreddit 内帖子（hot/new/top/rising/controversial）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sub": {
+            "type": "string",
+            "description": "subreddit 名（不带 r/ 前缀）"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "new",
+              "top",
+              "rising",
+              "controversial",
+              "best"
+            ],
+            "default": "hot"
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ],
+            "description": "top/controversial 排序生效"
+          },
+          "limit": {
+            "type": "number",
+            "description": "默认 25, 上限 100"
+          },
+          "after": {
+            "type": "string",
+            "description": "分页游标，例如 t3_xxx"
+          }
+        },
+        "required": [
+          "sub"
+        ]
+      }
+    },
+    {
+      "name": "reddit_subreddit_about",
+      "title": "Reddit Ops: Subreddit About",
+      "description": "读取 subreddit 元信息（订阅数 / 描述 / 是否 NSFW 等）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sub": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub"
+        ]
+      }
+    },
+    {
+      "name": "reddit_search",
+      "title": "Reddit Ops: Search",
+      "description": "搜索 Reddit（posts / subreddits / users）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "查询字符串"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "hot",
+              "top",
+              "new",
+              "comments"
+            ],
+            "default": "relevance"
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ],
+            "default": "all"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "link",
+              "sr",
+              "user"
+            ],
+            "default": "link"
+          },
+          "sub": {
+            "type": "string",
+            "description": "限定到某 subreddit（同时设置 restrictSr=true）"
+          },
+          "restrictSr": {
+            "type": "boolean",
+            "description": "是否仅在 sub 内搜索"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ]
+      }
+    },
+    {
+      "name": "reddit_user_profile",
+      "title": "Reddit Ops: User Profile",
+      "description": "读取 user 页（overview/submitted/comments/saved/upvoted/downvoted/hidden）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "reddit 用户名（不带 u/ 前缀）"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "submitted",
+              "comments",
+              "saved",
+              "upvoted",
+              "downvoted",
+              "hidden"
+            ],
+            "default": "overview"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "new",
+              "hot",
+              "top",
+              "controversial"
+            ],
+            "default": "new"
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ],
+            "default": "all"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "reddit_inbox_list",
+      "title": "Reddit Ops: Inbox List",
+      "description": "读取登录用户的 inbox / unread / messages / mentions / sent（必须已登录）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "box": {
+            "type": "string",
+            "enum": [
+              "inbox",
+              "unread",
+              "messages",
+              "mentions",
+              "sent"
+            ],
+            "default": "inbox"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_my_feed",
+      "title": "Reddit Ops: My Feed",
+      "description": "读取 home / popular / all feed（home 需登录）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "home",
+              "popular",
+              "all"
+            ],
+            "default": "home"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "best",
+              "hot",
+              "new",
+              "top",
+              "rising",
+              "controversial"
+            ],
+            "default": "best"
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ]
+          },
+          "limit": {
+            "type": "number"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_expand_more",
+      "title": "Reddit Ops: Expand More Comments",
+      "description": "展开 reddit_get_post 评论树里的 more 节点（调 /api/morechildren）。需先用 reddit_get_post 拿到 _kind=\"more\" 节点的 _children 列表。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "string",
+            "description": "帖子 fullname，形如 t3_xxxxx（来自 reddit_get_post 顶层 source_url 或元数据）"
+          },
+          "children": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "string",
+                "description": "逗号分隔的 child id 列表"
+              }
+            ],
+            "description": "morechildren 子节点 id 列表（reddit_get_post 评论树里 _kind=\"more\" 节点的 _children 字段）"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "top",
+              "best",
+              "new",
+              "old",
+              "controversial",
+              "qa",
+              "confidence"
+            ],
+            "default": "top"
+          },
+          "depth": {
+            "type": "number",
+            "description": "可选：展开深度上限（默认走 reddit 默认值）"
+          },
+          "limitChildren": {
+            "type": "number",
+            "description": "一次提交的 child id 上限（默认 200，最大 500，超出会被截断）"
+          }
+        },
+        "required": [
+          "linkId",
+          "children"
+        ]
+      }
+    },
+    {
+      "name": "reddit_navigate_post",
+      "title": "Reddit Ops: Navigate To Post",
+      "description": "把浏览器导航到指定帖子页（仅 location.assign）",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "帖子 URL（与 sub+postId 二选一）"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "postId": {
+            "type": "string",
+            "description": "不带 t3_ 前缀"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_navigate_subreddit",
+      "title": "Reddit Ops: Navigate To Subreddit",
+      "description": "导航到 subreddit 列表页或 about 页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sub": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "new",
+              "top",
+              "rising",
+              "controversial",
+              "best"
+            ]
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ]
+          },
+          "about": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "sub"
+        ]
+      }
+    },
+    {
+      "name": "reddit_navigate_search",
+      "title": "Reddit Ops: Navigate To Search",
+      "description": "导航到搜索结果页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "hot",
+              "top",
+              "new",
+              "comments"
+            ]
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "link",
+              "sr",
+              "user"
+            ]
+          },
+          "sub": {
+            "type": "string"
+          },
+          "restrictSr": {
+            "type": "boolean"
+          },
+          "clear": {
+            "type": "boolean",
+            "description": "不带 q 时把 URL 清回 /search/"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_navigate_user",
+      "title": "Reddit Ops: Navigate To User",
+      "description": "导航到用户主页或某个 tab",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "submitted",
+              "comments",
+              "saved",
+              "upvoted",
+              "downvoted",
+              "gilded",
+              "hidden"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "reddit_navigate_inbox",
+      "title": "Reddit Ops: Navigate To Inbox",
+      "description": "导航到收件箱（必须已登录）",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "box": {
+            "type": "string",
+            "enum": [
+              "inbox",
+              "unread",
+              "messages",
+              "mentions",
+              "sent",
+              "moderator"
+            ],
+            "default": "inbox"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reddit_navigate_home",
+      "title": "Reddit Ops: Navigate To Home",
+      "description": "导航到 home / popular / all",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "home",
+              "popular",
+              "all"
+            ],
+            "default": "home"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "best",
+              "hot",
+              "new",
+              "top",
+              "rising"
+            ]
+          },
+          "t": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week",
+              "month",
+              "year",
+              "all"
+            ]
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

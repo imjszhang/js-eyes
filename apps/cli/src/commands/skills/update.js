@@ -134,7 +134,7 @@ const all = Boolean(flags.all);
         `${results.blocked.length} blocked, ${results.skipped.length} skipped`,
       );
       if (results.updated.length > 0 && !dryRun) {
-        print('Restart OpenClaw or start a new session to load the new skill tools.');
+        print('Restart the active host integration or start a new session to load the new skill tools.');
       }
       if (results.blocked.length > 0) {
         process.exitCode = 2;

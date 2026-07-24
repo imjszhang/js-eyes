@@ -20,7 +20,10 @@ const DIST_ROOT = path.join(REPO_ROOT, 'dist', 'js-eyes');
 
 // 传递闭包：CLI 运行时会实际加载的子包（skill-recording 未被 CLI 使用，忽略）
 // native-host 来自 apps/，其余来自 packages/
-const BUNDLED_PACKAGES = ['protocol', 'runtime-paths', 'config', 'client-sdk', 'server-core', 'native-host'];
+const BUNDLED_PACKAGES = [
+  'skill-contract', 'protocol', 'runtime-paths', 'config', 'skill-recording',
+  'client-sdk', 'skill-worker', 'skill-runtime', 'server-core', 'native-host',
+];
 
 function resolveSourcePackageDir(name) {
   const inPackages = path.join(PACKAGES_ROOT, name);

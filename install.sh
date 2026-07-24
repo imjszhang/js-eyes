@@ -266,7 +266,10 @@ install_one_sub_skill() {
   fi
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Next: register the plugin in ~/.openclaw/openclaw.json"
+  echo "  Next: run the standalone JS Eyes server or connect an MCP client."
+  echo "    js-eyes server start"
+  echo ""
+  echo "  Optional OpenClaw integration:"
   echo ""
   echo "  Add to plugins.load.paths:"
   echo "    \"${plugin_path}\""
@@ -393,7 +396,7 @@ extract_zip() {
 
 extract_zip "$SKILL_ZIP" "$TARGET"
 
-# Fix permissions: OpenClaw rejects world-writable plugin paths
+# Keep installed runtime and optional integration files non-world-writable.
 find "$TARGET" -type f -exec chmod 644 {} + 2>/dev/null || true
 find "$TARGET" -type d -exec chmod 755 {} + 2>/dev/null || true
 
@@ -420,10 +423,10 @@ if [ "${SKIP_TOKEN_INIT}" != "1" ]; then
     if npx --yes js-eyes server token init >/dev/null 2>&1; then
       ok "Server token initialized at ~/.js-eyes/runtime/server.token."
     else
-      warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+      warn "Server token init failed; run 'npx js-eyes server token init' later."
     fi
   else
-    warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' (or start OpenClaw) before using Sync Token From Host."
+    warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' before using Sync Token From Host."
   fi
 fi
 
@@ -442,7 +445,12 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Next: register the plugin in ~/.openclaw/openclaw.json"
+echo "  Next: start the standalone server:"
+echo "    js-eyes server start"
+echo ""
+echo "  For MCP clients, see docs/mcp.md."
+echo ""
+echo "  Optional OpenClaw integration:"
 echo ""
 echo "  Add to plugins.load.paths:"
 echo "    \"${PLUGIN_PATH}\""
@@ -457,6 +465,6 @@ echo "  Then restart OpenClaw."
 echo ""
 echo "  Tip: in the browser extension popup, restart the browser first, then"
 echo "       click \"Sync Token From Host / 从本机同步\" to auto-populate the"
-echo "       server token. If it reports 'token-missing', start OpenClaw or"
-echo "       run \`js-eyes server token init\` so the token file exists."
+echo "       server token. If it reports 'token-missing', run"
+echo "       \`js-eyes server token init\` so the token file exists."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

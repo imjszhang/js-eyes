@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 2,
+  "id": "js-bilibili-ops-skill",
+  "name": "JS Bilibili Ops Skill",
+  "version": "2.0.0",
+  "publisher": "js-eyes",
+  "description": "Bilibili 视频读取技能，提供视频元数据与字幕读取",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": false,
+    "browserExtension": false,
+    "login": false,
+    "platforms": [
+      "bilibili.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [],
+    "network": {
+      "direct": true,
+      "hosts": [
+        "bilibili.com"
+      ]
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [
+      "spawn"
+    ],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "video",
+        "description": "读取 Bilibili 视频元数据"
+      },
+      {
+        "name": "subtitles",
+        "description": "读取 Bilibili 视频字幕"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "bilibili_get_video",
+      "title": "Bilibili Ops: Get Video",
+      "description": "读取 Bilibili 视频元数据，可选同时返回字幕。",
+      "risk": "read",
+      "capabilities": [
+        "network.direct",
+        "process.spawn"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Bilibili 视频 URL"
+          },
+          "includeSubtitles": {
+            "type": "boolean",
+            "description": "是否同时获取字幕"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "bilibili_get_subtitles",
+      "title": "Bilibili Ops: Get Subtitles",
+      "description": "读取 Bilibili 视频字幕，返回语言列表和字幕文本。",
+      "risk": "read",
+      "capabilities": [
+        "network.direct",
+        "process.spawn"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Bilibili 视频 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    }
+  ]
+}

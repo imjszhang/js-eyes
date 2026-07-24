@@ -19,7 +19,7 @@ function annotations(options = {}) {
   };
 }
 
-function createToolDefinitions(session, config) {
+function createToolDefinitions(session, config, skillService = null) {
   const maxChars = config.maxTextChars || 100000;
   const safe = [
     {
@@ -289,7 +289,53 @@ function createToolDefinitions(session, config) {
     },
   ];
 
-  return config.toolProfile === 'full' ? [...safe, ...full] : safe;
+  const skills = skillService ? [
+    {
+      name: 'skill_list',
+      title: 'JS Eyes: List Skills',
+      description: 'List active JS Eyes Skills available through the host-neutral skill runtime.',
+      inputSchema: z.object({}),
+      annotations: annotations({ readOnly: true, idempotent: true }),
+      async execute() {
+        const items = await skillService.list();
+        return dataResult(`Active skills: ${items.length}`, { skills: items }, { maxChars });
+      },
+    },
+    {
+      name: 'skill_describe',
+      title: 'JS Eyes: Describe Skill',
+      description: 'Describe one active Skill, including tools, schemas, risk, and capabilities.',
+      inputSchema: z.object({ skillId: z.string().min(1).max(300) }),
+      annotations: annotations({ readOnly: true, idempotent: true }),
+      async execute(args) {
+        const skill = await skillService.describe(args.skillId);
+        if (!skill) throw new FacadeError('JS_EYES_SKILL_NOT_FOUND', `Skill is not active: ${args.skillId}`);
+        return dataResult(`Skill ${args.skillId}`, skill, { maxChars });
+      },
+    },
+    {
+      name: 'skill_call',
+      title: 'JS Eyes: Call Skill Tool',
+      description: 'Call a tool exposed by an active JS Eyes Skill using the shared runtime.',
+      inputSchema: z.object({
+        skillId: z.string().min(1).max(300),
+        tool: z.string().min(1).max(300),
+        args: z.record(z.string(), z.unknown()).optional(),
+      }),
+      annotations: annotations({
+        readOnly: config.toolProfile !== 'full',
+        destructive: config.toolProfile === 'full',
+        openWorld: true,
+      }),
+      async execute(args) {
+        const result = await skillService.call(args.skillId, args.tool, args.args || {});
+        if (result && Array.isArray(result.content)) return result;
+        return dataResult(`Skill call ${args.skillId}/${args.tool}`, result, { maxChars });
+      },
+    },
+  ] : [];
+
+  return config.toolProfile === 'full' ? [...safe, ...full, ...skills] : [...safe, ...skills];
 }
 
 function registerTools(server, definitions, logger = console) {

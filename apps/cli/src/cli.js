@@ -12,7 +12,6 @@ const { commandEgress } = require('./commands/egress');
 const { commandExtension, resolveExtensionAsset } = require('./commands/extension');
 const { printHelp } = require('./commands/help');
 const { commandNativeHost } = require('./commands/native-host');
-const { commandOpenClaw } = require('./commands/openclaw');
 const { commandSecurity } = require('./commands/security');
 const { commandServer } = require('./commands/server');
 const { commandSkill } = require('./commands/skill');
@@ -42,7 +41,7 @@ async function main(argv = process.argv.slice(2)) {
       await commandSkill(positionals, flags);
       return;
     case 'openclaw':
-      await commandOpenClaw(positionals);
+      await require('./commands/openclaw').commandOpenClaw(positionals);
       return;
     case 'extension':
       await commandExtension(positionals, flags);

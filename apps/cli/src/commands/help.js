@@ -28,7 +28,11 @@ function printHelp() {
   print('  js-eyes skills disable <skillId>');
   print('  js-eyes skills link <path>        # add an external skill directory (zero-restart)');
   print('  js-eyes skills unlink <path>      # remove an external skill directory');
-  print('  js-eyes skills reload             # ask the running plugin to reload skills');
+  print('  js-eyes skills reload             # ask the running host integration to reload skills');
+  print('  js-eyes skills inspect <id>       # inspect manifest, capabilities, and trust');
+  print('  js-eyes skills trust <id>         # approve a V2 external skill');
+  print('  js-eyes skills revoke <id>        # revoke and disable an external skill');
+  print('  js-eyes skill call <id> <tool> --args <json>  # invoke the shared runtime');
   print('  js-eyes skill run <skillId> <command> [args...]');
   print('  js-eyes openclaw plugin-path');
   print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');

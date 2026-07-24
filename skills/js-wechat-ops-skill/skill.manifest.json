@@ -1,0 +1,76 @@
+{
+  "manifestVersion": 2,
+  "id": "js-wechat-ops-skill",
+  "name": "JS WeChat Ops Skill",
+  "version": "2.0.1",
+  "publisher": "js-eyes",
+  "description": "微信公众号内容读取技能，基于 JS-Eyes 浏览器自动化获取文章正文与配图",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "mp.weixin.qq.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "page.read",
+      "navigation",
+      "script.execute"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "article",
+        "description": "读取微信公众号文章详情"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "wechat_get_article",
+      "title": "WeChat Ops: Get Article",
+      "description": "读取微信公众号文章详情，返回标题、作者、摘要、正文、头图和图片列表。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "微信公众号文章 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    }
+  ]
+}

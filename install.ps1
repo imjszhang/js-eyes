@@ -163,7 +163,10 @@ function Install-JsEyesSkill {
     Write-Ok "$SkillId installed to: $AbsTarget"
     Write-Host ""
     Write-Host ([string]::new([char]0x2501, 57))
-    Write-Host "  Next: register the plugin in ~/.openclaw/openclaw.json"
+    Write-Host "  Next: run the standalone JS Eyes server or connect an MCP client."
+    Write-Host "    js-eyes server start"
+    Write-Host ""
+    Write-Host "  Optional OpenClaw integration:"
     Write-Host ""
     Write-Host "  Add to plugins.load.paths:"
     Write-Host "    `"$PluginPath`""
@@ -294,13 +297,13 @@ if (-not $SkipTokenInit) {
             if ($LASTEXITCODE -eq 0) {
                 Write-Ok "Server token initialized at $env:USERPROFILE\.js-eyes\runtime\server.token."
             } else {
-                Write-Warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+                Write-Warn "Server token init failed; run 'npx js-eyes server token init' later."
             }
         } catch {
-            Write-Warn "Server token init failed; run 'npx js-eyes server token init' later (or start OpenClaw to let the server auto-create it)."
+            Write-Warn "Server token init failed; run 'npx js-eyes server token init' later."
         }
     } else {
-        Write-Warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' (or start OpenClaw) before using Sync Token From Host."
+        Write-Warn "npx not found; skipping server token initialization. Run 'js-eyes server token init' before using Sync Token From Host."
     }
 }
 
@@ -326,7 +329,12 @@ if (-not $SkipNativeHost) {
 
 Write-Host ""
 Write-Host ([string]::new([char]0x2501, 57))
-Write-Host "  Next: register the plugin in ~/.openclaw/openclaw.json"
+Write-Host "  Next: start the standalone server:"
+Write-Host "    js-eyes server start"
+Write-Host ""
+Write-Host "  For MCP clients, see docs/mcp.md."
+Write-Host ""
+Write-Host "  Optional OpenClaw integration:"
 Write-Host ""
 Write-Host "  Add to plugins.load.paths:"
 Write-Host "    `"$PluginPath`""
@@ -341,6 +349,6 @@ Write-Host "  Then restart OpenClaw."
 Write-Host ""
 Write-Host "  Tip: in the browser extension popup, restart the browser first, then"
 Write-Host "       click `"Sync Token From Host / 从本机同步`" to auto-populate the"
-Write-Host "       server token. If it reports 'token-missing', start OpenClaw or"
-Write-Host "       run ``js-eyes server token init`` so the token file exists."
+Write-Host "       server token. If it reports 'token-missing', run"
+Write-Host "       ``js-eyes server token init`` so the token file exists."
 Write-Host ([string]::new([char]0x2501, 57))

@@ -73,7 +73,7 @@ if (!skillId) {
       print(`Location: ${apply.targetDir}`);
       print('Enabled in JS Eyes host config: yes');
       print('Integrity manifest written: .integrity.json');
-      print('Restart OpenClaw or start a new session to load the new skill tools.');
+      print('Restart the active host integration or start a new session to load the new skill tools.');
       return;
 }
 

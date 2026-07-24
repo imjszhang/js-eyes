@@ -1,13 +1,38 @@
-# skill.contract.js 契约规范（中文）
+# JS Eyes Skill 契约规范（中文）
 
-> 本文档描述 **JS Eyes Skills** 必须实现的 `skill.contract.js` 契约。
+> V2 已实现：新 Skill 优先使用静态 `skill.manifest.json` + `skill.entry.js`。
+> 发现阶段只读取 JSON，不执行入口；`skill.contract.js` 作为 V1 兼容层继续可用。
+> 整体架构、权限与 Worker 边界见
+> [`Skill Runtime V2`](../../architecture/skill-runtime-v2.md)。
+
+## V2 最小结构
+
+```text
+my-skill/
+├── package.json
+├── skill.manifest.json
+└── skill.entry.js
+```
+
+manifest 必须声明 `manifestVersion: 2`、与 package 一致的 `id/version`、
+`entry`、兼容范围、能力集合，以及每个工具的 `inputSchema` 和 `risk`。
+入口导出 `{ handlers: { tool_name(ctx, input) {} } }`；`ctx` 由宿主注入，含
+`source`、`signal`、只读 `config`、隔离 `storage`、`logger` 和能力受限的
+`browser`。Skill 不应自行创建 `BrowserAutomation` 或读取 server token。
+`entry` 与 `cli.entry` 都必须解析到 Skill 根目录内；工具执行前宿主会用
+JSON Schema 校验输入，并将 Skill 级授权与该工具的 `capabilities` 取交集。
+因此工具只应声明实际会用到的最小能力。
+
+以下是 V1 兼容契约的详细规范。
+
+> 本文档也描述 **JS Eyes Skills** 的 V1 `skill.contract.js` 契约。
 > 快速上手请先看 [authoring.zh.md](authoring.zh.md)；部署 / 启用看 [deployment.zh.md](deployment.zh.md)。
 
 契约的加载位点：
 
-- 发现：[`packages/protocol/skills.js`](../../../packages/protocol/skills.js) 的 `discoverLocalSkills(skillsDir)` 扫描 primary 子目录；若 openclaw-plugin 配了 `extraSkillDirs`，由 `discoverSkillsFromSources()` 统一合并 primary + extras（primary 优先，extras 只读，不做完整性校验）；
+- 发现：[`packages/protocol/skills.js`](../../../packages/protocol/skills.js) 的 `discoverLocalSkills(skillsDir)` 扫描 primary 子目录；若配置了 `extraSkillDirs`，由 `discoverSkillsFromSources()` 统一合并 primary + extras（primary 优先，单个损坏 manifest 只会被隔离并告警）；
 - 载入：同文件 `loadSkillContract(skillDir)` 通过 `require` 加载；
-- 注册：[`openclaw-plugin/index.mjs`](../../../openclaw-plugin/index.mjs) 的 `registerLocalSkills` 调 `contract.createOpenClawAdapter(config, logger)` 拿到 `{ tools[] }` 注册到 OpenClaw。
+- 激活：宿主中立的 `SkillRegistry` 将 V1 `createOpenClawAdapter(config, logger)` 归一化为内部工具定义；CLI、MCP 和可选 OpenClaw 插件分别通过自己的入口调用。
 
 ## 1. 顶层导出字段
 
@@ -21,9 +46,9 @@
 | `description` | `string` | 是 | 简短描述，显示在 `js-eyes skills list`。 |
 | `runtime` | `object` | 建议 | 运行要求说明（见下）。 |
 | `cli` | `object` | 可选 | CLI 元数据（见下）。 |
-| `openclaw` | `object` | 建议 | OpenClaw 展示元数据（见下）。**真正注册工具走 `createOpenClawAdapter()`**。 |
+| `openclaw` | `object` | 建议 | V1 遗留的 OpenClaw 展示元数据（见下）。 |
 | `createRuntime(config, logger)` | `function` | 建议 | 工厂：创建长生命周期的 `runtime`（持有 `BrowserAutomation` 实例、logger、helpers）。 |
-| `createOpenClawAdapter(config, logger)` | `function` | **是** | 工厂：返回 `{ runtime, tools[] }`。**主插件唯一的注册入口**。 |
+| `createOpenClawAdapter(config, logger)` | `function` | **是** | V1 兼容工厂：返回 `{ runtime, tools[] }`；V2 Skill 不再使用这个宿主专属名称。 |
 
 ### 1.1 `runtime` 字段
 
@@ -66,7 +91,7 @@ openclaw: {
 }
 ```
 
-这里是**展示用的静态列表**，被 [`js_eyes_discover_skills`](../../../openclaw-plugin/index.mjs) 等功能读出来生成菜单。真正的 `execute` 函数走 `createOpenClawAdapter().tools[]`。
+这里是 V1 的静态展示列表。真正的 `execute` 函数仍来自 `createOpenClawAdapter().tools[]`，随后由宿主中立 registry 归一化。
 
 ## 2. `createOpenClawAdapter(config, logger)`
 
@@ -182,14 +207,14 @@ async execute(toolCallId, params) {
 
 ### 4.3 Consent 流程
 
-- 触发：工具被调用 → 主插件 `wrapSensitiveTool` 判断策略 → `confirm` 就生成 pending 记录（`runtimePaths.consentsDir/<id>.json`）并按当前实现**自动继续执行**并记录 `auto-confirm`。严格模式下需要用户：
+- 触发：工具被调用 → 主插件 `wrapSensitiveTool` 判断策略。`destructive`、`administrative` 或显式配置为 `confirm` 的工具会生成 pending 记录并立即返回，**不会执行**。用户批准后必须用完全相同的参数重试；批准只消费一次：
 
   ```bash
   js-eyes consent list
   js-eyes consent approve <id>  # 或 deny
   ```
 
-- 审计：所有 consent 决策都会进 `logs/audit.log`，`js-eyes audit tail` 可以看。
+- 记录：consent 文件保存工具名、参数摘要和摘要值；批准的调用执行后状态变为 `consumed`，再次调用需要重新批准。
 
 ## 5. `.integrity.json` 与完整性校验
 
@@ -218,14 +243,15 @@ js-eyes skills verify js-x-ops-skill  # 单个
 js-eyes doctor                     # 安全 + 完整性体检一次出
 ```
 
-### 5.4 `extraSkillDirs` 不做完整性校验
+### 5.4 `extraSkillDirs` 的信任与可选完整性校验
 
 通过 [`extraSkillDirs`](deployment.zh.md#5-部署模式-dprimary--extraskilldirs) 挂接的 skill 是**只读**来源：
 
-- 启动时会在日志里看到 `[js-eyes] Skipping integrity check for extra skill "<id>" at <path>`；
-- `js-eyes skills verify <id>` 对 extra 源输出 `SKIPPED (extra source, no integrity check)`；
+- V2 在 `prompt` / `strict` 策略下必须显式 trust；批准同时绑定真实路径、manifest、全部源码/依赖摘要和执行模式，任何文件变化都会使批准失效；
+- `security.verifyExtraSkillDirs=true` 时还会校验 `skills link/relink` 创建的目录快照；关闭时保留旧版的跳过行为；
+- `js-eyes skills verify <id>` 会按上述开关报告 extra 的快照状态；
 - `js-eyes skills install / approve <id>` 会直接拒绝并报错——生命周期由外部来源自己负责。
-- 改动文件即生效：`SkillRegistry` 会通过 chokidar 监听（或 `js-eyes skills reload` / `js_eyes_reload_skills`）热重载 contract，`require.cache` 会被深清，**不需要重启 OpenClaw**。详见 [deployment.zh.md §5.3 零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)。需要强完整性约束的 skill 请放回 primary `skillsDir` 下。
+- 开发模式 `legacy` 下改动文件会热重载；受信任的 V2 外部 Skill 改动后会被卸载，必须重新 inspect/trust 才能恢复执行。详见 [deployment.zh.md §5.3 零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)。
 
 ## 6. 工具执行时的上下文
 

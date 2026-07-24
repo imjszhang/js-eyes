@@ -1,0 +1,847 @@
+{
+  "manifestVersion": 2,
+  "id": "js-x-ops-skill",
+  "name": "JS X Ops Skill",
+  "version": "3.8.5",
+  "publisher": "js-eyes",
+  "description": "JS-Eyes 技能：X.com 内容操作，覆盖搜索发现、主页与 Feed 浏览、详情读取、发帖相关流程，以及账号定时监控（monitor 子系统）",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "x.com",
+      "twitter.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "navigation",
+      "script.execute",
+      "screenshot"
+    ],
+    "network": {
+      "direct": true,
+      "hosts": [
+        "x.com",
+        "api.x.com",
+        "upload.twitter.com"
+      ]
+    },
+    "filesystem": [
+      "skillData",
+      "userFiles"
+    ],
+    "process": [],
+    "secrets": [
+      "xApiCredentials"
+    ],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "search",
+        "description": "搜索 X 平台内容（READ）"
+      },
+      {
+        "name": "profile",
+        "description": "浏览指定用户主页与时间线（READ）"
+      },
+      {
+        "name": "post",
+        "description": "读取帖子详情或执行发布操作（READ + 写参数透传 v2 path）"
+      },
+      {
+        "name": "home",
+        "description": "浏览首页 Feed（READ）"
+      },
+      {
+        "name": "session-state",
+        "description": "读取 X 登录态"
+      },
+      {
+        "name": "doctor",
+        "description": "连通性 + 登录态 + bridge 注入 + probe + state 汇总（4 profile 一站诊断）"
+      },
+      {
+        "name": "probe",
+        "description": "采集页面指纹（按 page profile）"
+      },
+      {
+        "name": "state",
+        "description": "读取当前 page profile 状态"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航到 X 搜索页（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-profile",
+        "description": "导航到 X 用户主页（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-post",
+        "description": "导航到 X 推文详情（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-home",
+        "description": "导航到 X 首页（INTERACTIVE）"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "x_search_tweets",
+      "title": "X Ops: Search Tweets",
+      "description": "搜索 X.com (Twitter) 内容。支持关键词搜索、排序、日期范围、作者过滤、互动数过滤等。返回结构化帖子数据（含作者、内容、统计、媒体）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "browser.screenshot"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最多翻页数，每页约20条"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "top",
+              "latest",
+              "media"
+            ],
+            "description": "排序方式：top（热门）、latest（最新）、media（媒体）"
+          },
+          "lang": {
+            "type": "string",
+            "description": "搜索语言代码（如 zh、en、ja）"
+          },
+          "from": {
+            "type": "string",
+            "description": "指定作者用户名（不带 @）"
+          },
+          "since": {
+            "type": "string",
+            "description": "起始日期 YYYY-MM-DD"
+          },
+          "until": {
+            "type": "string",
+            "description": "截止日期 YYYY-MM-DD"
+          },
+          "minLikes": {
+            "type": "number",
+            "description": "最低点赞数过滤"
+          },
+          "minRetweets": {
+            "type": "number",
+            "description": "最低转发数过滤"
+          },
+          "excludeReplies": {
+            "type": "boolean",
+            "description": "排除回复"
+          },
+          "excludeRetweets": {
+            "type": "boolean",
+            "description": "排除转推"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "graphql",
+              "dom"
+            ],
+            "description": "READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来，与 visual-* 解耦。"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      }
+    },
+    {
+      "name": "x_search_archive",
+      "title": "X Ops: Search Archive (Official API)",
+      "description": "通过 X Official API 搜索推文（全库 search/all 或近期 search/recent）。需要 X_BEARER_TOKEN，可能产生 API 费用。与 x_search_tweets（浏览器 GraphQL 搜索）不同，无需 js-eyes 浏览器连接。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "recent"
+            ],
+            "description": "搜索范围：all=全库（2006 至今），recent=近期（7 天）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最多翻页数"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "每页最大结果数（10-500）"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "起始时间 ISO8601（如 2020-01-01T00:00:00Z）"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "截止时间 ISO8601"
+          },
+          "sortOrder": {
+            "type": "string",
+            "enum": [
+              "recency",
+              "relevancy"
+            ],
+            "description": "全库搜索排序（scope=all 时有效）"
+          },
+          "from": {
+            "type": "string",
+            "description": "指定作者用户名（不带 @）"
+          },
+          "to": {
+            "type": "string",
+            "description": "发给某用户的推文"
+          },
+          "since": {
+            "type": "string",
+            "description": "起始日期 YYYY-MM-DD"
+          },
+          "until": {
+            "type": "string",
+            "description": "截止日期 YYYY-MM-DD"
+          },
+          "lang": {
+            "type": "string",
+            "description": "搜索语言代码（如 zh、en）"
+          },
+          "minLikes": {
+            "type": "number",
+            "description": "最低点赞数过滤"
+          },
+          "minRetweets": {
+            "type": "number",
+            "description": "最低转发数过滤"
+          },
+          "minReplies": {
+            "type": "number",
+            "description": "最低回复数过滤"
+          },
+          "excludeReplies": {
+            "type": "boolean",
+            "description": "排除回复"
+          },
+          "excludeRetweets": {
+            "type": "boolean",
+            "description": "排除转推"
+          },
+          "hasLinks": {
+            "type": "boolean",
+            "description": "仅含链接的推文"
+          },
+          "normalize": {
+            "type": "boolean",
+            "description": "是否归一化为 bridge 兼容结构（默认 true）"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      }
+    },
+    {
+      "name": "x_create_article",
+      "title": "X Ops: Create Article (Official API)",
+      "description": "通过 X Official API 创建 Article 草稿（Markdown→DraftJS）。需要 OAuth 1.0a 写凭证；publish=true 时可能需 X Premium 并产生公开长文。无需 js-eyes 浏览器。",
+      "risk": "destructive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "network.direct",
+        "secrets.xApiCredentials",
+        "filesystem.userFiles"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Article 标题"
+          },
+          "bodyMarkdown": {
+            "type": "string",
+            "description": "Markdown 正文"
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Markdown 文件路径（与 bodyMarkdown 二选一）"
+          },
+          "coverImage": {
+            "type": "string",
+            "description": "封面图本地路径"
+          },
+          "fetchRemoteImages": {
+            "type": "boolean",
+            "description": "是否下载并上传 https 内嵌图（默认 false）"
+          },
+          "publish": {
+            "type": "boolean",
+            "description": "创建后是否立即发布（默认 false，draft-first）"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "publish=true 时必须 confirm=true 才会发布"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "x_publish_article",
+      "title": "X Ops: Publish Article (Official API)",
+      "description": "发布已有 X Article 草稿为公开长文。需要 OAuth 1.0a 写凭证，可能需 X Premium。destructive：会产生公开可见内容。",
+      "risk": "destructive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "network.direct",
+        "secrets.xApiCredentials",
+        "filesystem.userFiles"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "articleId": {
+            "type": "string",
+            "description": "Article 草稿 ID"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "必须为 true 才会发布"
+          }
+        },
+        "required": [
+          "articleId"
+        ]
+      }
+    },
+    {
+      "name": "x_get_profile",
+      "title": "X Ops: Get Profile Tweets",
+      "description": "浏览 X.com 指定用户的主页与时间线内容。返回用户资料和帖子列表。支持翻页、日期筛选、互动数过滤。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "browser.screenshot"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名（不带 @）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最多翻页数"
+          },
+          "maxTweets": {
+            "type": "number",
+            "description": "最多返回推文数（0 = 不限）"
+          },
+          "since": {
+            "type": "string",
+            "description": "起始日期 YYYY-MM-DD"
+          },
+          "until": {
+            "type": "string",
+            "description": "截止日期 YYYY-MM-DD"
+          },
+          "includeReplies": {
+            "type": "boolean",
+            "description": "是否包含回复"
+          },
+          "includeRetweets": {
+            "type": "boolean",
+            "description": "是否包含转推"
+          },
+          "minLikes": {
+            "type": "number",
+            "description": "最低点赞数过滤"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "graphql",
+              "dom"
+            ],
+            "description": "READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来，与 visual-* 解耦。"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      }
+    },
+    {
+      "name": "x_get_post",
+      "title": "X Ops: Get Post Detail",
+      "description": "读取 X.com 帖子或 Article 详情（自动识别 t.co / /i/article/ /status/）。包括内容、统计、媒体。可选获取对话线程和回复。**deprecated 写参数**（reply/post/quote/thread/media）会透传到 v2 scripts/x-post.js，将在 v3.1 移到独立工具：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tweetUrl": {
+            "type": "string",
+            "description": "推文/Article URL 或 ID。支持 /status/、/i/article/、t.co 短链；多条用逗号分隔。"
+          },
+          "withThread": {
+            "type": "boolean",
+            "description": "是否获取对话线程（上文）"
+          },
+          "withReplies": {
+            "type": "number",
+            "description": "获取回复数量（0 = 不获取）"
+          },
+          "budgetMs": {
+            "type": "number",
+            "description": "post bridge wall-clock 预算毫秒（默认 60000，最大 300000）"
+          },
+          "reply": {
+            "type": "string",
+            "description": "【deprecated, v3.1 移到 x_reply_tweet】回复文本，需配合 tweetUrl"
+          },
+          "post": {
+            "type": "string",
+            "description": "【deprecated, v3.1 移到 x_create_tweet】发新帖正文（与 tweetUrl 互斥）"
+          },
+          "quote": {
+            "type": "string",
+            "description": "【deprecated, v3.1 移到 x_quote_tweet】引用推文，需配合 post 提供评论文本"
+          },
+          "thread": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "【deprecated, v3.1 移到 x_create_thread】串推数组"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "【deprecated】仅校验输入，不实际发布"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "【deprecated】写操作必须显式 confirm=true 才会真发"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "graphql",
+              "dom"
+            ],
+            "description": "READ 单条时：auto=GraphQL 优先失败再 DOM；graphql/dom=强制单一路径（写参数时忽略）。v3.2 由 mode 重命名而来。"
+          }
+        },
+        "required": [
+          "tweetUrl"
+        ]
+      }
+    },
+    {
+      "name": "x_download_media",
+      "title": "X Ops: Download Post Media",
+      "description": "读取 X 推文并将图片/视频下载到本地目录（会产生 local file side effect，不入 skill READ cache 的纯 JSON 语义）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tweetUrl": {
+            "type": "string",
+            "description": "推文 URL 或 ID（如 https://x.com/user/status/123）"
+          },
+          "outDir": {
+            "type": "string",
+            "description": "媒体输出目录（默认 ./media/<tweetId>）"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "graphql",
+              "dom"
+            ],
+            "description": "READ 数据路径，与 x_get_post 一致"
+          }
+        },
+        "required": [
+          "tweetUrl"
+        ]
+      }
+    },
+    {
+      "name": "x_get_home_feed",
+      "title": "X Ops: Get Home Feed",
+      "description": "浏览 X.com 首页 Feed（For You 或 Following）。返回帖子列表，支持翻页和过滤。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "foryou",
+              "following"
+            ],
+            "description": "Feed 类型：foryou（推荐）或 following（关注）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最多翻页数"
+          },
+          "maxTweets": {
+            "type": "number",
+            "description": "最多返回推文数（0 = 不限）"
+          },
+          "minLikes": {
+            "type": "number",
+            "description": "最低点赞数过滤"
+          },
+          "excludeReplies": {
+            "type": "boolean",
+            "description": "排除回复"
+          },
+          "excludeRetweets": {
+            "type": "boolean",
+            "description": "排除转推"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "graphql",
+              "dom"
+            ],
+            "description": "READ 数据路径：auto=GraphQL 优先失败再 DOM；graphql=仅 GraphQL；dom=仅 DOM。v3.2 由 mode 重命名而来。"
+          }
+        }
+      }
+    },
+    {
+      "name": "x_session_state",
+      "title": "X Ops: Session State",
+      "description": "读取当前浏览器中 X.com 的登录态 + whoami（home-bridge.sessionState）；已登录返回 {loggedIn, username, screenName, userId?, displayName?, name(=screen_name)}；未登录回 {loggedIn:false}。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "x_navigate_search",
+      "title": "X Ops: Navigate To Search",
+      "description": "把浏览器导航到 X 搜索结果页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词（不传则只切到 /search）"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "top",
+              "latest",
+              "media"
+            ],
+            "description": "排序方式"
+          },
+          "lang": {
+            "type": "string",
+            "description": "搜索语言代码"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "x_navigate_profile",
+      "title": "X Ops: Navigate To Profile",
+      "description": "把浏览器导航到指定用户主页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名（不带 @）"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "tweets",
+              "with_replies",
+              "media",
+              "likes",
+              "highlights"
+            ],
+            "description": "用户子页 tab"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      }
+    },
+    {
+      "name": "x_navigate_post",
+      "title": "X Ops: Navigate To Post",
+      "description": "把浏览器导航到推文详情页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "推文 URL（与 tweetId 二选一）"
+          },
+          "tweetId": {
+            "type": "string",
+            "description": "推文 ID（纯数字）"
+          },
+          "username": {
+            "type": "string",
+            "description": "可选：作者用户名（与 tweetId 配合使用）"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "x_navigate_home",
+      "title": "X Ops: Navigate To Home",
+      "description": "把浏览器导航到 X 首页（仅 location.assign，不切 For You/Following Tab；切 Tab 由 UI 完成）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "foryou",
+              "following"
+            ],
+            "description": "Feed 类型（信息性,URL 上无差异）"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "x_monitor_list_accounts",
+      "title": "X Ops Monitor: List Accounts",
+      "description": "列出当前 monitor 配置中的所有监控账号（读本地 config.json，不访问 X，不产生任何外部副作用）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "x_monitor_get_status",
+      "title": "X Ops Monitor: Get Status",
+      "description": "汇总当前 monitor 的运行状态：每个账号的 lastCheck / knownTweetCount / lastError，以及 daemon 进程存活态（读本地 state + pid，不访问 X，不产生副作用）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "x_monitor_add_account",
+      "title": "X Ops Monitor: Add Account",
+      "description": "把一个 X 账号加入监控列表。**本工具会写本地配置文件 ~/.js-eyes/skill-data/js-x-ops-skill/monitor/config.json**；不会访问 X，不会对外发通知。若账号已存在则更新其 channels/enabled。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "X 用户名（不带 @）"
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "账号级通知 channel 名单（引用 config.channels[].name），为空则继承全局"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      }
+    },
+    {
+      "name": "x_monitor_remove_account",
+      "title": "X Ops Monitor: Remove Account",
+      "description": "从监控列表移除一个 X 账号。**本工具会写本地配置文件**；不会访问 X，不会清除已有 state 文件（保留历史用于调试）。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "X 用户名（不带 @）"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      }
+    },
+    {
+      "name": "x_monitor_test_account",
+      "title": "X Ops Monitor: Test Account",
+      "description": "对单个账号跑一次时间线抓取用于配置调试。**对 X 是 READ，不写 state、不发任何通知**；复用 monitor 全局 defaults 或账号级覆盖。返回 sampleSize + 前 3 条预览。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "X 用户名（不带 @）"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "翻页数（默认 1）"
+          },
+          "includeReplies": {
+            "type": "boolean"
+          },
+          "includeRetweets": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      }
+    }
+  ]
+}

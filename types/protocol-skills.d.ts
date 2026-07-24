@@ -1,10 +1,11 @@
 declare module '@js-eyes/protocol/skills' {
   export const applySkillInstall: (...args: any[]) => any;
   export const cleanupStaging: (...args: any[]) => any;
+  export const createSkillRegistry: (...args: any[]) => any;
+  export const createSkillTrustStore: (...args: any[]) => any;
   export const discoverLocalSkills: (...args: any[]) => any;
   export const discoverSkillsFromSources: (...args: any[]) => any;
   export const fetchSkillsRegistry: (...args: any[]) => any;
-  export const getLegacyOpenClawSkillState: (...args: any[]) => any;
   export const installSkillFromRegistry: (...args: any[]) => any;
   export const isSkillEnabled: (...args: any[]) => any;
   export const planSkillInstall: (...args: any[]) => any;

@@ -6,8 +6,12 @@ const os = require('os');
 const path = require('path');
 const { extractZipBuffer } = require('./zip-extract');
 const { ensureDir, readJson, safeStat } = require('./fs-io');
-const { getOpenClawConfigPath } = require('./openclaw-paths');
 const safeNpm = require('./safe-npm');
+const { createSkillTrustStore, computeDescriptorDigest } = require('./skill-trust');
+const {
+  MANIFEST_FILE: SKILL_MANIFEST_FILE,
+  loadSkillManifest,
+} = require('@js-eyes/skill-contract');
 
 const SKILL_CONTRACT_FILE = 'skill.contract.js';
 const INTEGRITY_FILE = '.integrity.json';
@@ -36,6 +40,14 @@ function loadSkillContract(skillDir) {
 
 function hasSkillContract(skillDir) {
   return fs.existsSync(path.join(skillDir, SKILL_CONTRACT_FILE));
+}
+
+function hasSkillManifest(skillDir) {
+  return fs.existsSync(path.join(skillDir, SKILL_MANIFEST_FILE));
+}
+
+function hasSkillDefinition(skillDir) {
+  return hasSkillManifest(skillDir) || hasSkillContract(skillDir);
 }
 
 /**
@@ -97,7 +109,7 @@ function resolveSkillsDir(paths, config = {}) {
  *     invalid: [{ path, reason }]  // 不存在或读不到的 extra 条目
  *   }
  *
- * kind 判定：自身含 skill.contract.js => 'skill'；否则当作父目录 'dir'。
+ * kind 判定：自身含 skill.manifest.json 或 skill.contract.js => 'skill'；否则当作父目录 'dir'。
  * 对重复路径做去重（primary 自己也不会出现在 extras 里）。
  */
 function resolveSkillSources(input = {}) {
@@ -137,7 +149,7 @@ function resolveSkillSources(input = {}) {
       invalid.push({ path: abs, reason: 'not-a-directory' });
       continue;
     }
-    const kind = hasSkillContract(abs) ? 'skill' : 'dir';
+    const kind = hasSkillDefinition(abs) ? 'skill' : 'dir';
     extras.push({ path: abs, kind });
   }
 
@@ -145,6 +157,32 @@ function resolveSkillSources(input = {}) {
 }
 
 function normalizeSkillMetadata(skillDir) {
+  if (hasSkillManifest(skillDir)) {
+    const loaded = loadSkillManifest(skillDir);
+    const descriptor = loaded.descriptor;
+    const cli = descriptor.cli || {};
+    const tools = descriptor.tools.map((tool) => tool.name);
+    const commands = Array.isArray(cli.commands)
+      ? cli.commands.map((command) => command.name)
+      : [];
+    return {
+      id: descriptor.id,
+      name: descriptor.name,
+      version: descriptor.version,
+      description: descriptor.description,
+      skillDir,
+      cliEntry: loaded.cliEntryPath,
+      commands,
+      tools,
+      actions: tools.map((tool) => skillToolActionName(descriptor.id, tool)),
+      runtime: descriptor.requirements,
+      contract: null,
+      contractVersion: 2,
+      descriptor,
+      entryPath: loaded.entryPath,
+      manifestPath: loaded.manifestPath,
+    };
+  }
   const contract = loadSkillContract(skillDir);
   const pkg = readJson(path.join(skillDir, 'package.json')) || {};
   const cli = contract && contract.cli ? contract.cli : {};
@@ -170,19 +208,28 @@ function normalizeSkillMetadata(skillDir) {
     actions: tools.map((tool) => skillToolActionName(id, tool)),
     runtime: contract?.runtime || {},
     contract,
+    contractVersion: 1,
   };
 }
 
-function discoverLocalSkills(skillsDir) {
-  return listSkillDirectories(skillsDir)
-    .filter((skillDir) => hasSkillContract(skillDir))
-    .map((skillDir) => normalizeSkillMetadata(skillDir))
-    .filter((skill) => skill && skill.id);
+function discoverLocalSkills(skillsDir, options = {}) {
+  const skills = [];
+  for (const skillDir of listSkillDirectories(skillsDir).filter((candidate) => hasSkillDefinition(candidate))) {
+    try {
+      const skill = normalizeSkillMetadata(skillDir);
+      if (skill?.id) skills.push(skill);
+    } catch (error) {
+      if (typeof options.onInvalid === 'function') {
+        try { options.onInvalid({ path: skillDir, reason: 'invalid-skill', error }); } catch {}
+      }
+    }
+  }
+  return skills;
 }
 
 function readSkillById(skillsDir, skillId) {
   const skillDir = path.join(skillsDir, skillId);
-  if (!fs.existsSync(skillDir) || !hasSkillContract(skillDir)) return null;
+  if (!fs.existsSync(skillDir) || !hasSkillDefinition(skillDir)) return null;
   return normalizeSkillMetadata(skillDir);
 }
 
@@ -208,7 +255,7 @@ function discoverSkillsFromSources(sources, options = {}) {
     : resolveSkillSources(sources || {});
 
   const { primary, extras, invalid = [] } = normalized;
-  const { onConflict } = options;
+  const { onConflict, onInvalid } = options;
 
   const byId = new Map();
   const conflicts = [];
@@ -231,20 +278,32 @@ function discoverSkillsFromSources(sources, options = {}) {
     byId.set(skill.id, { ...skill, source, sourcePath });
   };
 
+  const invalidSkills = [];
+  const reportInvalid = (item) => {
+    invalidSkills.push(item);
+    if (typeof onInvalid === 'function') {
+      try { onInvalid(item); } catch {}
+    }
+  };
+
   if (primary) {
-    for (const skill of discoverLocalSkills(primary)) {
+    for (const skill of discoverLocalSkills(primary, { onInvalid: reportInvalid })) {
       register(skill, 'primary', primary);
     }
   }
 
   for (const extra of extras) {
     if (extra.kind === 'skill') {
-      if (!hasSkillContract(extra.path)) continue;
-      const meta = normalizeSkillMetadata(extra.path);
-      if (meta && meta.id) register(meta, 'extra', extra.path);
+      if (!hasSkillDefinition(extra.path)) continue;
+      try {
+        const meta = normalizeSkillMetadata(extra.path);
+        if (meta?.id) register(meta, 'extra', extra.path);
+      } catch (error) {
+        reportInvalid({ path: extra.path, reason: 'invalid-skill', error });
+      }
       continue;
     }
-    for (const skill of discoverLocalSkills(extra.path)) {
+    for (const skill of discoverLocalSkills(extra.path, { onInvalid: reportInvalid })) {
       register(skill, 'extra', extra.path);
     }
   }
@@ -252,7 +311,7 @@ function discoverSkillsFromSources(sources, options = {}) {
   return {
     skills: Array.from(byId.values()),
     conflicts,
-    invalid,
+    invalid: [...invalid, ...invalidSkills],
   };
 }
 
@@ -273,7 +332,7 @@ function readSkillByIdFromSources(input = {}) {
   }
   for (const extra of extras) {
     if (extra.kind === 'skill') {
-      if (!hasSkillContract(extra.path)) continue;
+      if (!hasSkillDefinition(extra.path)) continue;
       const meta = normalizeSkillMetadata(extra.path);
       if (meta && meta.id === id) return { ...meta, source: 'extra', sourcePath: extra.path };
       continue;
@@ -290,18 +349,6 @@ function readSkillByIdFromSources(input = {}) {
 // SECURITY_SCAN_NOTES.md.
 const { fetchSkillsRegistry, downloadBuffer } = require('./registry-client');
 
-function resolveOpenClawPluginEntry(definition) {
-  try {
-    const sdk = require('openclaw/plugin-sdk/plugin-entry');
-    if (typeof sdk.definePluginEntry === 'function') {
-      return sdk.definePluginEntry(definition);
-    }
-  } catch {
-    // Fallback for local development without the OpenClaw SDK package installed.
-  }
-  return definition.register;
-}
-
 function getSkillsState(config = {}) {
   const state = config && typeof config === 'object'
     ? /** @type {Record<string, any>} */ (config).skillsEnabled
@@ -312,65 +359,18 @@ function getSkillsState(config = {}) {
   return state;
 }
 
-function getLegacyOpenClawSkillState(options = {}) {
-  const {
-    openclawConfigPath = getOpenClawConfigPath(options),
-    skillIds = null,
-  } = options;
-
-  if (!fs.existsSync(openclawConfigPath)) {
-    return {};
-  }
-
-  let config = null;
-  try {
-    config = JSON.parse(fs.readFileSync(openclawConfigPath, 'utf8'));
-  } catch {
-    return {};
-  }
-
-  const entries = config?.plugins?.entries;
-  if (!entries || typeof entries !== 'object') {
-    return {};
-  }
-
-  const allowedSkillIds = Array.isArray(skillIds) && skillIds.length > 0
-    ? new Set(skillIds)
-    : null;
-  const state = {};
-
-  for (const [skillId, entry] of Object.entries(entries)) {
-    if (skillId === 'js-eyes') {
-      continue;
-    }
-    if (allowedSkillIds && !allowedSkillIds.has(skillId)) {
-      continue;
-    }
-    if (!entry || typeof entry !== 'object' || entry.enabled === undefined) {
-      continue;
-    }
-    state[skillId] = entry.enabled !== false;
-  }
-
-  return state;
-}
-
-function isSkillEnabled(config = {}, skillId, legacyState = {}) {
+function isSkillEnabled(config = {}, skillId) {
   const state = getSkillsState(config);
   if (Object.prototype.hasOwnProperty.call(state, skillId)) {
     return state[skillId] !== false;
-  }
-  if (legacyState && Object.prototype.hasOwnProperty.call(legacyState, skillId)) {
-    return legacyState[skillId] !== false;
   }
   return false;
 }
 
 /**
- * 从 adapter.tools 构建 OpenClaw 工具定义列表（不执行 api.registerTool）。
+ * 从 adapter.tools 构建宿主中立的工具定义列表。
  *
- * 用于 SkillRegistry 等需要"先收集再统一注册"的场景；registerOpenClawTools
- * 的注册循环基于此函数的输出。
+ * 用于 SkillRegistry 等需要先收集、校验再绑定工具的场景。
  *
  * 返回：
  *   {
@@ -422,6 +422,11 @@ function buildAdapterTools(adapter, options = {}) {
       label: tool.label,
       description: tool.description,
       parameters: tool.parameters,
+      risk: tool.risk,
+      interactive: tool.interactive === true,
+      destructive: tool.destructive === true,
+      capabilities: Array.isArray(tool.capabilities) ? tool.capabilities.slice() : [],
+      resultMode: tool.resultMode,
       execute: tool.execute,
     };
     const wrapped = wrapTool ? wrapTool(definition, { source: sourceName }) : definition;
@@ -434,35 +439,6 @@ function buildAdapterTools(adapter, options = {}) {
   }
 
   return { toolDefs, summary };
-}
-
-function registerOpenClawTools(api, adapter, options = {}) {
-  const logger = options.logger || api.logger || console;
-  const registeredNames = options.registeredNames || null;
-  const sourceName = options.sourceName || adapter?.id || 'js-eyes-skill';
-
-  const { toolDefs, summary } = buildAdapterTools(adapter, {
-    logger,
-    sourceName,
-    declaredTools: options.declaredTools,
-    registeredNames,
-    wrapTool: options.wrapTool,
-  });
-
-  for (const entry of toolDefs) {
-    try {
-      api.registerTool(entry.definition, entry.optional ? { optional: true } : undefined);
-      if (registeredNames) {
-        registeredNames.add(entry.toolName);
-      }
-      summary.registered.push(entry.toolName);
-    } catch (error) {
-      summary.failed.push({ name: entry.toolName, reason: error.message });
-      logger.warn(`[js-eyes] Failed to register tool "${entry.toolName}" from ${sourceName}: ${error.message}`);
-    }
-  }
-
-  return summary;
 }
 
 function sha256(buffer) {
@@ -722,17 +698,20 @@ Object.assign(module.exports, {
   INSTALL_MANIFEST_FILE,
   INTEGRITY_FILE,
   SKILL_CONTRACT_FILE,
+  SKILL_MANIFEST_FILE,
   applySkillInstall,
   buildAdapterTools,
   cleanupStaging,
+  computeDescriptorDigest,
+  createSkillTrustStore,
   discoverLocalSkills,
   discoverSkillsFromSources,
   fetchSkillsRegistry,
-  getLegacyOpenClawSkillState,
-  getOpenClawConfigPath,
   getSkillsState,
   installSkillFromRegistry,
   isSkillEnabled,
+  hasSkillDefinition,
+  hasSkillManifest,
   listSkillDirectories,
   loadSkillContract,
   normalizeSkillMetadata,
@@ -740,10 +719,8 @@ Object.assign(module.exports, {
   readSkillById,
   readSkillByIdFromSources,
   readSkillIntegrity,
-  registerOpenClawTools,
   resolveSkillSources,
   resolveSkillsDir,
-  resolveOpenClawPluginEntry,
   runSkillCli,
   skillToolActionName,
   toolNameToActionSegment,
@@ -755,6 +732,7 @@ Object.assign(module.exports, {
 // file by relative path; TypeScript does not infer named exports from
 // Object.assign(module.exports, ...).
 module.exports.discoverSkillsFromSources = discoverSkillsFromSources;
+module.exports.createSkillTrustStore = createSkillTrustStore;
 module.exports.fetchSkillsRegistry = fetchSkillsRegistry;
 module.exports.planSkillInstall = planSkillInstall;
 module.exports.resolveSkillSources = resolveSkillSources;

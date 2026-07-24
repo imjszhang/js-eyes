@@ -19,6 +19,9 @@
     "packages/client-sdk/**/*.js",
     "packages/server-core/**/*.js",
     "packages/mcp-server/**/*.js",
+    "packages/skill-contract/**/*.js",
+    "packages/skill-runtime/**/*.js",
+    "packages/skill-worker/**/*.js",
     "types/**/*.d.ts"
   ],
   "exclude": ["**/node_modules/**", "**/tests/**"]

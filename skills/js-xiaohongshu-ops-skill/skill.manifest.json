@@ -1,0 +1,596 @@
+{
+  "manifestVersion": 2,
+  "id": "js-xiaohongshu-ops-skill",
+  "name": "JS Xiaohongshu Ops Skill",
+  "version": "3.0.0",
+  "publisher": "js-eyes",
+  "description": "小红书内容读取 skill：多 profile READ + 受控 INTERACTIVE 导航（PAGE_PROFILES + Bridges + Session）",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "xiaohongshu.com",
+      "xhslink.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "page.read",
+      "navigation",
+      "script.execute",
+      "screenshot",
+      "cookies.read"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "doctor",
+        "description": "连通性 + 登录态 + bridge 注入 + probe + state 汇总（4 profile 一站诊断）"
+      },
+      {
+        "name": "dom-dump",
+        "description": "[内部] 当前 xhs 页面关键节点 outline（#noteContainer / .feeds-container 等）"
+      },
+      {
+        "name": "monitor",
+        "description": "小红书账号/关键词监控：init/add/remove/list/status/test/check/daemon/stop"
+      },
+      {
+        "name": "login",
+        "description": "引导登录：navigate 到登录页 + 等待 web_session cookie 出现（仅 CLI，不进 AI tool）"
+      },
+      {
+        "name": "records",
+        "description": "查看最近的 records：records [--last N] [--tool xhs_get_note]"
+      },
+      {
+        "name": "probe",
+        "description": "采集页面指纹（按 page profile）"
+      },
+      {
+        "name": "state",
+        "description": "读取当前 page profile 状态"
+      },
+      {
+        "name": "session-state",
+        "description": "读取 xhs 登录态（home-bridge.sessionState）"
+      },
+      {
+        "name": "note",
+        "description": "笔记详情：note <url|id> [--with-comments] [--max-comment-pages N]"
+      },
+      {
+        "name": "comments",
+        "description": "评论分页：comments <url|id> [--max-comment-pages N]"
+      },
+      {
+        "name": "search",
+        "description": "搜索：search <keyword> [--limit N] [--channel-type 全部|图文|视频|用户] [--sort-by ...] [--extract-details [--details-limit N]] [--collect-suggest]"
+      },
+      {
+        "name": "user",
+        "description": "用户主页：user <userId>"
+      },
+      {
+        "name": "user-notes",
+        "description": "用户笔记列表：user-notes <userId> [--max-pages N]"
+      },
+      {
+        "name": "navigate-note",
+        "description": "导航到 xhs 笔记详情：navigate-note <url|id>"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航到 xhs 搜索页：navigate-search <keyword>"
+      },
+      {
+        "name": "navigate-user",
+        "description": "导航到 xhs 用户主页：navigate-user <userId>"
+      },
+      {
+        "name": "navigate-home",
+        "description": "导航到 xhs 首页（探索流）：navigate-home"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "xhs_get_note",
+      "title": "XHS Ops: Get Note",
+      "description": "读取小红书笔记详情（DOM 优先 + API 兜底）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "browser.cookies.read"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "小红书笔记 URL（http(s)://…/explore/<id>?…）或短链"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "dom",
+              "api"
+            ],
+            "description": "auto = DOM 优先 + API 兜底（默认）"
+          },
+          "withComments": {
+            "type": "boolean",
+            "description": "是否抓取评论（API 路径分页）"
+          },
+          "maxCommentPages": {
+            "type": "number",
+            "description": "评论翻页数（默认 0=不抓）"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "xhs_get_note_comments",
+      "title": "XHS Ops: Get Note Comments",
+      "description": "读取小红书笔记评论（基于 edith API 分页，DOM 不主用）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "笔记 URL"
+          },
+          "maxCommentPages": {
+            "type": "number",
+            "description": "翻页数（默认 1）"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "xhs_session_state",
+      "title": "XHS Ops: Session State",
+      "description": "读取小红书登录态（基于 cookie a1/web_session 与 DOM 用户名）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "xhs_search_notes",
+      "title": "XHS Ops: Search Notes",
+      "description": "小红书搜索（DOM 滚动 + 频道/筛选；可串行点开详情）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回笔记数上限（默认 10，最多 200）"
+          },
+          "channelType": {
+            "type": "string",
+            "enum": [
+              "全部",
+              "图文",
+              "视频",
+              "用户"
+            ],
+            "description": "频道（默认 全部）"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "综合",
+              "最新",
+              "最多点赞",
+              "最多评论",
+              "最多收藏"
+            ],
+            "description": "排序依据（xhs 实际选项；不接受「最热」等错误值）"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "筛选面板「笔记类型」选项标签（不限/视频/图文）"
+          },
+          "timeRange": {
+            "type": "string",
+            "description": "筛选面板「发布时间」选项标签（不限/一天内/一周内/半年内）"
+          },
+          "searchScope": {
+            "type": "string",
+            "description": "筛选面板「搜索范围」选项标签（不限/已看过/未看过/已关注）"
+          },
+          "extractDetails": {
+            "type": "boolean",
+            "description": "是否依次点开每条笔记并读取详情（同 tab + back，开启后耗时显著上升）"
+          },
+          "detailsLimit": {
+            "type": "number",
+            "description": "点开详情的条数上限（默认 = limit，硬上限 20；建议 ≤10）"
+          },
+          "collectSuggest": {
+            "type": "boolean",
+            "description": "是否额外采集搜索框下拉联想词（best-effort，+6s 耗时；xhs 当前对 programmatic focus 严格 gating，多数情况返回空，仅当浏览器是真用户操作时才能成功）"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      }
+    },
+    {
+      "name": "xhs_get_user",
+      "title": "XHS Ops: Get User",
+      "description": "读取小红书用户主页资料（昵称、签名、关注/粉丝/获赞）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "用户 ID"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      }
+    },
+    {
+      "name": "xhs_get_user_notes",
+      "title": "XHS Ops: Get User Notes",
+      "description": "读取小红书用户笔记列表（滚动分页）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "用户 ID"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "滚动分页轮数上限（默认 3，最多 30）"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      }
+    },
+    {
+      "name": "xhs_navigate_note",
+      "title": "XHS Ops: Navigate Note",
+      "description": "导航到小红书笔记详情页（仅 location.assign，不模拟点击）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "完整笔记 URL（与 noteId 二选一）"
+          },
+          "noteId": {
+            "type": "string",
+            "description": "笔记 ID"
+          }
+        }
+      }
+    },
+    {
+      "name": "xhs_navigate_search",
+      "title": "XHS Ops: Navigate Search",
+      "description": "导航到小红书搜索页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          }
+        }
+      }
+    },
+    {
+      "name": "xhs_navigate_user",
+      "title": "XHS Ops: Navigate User",
+      "description": "导航到小红书用户主页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "用户 ID"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      }
+    },
+    {
+      "name": "xhs_navigate_home",
+      "title": "XHS Ops: Navigate Home",
+      "description": "导航到小红书探索流首页（仅 location.assign）。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "xhs_monitor_list_targets",
+      "title": "XHS Monitor: List Targets",
+      "description": "列出小红书 monitor 当前所有 accounts 与 searches target，以及 channel 列表（不触发 webhook）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "xhs_monitor_get_status",
+      "title": "XHS Monitor: Get Status",
+      "description": "读取 monitor daemon 状态与各 target 上一次 check 摘要（不触发 webhook）。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "xhs_monitor_add_target",
+      "title": "XHS Monitor: Add Target",
+      "description": "添加一个 monitor target（user 或 search）。仅写 config，不触发 webhook。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "search"
+            ]
+          },
+          "username": {
+            "type": "string",
+            "description": "type=user 时的小红书用户名（与 userId 二选一）"
+          },
+          "userId": {
+            "type": "string",
+            "description": "type=user 时的用户 ID"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "type=search 时的关键词"
+          },
+          "channelType": {
+            "type": "string",
+            "enum": [
+              "全部",
+              "图文",
+              "视频",
+              "用户"
+            ]
+          },
+          "sortBy": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "timeRange": {
+            "type": "string"
+          },
+          "searchScope": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "指定要发送的 channel 名称（缺省用全局 channels）"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "xhs_monitor_remove_target",
+      "title": "XHS Monitor: Remove Target",
+      "description": "从 monitor 配置中删除一个 target。仅写 config，不触发 webhook。",
+      "risk": "administrative",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "search"
+            ]
+          },
+          "username": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "xhs_monitor_test_target",
+      "title": "XHS Monitor: Test Target",
+      "description": "对单个 target 跑一次 runCheckCore（抓取 + 去重），但**不写 state**、**不发通知**。安全用于调试。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute",
+        "filesystem.skillData"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "search"
+            ]
+          },
+          "username": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      }
+    }
+  ]
+}
