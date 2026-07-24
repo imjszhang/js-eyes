@@ -19,6 +19,7 @@ const {
   writeFile,
   writeShaSidecar,
 } = require('./context');
+const { createZipArchive } = require('./zip-archive');
 
 function createBundlePackageJson(version) {
   return {
@@ -119,7 +120,6 @@ function prepareMainSkillBundleStage() {
 }
 
 async function buildSkillZip() {
-  const archiver = require('archiver');
   const { version, stageDir } = prepareMainSkillBundleStage();
   const outputFile = path.join(SITE_OUT_DIR, SKILL_ZIP_NAME);
   const distAsset = MAIN_SKILL_DIST_ASSET(version);
@@ -129,7 +129,7 @@ async function buildSkillZip() {
   if (fs.existsSync(distAsset)) fs.unlinkSync(distAsset);
 
   const output = fs.createWriteStream(outputFile);
-  const archive = archiver('zip', { zlib: { level: 9 } });
+  const archive = createZipArchive({ zlib: { level: 9 } });
 
   /** @type {Promise<void>} */
   const archiveComplete = new Promise((resolve, reject) => {

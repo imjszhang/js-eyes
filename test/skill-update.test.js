@@ -8,9 +8,8 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const archiver = require('archiver');
-
 const { compareSemver, parseSemver, commandSkills } = require('../apps/cli/src/cli');
+const { createZipArchive } = require('../packages/devtools/lib/build/zip-archive');
 const { setConfigValue } = require('@js-eyes/config');
 
 describe('compareSemver / parseSemver', () => {
@@ -41,7 +40,7 @@ describe('compareSemver / parseSemver', () => {
 function zipDir(srcDir) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = createZipArchive({ zlib: { level: 9 } });
     archive.on('data', (c) => chunks.push(c));
     archive.on('error', reject);
     archive.on('end', () => resolve(Buffer.concat(chunks)));
