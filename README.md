@@ -290,7 +290,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.8.3)
+### Security Posture (2.9.0)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -299,7 +299,7 @@ explains the trade-off in full.
 
 | Risk item | Current default | How to tighten | Config switch | Verify |
 | --- | --- | --- | --- | --- |
-| Host-side raw JavaScript eval (`execute_script` family) | `allowRawEval=false` (SKILL.md deployment opts in to `true`) | Leave `false`; run in [Safe Default Mode](./SKILL.md#safe-default-mode-no-raw-eval) — click / type / open_url / screenshot still work | `security.allowRawEval` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#b-securityallowrawevaltrue-is-required-by-the-skill)) | `js-eyes doctor --json \| jq '.security.allowRawEval'` |
+| Host-side raw JavaScript eval (`execute_script` family) | `allowRawEval=false`, including the distributable parent Skill | Leave `false`; use the MCP [`safe` profile](./docs/mcp.md#safe-and-full-profiles) and first-class or read-only operations | `security.allowRawEval` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#b-securityallowrawevaltrue-is-required-by-the-skill)) | `js-eyes doctor --json \| jq '.security.allowRawEval'` |
 | Plugin auto-starts embedded WS/HTTP server | `autoStartServer=true`, loopback-only bind, token required | Set `autoStartServer=false` and start the server manually with `js-eyes server start` | `plugins.entries["js-eyes"].config.autoStartServer` in `openclaw.json` ([notes](./SECURITY_SCAN_NOTES.md#e-autostartservertrue-expands-blast-radius)) | `js-eyes doctor` → *Server* section |
 | Single OpenClaw tool exposes the JS Eyes router | `tools.alsoAllow: ["js-eyes"]` + per-action `confirm` gate on sensitive actions | Keep only `js-eyes` allowed; tighten individual actions with `security.toolPolicies` | `tools.allow` / `security.toolPolicies` ([notes](./SECURITY_SCAN_NOTES.md#f-raw-eval--tool-allowlist-combine-into-a-big-blast-radius)) | `js-eyes consent list` + `js-eyes doctor` |
 | `extraSkillDirs` skipped integrity verification | New switch off — 2.6.1 behaviour preserved | Set `security.verifyExtraSkillDirs=true`; `skills link` then auto-snapshots, `skills relink` after reviewed edits | `security.verifyExtraSkillDirs` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification)) | `js-eyes doctor` prints `integrity: verified \| drifted \| missing-snapshot` per extra; `js-eyes doctor --json` exposes it on each skill row |
@@ -344,7 +344,7 @@ js-eyes doctor
 
 Secure defaults in 2.2.0:
 
-- WebSocket/HTTP require a bearer token and an allow-listed `Origin`; non-loopback host binds require `security.allowRemoteHost=true`.
+- WebSocket/HTTP require a bearer token and an allow-listed `Origin`; non-loopback host binds require `security.allowRemoteBind=true`.
 - `execute_script`, `get_cookies*`, `upload_file*`, `inject_css`, and `install_skill` default to the `confirm` policy and require a consent approval.
 - Raw `eval`-style scripts are refused unless `security.allowRawEval=true`. The host pushes this value to the extension at `init_ack` handshake, so a single toggle in `~/.js-eyes/config/config.json` is enough; the `chrome.storage.local.allowRawEval` key is retained only as an explicit opt-out override for hardened deployments. Prefer `execute_action` for declarative actions when possible.
 - `config.json`, `server.token`, `audit.log`, and pending-consents files are written at `0600` on POSIX and locked via `icacls` on Windows.
@@ -458,22 +458,29 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.8.5` |
-| Browser extension assets | `2.8.5` |
-| `@js-eyes/server-core` | `2.8.5` |
-| `@js-eyes/client-sdk` | `2.8.5` |
-| `openclaw-plugin` | `2.8.5` |
+| CLI | `2.9.0` |
+| Browser extension assets | `2.9.0` |
+| `@js-eyes/server-core` | `2.9.0` |
+| `@js-eyes/client-sdk` | `2.9.0` |
+| `@js-eyes/skill-runtime` | `2.9.0` |
+| `openclaw-plugin` | `2.9.0` |
 | Bundled sub-skills (`skills/*`) | **Independent** semver — see each skill's `package.json` or `dist/skills.json` |
 
 ## Extension Skills
 
-JS Eyes supports **extension skills** — higher-level capabilities built on top of the base browser automation. The main ClawHub bundle ships first-party skills under `skills/`, and operators can still install or link additional skills independently after the base stack is working.
+JS Eyes supports **extension skills** — higher-level capabilities built on top
+of the base browser automation. First-party Skills are published independently
+through the registry, so operators install only the platforms they need after
+the base runtime works. A source checkout also contains their sources under
+`skills/`.
 
 The recommended hosting model is now:
-- extend the `js-eyes` CLI with skill-specific commands
-- let the main `js-eyes` OpenClaw plugin discover and register enabled local skills during startup
+- declare tools statically in a V2 `skill.manifest.json`
+- invoke the shared Skill Runtime from CLI, MCP, or the optional OpenClaw adapter
 
-Migration note: child skills no longer ship their own `openclaw-plugin` wrapper files. OpenClaw should keep loading only the main `js-eyes` plugin, which then auto-loads enabled local skills.
+Migration note: child skills no longer ship their own `openclaw-plugin` wrapper
+files. OpenClaw loads only the main `js-eyes` adapter, which routes enabled
+local Skills through the same runtime used by CLI and MCP.
 
 | Skill | Description | Example tools |
 |-------|-------------|---------------|
@@ -565,7 +572,13 @@ npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 
 > **`@js-eyes/*` scope is reserved for official packages** published by this repository's maintainers. Third-party JS Eyes Skills and integrations must publish under their own npm scope (e.g. `@acme/js-my-cool-skill`) or an unscoped name, never under `@js-eyes/*`. See [docs/dev/js-eyes-skills/README.md](./docs/dev/js-eyes-skills/README.md#npm-scope-治理) for the full governance rule.
 
-> Terminology: **JS Eyes Skills** refers to this repo's `skill.contract.js` contract. The `skills/` namespace under [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future compatibility with generic Skills specs (Anthropic Agent Skills, Cursor Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace map and site build layout.
+> Terminology: **JS Eyes Skills** refers to the V2
+> `skill.manifest.json`/`skill.entry.js` contract and its supported V1
+> compatibility form. The `skills/` namespace under
+> [docs/dev/](./docs/dev/) and [examples/](./examples/) is reserved for future
+> compatibility with generic Skills specs (Anthropic Agent Skills, Cursor
+> Skills, etc.). See [docs/README.md](./docs/README.md) for the full namespace
+> map and site build layout.
 
 ## Building
 
@@ -578,7 +591,7 @@ npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 ### Build Commands
 
 ```bash
-# Build the main ClawHub/OpenClaw skill bundle only
+# Build the distributable parent Skill bundle
 npm run build:skill
 
 # Build site (dist/) + skill bundles + skills.json registry
@@ -594,10 +607,15 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump platform version (excludes visual-* packages and skills/* sub-skills)
-npm run bump -- 2.8.3
+npm run bump -- 2.9.1
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `dist/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
+
+The parent `SKILL.md` is rendered from
+[`distribution/js-eyes-skill/SKILL.template.md`](./distribution/js-eyes-skill/SKILL.template.md);
+the build injects the coordinated platform version. Repository coding-agent
+guidance lives separately in [`AGENTS.md`](./AGENTS.md).
 
 For ClawHub publishing, use the generated bundle output (`dist/skill-bundle/js-eyes/` or the versioned zip in `dist/`) as the source of truth instead of publishing from the monorepo root.
 

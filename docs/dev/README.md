@@ -25,7 +25,8 @@
 
 - [Native Messaging](../native-messaging.md) — 浏览器扩展自动同步 token 的机制
 - [安全模型](../../SECURITY.md) — token、consent、`.integrity.json`、`security.toolPolicies`
-- [根 SKILL.md](../../SKILL.md) — 面向 OpenClaw 的安装 / 运维手册（注意：这是 OpenClaw Skill 规范，**不是** JS Eyes Skills 规范）
+- [根 AGENTS.md](../../AGENTS.md) — 面向源码仓库编码 Agent 的架构、边界与验证规则
+- [主 Skill 模板](../../distribution/js-eyes-skill/SKILL.template.md) — CLI、MCP 与可选 OpenClaw 适配器的发行安装 / 运维手册源文件；构建后输出为 bundle 根目录的 `SKILL.md`
 
 ## 维护者流程
 

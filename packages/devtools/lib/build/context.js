@@ -26,7 +26,13 @@ const EXCLUDE_PATTERNS = [
   '.git/**', '**/.git/**', '**/.DS_Store', '**/Thumbs.db',
   '**/*.swp', '**/*.swo', '.amo-upload-uuid', 'node_modules/**',
 ];
-const SKILL_BUNDLE_FILES = ['SKILL.md', 'SECURITY.md', 'LICENSE'];
+const MAIN_SKILL_TEMPLATE = path.join(
+  PROJECT_ROOT,
+  'distribution',
+  'js-eyes-skill',
+  'SKILL.template.md',
+);
+const SKILL_BUNDLE_FILES = ['SECURITY.md', 'LICENSE'];
 const SKILL_ZIP_NAME = 'js-eyes-skill.zip';
 const SKILL_BUNDLE_STAGE_ROOT = path.join(DIST_DIR, 'skill-bundle');
 const MAIN_SKILL_STAGE_DIR = path.join(SKILL_BUNDLE_STAGE_ROOT, 'js-eyes');
@@ -115,6 +121,7 @@ module.exports = {
   INSTALL_SCRIPTS,
   MAIN_SKILL_DIST_ASSET,
   MAIN_SKILL_STAGE_DIR,
+  MAIN_SKILL_TEMPLATE,
   PKG_PATH,
   PLATFORM_DEPENDENCY_EXCLUDE,
   PLATFORM_VERSION_EXCLUDE,

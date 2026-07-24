@@ -46,7 +46,7 @@ js-eyes/
 3. `js-eyes skills enable js-foo-ops-skill`。
 4. 主插件运行中的话会**自动热加载**（见 [5.3 零重启部署](#53-零重启部署skills-linkunlinkreload推荐)）；首次把主插件自身纳入 OpenClaw（或改了 `openclaw-plugin/` 内部代码）则仍需重启/开新会话一次。
 
-优点：启用/禁用 / 改 `skill.contract.js` 代码都可以走零重启流程（`js-eyes skills reload` 或 Agent 调 `js_eyes_reload_skills`）；可以复用仓库内的 `packages/*` 源码（不过官方约定是**只依赖已发布的 `@js-eyes/*` npm 包**，便于未来分发）。
+优点：启用/禁用 / 改技能代码都可以走零重启流程（`js-eyes skills reload`，或 Agent 调单一 `js-eyes` 工具的 `skills/reload` action）；可以复用仓库内的 `packages/*` 源码（不过官方约定是**只依赖已发布的 `@js-eyes/*` npm 包**，便于未来分发）。
 
 缺点：skill 绑定在仓库里，升级 js-eyes 容易把本地改动覆盖。
 
@@ -109,7 +109,8 @@ js-eyes skills approve js-x-ops-skill  # 人工确认后正式落地并生成 .i
 js-eyes skills enable  js-x-ops-skill  # 运行中的主插件会自动热加载；见 §5.3
 ```
 
-或 Agent 侧调 `js_eyes_install_skill` 走同样流程。
+或 Agent 侧调用单一 `js-eyes` 工具的 `skills/plan-install` action 暂存计划，
+再由操作者通过 CLI 执行 approve 和 enable。
 
 ### 4.2 升级已经装过的 skill（2.6.0+）
 
@@ -164,7 +165,9 @@ curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=all bash
    js-eyes config set skillsRegistryUrl https://example.com/skills.json
    ```
 
-官方注册表格式看 [`docs/skills.json`](../../skills.json)；完整打包/发布细节后续会有专门文档（`distribution.zh.md`，待编写）。
+官方注册表格式看线上
+[`js-eyes.com/skills.json`](https://js-eyes.com/skills.json)；本地通过
+`npm run build:site` 生成 `dist/skills.json`。
 
 ## 5. 部署模式 D：primary + extraSkillDirs
 
@@ -318,7 +321,7 @@ js-eyes skills approve js-foo-ops-skill
 
 - 若 `pluginCfg.devWatchSkills` 为默认 `true`，运行中的主插件会通过 chokidar 自动 `reload()`；
 - 或手动 `js-eyes skills reload`（等价于 `touch config.json`）；
-- 或在 Agent 里调用 `js_eyes_reload_skills` 工具。
+- 或在 Agent 里调用单一 `js-eyes` 工具的 `skills/reload` action。
 
 三条路径都不需要重启 OpenClaw——除非新增一个**从未注册过的 tool name**（见 §5.3 的"前置条件与边界"）。
 

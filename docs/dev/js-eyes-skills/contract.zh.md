@@ -135,8 +135,8 @@ openclaw: {
 
 ### 3.1 工具命名
 
-- **全局唯一**：主插件用 `registeredNames` Set 去重，冲突时后来的被 skip 并 warn（见 [`packages/protocol/skills.js`](../../../packages/protocol/skills.js) `registerOpenClawTools`）。
-- 建议带**技能前缀**：`x_*`、`browser_*`、`hello_*`，避免与内置 `js_eyes_*` 或其他 skill 撞车。
+- V1 兼容工具仍需**全局唯一**；V2 工具由 skill id 命名空间隔离。
+- 两种契约都建议带**技能前缀**：`x_*`、`browser_*`、`hello_*`，保持 CLI、MCP、路由 action 与审计输出清晰稳定。
 - `snake_case` 是约定。
 
 ### 3.2 `optional: true` 的含义
@@ -176,13 +176,12 @@ async execute(toolCallId, params) {
 
 来自 [`packages/protocol/index.js`](../../../packages/protocol/index.js) 的 `SENSITIVE_TOOL_NAMES`：
 
-- `js_eyes_execute_script`
-- `js_eyes_get_cookies`
-- `js_eyes_get_cookies_by_domain`
-- `js_eyes_inject_css`
-- `js_eyes_upload_file`
-- `js_eyes_upload_file_to_tab`
-- `js_eyes_install_skill`
+- `browser/execute-script`
+- `browser/get-cookies`
+- `browser/get-cookies-by-domain`
+- `browser/inject-css`
+- `browser/upload-file`
+- `skills/plan-install`
 
 ### 4.2 自定义敏感工具
 
@@ -197,7 +196,7 @@ async execute(toolCallId, params) {
        "toolPolicies": {
          "foo_send_email": "confirm",
          "x_post":         "confirm",
-         "js_eyes_inject_css": "allow"
+         "browser/inject-css": "allow"
        }
      }
    }

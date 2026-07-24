@@ -1,6 +1,6 @@
 # Security and Network Behavior
 
-> **2.8.3 note**: This document covers the runtime security posture (network
+> **2.9.0 note**: This document covers the runtime security posture (network
 > behavior, token handling, policy engine, consent ledger, supply-chain
 > hardening since 2.2.0). For the per-finding response to the
 > [ClawHub Security Scan](https://clawhub.ai/imjszhang/js-eyes) of v2.6.1,
@@ -38,7 +38,8 @@ A complete local OpenClaw deployment needs all of the following:
 - `tools.alsoAllow: ["js-eyes"]` or an equivalent `tools.allow` entry is present, because `js-eyes` registers optional plugin tools.
 - The browser extension is configured to connect to the chosen `serverHost` / `serverPort`.
 
-Without the tool allowlist step, the plugin can load successfully while `js_eyes_*` tools still remain unavailable to the model.
+Without the tool allowlist step, the plugin can load successfully while its
+single `js-eyes` router tool remains unavailable to the model.
 
 ## Runtime Network Behavior
 
@@ -134,7 +135,7 @@ The local JS Eyes server no longer treats every localhost client as trusted.
   - URL query parameter `?token=<token>` (legacy/custom loopback-only fallback; logged to the audit trail)
   Tokens can be rotated with `js-eyes server token rotate`.
 - **Origin whitelist and CORS.** HTTP and WebSocket upgrades require an `Origin` from `security.allowedOrigins`. The defaults cover the bundled browser extensions, `http://localhost:18080`, and `http://127.0.0.1:18080`. `Access-Control-Allow-Origin` now echoes the caller only when it is on the whitelist; `*` is no longer returned.
-- **Loopback binding.** The server refuses to bind to a non-loopback host unless `security.allowRemoteHost=true`. When bound to a public address, a warning is logged and audited.
+- **Loopback binding.** The server refuses to bind to a non-loopback host unless `security.allowRemoteBind=true`. When bound to a public address, a warning is logged and audited.
 - **`allowAnonymous` compatibility switch.** For clients that cannot yet send a token (for example, older DeepSeek Cowork installs), the operator can set `security.allowAnonymous=true`. Anonymous connections are marked in the audit log and in `js-eyes doctor`. This is explicitly a migration crutch: the log line reads `[js-eyes] WARNING: allowAnonymous=true; server accepts unauthenticated WS/HTTP clients`.
 - **Structured audit log.** Connection events, skill installs, config edits, and sensitive tool calls are written as JSONL to `logs/audit.log` with `chmod 0600`. `js-eyes audit tail` streams the last entries; sensitive values (cookies, script bodies, tokens) are redacted before being logged.
 - **File permissions.** `config.json`, `runtime/server.token`, `logs/audit.log`, and `runtime/pending-consents/*.json` are created/rewritten with `chmod 0600` (best-effort `icacls` on Windows).
@@ -144,7 +145,7 @@ The local JS Eyes server no longer treats every localhost client as trusted.
 Built-in and skill-provided tools that can exfiltrate or mutate browser state are now routed through a consent gateway before execution.
 
 - **Sensitive action set.** `protocol.SENSITIVE_TOOL_NAMES` currently contains `browser/execute-script`, `browser/get-cookies`, `browser/get-cookies-by-domain`, `browser/upload-file`, `browser/inject-css`, and `skills/plan-install`. Additional actions can be added via `security.toolPolicies`.
-- **Policy modes.** Each sensitive tool resolves to one of `allow`, `confirm`, or `deny`. The OpenClaw plugin's `wrapSensitiveTool` records every decision to `runtime/pending-consents/<id>.json` (JSONL-friendly) and logs a structured warning. `deny` short-circuits execution and returns a rejection payload to the calling agent. `confirm` currently emits an auto-confirmation log entry and records the decision so operators can review it; future versions will block until an operator runs `js-eyes consent approve <id>`.
+- **Policy modes.** Each sensitive tool resolves to one of `allow`, `confirm`, or `deny`. The OpenClaw plugin records every decision under `runtime/pending-consents/<id>.json` and logs a structured warning. `deny` short-circuits execution and returns a rejection payload. `confirm` creates a pending record and blocks the call until the operator runs `js-eyes consent approve <id>`; the approval is bound to the action and parameter digest and is consumed by the matching retry.
 - **Extension-side eval lockdown.** `handleExecuteScript` / `handleExecuteScriptRequest` (Chrome MV3 + Firefox MV2) reject raw JavaScript payloads unless `securityConfig.allowRawEval=true`. Starting with v2.5+, the extension no longer requires an independent config toggle: the host's `security.allowRawEval` is pushed down at WebSocket handshake (`init_ack.serverConfig.security.allowRawEval`) and applied automatically. The extension storage key `allowRawEval` is retained as an explicit **opt-out override** for security-hardened deployments: if an operator sets it explicitly via `chrome.storage.local.set({allowRawEval:false})` (or `true`), that value wins over the host-synced value. Chrome executes approved arbitrary source through its isolated `userScripts` world (Chrome 135+), rather than CSP-blocked extension `eval`; Chrome 138+ also requires the browser-controlled **Allow User Scripts** toggle. `RAW_EVAL_DISABLED` and `USER_SCRIPTS_UNAVAILABLE` let callers degrade gracefully.
 - **Consent log review.** Operators should periodically review `runtime/pending-consents/*.json` and the JSONL entries in `logs/audit.log`. `js-eyes consent list` summarizes recent decisions; `js-eyes consent approve <id>` / `js-eyes consent deny <id>` mark pending entries for audit.
 - **Server-supplied token propagation.** The browser extension popup exposes a "Server Token" field that is persisted in `chrome.storage.local`. The background service worker forwards the token as `Sec-WebSocket-Protocol: bearer.<token>` and does not duplicate it into the WebSocket URL. The server still accepts the loopback query form for older/custom clients.
@@ -194,17 +195,19 @@ Historically, enabling raw `execute_script` required flipping `security.allowRaw
 
 ## Security Config Hot-Reload (2.5.2+)
 
-A small whitelist of `security.*` fields can now be swapped into the running JS Eyes server **without** restarting OpenClaw or the server. Server-core ships its own chokidar watcher on `~/.js-eyes/config/config.json` (separate from the plugin's skill watcher) plus a `server.reloadSecurity()` handle that the built-in `js_eyes_reload_security` tool calls on demand.
+A small whitelist of `security.*` fields can now be swapped into the running JS Eyes server **without** restarting OpenClaw or the server. Server-core ships its own chokidar watcher on `~/.js-eyes/config/config.json` (separate from the plugin's skill watcher) plus a `server.reloadSecurity()` handle that the `js-eyes` router action `security/reload` calls on demand.
 
-- **Hot-reloadable** (swap takes effect on the next automation call, ~300 ms from fs write; also immediately via `js_eyes_reload_security`): `security.egressAllowlist`, `security.toolPolicies`, `security.sensitiveCookieDomains`, `security.allowedOrigins`, `security.enforcement`.
+- **Hot-reloadable** (swap takes effect on the next automation call, ~300 ms from fs write; also immediately via the `security/reload` router action): `security.egressAllowlist`, `security.toolPolicies`, `security.sensitiveCookieDomains`, `security.allowedOrigins`, `security.enforcement`.
 - **Not hot-reloadable — server restart required** (changing these appears under `ignored` in the reload summary, with a one-line warning in the gateway log): `serverHost`, `serverPort`, `allowAnonymous`, `allowRemoteBind`, `allowRawEval`, `requireLockfile`, and anything outside `security.*` (token rotation, `requestTimeout`, etc.).
 - **Caveat — session-level egress approvals reset**: when the allowlist flips, each live automation connection rebuilds its `PolicyContext`, which means per-session `js-eyes egress approve <id>` grants are dropped. Agents re-issue the approval on the next `pending-egress` response; no action needed for standard `allow <domain>` edits because those are part of the static allowlist and get picked up automatically.
 - **Operator triggers** (any one is sufficient):
   1. Edit `~/.js-eyes/config/config.json` and save — chokidar debounces 300 ms and fires `reloadSecurity({ source: 'fs-watch' })`.
-  2. Agent call: `js_eyes_reload_security` built-in tool (returns `{ changed, applied, ignored, generation, egressAllowlist }`).
+  2. Agent call: the `js-eyes` tool with `action: security/reload` (returns `{ changed, applied, ignored, generation, egressAllowlist }`).
   3. CLI preview: `js-eyes security reload` — read-only dry run that prints what would be applied (CLI does not own the server event loop, so trigger #1 or #2 is required for the actual swap).
 - **Observability**: the audit log (`~/.js-eyes/logs/audit.log`) gains three new events — `config.hot-reload`, `config.hot-reload.error`, `automation.policy-rebuilt` — and `GET /api/browser/status` now includes `data.policy.generation` / `data.policy.egressAllowlist` so operators can externally confirm the live generation.
 
 ---
 
-*Last updated: 2026-04-21 — covers the 2.3.0 policy engine, 2.4.0 Native Messaging host, 2.5.1 host-synced `allowRawEval`, and 2.5.2 security config hot-reload.*
+*Last updated: 2026-07-24 — covers the policy engine, Native Messaging host,
+host-synced `allowRawEval`, security hot reload, the single OpenClaw router,
+and the host-neutral Skill Runtime V2 trust boundary.*

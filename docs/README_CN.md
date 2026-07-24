@@ -281,7 +281,7 @@ js-eyes doctor
 
 2.2.0 的安全默认值：
 
-- WebSocket / HTTP 必须携带 Bearer Token，`Origin` 必须在白名单内；若需绑定非 loopback 主机，必须显式设置 `security.allowRemoteHost=true`。
+- WebSocket / HTTP 必须携带 Bearer Token，`Origin` 必须在白名单内；若需绑定非 loopback 主机，必须显式设置 `security.allowRemoteBind=true`。
 - `execute_script`、`get_cookies*`、`upload_file*`、`inject_css`、`install_skill` 默认策略为 `confirm`，需要经过 consent 审批。
 - 原始 `eval` 脚本默认拒绝；在宿主 `security.allowRawEval=true` 后，扩展会在下次 `init_ack` 握手时自动同步放行，无需再到扩展存储里另行开关（如需在扩展侧强制关闭，可显式 `chrome.storage.local.set({allowRawEval:false})` 作为 opt-out override）。仍建议优先改用 `execute_action` 声明式执行。
 - `config.json`、`server.token`、`audit.log`、`pending-consents/*.json` 在 POSIX 上以 `0600` 写入，在 Windows 上通过 `icacls` 限定权限。
@@ -316,27 +316,28 @@ js-eyes doctor
 
 ## OpenClaw 插件
 
-JS Eyes 注册为 [OpenClaw](https://openclaw.ai/) 插件，为 AI Agent 直接提供浏览器自动化工具。
+JS Eyes 可选注册为 [OpenClaw](https://openclaw.ai/) 插件，通过一个路由工具向 AI Agent 提供浏览器自动化与 Skill Runtime 能力。
 
 作为 native plugin 被 OpenClaw 加载时，请遵循 OpenClaw 对外部插件运行时的要求（ESM + Node 22+）。
 
 ### 提供的能力
 
 - **后台服务** — 自动启动/停止内置 WebSocket 服务器
-- **9 个 AI 工具** — 浏览器自动化 + 技能发现与安装（见下表）
+- **1 个 AI 工具** — `js-eyes`，通过 path-style action 路由浏览器、技能和安全操作
 - **CLI 命令** — `openclaw js-eyes status`、`openclaw js-eyes tabs`、`openclaw js-eyes server start/stop`
 
-| 工具 | 说明 |
+| Action | 说明 |
 |------|------|
-| `js_eyes_get_tabs` | 获取所有打开的标签页列表（ID、URL、标题） |
-| `js_eyes_list_clients` | 获取已连接的浏览器扩展客户端列表 |
-| `js_eyes_open_url` | 在新标签页或已有标签页中打开 URL |
-| `js_eyes_close_tab` | 关闭指定 ID 的标签页 |
-| `js_eyes_get_html` | 获取标签页的完整 HTML 内容 |
-| `js_eyes_execute_script` | 在标签页中执行 JavaScript 并返回结果 |
-| `js_eyes_get_cookies` | 获取标签页对应域名的所有 Cookie |
-| `js_eyes_discover_skills` | 查询技能注册表，列出可安装的扩展技能 |
-| `js_eyes_install_skill` | 下载、解压并启用一个扩展技能，由主插件在启动时自动加载 |
+| `browser/get-tabs` | 获取所有打开的标签页列表（ID、URL、标题） |
+| `browser/list-clients` | 获取已连接的浏览器扩展客户端列表 |
+| `browser/open-url` | 在新标签页或已有标签页中打开 URL |
+| `browser/close-tab` | 关闭指定 ID 的标签页 |
+| `browser/get-html` | 获取标签页的完整 HTML 内容 |
+| `browser/execute-script` | 在标签页中执行 JavaScript并返回结果 |
+| `browser/get-cookies` | 获取标签页对应域名的所有 Cookie |
+| `skills/discover` | 查询技能注册表 |
+| `skills/plan-install` | 下载、验证并暂存技能安装计划 |
+| `skill/<skillId>/<action>` | 调用同一个 host-neutral Skill Runtime 中的技能操作 |
 
 ### 配置方法
 
@@ -382,17 +383,23 @@ JS Eyes 注册为 [OpenClaw](https://openclaw.ai/) 插件，为 AI Agent 直接�
 | `requestTimeout` | number | `1800` | 请求超时秒数（默认 30 分钟；服务器启动时会读取该配置） |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | 扩展技能注册表 URL |
 | `skillsDir` | string | `""` | 主技能安装目录（primary），空值则自动使用技能包内的 `skills/`。`install` / `approve` / `uninstall` / 完整性校验**只作用于此目录**。 |
-| `extraSkillDirs` | string[] | `[]` | 额外的只读技能来源。每个条目可以是**单个技能目录**（含 `skill.contract.js`）或**父目录**（只扫 1 层子目录）。同 id 冲突时 primary 优先；extras 跳过完整性校验。详见[部署模式 D](./dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。 |
+| `extraSkillDirs` | string[] | `[]` | 额外的只读技能来源。每个条目可以是含 `skill.manifest.json` 的 V2 技能目录、旧版 `skill.contract.js` 目录或父目录。同 id 冲突时 primary 优先。 |
+| `externalSkills.policy` | string | `"legacy"` | 外部技能策略：`legacy`、`prompt` 或 `strict`；后两者要求按路径、manifest、源码/依赖摘要、权限和执行模式显式信任。 |
+| `externalSkills.defaultExecution` | string | `"worker"` | 外部 V2 技能默认执行模式：`worker` 或 `in-process`。Worker 是隔离边界，不是操作系统沙箱。 |
 
 ## 扩展技能
 
-JS Eyes 支持**扩展技能** — 基于基础浏览器自动化构建的高级能力。主 ClawHub bundle 会在 `skills/` 下附带第一方技能，操作者仍可在基础栈跑通后独立安装或链接更多技能。
+JS Eyes 支持**扩展技能** — 基于基础浏览器自动化构建的高级能力。第一方
+技能通过注册表独立发布，操作者在基础运行时跑通后只安装需要的平台；源码
+checkout 则在 `skills/` 下包含这些技能的源文件。
 
 当前推荐的宿主方式是：
-- 扩展 `js-eyes` CLI 的技能命令
-- 由主 `js-eyes` OpenClaw 插件在启动时自动发现并注册
+- 在 V2 `skill.manifest.json` 中静态声明工具、schema、风险与权限
+- 由 CLI、MCP 或可选 OpenClaw 适配器调用同一个 Skill Runtime
 
-迁移说明：子技能不再自带独立的 `openclaw-plugin` 包装文件。OpenClaw 只需要继续加载主插件 `js-eyes`，由主插件自动加载已启用的本地技能。
+迁移说明：子技能不再自带独立的 `openclaw-plugin` 包装文件。OpenClaw
+只加载主适配器 `js-eyes`，由它把已启用的本地技能路由到 CLI 和 MCP 共用
+的 Runtime。
 
 | 技能 | 说明 | 示例工具 |
 |------|------|----------|
@@ -415,8 +422,10 @@ JS Eyes 支持**扩展技能** — 基于基础浏览器自动化构建的高级
 AI Agent 可以自动发现可用技能：
 
 ```
-# 通过 AI 工具
-js_eyes_discover_skills
+# 通过 OpenClaw 的单一 js-eyes 工具
+tool: js-eyes
+action: skills/discover
+args: {}
 
 # 通过技能注册表
 https://js-eyes.com/skills.json
@@ -446,7 +455,11 @@ $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 校验下载包。`JS_EYES_SKILL=all` 会遍历
 `<install-dir>/js-eyes/skills/` 下的每个子技能目录依次升级。
 
-**通过 AI Agent：** Agent 调用 `js_eyes_install_skill`，传入技能 ID — 自动下载、解压、安装依赖，并在 `js-eyes` 宿主配置中启用该技能。自 2026-04-19 起，运行中的主插件会通过 `SkillRegistry` + chokidar 在 ~300 ms 内**零重启热加载**该技能，无需重启 OpenClaw；仅当技能带来了一个从未注册过的 tool name 时才需要重启一次（详见 [deployment.zh.md §5.3](dev/js-eyes-skills/deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）。
+**通过 AI Agent：** Agent 调用单一 `js-eyes` 工具的
+`skills/plan-install` action 暂存经过摘要验证的安装计划；操作者随后执行
+`js-eyes skills approve <id>` 和 `js-eyes skills enable <id>`。运行中的主插件
+通过共享 Skill Runtime 和 watcher 热加载技能，无需为已有路由名称重启
+OpenClaw。
 
 **通过 js-eyes CLI：**
 
@@ -454,9 +467,10 @@ $env:JS_EYES_SKILL="js-x-ops-skill"; irm https://js-eyes.com/install.ps1 | iex
 js-eyes skills install js-x-ops-skill
 js-eyes skills enable js-x-ops-skill
 js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
+js-eyes skill call js-x-ops-skill x_get_profile --args '{"username":"openai"}' --json
 ```
 
-**手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`，随后 `js-eyes skills enable js-x-ops-skill`。运行中的主插件会通过 config watcher 自动热加载；也可显式 `js-eyes skills reload` 或让 Agent 调 `js_eyes_reload_skills`。仅在宿主拒绝注册新 tool name（少见）时才需要重启 OpenClaw 一次。
+**手动安装：** 从 [js-eyes.com/skills/js-x-ops-skill/](https://js-eyes.com/skills/js-x-ops-skill/js-x-ops-skill-skill.zip) 下载技能 zip，解压到 `skills/js-eyes/skills/js-x-ops-skill/`，执行 `npm install`，随后 `js-eyes skills enable js-x-ops-skill`。运行中的主插件会通过 config watcher 自动热加载；也可显式执行 `js-eyes skills reload`，或调用单一 `js-eyes` 工具的 `skills/reload` action。
 
 ### 开发自定义 JS Eyes Skills
 
@@ -465,7 +479,12 @@ js-eyes skill run js-x-ops-skill search "AI agent" --max-pages 2
 - 把 `skillsDir` 指到你存放技能的父目录（js-eyes 完全接管生命周期，`install` / `approve` / `verify` 都作用于它）。
 - 保留默认 `skillsDir`，把额外的技能目录（或父目录）加进 `extraSkillDirs`。extras 是**只读**的：被发现并注册工具，但 js-eyes 不改动它下面的文件、也不跑完整性校验。
 
-对外部 extras 推荐**零重启**路径：`js-eyes skills link /abs/path/to/my-skill` 会去重追加到 `extraSkillDirs` 并在 ~300 ms 内触发运行中插件的 `registry.reload()`；解除用 `js-eyes skills unlink <path>`，强制触发用 `js-eyes skills reload`；Agent 侧还可以调 `js_eyes_reload_skills` 工具拿到 diff 摘要（added / removed / reloaded / toggledOff / conflicts / failedDispatchers）。
+对外部 extras 推荐**零重启**路径：`js-eyes skills link /abs/path/to/my-skill`
+会去重追加到 `extraSkillDirs` 并触发运行中宿主的 reload；解除用
+`js-eyes skills unlink <path>`，强制触发用 `js-eyes skills reload`。V2
+外部技能应先通过 `skills inspect` 查看 manifest、权限与源码摘要，再按
+`prompt` / `strict` 策略执行 `skills trust`。Agent 侧可调用单一 `js-eyes`
+工具的 `skills/reload` action 获取变更摘要。
 
 开发者文档与样例：
 
@@ -512,10 +531,15 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步平台版本号（跳过 visual-* 包与 skills/* 子技能）
-npm run bump -- 2.8.3
+npm run bump -- 2.9.1
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。push 到 `main` 后 GitHub Actions 会自动部署 `dist/` 到 Pages。
+
+父 Skill 的源码模板位于
+[`distribution/js-eyes-skill/SKILL.template.md`](../distribution/js-eyes-skill/SKILL.template.md)，
+构建时从根 `package.json` 注入平台版本；源码仓库中的编码 Agent 规则位于
+[`AGENTS.md`](../AGENTS.md)。
 
 发布到 ClawHub 时，建议直接使用构建产物（`dist/skill-bundle/js-eyes/` 或 `dist/` 中的版本化 zip），不要直接从 monorepo 根目录发布。
 
@@ -532,16 +556,16 @@ npm run bump -- 2.8.3
 3. 重启或刷新 OpenClaw
 4. 执行 `openclaw js-eyes status`
 5. 安装浏览器扩展，连接到 `http://localhost:18080`，然后执行 `openclaw js-eyes tabs`
-6. 让 Agent 调用 `js_eyes_get_tabs`
-7. 让 Agent 调用 `js_eyes_discover_skills`
-8. 用 `js_eyes_install_skill` 安装一个子技能（或用 `js-eyes skills link <path>` 接入外部技能）。主插件会在 ~300 ms 内通过 config watcher 热加载；可用 `js_eyes_reload_skills` 确认（或在 gateway 日志里找 `Hot-loaded skill` / `added` 记录）。仅当 `failedDispatchers` 提示宿主拒绝注册新 tool name 时才需要重启 OpenClaw。
+6. 让 Agent 调用 `js-eyes`，传入 `action: browser/get-tabs` 和 `args: {}`
+7. 让 Agent 调用 `js-eyes`，传入 `action: skills/discover`
+8. 用 `skills/plan-install` action 暂存一个子技能安装计划，再通过 CLI approve/enable；或用 `js-eyes skills link <path>` 接入外部技能。可用 `skills/reload` action 确认热加载摘要。
 
 ## 故障排除
 
 | 症状 | 解决方法 |
 |------|----------|
 | 扩展显示 "Disconnected" | 执行 `openclaw js-eyes status` 检查；确认 `autoStartServer` 为 `true` |
-| `js_eyes_get_tabs` 返回空 | 点击扩展图标，确认地址正确，点击 Connect |
+| `browser/get-tabs` 返回空 | 点击扩展图标，确认地址和 Token 正确，并检查 `browser/list-clients` |
 | `Cannot find module 'ws'` | 在技能根目录执行 `npm install` |
 | 工具未出现在 OpenClaw 中 | 确认 `plugins.load.paths` 指向主插件 `openclaw-plugin` 子目录，并确认目标子技能未在 `js-eyes` 宿主配置中被禁用 |
 | Windows 路径找不到 | JSON 中使用正斜杠，如 `C:/Users/you/skills/js-eyes/openclaw-plugin` |

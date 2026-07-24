@@ -151,7 +151,9 @@ module.exports = {
 
 - `optional: true` 是**默认**——主插件把 skill 工具全部注册为可选工具，要求 OpenClaw `tools.alsoAllow` 里列 `js-eyes` 才会暴露给模型。
 - `execute(toolCallId, params)` **必须返回** `{ content: [{ type: 'text', text }] }`。用 `runtime.jsonResult()` 包装业务对象是惯用写法。
-- 工具名要**全局唯一**：主插件的 `registeredNames` 里已经占了内置 [`js_eyes_*`](../../../openclaw-plugin/index.mjs)；其他 skill 的工具名也算在内，冲突时新来的会被跳过并 warn。
+- V1 兼容工具名仍应保持全局唯一；V2 工具通过
+  `skill/<skillId>/<action>` 路由隔离，但仍建议使用稳定的技能前缀，方便
+  CLI、MCP、审计日志和迁移期间识别。
 
 ## 5. 对接 BrowserAutomation
 
@@ -214,22 +216,24 @@ js-eyes skills enable js-foo-ops-skill
 js-eyes config set skillsEnabled.js-foo-ops-skill true
 ```
 
-启用后**主插件会自动热加载这个 skill**（[零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）——无需重启 OpenClaw。外部目录的 skill 走 `js-eyes skills link <path>` 一条命令就行（300 ms 内通过 config watcher 触发 `registry.reload()`）。需要重启的只有两种情况：首次把 `openclaw-plugin` 纳入 OpenClaw，或者该 skill 带来了一个从未注册过的 tool name（`js_eyes_reload_skills` 返回里会看到 `failedDispatchers`）。
+启用后**主插件会自动热加载这个 skill**（[零重启部署](deployment.zh.md#53-零重启部署skills-linkunlinkreload推荐)）——无需重启 OpenClaw。外部目录的 skill 走 `js-eyes skills link <path>` 一条命令即可；也可调用单一 `js-eyes` 工具的 `skills/reload` action 查看 reload 摘要。首次把 `openclaw-plugin` 纳入 OpenClaw或修改适配器本身时仍需重启。
 
 然后：
 
 ```bash
-openclaw plugins inspect js-eyes   # 看 foo_* 工具是否注册
+openclaw plugins inspect js-eyes   # 确认单一 js-eyes 路由已注册
 openclaw js-eyes status            # 确认服务器与浏览器连接
 ```
 
-Agent 侧调 `foo_get_title` 即可验证工具可用；也可以先调 `js_eyes_reload_skills`，返回的 `added` / `reloaded` 摘要里应该包含你的 skill id。
+Agent 侧通过 `js-eyes` 工具调用 `skill/js-foo-ops-skill/foo-get-title`
+即可验证；也可以先调用 `skills/reload`，返回的 `added` / `reloaded`
+摘要里应该包含你的 skill id。
 
 ## 8. 调试技巧
 
 | 现象 | 排查 |
 |------|------|
-| `js_eyes_*` 能用，但 `foo_*` 不出现 | 1) `js-eyes skills list` 是否包含 skill；2) 是否 `enable`；3) `js-eyes skills reload`（或 Agent 调 `js_eyes_reload_skills`）看日志是否 `Hot-loaded skill "..."`、以及返回里 `failedDispatchers` 是否为空；4) `tools.alsoAllow` 是否含 `js-eyes`。若 `failedDispatchers` 非空，是插件启动后 OpenClaw 不接受新 tool name，需要重启一次 OpenClaw 让新工具名登记进去。 |
+| `js-eyes` 路由可用，但目标 skill action 不可用 | 1) `js-eyes skills list` 是否包含 skill；2) 是否 `enable`；3) `js-eyes skills inspect <id>` 的兼容性和信任状态；4) `js-eyes skills reload` 或 `skills/reload` action 的摘要；5) `tools.alsoAllow` 是否含 `js-eyes`。 |
 | 启动日志 `Refusing to load tampered skill` | 本地开发 **不要**手写 `.integrity.json`。若是从 zip 安装的 skill 想改动，删掉 `.integrity.json` 或重装（见 [contract.zh.md — 完整性校验](contract.zh.md#integrity-与完整性校验)）。 |
 | 工具名冲突，日志 `Skipping tool ... already registered` | 改工具名（建议带技能前缀，如 `foo_`）。 |
 | 调用超时 | 默认 1800 秒；`new BrowserAutomation(url, { defaultTimeout: 秒 })` 或 contract 中调大 `requestTimeout`。 |
@@ -239,7 +243,9 @@ Agent 侧调 `foo_get_title` 即可验证工具可用；也可以先调 `js_eyes
 ## 9. 常见坑
 
 1. **不要把样例放 `skills/`**。放样例会被当真技能扫到、默认禁用、产生 warn。样例统一放 [`examples/js-eyes-skills/`](../../../examples/js-eyes-skills/)。
-2. **工具名冲突**。内置 [`js_eyes_*`](../../../openclaw-plugin/index.mjs) 先占位，其他本地 skill 的工具也算在内——起名带技能前缀最稳。
+2. **工具名与 action 不稳定**。V1 兼容路径仍可能发生全局冲突；V2
+   虽按 skill id 路由，也应保持技能前缀和稳定名称，避免 CLI、MCP 与审计
+   输出在升级时发生破坏性变化。
 3. **工具的 `execute` 必须返回 `{ content: [...] }`**。直接 `return data` 会被 OpenClaw 当成非法响应。用 `runtime.textResult` / `jsonResult` 最稳。
 4. **`require('../../packages/...')` 不要用**。skill 要能独立分发，全部走 `@js-eyes/*` npm 包（已发布到 [npm 组织 `js-eyes`](https://www.npmjs.com/org/js-eyes)）或自包含 `lib/js-eyes-client.js` 的约定。
 5. **`@js-eyes/skill-recording` 可按需引入**。简单 skill 不用；要做跨会话缓存 / debug bundle 再加。

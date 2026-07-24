@@ -5,6 +5,7 @@ const {
   DIST_DIR,
   MAIN_SKILL_DIST_ASSET,
   MAIN_SKILL_STAGE_DIR,
+  MAIN_SKILL_TEMPLATE,
   PROJECT_ROOT,
   SITE_OUT_DIR,
   SKILL_BUNDLE_FILES,
@@ -20,6 +21,24 @@ const {
   writeShaSidecar,
 } = require('./context');
 const { createZipArchive } = require('./zip-archive');
+
+const VERSION_PLACEHOLDER = '__JS_EYES_VERSION__';
+
+function renderMainSkillMarkdown(version) {
+  if (!fs.existsSync(MAIN_SKILL_TEMPLATE)) {
+    throw new Error(
+      'Main Skill template missing: distribution/js-eyes-skill/SKILL.template.md',
+    );
+  }
+  const template = fs.readFileSync(MAIN_SKILL_TEMPLATE, 'utf8');
+  const occurrences = template.split(VERSION_PLACEHOLDER).length - 1;
+  if (occurrences !== 1) {
+    throw new Error(
+      `Main Skill template must contain exactly one ${VERSION_PLACEHOLDER} placeholder; found ${occurrences}`,
+    );
+  }
+  return template.replace(VERSION_PLACEHOLDER, version);
+}
 
 function createBundlePackageJson(version) {
   return {
@@ -108,6 +127,11 @@ function prepareMainSkillBundleStage() {
   }
 
   writeFile(
+    path.join(MAIN_SKILL_STAGE_DIR, 'SKILL.md'),
+    renderMainSkillMarkdown(version),
+  );
+
+  writeFile(
     path.join(MAIN_SKILL_STAGE_DIR, 'package.json'),
     JSON.stringify(createBundlePackageJson(version), null, 2) + '\n',
   );
@@ -151,4 +175,8 @@ async function buildSkillZip() {
   console.log(`  ✓ Skill bundle asset: ${path.basename(distAsset)}`);
 }
 
-module.exports = { buildSkillZip, prepareMainSkillBundleStage };
+module.exports = {
+  buildSkillZip,
+  prepareMainSkillBundleStage,
+  renderMainSkillMarkdown,
+};

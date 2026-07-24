@@ -49,5 +49,24 @@ describe('devtools builder module boundaries', () => {
       context.MAIN_SKILL_STAGE_DIR,
       path.join(repoRoot, 'dist', 'skill-bundle', 'js-eyes'),
     );
+    assert.equal(
+      context.MAIN_SKILL_TEMPLATE,
+      path.join(repoRoot, 'distribution', 'js-eyes-skill', 'SKILL.template.md'),
+    );
+    assert.deepEqual(context.SKILL_BUNDLE_FILES, ['SECURITY.md', 'LICENSE']);
+  });
+
+  it('renders the distributable parent Skill from its template', () => {
+    const { renderMainSkillMarkdown } = require(
+      '../packages/devtools/lib/build/skill-bundle',
+    );
+    const version = require('../package.json').version;
+    const rendered = renderMainSkillMarkdown(version);
+
+    assert.match(rendered, /^name: js-eyes$/m);
+    assert.match(rendered, new RegExp(`^version: ${version.replaceAll('.', '\\.')}$`, 'm'));
+    assert.doesNotMatch(rendered, /__JS_EYES_VERSION__/);
+    assert.doesNotMatch(rendered, /\bjs_eyes_/);
+    assert.equal(fs.existsSync(path.join(repoRoot, 'SKILL.md')), false);
   });
 });

@@ -12,15 +12,15 @@
 | Anthropic Claude | Agent Skills | 目录 + `SKILL.md` frontmatter + 指令式 markdown |
 | Cursor | Cursor Skills | 目录 + `SKILL.md` + 专属工具 |
 | Claude Code | Claude Code Skills | 类似 Anthropic，可运行脚本 |
-| OpenClaw | OpenClaw Skill | 目录 + `SKILL.md`（本仓库根 `SKILL.md` 属于这一类） |
-| **JS Eyes**（本仓库） | JS Eyes Skills | 目录 + `skill.contract.js` + 可选 `SKILL.md` |
+| OpenClaw | OpenClaw Skill | 目录 + `SKILL.md`（本仓库的发行产物兼容这一类） |
+| **JS Eyes**（本仓库） | JS Eyes Skills | V2 `skill.manifest.json` + `skill.entry.js`；V1 `skill.contract.js` 兼容 |
 
 这些规范**互不相同**但名字撞车，本仓库选择把"JS Eyes Skills"作为专有名词，把通用 Skills 规范留给 `skills/` 命名空间未来承接。
 
 ## 可能的兼容策略（待讨论）
 
-1. **适配层**：在 `packages/` 下加一个 `skills-adapter`，按外部规范读取目录，桥接到 `createOpenClawAdapter` 契约。
-2. **直通模式**：让外部通用 Skills 的目录可直接挂到 `skillsDir`，通过启发式识别类型（有 `skill.contract.js` 走原生，有 `SKILL.md` 且带特定 frontmatter 走适配）。
+1. **适配层**：在 `packages/` 下加一个 host-neutral adapter，按外部规范读取目录，桥接到 Skill Runtime V2。
+2. **直通模式**：让外部通用 Skills 的目录可直接挂到 `skillsDir`，通过明确的 kind 与静态 manifest 识别类型，不在发现阶段执行入口。
 3. **双轨隔离**：保留 `js-eyes-skills/` 为"强契约"入口，`skills/` 给"弱契约 / 纯 prompt"入口，互不污染。
 
 ## 待调研项

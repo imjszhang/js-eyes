@@ -116,7 +116,7 @@ JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when
    - `allowAnonymous: false` by default. Set to `true` **only** for clients that cannot yet send a token (for example, older DeepSeek Cowork builds). A warning is logged on every anonymous connection.
    - `allowRawEval: false` by default. Set to `true` only when a skill legitimately needs arbitrary JS eval; the extension refuses `execute_script` payloads otherwise.
    - `requireLockfile: true` by default. Keep this unless installing a skill that intentionally ships without `package-lock.json`.
-3. The server refuses to bind to a non-loopback host unless `security.allowRemoteHost=true`.
+3. The server refuses to bind to a non-loopback host unless `security.allowRemoteBind=true`.
 4. `Access-Control-Allow-Origin: *` is replaced by an allowlist. Update `security.allowedOrigins` for any custom client UI (the defaults cover the bundled extensions and `http://localhost:18080`).
 
 ### Clients
@@ -136,7 +136,8 @@ JS Eyes 2.2.0 introduces mandatory security defaults. Follow this checklist when
   - `js-eyes skills update <id|--all> [--dry-run]` upgrades an already-installed sub-skill in place. It enforces the registry's `minParentVersion`, preserves `skillsEnabled.<id>`, and is the single path you need for "my sub-skill is out of date but I don't want to touch js-eyes itself".
   - `js-eyes skills verify [id]` re-validates file hashes against `.integrity.json`.
 - One-shot sub-skill upgrades are also available via the install script: `curl -fsSL https://js-eyes.com/install.sh | JS_EYES_SKILL=<id> bash` (or `JS_EYES_SKILL=all`) compares the local `package.json#version` against the registry and only re-downloads when the registry is strictly newer.
-- OpenClaw's `js_eyes_install_skill` tool only produces plans; approval still requires the CLI.
+- OpenClaw's single `js-eyes` tool uses `action: skills/plan-install` to produce
+  plans; approval still requires the CLI.
 
 ### Operator Maintenance
 

@@ -9,8 +9,14 @@ repository. It is **not** the GitHub Pages site root.
 |------|---------|
 | [`README_CN.md`](./README_CN.md) | Chinese overview (links back to root [`README.md`](../README.md)) |
 | [`native-messaging.md`](./native-messaging.md) | Native Messaging host install + token sync |
+| [`architecture/skill-runtime-v2.md`](./architecture/skill-runtime-v2.md) | Host-neutral Skill Runtime, trust, and Worker boundaries |
 | [`dev/js-eyes-skills/`](./dev/js-eyes-skills/) | JS Eyes Skills authoring, contract, deployment guides |
 | [`dev/skills/`](./dev/skills/) | Reserved namespace for future generic Skills compatibility notes |
+
+Repository coding-agent guidance lives in [`AGENTS.md`](../AGENTS.md). The
+distributable parent Skill is authored separately at
+[`distribution/js-eyes-skill/SKILL.template.md`](../distribution/js-eyes-skill/SKILL.template.md)
+and rendered into the release bundle during the build.
 
 ## Site & registry artifacts (built, not committed here)
 
