@@ -21,17 +21,12 @@ function flattenCapabilities(descriptor = {}) {
 
 export function createSkillRuntimeOptions(options) {
   const {
-    hostVersion, loadConfig, logger, pluginConfig, requestTimeout,
+    hostVersion, loadEffectiveConfig, logger, requestTimeout,
     serverHost, serverPort, trustStore,
   } = options;
-  const currentExternalSkills = () => ({
-    ...(loadConfig().externalSkills || {}),
-    ...(pluginConfig.externalSkills || {}),
-  });
-  const currentSkillConfig = (skillId) => ({
-    ...(loadConfig().skills?.[skillId]?.config || {}),
-    ...(pluginConfig.skills?.[skillId]?.config || {}),
-  });
+  const currentConfig = () => loadEffectiveConfig();
+  const currentExternalSkills = () => currentConfig().externalSkills || {};
+  const currentSkillConfig = (skillId) => currentConfig().skills?.[skillId]?.config || {};
   return {
     compatibilityChecker: (skill) => checkCompatibility(skill.descriptor?.compatibility, {
       jsEyes: hostVersion,
@@ -58,7 +53,7 @@ export function createSkillRuntimeOptions(options) {
         requestTimeout,
         ...currentSkillConfig(descriptor.id),
       },
-      configLoader: loadConfig,
+      configLoader: loadEffectiveConfig,
       grantedCapabilities: flattenCapabilities(descriptor),
       logger,
     }),

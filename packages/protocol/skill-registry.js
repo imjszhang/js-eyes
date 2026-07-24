@@ -153,7 +153,7 @@ function createSkillRegistry(options = {}) {
   const logger = makeLogger(options.logger);
   const configLoader = typeof options.configLoader === 'function'
     ? options.configLoader
-    : () => ({});
+    : () => hostConfig;
   const setConfigValue = typeof options.setConfigValue === 'function'
     ? options.setConfigValue
     : () => {};
@@ -225,6 +225,25 @@ function createSkillRegistry(options = {}) {
 
   function safeStringify(value) {
     try { return JSON.stringify(value); } catch (_) { return null; }
+  }
+
+  function stableConfigValue(value) {
+    if (Array.isArray(value)) return value.map(stableConfigValue);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, stableConfigValue(value[key])]),
+    );
+  }
+
+  function computeRuntimeConfigFingerprint(config, skillId) {
+    const source = config && typeof config === 'object' ? config : {};
+    const projected = {};
+    for (const key of Object.keys(source)) {
+      if (key === 'extraSkillDirs' || key === 'skillsEnabled' || key === 'skills') continue;
+      projected[key] = source[key];
+    }
+    projected.skill = source.skills?.[skillId] || null;
+    return safeStringify(stableConfigValue(projected)) || '';
   }
 
   function ensureDispatcher(toolName, optional, definition) {
@@ -415,12 +434,18 @@ function createSkillRegistry(options = {}) {
               descriptor: skill.descriptor,
               skill,
               effectiveConfig,
-              hostConfig,
+              hostConfig: effectiveConfig,
               logger,
             })
           : null;
         executionBackend = executionBackendFactory
-          ? await executionBackendFactory({ skill, runtime, effectiveConfig, hostConfig, logger })
+          ? await executionBackendFactory({
+              skill,
+              runtime,
+              effectiveConfig,
+              hostConfig: effectiveConfig,
+              logger,
+            })
           : null;
         if (executionBackend) {
           await executionBackend.activate();
@@ -448,10 +473,10 @@ function createSkillRegistry(options = {}) {
         );
         adapter = createAdapterFromDefinition(definition, runtime);
       } else {
-        const legacyAdapter = contract.createOpenClawAdapter(hostConfig, logger);
+        const legacyAdapter = contract.createOpenClawAdapter(effectiveConfig, logger);
         definition = normalizeV1Contract(contract, {
           adapter: legacyAdapter,
-          config: hostConfig,
+          config: effectiveConfig,
           logger,
         });
         runtime = definition.runtime;
@@ -490,6 +515,7 @@ function createSkillRegistry(options = {}) {
       sourcePath: skill.sourcePath,
       skillDir: skill.skillDir,
       fingerprint: computeSkillFingerprint(skill.skillDir),
+      configFingerprint: computeRuntimeConfigFingerprint(effectiveConfig, skill.id),
       contract,
       definition,
       adapter,
@@ -807,14 +833,16 @@ function createSkillRegistry(options = {}) {
       }
 
       // Detect if reload is required: new, sourcePath changed, or the on-disk
-      // contract/package.json fingerprint changed (true content hot-reload).
+      // contract/package.json fingerprint or runtime-relevant config changed.
       const nextFingerprint = computeSkillFingerprint(skill.skillDir);
+      const nextConfigFingerprint = computeRuntimeConfigFingerprint(effectiveConfig, skill.id);
       const changed = force
         || !existing
         || existing.source !== skill.source
         || existing.sourcePath !== skill.sourcePath
         || existing.skillDir !== skill.skillDir
-        || existing.fingerprint !== nextFingerprint;
+        || existing.fingerprint !== nextFingerprint
+        || existing.configFingerprint !== nextConfigFingerprint;
 
       if (existing && !changed) {
         // Still alive; nothing to do unless explicit reload is requested.

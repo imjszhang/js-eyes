@@ -114,6 +114,7 @@ function resolveConfig(options = {}) {
     skillsEnabled: { ...(runtime.skillsEnabled || {}) },
     externalSkills: { ...(runtime.externalSkills || {}) },
     recording: { ...(runtime.recording || {}) },
+    skills: { ...(runtime.skills || {}) },
   });
 }
 

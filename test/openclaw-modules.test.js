@@ -120,7 +120,10 @@ describe('OpenClaw module boundaries', () => {
       skillsDir: '/host/primary',
       extraSkillDirs: ['/host/a'],
       externalSkills: { policy: 'prompt', defaultExecution: 'worker' },
-      skills: { demo: { config: { fromHost: true, value: 1 } } },
+      skills: {
+        demo: { config: { fromHost: true, value: 1 } },
+        dynamic: { config: { value: 1 } },
+      },
     };
     const resolved = resolveOpenClawSkillConfig({
       api: { pluginConfig: {
@@ -144,8 +147,34 @@ describe('OpenClaw module boundaries', () => {
       fromHost: true, value: 2,
     });
     assert.deepEqual(resolved.effectiveSkillConfig.skillsEnabled, { legacy: true });
-    host = { ...host, extraSkillDirs: ['/host/c'] };
+    host = {
+      ...host,
+      extraSkillDirs: ['/host/c'],
+      skills: {
+        demo: { config: { fromHost: 'latest', value: 3 } },
+        dynamic: { config: { value: 2 } },
+      },
+    };
     assert.deepEqual(resolved.resolveCurrentSkillSources().extras, ['/host/c', '/plugin/b']);
+    assert.deepEqual(resolved.loadEffectiveSkillConfig().skills.demo.config, {
+      fromHost: 'latest', value: 2,
+    });
+
+    const { createSkillRuntimeOptions } = await import('../openclaw-plugin/skill-runtime-options.mjs');
+    const runtimeOptions = createSkillRuntimeOptions({
+      hostVersion: '2.8.5',
+      loadEffectiveConfig: resolved.loadEffectiveSkillConfig,
+      logger: { info() {}, warn() {}, error() {} },
+      requestTimeout: 5,
+      serverHost: '127.0.0.1',
+      serverPort: 18080,
+      trustStore: { inspect() { return {}; } },
+    });
+    const runtime = runtimeOptions.runtimeFactory({
+      descriptor: { id: 'dynamic', capabilities: {} },
+    });
+    assert.equal(runtime.config.value, 2, 'runtime reads the latest host config');
+    await runtime.dispose();
   });
 
   it('keeps shared server acquisition reference-counted', async () => {

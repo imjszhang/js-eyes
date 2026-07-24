@@ -198,9 +198,8 @@ function register(api) {
     trustChecker: (skill) => skillTrustStore.isApproved(skill),
     ...createSkillRuntimeOptions({
       hostVersion: manifest.version,
-      loadConfig,
+      loadEffectiveConfig: loadEffectiveSkillConfig,
       logger: api.logger,
-      pluginConfig: effectiveSkillConfig,
       requestTimeout,
       serverHost,
       serverPort,

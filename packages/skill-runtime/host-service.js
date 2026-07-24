@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const path = require('path');
 const { checkCompatibility } = require('@js-eyes/skill-contract');
 const { createSkillRegistry, createSkillTrustStore, resolveSkillSources, resolveSkillsDir } = require('@js-eyes/protocol/skills');
@@ -116,7 +117,11 @@ class SkillHostService {
     if (!this.allowedRisks.has(tool.risk || 'read')) {
       throw new SkillRiskError(tool.risk || 'read', this.invocationSource);
     }
-    return registry.executeAction(tool.action, toolCallId || `${this.invocationSource}-${Date.now()}`, args);
+    return registry.executeAction(
+      tool.action,
+      toolCallId || `${this.invocationSource}-${crypto.randomUUID()}`,
+      args,
+    );
   }
 
   async dispose() {
