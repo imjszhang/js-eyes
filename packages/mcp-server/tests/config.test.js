@@ -9,6 +9,9 @@ const runtimeConfig = {
   serverHost: '127.0.0.1',
   serverPort: 18080,
   requestTimeout: 45,
+  skills: {
+    demo: { config: { apiBase: 'https://api.example' } },
+  },
 };
 
 describe('MCP config', () => {
@@ -46,6 +49,7 @@ describe('MCP config', () => {
     const config = resolveConfig({ argv: {}, env: {}, runtimeConfig });
     assert.equal(config.serverUrl, 'ws://127.0.0.1:18080');
     assert.equal(config.toolProfile, 'safe');
+    assert.equal(config.skills.demo.config.apiBase, 'https://api.example');
   });
 
   it('rejects invalid profiles and unknown options', () => {

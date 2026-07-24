@@ -44,7 +44,7 @@ const FORBIDDEN_GLOBALS = Object.freeze([
 
 const GUARDED_FILES = Object.freeze([
   'packages/protocol/fs-io.js',
-  'packages/protocol/openclaw-paths.js',
+  'openclaw-plugin/legacy-config.mjs',
   'packages/protocol/safe-npm.js',
   'packages/protocol/skill-runner.js',
   'openclaw-plugin/auth.mjs',

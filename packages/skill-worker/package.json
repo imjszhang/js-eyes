@@ -1,0 +1,28 @@
+{
+  "name": "@js-eyes/skill-worker",
+  "version": "2.8.5",
+  "description": "Isolated process execution backend for external JS Eyes Skills",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "index.js",
+    "host.js",
+    "worker-entry.js"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/skill-worker"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

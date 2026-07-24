@@ -8,11 +8,9 @@ const assert = require('node:assert/strict');
 
 const { parseSkillFrontmatter } = require('../packages/devtools/lib/builder');
 const {
+  buildAdapterTools,
   discoverLocalSkills,
-  getLegacyOpenClawSkillState,
-  getOpenClawConfigPath,
   isSkillEnabled,
-  registerOpenClawTools,
 } = require('../packages/protocol/skills');
 
 describe('skill bundle metadata', () => {
@@ -50,46 +48,6 @@ describe('skill bundle metadata', () => {
   });
 });
 
-describe('OpenClaw config path resolution', () => {
-  it('prefers OPENCLAW_CONFIG_PATH', () => {
-    const resolved = getOpenClawConfigPath({
-      env: {
-        OPENCLAW_CONFIG_PATH: '/tmp/custom-openclaw.json',
-        OPENCLAW_STATE_DIR: '/tmp/state-dir',
-        OPENCLAW_HOME: '/tmp/openclaw-home',
-      },
-      home: '/tmp/fallback-home',
-    });
-    assert.equal(resolved, path.resolve('/tmp/custom-openclaw.json'));
-  });
-
-  it('falls back to OPENCLAW_STATE_DIR when config path is unset', () => {
-    const resolved = getOpenClawConfigPath({
-      env: {
-        OPENCLAW_STATE_DIR: '/tmp/state-dir',
-      },
-      home: '/tmp/fallback-home',
-    });
-    assert.equal(resolved, path.resolve('/tmp/state-dir', 'openclaw.json'));
-  });
-
-  it('falls back to OPENCLAW_HOME and then default home path', () => {
-    const fromHome = getOpenClawConfigPath({
-      env: {
-        OPENCLAW_HOME: '/tmp/openclaw-home',
-      },
-      home: '/tmp/fallback-home',
-    });
-    assert.equal(fromHome, path.resolve('/tmp/openclaw-home', '.openclaw', 'openclaw.json'));
-
-    const defaultPath = getOpenClawConfigPath({
-      env: {},
-      home: '/tmp/fallback-home',
-    });
-    assert.equal(defaultPath, path.join('/tmp/fallback-home', '.openclaw', 'openclaw.json'));
-  });
-});
-
 describe('skill host state compatibility', () => {
   let tempDir = null;
 
@@ -100,32 +58,7 @@ describe('skill host state compatibility', () => {
     }
   });
 
-  it('falls back to legacy OpenClaw plugin entries when JS Eyes host state is unset', () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-openclaw-state-'));
-    const openclawConfigPath = path.join(tempDir, 'openclaw.json');
-    fs.writeFileSync(openclawConfigPath, JSON.stringify({
-      plugins: {
-        entries: {
-          'js-eyes': { enabled: true },
-          'js-x-ops-skill': { enabled: false },
-          'js-youtube-ops-skill': { enabled: true },
-        },
-      },
-    }, null, 2));
-
-    const legacyState = getLegacyOpenClawSkillState({
-      openclawConfigPath,
-      skillIds: ['js-x-ops-skill', 'js-youtube-ops-skill'],
-    });
-
-    assert.equal(isSkillEnabled({}, 'js-x-ops-skill', legacyState), false);
-    assert.equal(isSkillEnabled({}, 'js-youtube-ops-skill', legacyState), true);
-    assert.equal(isSkillEnabled({}, 'js-wechat-ops-skill', legacyState), false);
-    assert.equal(isSkillEnabled({ skillsEnabled: { 'js-x-ops-skill': true } }, 'js-x-ops-skill', legacyState), true);
-    assert.equal(isSkillEnabled({ skillsEnabled: { 'js-wechat-ops-skill': true } }, 'js-wechat-ops-skill', legacyState), true);
-  });
-
-  it('discovers local skills and registers tools with duplicate protection', () => {
+  it('discovers local skills and builds host-neutral tools with duplicate protection', () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-local-skills-'));
     const skillDir = path.join(tempDir, 'mock-skill');
     fs.mkdirSync(skillDir, { recursive: true });
@@ -148,13 +81,7 @@ module.exports = {
     assert.equal(skill.id, 'mock-skill');
     assert.deepEqual(skill.actions, ['skill/mock-skill/mock-tool']);
 
-    const registrations = [];
-    const summary = registerOpenClawTools({
-      logger: { warn() {}, info() {} },
-      registerTool(definition) {
-        registrations.push(definition.name);
-      },
-    }, {
+    const { toolDefs, summary } = buildAdapterTools({
       tools: [
         { name: 'mock_tool', label: 'Mock Tool', description: 'ok', parameters: { type: 'object', properties: {} }, execute() {} },
         { name: 'mock_tool', label: 'Mock Tool Duplicate', description: 'duplicate', parameters: { type: 'object', properties: {} }, execute() {} },
@@ -165,8 +92,7 @@ module.exports = {
       logger: { warn() {}, info() {} },
     });
 
-    assert.deepEqual(registrations, ['mock_tool']);
-    assert.deepEqual(summary.registered, ['mock_tool']);
+    assert.deepEqual(toolDefs.map((entry) => entry.toolName), ['mock_tool']);
     assert.equal(summary.skipped.length, 1);
   });
 

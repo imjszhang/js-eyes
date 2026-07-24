@@ -1,0 +1,373 @@
+{
+  "manifestVersion": 2,
+  "id": "js-hn-ops-skill",
+  "name": "JS Hacker News Ops Skill",
+  "version": "1.0.0",
+  "publisher": "js-eyes",
+  "description": "Hacker News 只读 + 浏览器导航：PAGE_PROFILES + Bridges + Session；READ 走 Firebase API + Algolia + DOM 兜底；INTERACTIVE 仅 location.assign；不做 DESTRUCTIVE",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "news.ycombinator.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "navigation",
+      "script.execute"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "doctor",
+        "description": "连通性 + bridge + probe + state 诊断"
+      },
+      {
+        "name": "front",
+        "description": "首页列表"
+      },
+      {
+        "name": "item",
+        "description": "帖子详情 + 评论"
+      },
+      {
+        "name": "user",
+        "description": "用户页"
+      },
+      {
+        "name": "search",
+        "description": "Algolia 搜索"
+      },
+      {
+        "name": "session-state",
+        "description": "登录态"
+      },
+      {
+        "name": "navigate-front",
+        "description": "导航首页（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-item",
+        "description": "导航帖子（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-user",
+        "description": "导航用户（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航搜索相关页（INTERACTIVE）"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "hn_session_state",
+      "title": "HN Ops: Session State",
+      "description": "读取浏览器当前 HN 页推断的登录态",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "hn_get_front_page",
+      "title": "HN Ops: Front Page",
+      "description": "读取 HN 首页列表（Firebase API + DOM 兜底）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "top",
+              "new",
+              "best",
+              "ask",
+              "show",
+              "job"
+            ],
+            "default": "top"
+          },
+          "page": {
+            "type": "number",
+            "description": "分页 ?p=N，默认 1"
+          },
+          "limit": {
+            "type": "number",
+            "description": "条数，默认 30，最大 100"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "api",
+              "dom"
+            ]
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_get_item",
+      "title": "HN Ops: Get Item",
+      "description": "读取帖子详情与评论树（Firebase 递归 kids + DOM 兜底）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "number",
+            "description": "评论树深度，默认 6"
+          },
+          "commentLimit": {
+            "type": "number",
+            "description": "评论数量上限，默认 200"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "api",
+              "dom"
+            ]
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_get_user",
+      "title": "HN Ops: Get User",
+      "description": "读取用户资料与提交/评论列表",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "submitted",
+              "comments"
+            ],
+            "default": "submitted"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "api",
+              "dom"
+            ]
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_search",
+      "title": "HN Ops: Search",
+      "description": "Algolia 搜索 HN（hn.algolia.com）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date"
+            ]
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "readMode": {
+            "type": "string",
+            "enum": [
+              "api"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "hn_navigate_front",
+      "title": "HN Ops: Navigate Front",
+      "description": "仅 location.assign 到首页 feed",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feed": {
+            "type": "string",
+            "enum": [
+              "top",
+              "new",
+              "best",
+              "ask",
+              "show",
+              "job"
+            ]
+          },
+          "page": {
+            "type": "number"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_navigate_item",
+      "title": "HN Ops: Navigate Item",
+      "description": "仅 location.assign 到帖子页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_navigate_user",
+      "title": "HN Ops: Navigate User",
+      "description": "仅 location.assign 到用户页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "submitted",
+              "comments"
+            ]
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hn_navigate_search",
+      "title": "HN Ops: Navigate Search",
+      "description": "HN 无同源搜索页；打开 /news（请用 hn_search 走 Algolia）",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

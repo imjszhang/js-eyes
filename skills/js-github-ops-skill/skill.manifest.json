@@ -1,0 +1,299 @@
+{
+  "manifestVersion": 2,
+  "id": "js-github-ops-skill",
+  "name": "JS GitHub Ops Skill",
+  "version": "0.1.0",
+  "publisher": "js-eyes",
+  "description": "GitHub 仓库 / Issues 只读 + 浏览器导航：PAGE_PROFILES + Bridges + Session；READ 走 api.github.com（公开）；INTERACTIVE 仅 location.assign；不做 DESTRUCTIVE",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "github.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "navigation",
+      "script.execute"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "doctor",
+        "description": "连通性 + bridge + probe + state 诊断"
+      },
+      {
+        "name": "probe",
+        "description": "页面指纹"
+      },
+      {
+        "name": "state",
+        "description": "当前 profile 状态"
+      },
+      {
+        "name": "session-state",
+        "description": "登录态（meta）"
+      },
+      {
+        "name": "get-repo",
+        "description": "REST 读取仓库"
+      },
+      {
+        "name": "list-issues",
+        "description": "列出 Issues"
+      },
+      {
+        "name": "get-issue",
+        "description": "读取单条 Issue"
+      },
+      {
+        "name": "navigate-repo",
+        "description": "导航到仓库（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-issues",
+        "description": "导航到 Issues 列表（INTERACTIVE）"
+      },
+      {
+        "name": "navigate-issue",
+        "description": "导航到 Issue（INTERACTIVE）"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "github_session_state",
+      "title": "GitHub Ops: Session State",
+      "description": "读取浏览器当前 GitHub 页推断的登录态（meta[name=user-login]）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "github_get_repo",
+      "title": "GitHub Ops: Get Repo",
+      "description": "通过 GitHub REST API 读取公开仓库元数据（stars、forks、默认分支等）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "仓库 owner（与 repo 成对，或与 slug 二选一）"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "description": "owner/repo 缩写，例如 octocat/Hello-World"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "github_list_issues",
+      "title": "GitHub Ops: List Issues",
+      "description": "列出仓库 Issues（默认排除 PR；api.github.com）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "all"
+            ],
+            "default": "open"
+          },
+          "perPage": {
+            "type": "number",
+            "description": "每页条数，默认 25，最大 100"
+          },
+          "page": {
+            "type": "number",
+            "description": "页码，从 1 起"
+          },
+          "excludePulls": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "github_get_issue",
+      "title": "GitHub Ops: Get Issue",
+      "description": "读取单条 Issue 详情（含正文摘要）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "number": {
+            "type": "number"
+          },
+          "bodyMaxLen": {
+            "type": "number",
+            "description": "正文最大长度，默认 12000"
+          }
+        },
+        "required": [
+          "number"
+        ]
+      }
+    },
+    {
+      "name": "github_navigate_repo",
+      "title": "GitHub Ops: Navigate Repo",
+      "description": "仅 location.assign 到仓库根路径",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "github_navigate_issues",
+      "title": "GitHub Ops: Navigate Issues",
+      "description": "导航到 Issues 列表，可选 q 查询串",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "github_navigate_issue",
+      "title": "GitHub Ops: Navigate Issue",
+      "description": "导航到指定 Issue 页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "number": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "number"
+        ]
+      }
+    }
+  ]
+}

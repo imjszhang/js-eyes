@@ -10,6 +10,7 @@ const WATCHER_IGNORED = [
   /(^|[/\\])\.git([/\\]|$)/,
   /\.sw[pox]$/i,
   /~$/,
+  /(^|[/\\])(node_modules|runs|work_dir|dist|build|cache|debug|state|downloads|tmp|composition)([/\\]|$)/,
 ];
 
 function tryLoadChokidar() {
@@ -27,11 +28,40 @@ export function createHotReloadWatchers({
   runtimePaths,
   skillRegistry,
   skillSources,
+  getSkillSources,
 }) {
   let configWatcher = null;
   let skillDirWatcher = null;
   let reloadTimer = null;
   const lastHashByPath = new Map();
+  let watchedSkillGlobs = new Set();
+
+  function resolveWatchGlobs(sources) {
+    const globs = [];
+    if (sources?.primary && nodeFs.existsSync(sources.primary)) {
+      globs.push(nodePath.join(sources.primary, '*'));
+    }
+    for (const extra of sources?.extras || []) {
+      globs.push(extra.kind === 'skill' ? extra.path : nodePath.join(extra.path, '*'));
+    }
+    return Array.from(new Set(globs));
+  }
+
+  function syncSkillWatchPaths() {
+    if (!skillDirWatcher) return;
+    let currentSources = skillSources;
+    if (typeof getSkillSources === 'function') {
+      try { currentSources = getSkillSources(); } catch (error) {
+        api.logger.warn(`[js-eyes] Failed to refresh skill watch paths: ${error.message}`);
+      }
+    }
+    const next = new Set(resolveWatchGlobs(currentSources));
+    const added = [...next].filter((item) => !watchedSkillGlobs.has(item));
+    const removed = [...watchedSkillGlobs].filter((item) => !next.has(item));
+    if (added.length) skillDirWatcher.add(added);
+    if (removed.length) void skillDirWatcher.unwatch(removed);
+    watchedSkillGlobs = next;
+  }
 
   function scheduleReload(reason) {
     if (reloadTimer) clearTimeout(reloadTimer);
@@ -69,8 +99,10 @@ export function createHotReloadWatchers({
         ignored: WATCHER_IGNORED,
         awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
       });
-      configWatcher.on('all', (_event, filePath) =>
-        scheduleReloadIfChanged('config-watch', filePath || runtimePaths.configFile));
+      configWatcher.on('all', (_event, filePath) => {
+        syncSkillWatchPaths();
+        scheduleReloadIfChanged('config-watch', filePath || runtimePaths.configFile);
+      });
       configWatcher.on('error', (error) => {
         api.logger.warn(`[js-eyes] config watcher error: ${error.message}`);
       });
@@ -84,34 +116,20 @@ export function createHotReloadWatchers({
 
   if (fullRuntime && devWatchSkills && chokidar) {
     try {
-      const watchGlobs = [];
-      if (skillSources?.primary && nodeFs.existsSync(skillSources.primary)) {
-        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'skill.contract.js'));
-        watchGlobs.push(nodePath.join(skillSources.primary, '*', 'package.json'));
-      }
-      for (const extra of skillSources?.extras || []) {
-        if (extra.kind === 'skill') {
-          watchGlobs.push(nodePath.join(extra.path, 'skill.contract.js'));
-          watchGlobs.push(nodePath.join(extra.path, 'package.json'));
-        } else {
-          watchGlobs.push(nodePath.join(extra.path, '*', 'skill.contract.js'));
-          watchGlobs.push(nodePath.join(extra.path, '*', 'package.json'));
-        }
-      }
-      if (watchGlobs.length > 0) {
-        skillDirWatcher = chokidar.watch(watchGlobs, {
-          persistent: true,
-          ignoreInitial: true,
-          ignored: WATCHER_IGNORED,
-          awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
-        });
-        skillDirWatcher.on('all', (_event, filePath) =>
-          scheduleReloadIfChanged('skill-dir-watch', filePath));
-        skillDirWatcher.on('error', (error) => {
-          api.logger.warn(`[js-eyes] skill dir watcher error: ${error.message}`);
-        });
-        api.logger.info(`[js-eyes] Watching ${watchGlobs.length} skill path(s) for hot reload`);
-      }
+      const watchGlobs = resolveWatchGlobs(skillSources);
+      skillDirWatcher = chokidar.watch(watchGlobs, {
+        persistent: true,
+        ignoreInitial: true,
+        ignored: WATCHER_IGNORED,
+        awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
+      });
+      skillDirWatcher.on('all', (_event, filePath) =>
+        scheduleReloadIfChanged('skill-dir-watch', filePath));
+      skillDirWatcher.on('error', (error) => {
+        api.logger.warn(`[js-eyes] skill dir watcher error: ${error.message}`);
+      });
+      watchedSkillGlobs = new Set(watchGlobs);
+      api.logger.info(`[js-eyes] Watching ${watchGlobs.length} skill path(s) for hot reload`);
     } catch (error) {
       api.logger.warn(`[js-eyes] Failed to start skill-dir watcher: ${error.message}`);
     }

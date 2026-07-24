@@ -6,6 +6,7 @@ const { createLogger } = require('./logger');
 const { NativeMcpServer } = require('./protocol-server');
 const { StdioServerTransport } = require('./stdio-transport');
 const { createToolDefinitions, registerTools } = require('./tool-registry');
+const { McpSkillService } = require('./skill-service');
 
 const INSTRUCTIONS = [
   'Use browser_list_clients or browser_list_tabs before a browser-scoped operation.',
@@ -23,9 +24,26 @@ function createMcpServer(config, options = {}) {
     { name: 'js-eyes', version: pkg.version },
     { instructions: INSTRUCTIONS },
   );
-  const definitions = createToolDefinitions(session, config);
+  const skillService = options.skillService === false
+    ? null
+    : (options.skillService || new McpSkillService(config, session, { logger }));
+  const definitions = createToolDefinitions(session, config, skillService);
   registerTools(server, definitions, logger);
-  return { server, session, definitions, logger };
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    const errors = [];
+    for (const cleanup of [
+      skillService && (() => skillService.dispose()),
+      () => session.disconnect(),
+      () => server.close(),
+    ].filter(Boolean)) {
+      try { await cleanup(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length > 0) throw new AggregateError(errors, 'MCP server close failed');
+  };
+  return { server, session, skillService, definitions, logger, close };
 }
 
 async function startStdioServer(config, options = {}) {

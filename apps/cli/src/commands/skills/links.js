@@ -44,7 +44,7 @@ const target = positionals[2] || flags.path;
           print(`Integrity snapshot FAILED: ${error.message}`);
         }
       }
-      print('If the OpenClaw plugin is running, it will hot-load new skills within ~300ms via the config watcher.');
+      print('Running host integrations with config watching enabled will hot-load new skills within ~300ms.');
       return;
 }
 
@@ -63,7 +63,7 @@ const target = positionals[2] || flags.path;
       setConfigValue('extraSkillDirs', remaining);
       clearSnapshotForExtraDir(absTarget);
       print(`Unlinked ${absTarget}`);
-      print('If the OpenClaw plugin is running, the affected skills will be disposed within ~300ms via the config watcher.');
+      print('Running host integrations with config watching enabled will dispose affected skills within ~300ms.');
       return;
 }
 
@@ -105,7 +105,7 @@ const target = positionals[2] || flags.path;
         print('Note: security.verifyExtraSkillDirs is currently false — the snapshot is stored but not enforced.');
         print('      Enable via: js-eyes config set security.verifyExtraSkillDirs true');
       }
-      print('If the OpenClaw plugin is running, it will re-scan within ~300ms via the config watcher.');
+      print('Running host integrations with config watching enabled will re-scan within ~300ms.');
       return;
 }
 
@@ -124,7 +124,7 @@ const configFile = ensureRuntimePaths().configFile;
         }
       }
       print(`Touched ${configFile}`);
-      print('If the OpenClaw plugin is running, it will reload skills within ~300ms.');
+      print('Running host integrations with config watching enabled will reload skills within ~300ms.');
       return;
 }
 

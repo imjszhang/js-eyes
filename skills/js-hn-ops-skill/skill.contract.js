@@ -396,4 +396,5 @@ module.exports = {
   },
   createRuntime,
   createOpenClawAdapter,
+  TOOL_DEFINITIONS,
 };

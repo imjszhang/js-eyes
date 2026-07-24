@@ -31,6 +31,10 @@ const DEFAULT_CONFIG = {
   skillsRegistryUrl: SKILLS_REGISTRY_URL,
   skillsDir: '',
   extraSkillDirs: [],
+  externalSkills: {
+    policy: 'legacy',
+    defaultExecution: 'worker',
+  },
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
@@ -139,6 +143,14 @@ function normalizeConfig(config = {}) {
     recording: mergeRecordingConfig(config.recording),
     security: mergeSecurityConfig(config.security),
     extraSkillDirs: normalizeExtraSkillDirs(config ? config.extraSkillDirs : undefined),
+    externalSkills: {
+      policy: ['legacy', 'prompt', 'strict'].includes(config?.externalSkills?.policy)
+        ? config.externalSkills.policy
+        : DEFAULT_CONFIG.externalSkills.policy,
+      defaultExecution: ['in-process', 'worker'].includes(config?.externalSkills?.defaultExecution)
+        ? config.externalSkills.defaultExecution
+        : DEFAULT_CONFIG.externalSkills.defaultExecution,
+    },
   };
 }
 

@@ -56,7 +56,36 @@
           "type": "string"
         },
         "default": [],
-        "description": "额外只读技能来源（绝对路径列表）。每条可以是单个技能目录（含 skill.contract.js）或父目录（扫描 1 层子目录）。同 id 冲突时 primary 优先；extras 不做完整性校验，js-eyes 不接管其生命周期。"
+        "description": "额外只读技能来源（绝对路径列表）。每条可以是单个 V2/V1 技能目录或父目录（扫描 1 层子目录）。同 id 冲突时 primary 优先；可通过 host security.verifyExtraSkillDirs 启用快照校验。"
+      },
+      "skills": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object"
+        },
+        "default": {},
+        "description": "按技能 ID 配置运行参数；plugins config 覆盖 host config 中的同名技能配置。"
+      },
+      "externalSkills": {
+        "type": "object",
+        "additionalProperties": false,
+        "default": {
+          "policy": "legacy",
+          "defaultExecution": "worker"
+        },
+        "description": "外部技能的发现、信任和执行策略。legacy 保持兼容；prompt 要求批准；strict 还要求 V2 静态 Manifest。",
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": ["legacy", "prompt", "strict"],
+            "default": "legacy"
+          },
+          "defaultExecution": {
+            "type": "string",
+            "enum": ["in-process", "worker"],
+            "default": "worker"
+          }
+        }
       },
       "watchConfig": {
         "type": "boolean",
@@ -147,7 +176,17 @@
     "extraSkillDirs": {
       "label": "额外只读技能目录",
       "placeholder": "[\"/Users/you/my-skills\"]",
-      "help": "在 primary 之外再纳入若干外部技能目录（只读：发现并纳入 js-eyes 路由，但不接管 install/approve/verify/完整性校验）。每条可为单个技能目录或父目录。运行中可用 js-eyes skills link/unlink 零重启增删。",
+      "help": "在 primary 之外纳入外部技能目录。目录保持只读；V2 prompt/strict 需要 trust，且可启用额外目录快照校验。运行中可用 js-eyes skills link/unlink 零重启增删。",
+      "advanced": true
+    },
+    "skills": {
+      "label": "技能运行配置",
+      "help": "按技能 ID 提供 config；插件配置覆盖 ~/.js-eyes/config/config.json 中的同名项。",
+      "advanced": true
+    },
+    "externalSkills": {
+      "label": "外部技能策略",
+      "help": "legacy 保持现有自动启用语义；prompt 要求先批准；strict 仅允许已批准且带 skill.manifest.json 的外部技能。",
       "advanced": true
     },
     "watchConfig": {

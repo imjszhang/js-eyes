@@ -2,7 +2,7 @@
 
 /**
  * End-to-end integration test: drive the full "link -> hot-load" path using
- * a tmp JS_EYES_HOME, the real @js-eyes/config IO, and a fake OpenClaw api.
+ * a tmp JS_EYES_HOME, the real @js-eyes/config IO, and a fake host registrar.
  *
  * This simulates the CLI writing extraSkillDirs and then a `reload()` call
  * (what the chokidar watcher would do) — all without restarting the plugin.
@@ -56,6 +56,14 @@ function createFakeApi() {
   };
 }
 
+function registryHostOptions(api) {
+  return {
+    logger: api.logger,
+    registerTool: api.registerTool.bind(api),
+    directActionsOnly: false,
+  };
+}
+
 describe('integration: link -> hot-load via real config IO', () => {
   let originalHome = null;
   let tmpHome = null;
@@ -84,7 +92,7 @@ describe('integration: link -> hot-load via real config IO', () => {
 
     const api = createFakeApi();
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primaryDir,
       extrasProvider: () => {
         const cfg = loadConfig();
@@ -137,7 +145,7 @@ describe('integration: link -> hot-load via real config IO', () => {
 
     const api = createFakeApi();
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primaryDir,
       extrasProvider: () => [],
       configLoader: () => loadConfig(),

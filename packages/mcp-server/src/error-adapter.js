@@ -20,6 +20,10 @@ function normalizeError(error) {
   const name = error && error.name;
   const message = error && error.message ? String(error.message) : String(error || 'unknown error');
 
+  if (/^SKILL_/.test(String(error?.code || ''))) {
+    return new FacadeError(error.code, message, error.safeDetails || {});
+  }
+
   if (name === 'ServerPolicyError' || name === 'PolicyBlockError' || /^POLICY_/.test(String(error?.code || ''))) {
     const pending = error.pendingId != null;
     return new FacadeError(
