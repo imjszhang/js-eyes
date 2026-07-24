@@ -76,7 +76,7 @@
   },
   "dependencies": {
     "@js-eyes/visual-bridge-kit": "workspace:*",
-    "archiver": "^7.0.1",
+    "archiver": "^8.0.0",
     "chokidar": "^3.6.0",
     "ws": "^8.19.0"
   },
