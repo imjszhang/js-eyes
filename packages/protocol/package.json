@@ -12,9 +12,9 @@
     "zip-extract.js",
     "fs-io.js",
     "safe-npm.js",
-    "openclaw-paths.js",
     "extra-integrity.js",
     "skill-registry.js",
+    "skill-trust.js",
     "skill-runner.js",
     "registry-client.js"
   ],
@@ -37,5 +37,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@js-eyes/skill-contract": "2.8.5"
   }
 }

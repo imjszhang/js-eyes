@@ -2,9 +2,9 @@
 
 <div align="center">
 
-**AI Agent 浏览器自动化**
+**面向 AI Agent 的浏览器自动化与技能运行时**
 
-让 AI 智能体拥有浏览器的真实视角 — 基于 WebSocket 的自动化控制，原生支持 OpenClaw
+通过独立服务器、CLI、MCP 或可选的 OpenClaw 集成，让 AI 智能体拥有浏览器的真实视角
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-imjszhang%2Fjs--eyes-181717?logo=github)](https://github.com/imjszhang/js-eyes)
@@ -33,7 +33,7 @@ curl -fsSL https://js-eyes.com/install.sh | bash
 irm https://js-eyes.com/install.ps1 | iex
 ```
 
-自动下载技能包、安装依赖，并输出 OpenClaw 插件注册路径。标准 ClawHub/OpenClaw 路径要求 Node.js 22+ 才能启用插件模式。其他安装方式见[手动安装](#手动安装)。
+自动安装独立的 JS Eyes 运行时和技能包。OpenClaw 注册是可选步骤，可稍后启用；插件模式要求 Node.js 22+。其他安装方式见[手动安装](#手动安装)。
 
 ---
 
@@ -42,8 +42,8 @@ irm https://js-eyes.com/install.ps1 | iex
 JS Eyes 是一个浏览器扩展 + WebSocket 服务器，为 AI 智能体提供完整的浏览器自动化能力。它连接 AI Agent 框架（OpenClaw、DeepSeek Cowork 或自定义），提供标签页管理、内容提取、脚本执行、Cookie 访问等工具。
 
 ```
-浏览器扩展  <── WebSocket ──>  JS-Eyes 服务器         <── WebSocket ──>  AI Agent (OpenClaw)
-(Chrome/Edge/FF)               (packages/server-core)                    (openclaw-plugin)
+浏览器扩展  <── WebSocket ──>  JS-Eyes 服务器  <──>  CLI / MCP / 可选 OpenClaw
+(Chrome/Edge/FF)               (packages/server-core)       （相互独立的宿主集成）
 ```
 
 ### 仓库布局
@@ -59,6 +59,7 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 | `packages/config` | CLI 配置加载与持久化 |
 | `packages/client-sdk` | 面向 Node.js / skills 的浏览器自动化 SDK |
 | `packages/server-core` | HTTP + WebSocket 服务器核心 |
+| `packages/mcp-server` | 面向 Codex、Claude、Cursor 等客户端的原生 stdio MCP 接口 |
 | `openclaw-plugin` | 可选的 OpenClaw 插件组件 |
 | `packages/devtools` | 内部构建/发布工具链 |
 | `extensions/*` | Chrome/Edge 与 Firefox 扩展源码 |

@@ -16,32 +16,47 @@ export function createToolPolicy({
       security.toolPolicies[name] === 'confirm' || security.toolPolicies[name] === 'deny'),
   ]);
 
+  function stableValue(value) {
+    if (Array.isArray(value)) return value.map(stableValue);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+  }
+
   function summarizeParams(params = {}) {
     try {
-      const json = JSON.stringify(params);
+      const json = JSON.stringify(stableValue(params));
       return json.length > 200 ? json.slice(0, 200) + `…(+${json.length - 200})` : json;
     } catch {
       return '[unserializable]';
     }
   }
 
-  function recordConsentDecision(toolName, params, decision) {
+  function consentFile(toolName, params) {
+    const canonical = JSON.stringify(stableValue(params || {}));
+    const id = nodeCrypto.createHash('sha256').update(toolName).update('\0').update(canonical).digest('hex').slice(0, 24);
+    return { id, canonical, filePath: nodePath.join(runtimePaths.consentsDir, `${id}.json`) };
+  }
+
+  function writeConsent(toolName, params, status) {
     try {
-      const id = nodeCrypto.randomBytes(8).toString('hex');
-      const filePath = nodePath.join(runtimePaths.consentsDir, `${id}.json`);
+      const { id, canonical, filePath } = consentFile(toolName, params);
+      let previous = null;
+      try { previous = JSON.parse(nodeFs.readFileSync(filePath, 'utf8')); } catch {}
       const record = {
         id,
         toolName,
-        decision,
-        requestedAt: new Date().toISOString(),
-        decidedAt: new Date().toISOString(),
+        requestedAt: previous?.requestedAt || new Date().toISOString(),
+        decidedAt: status === 'pending' ? null : new Date().toISOString(),
         summary: summarizeParams(params),
-        status: decision,
+        paramsDigest: nodeCrypto.createHash('sha256').update(canonical).digest('hex'),
+        status,
       };
       nodeFs.writeFileSync(filePath, JSON.stringify(record, null, 2) + '\n');
       chmodBestEffort(filePath, 0o600);
+      return record;
     } catch (error) {
       api.logger.warn(`[js-eyes] Failed to record consent log: ${error.message}`);
+      return null;
     }
   }
 
@@ -49,7 +64,9 @@ export function createToolPolicy({
     if (!definition || !definition.name) return definition;
     const policyMap = security.toolPolicies || {};
     const policy = policyMap[definition.name]
-      || (sensitiveToolNames.has(definition.name) ? 'confirm' : 'allow');
+      || (sensitiveToolNames.has(definition.name)
+        || definition.risk === 'destructive'
+        || definition.risk === 'administrative' ? 'confirm' : 'allow');
     if (policy === 'allow') return definition;
 
     const originalExecute = definition.execute;
@@ -57,7 +74,7 @@ export function createToolPolicy({
       ...definition,
       async execute(toolCallId, params) {
         if (policy === 'deny') {
-          recordConsentDecision(definition.name, params, 'deny');
+          writeConsent(definition.name, params, 'denied');
           api.logger.warn(`[js-eyes] Tool "${definition.name}" denied by policy`);
           return {
             content: [{
@@ -66,9 +83,42 @@ export function createToolPolicy({
             }],
           };
         }
-        recordConsentDecision(definition.name, params, 'auto-confirm');
+        const consent = consentFile(definition.name, params);
+        const paramsDigest = nodeCrypto.createHash('sha256').update(consent.canonical).digest('hex');
+        let current = null;
+        try { current = JSON.parse(nodeFs.readFileSync(consent.filePath, 'utf8')); } catch {}
+        if (current?.status === 'denied'
+          && current.toolName === definition.name
+          && current.paramsDigest === paramsDigest) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Tool "${definition.name}" was denied for these parameters.`,
+            }],
+            structuredContent: {
+              code: 'JS_EYES_CONSENT_DENIED', consentId: consent.id, toolName: definition.name,
+            },
+          };
+        }
+        if (current?.status !== 'approved'
+          || current.toolName !== definition.name
+          || current.paramsDigest !== paramsDigest) {
+          const pending = writeConsent(definition.name, params, 'pending');
+          const consentId = pending?.id || consent.id;
+          api.logger.warn(
+            `[js-eyes] Tool "${definition.name}" is pending confirmation. source=${context.source || 'core'} consentId=${consentId}`,
+          );
+          return {
+            content: [{
+              type: 'text',
+              text: `Tool "${definition.name}" requires approval. Run \`js-eyes consent approve ${consentId}\`, then retry the same call.`,
+            }],
+            structuredContent: { code: 'JS_EYES_CONSENT_REQUIRED', consentId, toolName: definition.name },
+          };
+        }
+        writeConsent(definition.name, params, 'consumed');
         api.logger.warn(
-          `[js-eyes] Tool "${definition.name}" requires confirmation (policy=confirm). source=${context.source || 'core'} params=${summarizeParams(params)}`,
+          `[js-eyes] Consumed approval for tool "${definition.name}". source=${context.source || 'core'}`,
         );
         return originalExecute(toolCallId, params);
       },

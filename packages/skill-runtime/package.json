@@ -1,0 +1,43 @@
+{
+  "name": "@js-eyes/skill-runtime",
+  "version": "2.8.5",
+  "description": "Host-owned execution runtime for JS Eyes Skills",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./legacy-entry": "./legacy-entry.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "index.js",
+    "legacy-entry.js",
+    "errors.js",
+    "host-service.js",
+    "runtime.js"
+  ],
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/skill-runtime"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@js-eyes/client-sdk": "2.8.5",
+    "@js-eyes/config": "2.8.5",
+    "@js-eyes/protocol": "2.8.5",
+    "@js-eyes/runtime-paths": "2.8.5",
+    "@js-eyes/skill-contract": "2.8.5",
+    "@js-eyes/skill-recording": "2.8.5",
+    "@js-eyes/skill-worker": "2.8.5"
+  }
+}

@@ -109,6 +109,11 @@ function resolveConfig(options = {}) {
     requestTimeout,
     logLevel,
     maxTextChars: 100000,
+    skillsDir: runtime.skillsDir || '',
+    extraSkillDirs: Array.isArray(runtime.extraSkillDirs) ? runtime.extraSkillDirs.slice() : [],
+    skillsEnabled: { ...(runtime.skillsEnabled || {}) },
+    externalSkills: { ...(runtime.externalSkills || {}) },
+    recording: { ...(runtime.recording || {}) },
   });
 }
 

@@ -15,6 +15,7 @@ const { createServer } = require("../packages/server-core");
 const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
 const {
   createSkillRegistry,
+  createSkillTrustStore,
   discoverSkillsFromSources,
   fetchSkillsRegistry,
   planSkillInstall,
@@ -36,6 +37,8 @@ import { createPluginLifecycle } from "./lifecycle.mjs";
 import { registerBrowserActions } from "./actions/browser.mjs";
 import { registerSkillDiscoveryActions } from "./actions/skills.mjs";
 import { registerManagementActions } from "./actions/management.mjs";
+import { createSkillRuntimeOptions } from "./skill-runtime-options.mjs";
+import { resolveOpenClawSkillConfig } from "./skill-config.mjs";
 
 const nodeCrypto = require("node:crypto");
 const nodeFs = require("node:fs");
@@ -99,23 +102,20 @@ function register(api) {
     previousTeardown = null;
   }
 
-  const pluginCfg = api.pluginConfig ?? {};
-
-  const serverHost = pluginCfg.serverHost || "localhost";
-  const serverPort = pluginCfg.serverPort || 18080;
-  const autoStart = pluginCfg.autoStartServer ?? true;
-  const requestTimeout = pluginCfg.requestTimeout || 1800;
-  const skillsRegistryUrl = pluginCfg.skillsRegistryUrl || DEFAULT_REGISTRY;
-  const skillsDir = pluginCfg.skillsDir
-    ? nodePath.resolve(pluginCfg.skillsDir)
-    : nodePath.join(SKILL_ROOT, "skills");
-  const skillSources = resolveSkillSources({
-    primary: skillsDir,
-    extras: Array.isArray(pluginCfg.extraSkillDirs) ? pluginCfg.extraSkillDirs : [],
+  const {
+    autoStart, effectiveSkillConfig, externalSkills, hostConfig,
+    loadEffectiveSkillConfig, pluginConfig: pluginCfg, requestTimeout,
+    resolveCurrentSkillSources, resolveExtraSkillDirs, serverHost, serverPort,
+    skillSources, skillsDir, skillsRegistryUrl,
+  } = resolveOpenClawSkillConfig({
+    api, defaultRegistry: DEFAULT_REGISTRY, loadConfig, nodePath,
+    resolveSkillSources, skillRoot: SKILL_ROOT,
   });
 
   const runtimePaths = ensureRuntimePaths();
-  const hostConfig = loadConfig();
+  const skillTrustStore = createSkillTrustStore({
+    filePath: nodePath.join(runtimePaths.configDir, "skill-trust.json"),
+  });
   const security = resolveSecurityConfig(hostConfig);
 
   const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
@@ -167,7 +167,7 @@ function register(api) {
     fullRuntime,
     hostConfig,
     logNativeHostResult,
-    pluginConfig: pluginCfg,
+    pluginConfig: effectiveSkillConfig,
     requestTimeout,
     runtimePaths,
     security,
@@ -183,19 +183,29 @@ function register(api) {
   registerSkillDiscoveryActions({ api, chmodBestEffort, discoverSkillsFromSources, fetchSkillsRegistry, loadConfig, nodeFs, nodePath, planSkillInstall, registerCoreAction, resolveSkillSources, runtimePaths, skillToolActionName, skillsDir, skillsRegistryUrl, textResult });
 
   state.skillRegistry = createSkillRegistry({
-    api,
-    pluginConfig: pluginCfg,
+    hostConfig: effectiveSkillConfig,
     wrapSensitiveTool,
     builtinToolNames: BUILTIN_TOOL_NAMES,
-    routerMode: true,
     skillsDir,
-    extrasProvider: () => {
-      const cfg = loadConfig();
-      return Array.isArray(cfg.extraSkillDirs) ? cfg.extraSkillDirs : [];
-    },
-    configLoader: () => loadConfig(),
+    extrasProvider: resolveExtraSkillDirs,
+    configLoader: loadEffectiveSkillConfig,
     setConfigValue: (key, value) => setConfigValue(key, value),
     logger: api.logger,
+    externalSkillPolicy: externalSkills.policy || "legacy",
+    externalSkillPolicyProvider: () => (
+      pluginCfg.externalSkills?.policy || loadConfig().externalSkills?.policy || "legacy"
+    ),
+    trustChecker: (skill) => skillTrustStore.isApproved(skill),
+    ...createSkillRuntimeOptions({
+      hostVersion: manifest.version,
+      loadConfig,
+      logger: api.logger,
+      pluginConfig: effectiveSkillConfig,
+      requestTimeout,
+      serverHost,
+      serverPort,
+      trustStore: skillTrustStore,
+    }),
   });
 
   if (fullRuntime) {
@@ -218,10 +228,11 @@ function register(api) {
   state.watchers = createHotReloadWatchers({
     api,
     fullRuntime,
-    pluginConfig: pluginCfg,
+    pluginConfig: effectiveSkillConfig,
     runtimePaths,
     skillRegistry: state.skillRegistry,
     skillSources,
+    getSkillSources: resolveCurrentSkillSources,
   });
 
   registerPluginCli({

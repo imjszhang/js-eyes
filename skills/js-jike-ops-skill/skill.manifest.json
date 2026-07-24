@@ -1,0 +1,76 @@
+{
+  "manifestVersion": 2,
+  "id": "js-jike-ops-skill",
+  "name": "JS Jike Ops Skill",
+  "version": "2.0.1",
+  "publisher": "js-eyes",
+  "description": "即刻内容读取技能，提供帖子详情读取",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "okjike.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "page.read",
+      "navigation",
+      "script.execute"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "post",
+        "description": "读取即刻帖子详情"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "jike_get_post",
+      "title": "Jike Ops: Get Post",
+      "description": "读取即刻帖子详情，返回正文、图片、作者、互动数据和评论。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "即刻帖子 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    }
+  ]
+}

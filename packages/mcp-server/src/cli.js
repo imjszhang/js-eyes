@@ -36,8 +36,7 @@ async function main(options = {}) {
   const close = async () => {
     if (closing) return;
     closing = true;
-    await instance.session.disconnect();
-    await instance.server.close();
+    await instance.close();
   };
   if (options.installSignalHandlers !== false) {
     process.once('SIGINT', close);

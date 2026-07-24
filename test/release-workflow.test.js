@@ -14,8 +14,8 @@ function read(relativePath) {
 }
 
 describe('controlled release contract', () => {
-  it('publishes the eight runtime workspaces followed by the public CLI', () => {
-    assert.equal(RELEASE_PACKAGES.length, 9);
+  it('publishes the runtime workspaces followed by the public CLI', () => {
+    assert.equal(RELEASE_PACKAGES.length, 12);
     assert.deepEqual(RELEASE_PACKAGES.slice(-3).map((entry) => entry.name), [
       '@js-eyes/mcp-server',
       '@js-eyes/native-host',
@@ -26,6 +26,11 @@ describe('controlled release contract', () => {
       assert.equal(manifest.name, entry.name);
       assert.equal(manifest.repository.url, CANONICAL_REPOSITORY_URL);
     }
+    assert.equal(
+      RELEASE_PACKAGES.some((entry) => entry.dir === 'openclaw-plugin'),
+      false,
+      'the optional OpenClaw integration must not gate core package publishing',
+    );
   });
 
   it('keeps real npm publishing behind OIDC and the protected environment', () => {

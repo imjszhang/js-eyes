@@ -1247,6 +1247,7 @@ module.exports = {
   },
   createRuntime,
   createOpenClawAdapter,
+  TOOL_DEFINITIONS,
   // 工厂导出供测试 / 业务脚本复用
   makeReadToolExecutor,
   makeXGetPostReadOrLegacyExecutor,

@@ -21,6 +21,8 @@
     "@js-eyes/native-host": "2.8.5",
     "@js-eyes/protocol": "2.8.5",
     "@js-eyes/runtime-paths": "2.8.5",
-    "@js-eyes/server-core": "2.8.5"
+    "@js-eyes/server-core": "2.8.5",
+    "@js-eyes/skill-contract": "2.8.5",
+    "@js-eyes/skill-runtime": "2.8.5"
   }
 }

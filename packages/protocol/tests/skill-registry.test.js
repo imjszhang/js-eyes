@@ -76,6 +76,14 @@ function createFakeApi(overrides = {}) {
   };
 }
 
+function registryHostOptions(api) {
+  return {
+    logger: api.logger,
+    registerTool: api.registerTool.bind(api),
+    directActionsOnly: false,
+  };
+}
+
 function stubConfigIo(initialConfig) {
   let config = JSON.parse(JSON.stringify(initialConfig || {}));
   return {
@@ -113,7 +121,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -144,7 +152,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { beta: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -168,7 +176,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -187,7 +195,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       type: 'object',
       properties: { msg: { type: 'string' } },
     });
-    // Optional flag is also forwarded so OpenClaw tool-allowlist semantics still apply.
+    // Optional flag is forwarded to the host registration callback.
     assert.deepEqual(entry.options, { optional: true });
   });
 
@@ -200,7 +208,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { alpha: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -312,7 +320,7 @@ module.exports = {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { gamma: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -331,7 +339,7 @@ module.exports = {
   });
 });
 
-describe('createSkillRegistry — router mode', () => {
+describe('createSkillRegistry — direct action mode', () => {
   let tempDir = null;
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-router-'));
@@ -341,7 +349,7 @@ describe('createSkillRegistry — router mode', () => {
     tempDir = null;
   });
 
-  it('does not register skill tools with OpenClaw and executes path-style skill actions', async () => {
+  it('does not register individual tools and executes path-style skill actions', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });
     writeSkill(path.join(primary, 'mock-skill'), 'mock-skill', { tool: 'mock_tool' });
@@ -349,13 +357,11 @@ describe('createSkillRegistry — router mode', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { 'mock-skill': true } });
     const registry = createSkillRegistry({
-      api,
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      routerMode: true,
       suppressSelfWrites: false,
     });
 
@@ -400,7 +406,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { core: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
@@ -432,7 +438,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: {} });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [externalDir],
       configLoader: io.loader,
@@ -460,7 +466,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: {} });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
@@ -490,7 +496,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { togl: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -515,7 +521,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     const api = createFakeApi();
     const io = stubConfigIo({ skillsEnabled: { seq: true } });
     const registry = createSkillRegistry({
-      api,
+      ...registryHostOptions(api),
       skillsDir: primary,
       extrasProvider: () => [],
       configLoader: io.loader,
@@ -557,12 +563,11 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
 
     const io = stubConfigIo({ skillsEnabled: { ok: true } });
     const registry = createSkillRegistry({
-      api: flaky,
+      ...registryHostOptions(flaky),
       skillsDir: primary,
       extrasProvider: () => extras,
       configLoader: io.loader,
       setConfigValue: io.setter,
-      logger: flaky.logger,
       suppressSelfWrites: false,
     });
     await registry.init();
