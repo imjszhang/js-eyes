@@ -87,6 +87,10 @@ function stageExtension(platform) {
   rmrf(stageDir);
   copyPlatformTree(sourceRoot, stageDir);
   injectSharedRuntime(stageDir);
+  // Also materialize gitignored shared copies into the platform source tree so
+  // legacy tooling (web-ext lint/build against extensions/firefox) keeps working.
+  // Canonical load/build path remains dist/extensions-stage/{platform}.
+  injectSharedRuntime(sourceRoot);
   return stageDir;
 }
 

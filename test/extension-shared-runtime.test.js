@@ -33,6 +33,16 @@ describe('extension shared runtime contract', () => {
         sharedText,
         `firefox stage ${targetName}`,
       );
+      assert.equal(
+        fs.readFileSync(path.join(root, 'extensions/chrome', targetName), 'utf8'),
+        sharedText,
+        `chrome source materialize ${targetName}`,
+      );
+      assert.equal(
+        fs.readFileSync(path.join(root, 'extensions/firefox', targetName), 'utf8'),
+        sharedText,
+        `firefox source materialize ${targetName}`,
+      );
     }
   });
 
