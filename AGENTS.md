@@ -13,15 +13,21 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
 
 - `apps/cli` contains the public `js-eyes` command.
 - `apps/native-host` contains the browser Native Messaging host.
-- `packages/protocol` owns shared protocol constants, skill discovery helpers,
-  installation primitives, and compatibility data.
-- `packages/client-sdk` owns the Node.js browser client and client-side policy.
+- `packages/protocol` owns shared protocol constants, browser-operation
+  metadata/handlers, and compatibility data. Legacy subpath re-exports for
+  install helpers remain for one release cycle.
+- `packages/skill-install` owns skill discovery, install, trust, ZIP/npm, and
+  registry helpers (formerly under `protocol`).
+- `packages/policy` owns `PolicyContext` and related egress/taint/task-origin
+  policy primitives used by server-core and the client SDK.
+- `packages/client-sdk` owns the Node.js browser client (re-exports policy for
+  compatibility).
 - `packages/server-core` owns the local HTTP and WebSocket server.
 - `packages/mcp-server` is the native stdio MCP facade.
 - `packages/skill-contract` validates Skill metadata; `packages/skill-runtime`
   owns host-neutral Skill Runtime V2, including isolated worker execution.
-- `openclaw-plugin` is an optional OpenClaw adapter. Core packages must not
-  import it.
+- `openclaw-plugin` (`@js-eyes/openclaw-plugin`) is an optional OpenClaw
+  adapter workspace. Core packages must not import it.
 - `extensions/shared` is the canonical source for cross-browser extension
   behavior. Chrome and Firefox copies are generated from it.
 - `skills/*` are independently versioned site skills.
@@ -115,7 +121,10 @@ CLI / MCP / optional OpenClaw adapter
   and OpenClaw plugin use the coordinated platform version.
 - Site skills under `skills/*` use independent versions.
 - `@js-eyes/visual-bridge-kit` and
-  `@js-eyes/visual-replay-hyperframes` also use independent versions.
+  `@js-eyes/visual-replay-hyperframes` are skill-optional libraries with
+  independent versions; they are not platform runtime dependencies.
+- `openclaw-plugin` (`@js-eyes/openclaw-plugin`) is an optional host adapter
+  in the workspace; core packages must not import it.
 - The distributable parent Skill is built from
   `distribution/js-eyes-skill/SKILL.template.md`; its version is injected from
   the root `package.json`.

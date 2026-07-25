@@ -2,9 +2,10 @@
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const contract = require('../skill.contract');
+const definition = require('../skill.definition');
 
 function printUsage(stdout = process.stdout) {
+  const commands = definition.cli?.commands || [];
   const lines = [
     'js-hello-ops-skill - JS Eyes Skills 最小样例',
     '',
@@ -12,7 +13,7 @@ function printUsage(stdout = process.stdout) {
     '  node cli/index.js <command> [args...] [options]',
     '',
     '命令:',
-    ...contract.cli.commands.map((command) => `  ${command.name.padEnd(8)} ${command.description}`),
+    ...commands.map((command) => `  ${command.name.padEnd(8)} ${command.description}`),
     '',
   ];
   stdout.write(lines.join('\n'));

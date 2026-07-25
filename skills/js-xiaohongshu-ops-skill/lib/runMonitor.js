@@ -154,6 +154,8 @@ async function testTarget(params) {
 const MONITOR_TOOL_DEFINITIONS = [
   {
     name: 'xhs_monitor_list_targets',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'XHS Monitor: List Targets',
     description: '列出小红书 monitor 当前所有 accounts 与 searches target，以及 channel 列表（不触发 webhook）。',
     interactive: false,
@@ -163,6 +165,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_monitor_get_status',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'XHS Monitor: Get Status',
     description: '读取 monitor daemon 状态与各 target 上一次 check 摘要（不触发 webhook）。',
     interactive: false,
@@ -172,6 +176,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_monitor_add_target',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'XHS Monitor: Add Target',
     description: '添加一个 monitor target（user 或 search）。仅写 config，不触发 webhook。',
     interactive: false,
@@ -197,6 +203,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_monitor_remove_target',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'XHS Monitor: Remove Target',
     description: '从 monitor 配置中删除一个 target。仅写 config，不触发 webhook。',
     interactive: false,
@@ -215,6 +223,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_monitor_test_target',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'XHS Monitor: Test Target',
     description: '对单个 target 跑一次 runCheckCore（抓取 + 去重），但**不写 state**、**不发通知**。安全用于调试。',
     interactive: false,

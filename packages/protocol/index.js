@@ -11,7 +11,13 @@ const {
   FORWARDABLE_ACTIONS,
   SENSITIVE_BROWSER_ACTIONS,
   SENSITIVE_BROWSER_TOOL_NAMES,
+  listBrowserOperationsForProfile,
 } = require('./browser-operations');
+const {
+  assertBrowserOperationsComplete,
+  invokeBrowserOperation,
+  resolveOperation,
+} = require('./browser-handlers');
 
 const DEFAULT_SERVER_HOST = 'localhost';
 const DEFAULT_SERVER_PORT = 18080;
@@ -262,6 +268,10 @@ module.exports = {
   SENSITIVE_BROWSER_ACTIONS,
   SENSITIVE_BROWSER_TOOL_NAMES,
   SENSITIVE_TOOL_NAMES,
+  assertBrowserOperationsComplete,
+  invokeBrowserOperation,
+  listBrowserOperationsForProfile,
+  resolveOperation,
   COMPATIBILITY_MATRIX,
   WS_CLOSE_CODE_AUTH_REQUIRED,
   WS_CLOSE_CODE_FORBIDDEN_ORIGIN,

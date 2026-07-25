@@ -7,7 +7,7 @@
 // test/import-boundaries.test.js:
 //
 //   * MUST NOT import `ws`, `http`, `https`, `net`, or `node:*` equivalents;
-//   * MUST NOT import `../packages/client-sdk`, `../packages/server-core`,
+//   * MUST NOT import `@js-eyes/client-sdk`, `@js-eyes/server-core`,
 //     or any helper that opens outbound connections;
 //   * callers receive a plain object of headers and are responsible for
 //     handing them to their own transport.
@@ -15,8 +15,8 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { isLoopbackHost } = require("../packages/protocol");
-const { readToken } = require("../packages/runtime-paths/token.js");
+const { isLoopbackHost } = require("@js-eyes/protocol");
+const { readToken } = require("@js-eyes/runtime-paths/token.js");
 
 export function getServerToken(options = {}) {
   const env = options.env || process.env;

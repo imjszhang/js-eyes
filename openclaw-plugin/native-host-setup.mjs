@@ -3,16 +3,15 @@ import nodePath from "node:path";
 
 const require = createRequire(import.meta.url);
 
-const nativeHostInstaller = require("../apps/native-host/src/installer");
+const nativeHost = require("@js-eyes/native-host");
+const nativeHostInstaller = nativeHost;
 const {
   CHROMIUM_BROWSERS,
   FIREFOX_BROWSERS,
   resolveBrowsers,
-} = require("../apps/native-host/src/paths");
-const {
   CHROME_EXTENSION_ID,
   FIREFOX_EXTENSION_ID,
-} = require("../apps/native-host/src/extension-ids");
+} = nativeHost;
 
 const DEFAULT_NATIVE_HOST_CONFIG = Object.freeze({
   autoInstall: true,

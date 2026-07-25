@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 
 const { loadConfig, mergeRecordingConfig, parseConfigValue, saveConfig, setConfigValue } = require('@js-eyes/config');
 const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/protocol');
-const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/protocol/skills');
+const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/skill-install/skills');
 const protocolPkg = require('@js-eyes/protocol/package.json');
 const { getYtDlpCommand: getBilibiliYtDlpCommand } = require('../skills/js-bilibili-ops-skill/lib/bilibiliUtils');
 const { getYtDlpCommand: getYoutubeYtDlpCommand } = require('../skills/js-youtube-ops-skill/lib/youtubeUtils');

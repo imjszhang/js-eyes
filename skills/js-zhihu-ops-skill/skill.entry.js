@@ -1,6 +1,6 @@
 'use strict';
 
-const { createNativeHandlers } = require('@js-eyes/skill-runtime');
+const { createSkillEntry } = require('@js-eyes/skill-scaffold');
 const { TOOL_DEFINITIONS } = require('./skill.definition');
 
-module.exports = { handlers: createNativeHandlers(TOOL_DEFINITIONS) };
+module.exports = createSkillEntry(TOOL_DEFINITIONS);

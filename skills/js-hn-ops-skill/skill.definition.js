@@ -150,6 +150,8 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
 const TOOL_DEFINITIONS = [
   {
     name: 'hn_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Session State',
     description: '读取浏览器当前 HN 页推断的登录态',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -167,6 +169,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_get_front_page',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Front Page',
     description: '读取 HN 首页列表（Firebase API + DOM 兜底）',
     parameters: {
@@ -194,6 +198,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_get_item',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Get Item',
     description: '读取帖子详情与评论树（Firebase 递归 kids + DOM 兜底）',
     parameters: {
@@ -222,6 +228,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_get_user',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Get User',
     description: '读取用户资料与提交/评论列表',
     parameters: {
@@ -249,6 +257,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_search',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Search',
     description: 'Algolia 搜索 HN（hn.algolia.com）',
     parameters: {
@@ -278,6 +288,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_navigate_front',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Navigate Front',
     description: '仅 location.assign 到首页 feed',
     parameters: {
@@ -297,6 +309,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_navigate_item',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Navigate Item',
     description: '仅 location.assign 到帖子页',
     parameters: {
@@ -316,6 +330,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_navigate_user',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Navigate User',
     description: '仅 location.assign 到用户页',
     parameters: {
@@ -335,6 +351,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'hn_navigate_search',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'HN Ops: Navigate Search',
     description: 'HN 无同源搜索页；打开 /news（请用 hn_search 走 Algolia）',
     parameters: {
@@ -365,20 +383,37 @@ function projectTool(tool) {
   };
 }
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => Object.assign(projectTool(tool), {
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "navigation",
+    "script.execute"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "news.ycombinator.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Hacker News Ops Skill',
   version: pkg.version,
@@ -393,10 +428,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map(projectTool),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

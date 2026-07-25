@@ -89,6 +89,30 @@ describe('skill runtime', () => {
     await runtime.dispose();
   });
 
+  it('exposes first-class page.interact browser methods when granted', async () => {
+    const calls = [];
+    const runtime = makeRuntime({
+      grantedCapabilities: ['browser.page.interact'],
+      browserFactory: () => ({
+        async click(tabId, params) { calls.push(['click', tabId, params]); return { success: true }; },
+        async fill(tabId, params) { calls.push(['fill', tabId, params]); return { success: true }; },
+        async scroll(tabId, params) { calls.push(['scroll', tabId, params]); return { success: true }; },
+        async waitFor(tabId, params) { calls.push(['waitFor', tabId, params]); return { found: true }; },
+        disconnect() {},
+      }),
+    });
+    const invocation = runtime.createInvocation({ toolName: 'interact', input: {} });
+    assert.equal(typeof invocation.browser.click, 'function');
+    assert.equal(typeof invocation.browser.fill, 'function');
+    assert.equal(typeof invocation.browser.scroll, 'function');
+    assert.equal(typeof invocation.browser.waitFor, 'function');
+    assert.deepEqual(await invocation.browser.click(1, { selector: '#go' }), { success: true });
+    assert.deepEqual(await invocation.browser.waitFor(1, { selector: '#ready', timeout: 2 }), { found: true });
+    invocation.finish();
+    assert.deepEqual(calls.map((entry) => entry[0]), ['click', 'waitFor']);
+    await runtime.dispose();
+  });
+
   it('intersects skill grants with per-tool declared capabilities', async () => {
     const runtime = makeRuntime({
       grantedCapabilities: ['browser.tabs.read', 'browser.cookies.read'],

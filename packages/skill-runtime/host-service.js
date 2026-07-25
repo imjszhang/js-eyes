@@ -8,7 +8,7 @@ const {
   createSkillTrustStore,
   resolveSkillSources,
   resolveSkillsDir,
-} = require('@js-eyes/protocol/skills');
+} = require('@js-eyes/skill-install/skills');
 const { createSkillRegistry } = require('./registry');
 const { PROTOCOL_VERSION } = require('@js-eyes/protocol');
 const { ensureRuntimePaths } = require('@js-eyes/runtime-paths');

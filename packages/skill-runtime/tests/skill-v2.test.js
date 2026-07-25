@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const {
   discoverLocalSkills,
   resolveSkillSources,
-} = require('@js-eyes/protocol/skills');
+} = require('@js-eyes/skill-install/skills');
 const { createSkillRegistry } = require('..');
 
 let tempDir;

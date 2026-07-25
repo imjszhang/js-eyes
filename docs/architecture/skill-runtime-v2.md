@@ -76,6 +76,15 @@ registry and runtime as OpenClaw.
 
 OpenClaw configuration discovery, legacy `openclaw.json` migration, consent,
 tool routing, and watcher lifecycle are owned by `openclaw-plugin/`. Core
-packages do not read OpenClaw configuration or import the plugin. V1
-`createOpenClawAdapter` remains supported only by the external compatibility
-loader; official Skills use native V2 activation.
+packages do not read OpenClaw configuration or import the plugin. Official
+Skills use native V2 activation only (`TOOL_DEFINITIONS` is the tool SSOT;
+`skill.manifest.json` is generated from it).
+
+## V1 soft sunset
+
+External V1 skills that export `createOpenClawAdapter` from `skill.contract.js`
+still load, but the registry logs a deprecation warning. Support remains
+through the 3.x line and is scheduled for removal in **JS Eyes 4.0**. New
+skills must use `skill.manifest.json` + `skill.entry.js`. See
+`examples/js-eyes-skills/` for the V2 template and `examples/legacy/` for the
+deprecated V1 sample.

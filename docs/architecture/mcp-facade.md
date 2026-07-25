@@ -50,6 +50,10 @@ The default `safe` profile registers:
 - `browser_get_html`
 - `browser_get_page_info`
 - `browser_take_screenshot`
+- `browser_click`
+- `browser_fill`
+- `browser_scroll`
+- `browser_wait_for`
 
 The explicit `full` profile additionally registers:
 
@@ -105,11 +109,22 @@ image base64 are excluded from logs and error summaries.
 stdio reserves stdout for JSON-RPC. All facade diagnostics go to stderr. The
 default log level is `warn`.
 
+## Host-neutral browser operations
+
+Browser tool names, JSON Schema inputs, profiles (`safe` / `full`), risk, and
+capability identity are defined once in
+`packages/protocol/browser-operations.js`. Hosts call
+`invokeBrowserOperation()` from `packages/protocol/browser-handlers.js` and only
+adapt transport-specific result formatting (MCP structured content / OpenClaw
+text). Adding a browser operation should not require parallel handler rewrites
+in MCP and OpenClaw.
+
 ## Future work
 
-After the first release:
-
-1. add the skill router using host-neutral skill contracts;
-2. extract common browser action definitions for OpenClaw and MCP;
-3. add first-class snapshot/ref, click, type, and form protocol actions;
+1. ~~add the skill router using host-neutral skill contracts~~ (done via
+   `skill_list` / `skill_describe` / `skill_call`);
+2. ~~extract common browser action definitions for OpenClaw and MCP~~ (done;
+   see Host-neutral browser operations);
+3. ~~add first-class click / fill / scroll / wait_for protocol actions~~ (done;
+   still consider snapshot/ref refinements);
 4. consider Streamable HTTP with an explicit MCP-session/browser lease model.

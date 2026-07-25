@@ -171,6 +171,8 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
 const TOOL_DEFINITIONS = [
   {
     name: 'reddit_get_post',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Get Post',
     description: '读取 Reddit 帖子详情，返回正文、subreddit、图片和评论树。',
     parameters: {
@@ -195,6 +197,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Session State',
     description: '读取当前浏览器中 Reddit 的登录态（/api/v1/me.json，未登录回 {loggedIn:false}）',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -212,6 +216,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_list_subreddit',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: List Subreddit',
     description: '列出 subreddit 内帖子（hot/new/top/rising/controversial）',
     parameters: {
@@ -239,6 +245,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_subreddit_about',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Subreddit About',
     description: '读取 subreddit 元信息（订阅数 / 描述 / 是否 NSFW 等）',
     parameters: {
@@ -260,6 +268,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_search',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Search',
     description: '搜索 Reddit（posts / subreddits / users）',
     parameters: {
@@ -290,6 +300,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_user_profile',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: User Profile',
     description: '读取 user 页（overview/submitted/comments/saved/upvoted/downvoted/hidden）',
     parameters: {
@@ -318,6 +330,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_inbox_list',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Inbox List',
     description: '读取登录用户的 inbox / unread / messages / mentions / sent（必须已登录）',
     parameters: {
@@ -343,6 +357,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_my_feed',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: My Feed',
     description: '读取 home / popular / all feed（home 需登录）',
     parameters: {
@@ -370,6 +386,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_expand_more',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Expand More Comments',
     description: '展开 reddit_get_post 评论树里的 more 节点（调 /api/morechildren）。需先用 reddit_get_post 拿到 _kind="more" 节点的 _children 列表。',
     parameters: {
@@ -409,6 +427,8 @@ const TOOL_DEFINITIONS = [
   // ---- INTERACTIVE 档（仅 location.assign，不模拟点击，不写任何业务数据）----
   {
     name: 'reddit_navigate_post',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To Post',
     description: '把浏览器导航到指定帖子页（仅 location.assign）',
     parameters: {
@@ -429,6 +449,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_navigate_subreddit',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To Subreddit',
     description: '导航到 subreddit 列表页或 about 页',
     parameters: {
@@ -450,6 +472,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_navigate_search',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To Search',
     description: '导航到搜索结果页',
     parameters: {
@@ -474,6 +498,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_navigate_user',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To User',
     description: '导航到用户主页或某个 tab',
     parameters: {
@@ -493,6 +519,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_navigate_inbox',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To Inbox',
     description: '导航到收件箱（必须已登录）',
     parameters: {
@@ -511,6 +539,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'reddit_navigate_home',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Reddit Ops: Navigate To Home',
     description: '导航到 home / popular / all',
     parameters: {
@@ -543,20 +573,39 @@ function projectTool(tool) {
   };
 }
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => Object.assign(projectTool(tool), {
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "page.read",
+    "navigation",
+    "script.execute",
+    "screenshot"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "reddit.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Reddit Ops Skill',
   version: pkg.version,
@@ -571,10 +620,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map(projectTool),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

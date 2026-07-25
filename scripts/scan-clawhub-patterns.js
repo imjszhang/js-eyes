@@ -25,35 +25,37 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
-// Scope matches what ClawHub v2.6.1 surfaced publicly (all 5 findings were
-// pinned to packages/protocol/ and openclaw-plugin/). That is exactly the
-// plugin runtime path — code that actually loads inside OpenClaw. Standalone
-// CLIs (apps/cli, apps/native-host) and network client packages (client-sdk,
-// server-core) are out of scope: the former never run inside the plugin
-// process, and the latter are network modules by design where env/fs reads
-// next to WebSocket/HTTP are expected and audited separately.
+// Scope matches the OpenClaw plugin runtime path plus the skill-install
+// helpers it loads. Standalone CLIs (apps/cli, apps/native-host) and network
+// client packages (client-sdk, server-core) are out of scope: the former never
+// run inside the plugin process, and the latter are network modules by design
+// where env/fs reads next to WebSocket/HTTP are expected and audited separately.
+// packages/protocol keeps compatibility re-exports only; real shell call sites
+// live under packages/skill-install after the package split.
 const INCLUDE_PATHS = [
+  'packages/skill-install',
   'packages/protocol',
   'openclaw-plugin',
 ];
 
-// Expected residuals after the 2.6.2 refactor. Each entry is a single-purpose
-// hardened module whose *only* job is to safely own one of the patterns the
-// scanner flags; each is documented in SECURITY_SCAN_NOTES.md with the full
-// argument for why it must exist. We keep them in this file so a fresh
-// auditor can diff the allowlist against the live scan output in one glance.
+// Expected residuals after the 2.6.2 refactor (paths updated for skill-install).
+// Each entry is a single-purpose hardened module whose *only* job is to safely
+// own one of the patterns the scanner flags; each is documented in
+// SECURITY_SCAN_NOTES.md with the full argument for why it must exist. We keep
+// them in this file so a fresh auditor can diff the allowlist against the live
+// scan output in one glance.
 //
 // Format: { rule, file } — matching is exact on `path.relative` (posix).
 const EXPECTED_RESIDUALS = [
   {
     rule: 'shell',
-    file: 'packages/protocol/safe-npm.js',
+    file: 'packages/skill-install/safe-npm.js',
     reason: 'The hardened replacement for the flagged skills.js:536 npm call. ' +
       'See SECURITY_SCAN_NOTES.md §1.',
   },
   {
     rule: 'shell',
-    file: 'packages/protocol/skill-runner.js',
+    file: 'packages/skill-install/skill-runner.js',
     reason: 'Launches a sub-skill\'s own Node CLI with argv[0]=process.execPath, ' +
       'shell:false, windowsHide:true. See SECURITY_SCAN_NOTES.md §1.',
   },

@@ -1,6 +1,7 @@
 # Security Scan Notes
 
-> Last updated: 2026-04-24 · Applies to **js-eyes 2.6.2**
+> Last updated: 2026-07-25 · Applies to **js-eyes 2.6.2+** (shell modules live in
+> `@js-eyes/skill-install` after the package split; scanner paths updated)
 
 ## Scope
 
@@ -37,11 +38,12 @@ npm run scan:security
 node scripts/scan-clawhub-patterns.js --json
 ```
 
-The scanner (`scripts/scan-clawhub-patterns.js`) walks `packages/protocol/` +
-`openclaw-plugin/` (the same scope ClawHub v2.6.1 pinned its 5 findings to)
-and surfaces three regex rules: shell execution, env + network co-location,
-and file read + network co-location. It strips comments before matching so
-documentation referencing the forbidden patterns does not create false hits.
+The scanner (`scripts/scan-clawhub-patterns.js`) walks `packages/skill-install/`
++ `packages/protocol/` + `openclaw-plugin/` (plugin runtime plus install helpers
+OpenClaw loads) and surfaces three regex rules: shell execution, env + network
+co-location, and file read + network co-location. It strips comments before
+matching so documentation referencing the forbidden patterns does not create
+false hits.
 
 Expected output on a clean 2.6.2 tree is:
 
@@ -59,14 +61,16 @@ Auditors who prefer external tools can also run:
 
 ```bash
 # Shell command execution (child_process)
-rg --type=js "require\('child_process'\)" -g '!test/**' -g '!scripts/**' packages/protocol openclaw-plugin
+rg --type=js "require\('child_process'\)" -g '!test/**' -g '!scripts/**' \
+  packages/skill-install packages/protocol openclaw-plugin
 
 # Env + network co-located in the same file
-rg -l "process\.env\." packages/protocol openclaw-plugin \
+rg -l "process\.env\." packages/skill-install packages/protocol openclaw-plugin \
   | xargs -I{} rg -l "require\('ws'\)|require\('http'\)|require\('https'\)|new WebSocket|\bfetch\(" {}
 
 # File read + network co-located in the same file
-rg -l "fs\.(readFileSync|createReadStream)|readFileSync|createReadStream" packages/protocol openclaw-plugin \
+rg -l "fs\.(readFileSync|createReadStream)|readFileSync|createReadStream" \
+  packages/skill-install packages/protocol openclaw-plugin \
   | xargs -I{} rg -l "require\('ws'\)|require\('http'\)|require\('https'\)|new WebSocket|\bfetch\(" {}
 
 npm test -- test/import-boundaries.test.js
@@ -86,8 +90,8 @@ it. Every residual is gated by the scanner's allowlist in
 
 | Module | Why it owns `child_process` | Hardening |
 | --- | --- | --- |
-| [`packages/protocol/safe-npm.js`](packages/protocol/safe-npm.js) | Only entrypoint for `npm ci` / `npm install` during skill-dependency install. | Whitelisted subcommand, constant argv, `shell:false`, `windowsHide:true`, whitelisted env; secrets in `process.env` never forwarded. |
-| [`packages/protocol/skill-runner.js`](packages/protocol/skill-runner.js) | Launches a sub-skill's own Node CLI entry (`process.execPath` + argv). | `shell:false`, `windowsHide:true`; argv starts with `process.execPath` (no lookup via PATH); does not import any network helper (enforced by `test/import-boundaries.test.js`). |
+| [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js) | Only entrypoint for `npm ci` / `npm install` during skill-dependency install. | Whitelisted subcommand, constant argv, `shell:false`, `windowsHide:true`, whitelisted env; secrets in `process.env` never forwarded. (`packages/protocol/safe-npm.js` is a compatibility re-export.) |
+| [`packages/skill-install/skill-runner.js`](packages/skill-install/skill-runner.js) | Launches a sub-skill's own Node CLI entry (`process.execPath` + argv). | `shell:false`, `windowsHide:true`; argv starts with `process.execPath` (no lookup via PATH); does not import any network helper (enforced by `test/import-boundaries.test.js`). (`packages/protocol/skill-runner.js` is a compatibility re-export.) |
 | [`openclaw-plugin/windows-hide-patch.mjs`](openclaw-plugin/windows-hide-patch.mjs) | Boot-time patch: on Windows only, forces `windowsHide:true` on every `child_process.spawn` / `execFile` initiated from the plugin process. | No-op on POSIX; never spawns anything itself — only wraps existing APIs. Does not import any network helper. |
 
 Adding a new `child_process` call in any other module **will** fail the
@@ -106,9 +110,10 @@ module that now owns the operation in 2.6.2.
 - **2.6.1 behaviour**: `installSkillDependencies` called `spawnSync('npm', argv, …)`
   in-line, in the same module that also talked to the registry and built skill
   manifests.
-- **2.6.2 mitigation**: the only `child_process` call in `@js-eyes/protocol` now
-  lives in [`packages/protocol/safe-npm.js`](packages/protocol/safe-npm.js). That
-  module enforces:
+- **2.6.2 mitigation** (paths as of the skill-install split): the only
+  `child_process` call for npm install now lives in
+  [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js)
+  (`@js-eyes/protocol/safe-npm` re-exports it). That module enforces:
   - subcommand selected from an **immutable whitelist** (`ci`, `install`) — callers
     pick by name, never by free-form string;
   - argv is built from constant arrays (`--no-audit`, `--no-fund`, etc.); no
@@ -127,7 +132,7 @@ module that now owns the operation in 2.6.2.
 - **Scanner impact**: the `child_process` call now lives in a small, dedicated
   file that does no network I/O and reads no env directly; the finding should
   reclassify as *reviewed / hardened* on the next scan.
-- **Tests**: [`packages/protocol/tests/safe-npm.test.js`](packages/protocol/tests/safe-npm.test.js).
+- **Tests**: [`packages/skill-install/tests/safe-npm.test.js`](packages/skill-install/tests/safe-npm.test.js).
 
 ### 2. `openclaw-plugin/index.mjs:204` — Env + network send
 
@@ -310,8 +315,9 @@ module that now owns the operation in 2.6.2.
 
 ## Change log (security-scan delta 2.6.1 → 2.6.2)
 
-- `packages/protocol/safe-npm.js` **new** — npm invocation allowlist.
-- `packages/protocol/skill-runner.js` **new** — sub-skill CLI launcher
+- `packages/skill-install/safe-npm.js` **new** — npm invocation allowlist
+  (protocol path retained as a compatibility re-export).
+- `packages/skill-install/skill-runner.js` **new** — sub-skill CLI launcher
   (`process.execPath`, `shell:false`, `windowsHide:true`), no network.
 - `packages/protocol/registry-client.js` **new** — registry HTTP I/O
   (`fetchSkillsRegistry`, `downloadBuffer`); isolates `fetch(…)` so it is no
@@ -333,7 +339,7 @@ module that now owns the operation in 2.6.2.
 - `scripts/scan-clawhub-patterns.js` **new** local reproduction of the ClawHub
   heuristic with an `EXPECTED_RESIDUALS` allowlist; wired into
   `npm run scan:security`.
-- `test/import-boundaries.test.js`, `packages/protocol/tests/safe-npm.test.js`,
+- `test/import-boundaries.test.js`, `packages/skill-install/tests/safe-npm.test.js`,
   `packages/protocol/tests/extra-integrity.test.js`, `test/doctor-json.test.js` **new**.
 - `bin/js-eyes-native-host-install.{sh,ps1}` **new** local launchers.
 - Docs: `SKILL.md`, `docs/native-messaging.md`, `README.md`, `CHANGELOG.md`,

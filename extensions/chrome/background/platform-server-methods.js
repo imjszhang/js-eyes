@@ -126,6 +126,22 @@ async handleMessage(data) {
           await this.handleGetPageInfo(payload);
           break;
 
+        case 'click':
+          await this.handleClick(payload);
+          break;
+
+        case 'fill':
+          await this.handleFill(payload);
+          break;
+
+        case 'scroll':
+          await this.handleScroll(payload);
+          break;
+
+        case 'wait_for':
+          await this.handleWaitFor(payload);
+          break;
+
         case 'upload_file_to_tab':
           await this.handleUploadFileToTab(payload);
           break;

@@ -25,6 +25,7 @@
       "tabs.read",
       "page.read",
       "navigation",
+      "page.interact",
       "script.execute",
       "screenshot"
     ],
@@ -100,7 +101,7 @@
         "browser.tabs.read",
         "browser.page.read",
         "browser.navigation",
-        "browser.script.execute"
+        "browser.page.interact"
       ],
       "inputSchema": {
         "type": "object",
@@ -136,7 +137,7 @@
         "browser.tabs.read",
         "browser.page.read",
         "browser.navigation",
-        "browser.script.execute"
+        "browser.page.interact"
       ],
       "inputSchema": {
         "type": "object",
@@ -178,7 +179,7 @@
         "browser.tabs.read",
         "browser.page.read",
         "browser.navigation",
-        "browser.script.execute"
+        "browser.page.interact"
       ],
       "inputSchema": {
         "type": "object",
@@ -215,7 +216,7 @@
         "browser.tabs.read",
         "browser.page.read",
         "browser.navigation",
-        "browser.script.execute"
+        "browser.page.interact"
       ],
       "inputSchema": {
         "type": "object",

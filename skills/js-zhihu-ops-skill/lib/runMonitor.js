@@ -84,6 +84,8 @@ function testTarget(args = {}) {
 const MONITOR_TOOL_DEFINITIONS = [
   {
     name: 'zhihu_monitor_list_targets',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'Zhihu Monitor: List Targets',
     description: '列出知乎 monitor users/questions/searches/channels。',
     interactive: false,
@@ -93,6 +95,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_monitor_get_status',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'Zhihu Monitor: Get Status',
     description: '读取知乎 monitor 初始化和 daemon 状态。',
     interactive: false,
@@ -102,6 +106,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_monitor_add_target',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'Zhihu Monitor: Add Target',
     description: '增加一个 user/question/search target（仅写 config，不发通知）。',
     interactive: false,
@@ -122,6 +128,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_monitor_remove_target',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'Zhihu Monitor: Remove Target',
     description: '删除一个 user/question/search target。',
     interactive: false,
@@ -138,6 +146,8 @@ const MONITOR_TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_monitor_test_target',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'Zhihu Monitor: Test Target',
     description: '单 target dry run（不写 state、不发通知）。',
     interactive: false,

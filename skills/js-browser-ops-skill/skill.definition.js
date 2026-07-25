@@ -63,6 +63,8 @@ function createRuntime(config = {}, logger) {
 const TOOL_DEFINITIONS = [
   {
     name: 'browser_read_page',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Browser Ops: Read Page',
     description: '读取任意网页正文内容，返回结构化的 markdown/纯文本 + 元数据（标题、作者、摘要、图片、链接）。',
     parameters: {
@@ -92,6 +94,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'browser_click',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.page.interact"],
     label: 'Browser Ops: Click',
     description: '点击页面元素。支持 CSS 选择器、XPath 或文本内容匹配。',
     parameters: {
@@ -111,6 +115,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'browser_fill_form',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.page.interact"],
     label: 'Browser Ops: Fill Form',
     description: '填写表单字段。支持 input、textarea、select 和 contenteditable 元素。',
     parameters: {
@@ -131,6 +137,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'browser_wait_for',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.page.interact"],
     label: 'Browser Ops: Wait For',
     description: '等待页面元素出现或条件满足。使用 MutationObserver 高效监听。',
     parameters: {
@@ -150,6 +158,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'browser_scroll',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.page.interact"],
     label: 'Browser Ops: Scroll',
     description: '页面滚动。支持滚动到顶部/底部、指定元素或指定像素偏移。',
     parameters: {
@@ -173,6 +183,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'browser_screenshot',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","browser.screenshot"],
     label: 'Browser Ops: Screenshot',
     description: '截取页面截图。默认截取当前可见区域；Firefox 扩展支持 fullPage=true 长截图。',
     parameters: {
@@ -192,25 +204,40 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "page.read",
+    "navigation",
+    "page.interact",
+    "script.execute",
+    "screenshot"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "*"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Browser Ops Skill',
   version: pkg.version,
@@ -224,16 +251,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-    })),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

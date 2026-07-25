@@ -29,6 +29,7 @@
     "@js-eyes/skill-runtime": "^2.8.5",
     "@js-eyes/skill-recording": "^2.0.0",
     "@js-eyes/visual-bridge-kit": "file:../../packages/visual-bridge-kit",
-    "cheerio": "^1.1.2"
+    "cheerio": "^1.1.2",
+    "@js-eyes/skill-scaffold": "^2.9.0"
   }
 }

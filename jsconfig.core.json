@@ -16,10 +16,13 @@
     "packages/runtime-paths/**/*.js",
     "packages/config/**/*.js",
     "packages/protocol/**/*.js",
+    "packages/skill-install/**/*.js",
+    "packages/policy/**/*.js",
     "packages/client-sdk/**/*.js",
     "packages/server-core/**/*.js",
     "packages/mcp-server/**/*.js",
     "packages/skill-contract/**/*.js",
+    "packages/skill-scaffold/**/*.js",
     "packages/skill-runtime/**/*.js",
     "types/**/*.d.ts"
   ],

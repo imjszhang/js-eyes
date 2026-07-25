@@ -1,0 +1,41 @@
+{
+  "name": "@js-eyes/policy",
+  "version": "2.9.0",
+  "description": "Host-neutral browser policy context for JS Eyes",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./egress": "./egress.js",
+    "./egress.js": "./egress.js",
+    "./taint": "./taint.js",
+    "./taint.js": "./taint.js",
+    "./task-origin": "./task-origin.js",
+    "./task-origin.js": "./task-origin.js",
+    "./origin-utils": "./origin-utils.js",
+    "./origin-utils.js": "./origin-utils.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "index.js",
+    "task-origin.js",
+    "taint.js",
+    "egress.js",
+    "origin-utils.js"
+  ],
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/policy"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

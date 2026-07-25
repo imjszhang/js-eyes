@@ -7,6 +7,7 @@ function resolveMethodModules() {
     require('./connection-methods'),
     require('./messaging-methods'),
     require('./operations-methods'),
+    require('./page-interact-methods'),
     require('./routing-methods'),
     require('./tabs-methods'),
     ];
@@ -15,6 +16,7 @@ function resolveMethodModules() {
     globalThis.JSEyesConnectionMethods,
     globalThis.JSEyesMessagingMethods,
     globalThis.JSEyesBrowserOperationMethods,
+    globalThis.JSEyesPageInteractMethods,
     globalThis.JSEyesRuntimeRoutingMethods,
     globalThis.JSEyesTabSyncMethods,
   ];

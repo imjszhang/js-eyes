@@ -59,6 +59,8 @@ function createRuntime(config = {}, logger) {
 const TOOL_DEFINITIONS = [
   {
     name: 'zhihu_get_answer',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get Answer',
     description: '读取知乎回答详情，返回标题、作者、正文、点赞和评论数。',
     interactive: false,
@@ -84,6 +86,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_get_article',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get Article',
     description: '读取知乎专栏详情，返回标题、作者、发布时间和正文。',
     interactive: false,
@@ -109,6 +113,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Session State',
     description: '读取知乎登录态、cookie 标记与页面阻断状态。',
     interactive: false,
@@ -126,6 +132,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_get_question_answers',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get Question Answers',
     description: '读取知乎问题页标题、描述与回答列表摘要。',
     interactive: false,
@@ -151,6 +159,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_search',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Search',
     description: '知乎搜索结果读取（DOM 路径，支持关键词、类型和 limit）。',
     interactive: false,
@@ -177,6 +187,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_get_user',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get User',
     description: '读取知乎用户主页资料。',
     interactive: false,
@@ -200,6 +212,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_get_user_answers',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get User Answers',
     description: '读取知乎用户主页上的回答列表摘要。',
     interactive: false,
@@ -225,6 +239,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'zhihu_get_user_articles',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Zhihu Ops: Get User Articles',
     description: '读取知乎用户主页上的文章列表摘要。',
     interactive: false,
@@ -330,6 +346,8 @@ function makeNavigateTools() {
   return [
     {
       name: 'zhihu_navigate_answer',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate Answer',
       description: '导航到知乎回答页（仅 location.assign）。',
       interactive: true,
@@ -339,6 +357,8 @@ function makeNavigateTools() {
     },
     {
       name: 'zhihu_navigate_article',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate Article',
       description: '导航到知乎专栏页（仅 location.assign）。',
       interactive: true,
@@ -348,6 +368,8 @@ function makeNavigateTools() {
     },
     {
       name: 'zhihu_navigate_question',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate Question',
       description: '导航到知乎问题页（仅 location.assign）。',
       interactive: true,
@@ -357,6 +379,8 @@ function makeNavigateTools() {
     },
     {
       name: 'zhihu_navigate_search',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate Search',
       description: '导航到知乎搜索页（仅 location.assign）。',
       interactive: true,
@@ -366,6 +390,8 @@ function makeNavigateTools() {
     },
     {
       name: 'zhihu_navigate_user',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate User',
       description: '导航到知乎用户主页（仅 location.assign）。',
       interactive: true,
@@ -375,6 +401,8 @@ function makeNavigateTools() {
     },
     {
       name: 'zhihu_navigate_home',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
       label: 'Zhihu Ops: Navigate Home',
       description: '导航到知乎首页（仅 location.assign）。',
       interactive: true,
@@ -385,27 +413,40 @@ function makeNavigateTools() {
   ];
 }
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      interactive: !!tool.interactive,
-      destructive: !!tool.destructive,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "page.read",
+    "navigation",
+    "script.execute",
+    "screenshot"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "zhihu.com",
+    "zhuanlan.zhihu.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Zhihu Ops Skill',
   version: pkg.version,
@@ -418,17 +459,6 @@ module.exports = {
   cli: {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
-  },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      interactive: !!tool.interactive,
-      destructive: !!tool.destructive,
-    })),
   },
   tools: TOOL_DEFINITIONS.map((tool) => ({
     name: tool.name,
@@ -443,5 +473,4 @@ module.exports = {
   makeReadToolExecutor,
   makeNavigateToolExecutor,
   createRuntime,
-  createOpenClawAdapter,
 };

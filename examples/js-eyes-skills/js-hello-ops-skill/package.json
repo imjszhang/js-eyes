@@ -9,7 +9,7 @@
     "title": "node index.js title"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "ws": "^8.18.0"

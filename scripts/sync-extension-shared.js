@@ -22,6 +22,8 @@ const copies = [
   ['extensions/shared/messaging-methods.js', 'extensions/firefox/background/messaging-methods.js'],
   ['extensions/shared/operations-methods.js', 'extensions/chrome/background/operations-methods.js'],
   ['extensions/shared/operations-methods.js', 'extensions/firefox/background/operations-methods.js'],
+  ['extensions/shared/page-interact-methods.js', 'extensions/chrome/background/page-interact-methods.js'],
+  ['extensions/shared/page-interact-methods.js', 'extensions/firefox/background/page-interact-methods.js'],
   ['extensions/shared/routing-methods.js', 'extensions/chrome/background/routing-methods.js'],
   ['extensions/shared/routing-methods.js', 'extensions/firefox/background/routing-methods.js'],
   ['extensions/shared/tabs-methods.js', 'extensions/chrome/background/tabs-methods.js'],

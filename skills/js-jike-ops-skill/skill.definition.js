@@ -55,6 +55,8 @@ function createRuntime(config = {}, logger) {
 const TOOL_DEFINITIONS = [
   {
     name: 'jike_get_post',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'Jike Ops: Get Post',
     description: '读取即刻帖子详情，返回正文、图片、作者、互动数据和评论。',
     parameters: {
@@ -75,25 +77,38 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "page.read",
+    "navigation",
+    "script.execute"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "okjike.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Jike Ops Skill',
   version: pkg.version,
@@ -107,16 +122,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-    })),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

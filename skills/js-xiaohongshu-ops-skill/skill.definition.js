@@ -174,6 +174,8 @@ const READ_USER_NOTES_DEF = {
 const TOOL_DEFINITIONS = [
   {
     name: 'xhs_get_note',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute","browser.cookies.read"],
     label: 'XHS Ops: Get Note',
     description: '读取小红书笔记详情（DOM 优先 + API 兜底）。',
     interactive: false,
@@ -204,6 +206,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_get_note_comments',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Get Note Comments',
     description: '读取小红书笔记评论（基于 edith API 分页，DOM 不主用）。',
     interactive: false,
@@ -231,6 +235,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Session State',
     description: '读取小红书登录态（基于 cookie a1/web_session 与 DOM 用户名）。',
     interactive: false,
@@ -249,6 +255,8 @@ const TOOL_DEFINITIONS = [
   // -------------------- v2.2 搜索域 --------------------
   {
     name: 'xhs_search_notes',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Search Notes',
     description: '小红书搜索（DOM 滚动 + 频道/筛选；可串行点开详情）。',
     interactive: false,
@@ -293,6 +301,8 @@ const TOOL_DEFINITIONS = [
   // -------------------- v2.3 用户域 --------------------
   {
     name: 'xhs_get_user',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Get User',
     description: '读取小红书用户主页资料（昵称、签名、关注/粉丝/获赞）。',
     interactive: false,
@@ -316,6 +326,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_get_user_notes',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Get User Notes',
     description: '读取小红书用户笔记列表（滚动分页）。',
     interactive: false,
@@ -341,6 +353,8 @@ const TOOL_DEFINITIONS = [
   // -------------------- v2.2 INTERACTIVE 导航 --------------------
   {
     name: 'xhs_navigate_note',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Navigate Note',
     description: '导航到小红书笔记详情页（仅 location.assign，不模拟点击）。',
     interactive: true,
@@ -361,6 +375,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_navigate_search',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Navigate Search',
     description: '导航到小红书搜索页（仅 location.assign）。',
     interactive: true,
@@ -380,6 +396,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_navigate_user',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Navigate User',
     description: '导航到小红书用户主页（仅 location.assign）。',
     interactive: true,
@@ -400,6 +418,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'xhs_navigate_home',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
     label: 'XHS Ops: Navigate Home',
     description: '导航到小红书探索流首页（仅 location.assign）。',
     interactive: true,
@@ -417,37 +437,39 @@ const TOOL_DEFINITIONS = [
   ...MONITOR_TOOL_DEFINITIONS,
 ];
 
-function listTools() {
-  return TOOL_DEFINITIONS.map((tool) => ({
-    name: tool.name,
-    label: tool.label,
-    description: tool.description,
-    parameters: tool.parameters,
-    interactive: !!tool.interactive,
-    destructive: !!tool.destructive,
-  }));
-}
-
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      interactive: !!tool.interactive,
-      destructive: !!tool.destructive,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "page.read",
+    "navigation",
+    "script.execute",
+    "screenshot",
+    "cookies.read"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "xiaohongshu.com",
+    "xhslink.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS Xiaohongshu Ops Skill',
   version: pkg.version,
@@ -461,12 +483,9 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: { tools: listTools() },
-  tools: listTools(),
   TOOL_DEFINITIONS,
   makeReadToolExecutor,
   makeBridgeReadExecutor,
   makeNavigateToolExecutor,
   createRuntime,
-  createOpenClawAdapter,
 };

@@ -15,13 +15,7 @@ const {
 } = require('@js-eyes/visual-bridge-kit');
 
 const { createRunContext } = require('./runContext');
-const {
-  generateReadPageScript,
-  generateClickScript,
-  generateFillFormScript,
-  generateWaitForScript,
-  generateScrollScript,
-} = require('./browserUtils');
+const { generateReadPageScript } = require('./browserUtils');
 const { ensureDomainAllowedForUrl } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
 
@@ -185,11 +179,13 @@ async function clickElement(browser, params, options = {}) {
   const { tabId, selector, text, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
   if (!selector && !text) throw new Error('必须提供 selector 或 text');
+  if (typeof browser.click !== 'function') {
+    throw new Error('Browser client does not support first-class click (upgrade JS Eyes extension/SDK)');
+  }
 
-  const script = generateClickScript(selector || '*', { text, index });
   return withVisual(
     'browser_click', browser, tabId, params, options,
-    () => browser.executeScript(tabId, script),
+    () => browser.click(tabId, { selector, text, index }, options),
   );
 }
 
@@ -197,11 +193,13 @@ async function fillForm(browser, params, options = {}) {
   const { tabId, selector, value, clearFirst, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
   if (!selector) throw new Error('必须提供 selector');
+  if (typeof browser.fill !== 'function') {
+    throw new Error('Browser client does not support first-class fill (upgrade JS Eyes extension/SDK)');
+  }
 
-  const script = generateFillFormScript(selector, value || '', { clearFirst, index });
   return withVisual(
     'browser_fill_form', browser, tabId, params, options,
-    () => browser.executeScript(tabId, script),
+    () => browser.fill(tabId, { selector, value: value || '', clearFirst, index }, options),
   );
 }
 
@@ -209,22 +207,26 @@ async function waitFor(browser, params, options = {}) {
   const { tabId, selector, timeout, visible } = params;
   if (!tabId) throw new Error('必须提供 tabId');
   if (!selector) throw new Error('必须提供 selector');
+  if (typeof browser.waitFor !== 'function') {
+    throw new Error('Browser client does not support first-class waitFor (upgrade JS Eyes extension/SDK)');
+  }
 
-  const script = generateWaitForScript(selector, { timeout, visible });
   return withVisual(
     'browser_wait_for', browser, tabId, params, options,
-    () => browser.executeScript(tabId, script, { timeout: (timeout || 10) + 5 }),
+    () => browser.waitFor(tabId, { selector, timeout, visible }, options),
   );
 }
 
 async function scrollPage(browser, params, options = {}) {
   const { tabId, target, selector, pixels } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  if (typeof browser.scroll !== 'function') {
+    throw new Error('Browser client does not support first-class scroll (upgrade JS Eyes extension/SDK)');
+  }
 
-  const script = generateScrollScript({ target, selector, pixels });
   return withVisual(
     'browser_scroll', browser, tabId, params, options,
-    () => browser.executeScript(tabId, script),
+    () => browser.scroll(tabId, { scrollTarget: target, selector, pixels }, options),
   );
 }
 

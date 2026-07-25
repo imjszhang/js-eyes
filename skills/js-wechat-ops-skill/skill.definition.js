@@ -1,8 +1,7 @@
 'use strict';
 
-// Shared declarative metadata for the CLI and the native V2 entry.
-
 const pkg = require('./package.json');
+const { createDefinitionEnvelope } = require('@js-eyes/skill-scaffold');
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getArticle } = require('./lib/api');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
@@ -55,6 +54,8 @@ function createRuntime(config = {}, logger) {
 const TOOL_DEFINITIONS = [
   {
     name: 'wechat_get_article',
+    risk: 'read',
+    capabilities: ['browser.tabs.read', 'browser.page.read', 'browser.navigation', 'browser.script.execute'],
     label: 'WeChat Ops: Get Article',
     description: '读取微信公众号文章详情，返回标题、作者、摘要、正文、头图和图片列表。',
     parameters: {
@@ -75,48 +76,27 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
-
-module.exports = {
-  id: pkg.name,
-  name: 'JS WeChat Ops Skill',
-  version: pkg.version,
-  description: pkg.description,
-  runtime: {
-    requiresServer: true,
-    requiresBrowserExtension: true,
+module.exports = createDefinitionEnvelope({
+  pkg,
+  displayName: 'JS WeChat Ops Skill',
+  capabilities: {
+    browser: ['tabs.read', 'page.read', 'navigation', 'script.execute'],
+    network: { direct: false, hosts: [] },
+    filesystem: ['skillData'],
+    process: [],
+    secrets: [],
+    background: false,
+  },
+  requirements: {
+    server: true,
+    browserExtension: true,
+    login: false,
     platforms: ['mp.weixin.qq.com'],
   },
+  tools: TOOL_DEFINITIONS,
   cli: {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-    })),
-  },
-  createRuntime,
-  createOpenClawAdapter,
-  TOOL_DEFINITIONS,
-};
+  extra: { createRuntime },
+});

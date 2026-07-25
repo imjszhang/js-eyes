@@ -6,7 +6,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "skills/*"
+    "skills/*",
+    "openclaw-plugin"
   ],
   "scripts": {
     "dev": "npx serve src",
@@ -74,7 +75,6 @@
     }
   },
   "dependencies": {
-    "@js-eyes/visual-bridge-kit": "workspace:*",
     "archiver": "^8.0.0",
     "chokidar": "^3.6.0",
     "ws": "^8.19.0"

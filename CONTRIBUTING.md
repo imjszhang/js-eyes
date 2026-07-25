@@ -60,6 +60,21 @@ Cross-browser background configuration, stability helpers, and shared
 `npm run sync:extension-shared`; CI and both extension builders reject stale
 Chrome/Firefox runtime copies.
 
+## Adding a site Skill
+
+Official Skills are V2 only. Minimum files under `skills/<id>/`:
+
+1. `package.json` — `name` is the skill id; depend on `@js-eyes/skill-scaffold`
+2. `skill.definition.js` — export `TOOL_DEFINITIONS` (each tool has `risk` and
+   `capabilities`), plus skill-level `capabilities` / `requirements`
+   (thin skills may use `createDefinitionEnvelope`)
+3. `skill.entry.js` — `module.exports = createSkillEntry(TOOL_DEFINITIONS)`
+4. `skill.manifest.json` — generate with `npm run skills:manifests`
+5. `SKILL.md` — operator-facing docs
+
+Do not export `createOpenClawAdapter`. See `examples/js-eyes-skills/` for a
+minimal external template and `AGENTS.md` for Skill policy rules.
+
 ## Dependency changes
 
 - Prefer upgrading a direct dependency over adding an override.

@@ -1,0 +1,32 @@
+{
+  "name": "@js-eyes/skill-scaffold",
+  "version": "2.9.0",
+  "description": "Shared scaffolding for JS Eyes V2 site skills",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "index.js",
+    "entry.js",
+    "definition.js",
+    "manifest.js"
+  ],
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/skill-scaffold"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@js-eyes/skill-runtime": "2.9.0"
+  }
+}

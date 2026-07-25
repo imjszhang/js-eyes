@@ -34,6 +34,8 @@ const FORBIDDEN_SPECIFIERS = Object.freeze([
   '../../packages/server-core',
   '../../../packages/client-sdk',
   '../../../packages/server-core',
+  '@js-eyes/client-sdk',
+  '@js-eyes/server-core',
 ]);
 
 const FORBIDDEN_GLOBALS = Object.freeze([
@@ -43,10 +45,10 @@ const FORBIDDEN_GLOBALS = Object.freeze([
 ]);
 
 const GUARDED_FILES = Object.freeze([
-  'packages/protocol/fs-io.js',
+  'packages/skill-install/fs-io.js',
+  'packages/skill-install/safe-npm.js',
+  'packages/skill-install/skill-runner.js',
   'openclaw-plugin/legacy-config.mjs',
-  'packages/protocol/safe-npm.js',
-  'packages/protocol/skill-runner.js',
   'openclaw-plugin/auth.mjs',
   'openclaw-plugin/fs-utils/hash.mjs',
   'openclaw-plugin/windows-hide-patch.mjs',

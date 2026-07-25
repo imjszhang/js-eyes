@@ -66,6 +66,10 @@ const DEFAULT_CONFIG = {
       'get_cookies_by_domain', // 按域名获取 Cookies（高风险）
       'inject_css',         // 注入 CSS（高风险）
       'get_page_info',      // 获取页面信息
+      'click',              // 一等交互：点击元素（不依赖 allowRawEval）
+      'fill',               // 一等交互：填写表单
+      'scroll',             // 一等交互：滚动页面
+      'wait_for',           // 一等交互：等待选择器
       'upload_file_to_tab', // 上传文件到标签页
       'capture_screenshot', // Phase 2: 截当前激活 tab 的可见区为 PNG（用于 visual replay）
       'subscribe_events',   // 订阅事件

@@ -1,0 +1,47 @@
+{
+  "name": "@js-eyes/skill-install",
+  "version": "2.9.0",
+  "description": "Skill discovery, install, trust, and registry helpers for JS Eyes",
+  "main": "skills.js",
+  "exports": {
+    ".": "./skills.js",
+    "./skills": "./skills.js",
+    "./zip-extract": "./zip-extract.js",
+    "./fs-io": "./fs-io.js",
+    "./safe-npm": "./safe-npm.js",
+    "./extra-integrity": "./extra-integrity.js",
+    "./skill-trust": "./skill-trust.js",
+    "./skill-runner": "./skill-runner.js",
+    "./registry-client": "./registry-client.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "skills.js",
+    "zip-extract.js",
+    "fs-io.js",
+    "safe-npm.js",
+    "extra-integrity.js",
+    "skill-trust.js",
+    "skill-runner.js",
+    "registry-client.js"
+  ],
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/skill-install"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@js-eyes/skill-contract": "2.9.0"
+  }
+}

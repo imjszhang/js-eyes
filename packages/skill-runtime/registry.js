@@ -36,7 +36,7 @@ const {
 // Use a lazy module reference to avoid a circular require hazard: skills.js also
 // re-exports factories from this module.
 /** @type {Record<string, (...args: any[]) => any>} */
-const skillsApi = require('@js-eyes/protocol/skills');
+const skillsApi = require('@js-eyes/skill-install/skills');
 function buildAdapterTools(...args) { return skillsApi.buildAdapterTools(...args); }
 function discoverSkillsFromSources(...args) { return skillsApi.discoverSkillsFromSources(...args); }
 function isSkillEnabled(...args) { return skillsApi.isSkillEnabled(...args); }
@@ -46,7 +46,7 @@ function resolveSkillSources(...args) { return skillsApi.resolveSkillSources(...
 function skillToolActionName(...args) { return skillsApi.skillToolActionName(...args); }
 function verifySkillIntegrity(...args) { return skillsApi.verifySkillIntegrity(...args); }
 
-const { verifyExtraDir: verifyExtraSkillDir } = require('@js-eyes/protocol/extra-integrity');
+const { verifyExtraDir: verifyExtraSkillDir } = require('@js-eyes/skill-install/extra-integrity');
 
 const DEFAULT_UNAVAILABLE_MESSAGE = (name) =>
   `Tool "${name}" is not currently loaded (skill disabled, removed, or reloading).`;
@@ -477,6 +477,11 @@ function createSkillRegistry(options = {}) {
         );
         adapter = createAdapterFromDefinition(definition, runtime);
       } else {
+        logger.warn(
+          `[js-eyes] Skill "${skill.id}" uses deprecated V1 skill.contract.js `
+          + '(createOpenClawAdapter). Migrate to skill.manifest.json + skill.entry.js; '
+          + 'V1 support will be removed in JS Eyes 4.0.',
+        );
         const legacyAdapter = contract.createOpenClawAdapter(effectiveConfig, logger);
         definition = normalizeV1Contract(contract, {
           adapter: legacyAdapter,

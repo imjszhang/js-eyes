@@ -9,7 +9,7 @@ const vm = require('vm');
 const root = path.join(__dirname, '..');
 const config = require('../extensions/shared/config');
 const sharedBrowserControl = require('../extensions/shared/browser-control-methods');
-const methodModuleNames = ['connection', 'messaging', 'operations', 'routing', 'tabs'];
+const methodModuleNames = ['connection', 'messaging', 'operations', 'page-interact', 'routing', 'tabs'];
 const platformModuleNames = ['connection', 'server', 'operations', 'runtime', 'tabs'];
 
 function read(relativePath) {
@@ -47,6 +47,7 @@ describe('extension shared runtime contract', () => {
       'background/connection-methods.js',
       'background/messaging-methods.js',
       'background/operations-methods.js',
+      'background/page-interact-methods.js',
       'background/routing-methods.js',
       'background/tabs-methods.js',
       'background/browser-control-methods.js',
@@ -74,6 +75,7 @@ describe('extension shared runtime contract', () => {
       'JSEyesConnectionMethods',
       'JSEyesMessagingMethods',
       'JSEyesBrowserOperationMethods',
+      'JSEyesPageInteractMethods',
       'JSEyesRuntimeRoutingMethods',
       'JSEyesTabSyncMethods',
       'JSEyesSharedBrowserControl',
@@ -194,7 +196,9 @@ describe('extension shared runtime contract', () => {
       'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',
       'handleGetCookies', 'handleGetCookiesByDomain', 'handleGetPageInfo', 'getCookiesByDomain',
       'getTabCookies', 'deduplicateCookies', 'validateCookies', 'analyzeCookieDomains',
-      'waitForTabLoad', 'handleContentScriptRequest', 'handleGetTabsRequest',
+      'waitForTabLoad',
+      '_runPageInteract', 'handleClick', 'handleFill', 'handleScroll', 'handleWaitFor',
+      'handleContentScriptRequest', 'handleGetTabsRequest',
       'handleOpenUrlRequest', 'handleCloseTabRequest', 'handleGetCookiesRequest',
       'handleGetCookiesByDomainRequest', 'handleGetPageInfoRequest', 'debouncedSendTabsData',
       'setupTabListeners', 'startTabDataSync',

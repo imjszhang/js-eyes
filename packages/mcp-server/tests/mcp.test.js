@@ -112,8 +112,9 @@ describe('native MCP protocol', () => {
   it('exposes only safe tools by default with annotations', async () => {
     const { client } = await connect('safe');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 11);
+    assert.equal(listed.tools.length, 15);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_execute_script'), false);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_click'), true);
     const tabs = listed.tools.find((tool) => tool.name === 'browser_list_tabs');
     assert.equal(tabs.annotations.readOnlyHint, true);
   });
@@ -121,7 +122,7 @@ describe('native MCP protocol', () => {
   it('exposes sensitive tools only in the full profile', async () => {
     const { client } = await connect('full');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 16);
+    assert.equal(listed.tools.length, 20);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_get_cookies'), true);
   });
 

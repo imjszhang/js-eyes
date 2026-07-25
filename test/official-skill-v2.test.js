@@ -32,10 +32,25 @@ test('every official skill exposes a complete static V2 manifest and entry', () 
   }
 });
 
-test('official V2 entries do not use the legacy-entry adapter', () => {
+test('official V2 entries use skill-scaffold createSkillEntry', () => {
   for (const skillDir of officialSkillDirs()) {
     const source = fs.readFileSync(path.join(skillDir, 'skill.entry.js'), 'utf8');
-    assert.match(source, /createNativeHandlers/);
+    assert.match(source, /@js-eyes\/skill-scaffold/);
+    assert.match(source, /createSkillEntry/);
     assert.doesNotMatch(source, /legacy-entry|createLegacyHandlers|createRuntime/);
+  }
+});
+
+test('official skills do not export createOpenClawAdapter and keep TOOL_DEFINITIONS SSOT', () => {
+  for (const skillDir of officialSkillDirs()) {
+    const definition = require(path.join(skillDir, 'skill.definition.js'));
+    assert.equal(typeof definition.createOpenClawAdapter, 'undefined', path.basename(skillDir));
+    assert.ok(Array.isArray(definition.TOOL_DEFINITIONS));
+    assert.ok(definition.capabilities);
+    assert.ok(definition.requirements);
+    for (const tool of definition.TOOL_DEFINITIONS) {
+      assert.ok(tool.risk, `${definition.id}/${tool.name} risk`);
+      assert.ok(Array.isArray(tool.capabilities), `${definition.id}/${tool.name} capabilities`);
+    }
   }
 });

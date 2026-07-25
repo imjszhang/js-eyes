@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Skill Runtime scoped browser now maps `click` / `fill` / `scroll` /
+  `waitFor` to `browser.page.interact` (in-process and worker backends).
+- OpenClaw keeps `timeout` on `browser/wait-for` (wait duration, not transport).
+- `fill` results redact password fields and truncate values to 100 characters.
+- `page.waitFor` transport timeout is always at least wait-seconds + 5.
+- `page.click` schema requires `selector` or `text`; `page.fill` requires
+  `value`.
+- ClawHub-equivalent scanner and OpenClaw decoupling tests follow
+  `@js-eyes/skill-install` instead of empty protocol re-export shims.
+- V2 hello example CLI / `SKILL.md` / `engines.node` aligned with the
+  manifest layout.
+
+### Changed
+
+- Host-neutral browser operations: MCP and OpenClaw share
+  `packages/protocol/browser-operations.js` metadata and
+  `invokeBrowserOperation()` instead of duplicated handlers.
+- Official Skills use `TOOL_DEFINITIONS` as the tool SSOT (`risk` /
+  `capabilities` on each tool; skill-level `capabilities` /
+  `requirements` on the definition). Manifest generation no longer uses
+  name-based heuristics. Official skills no longer export
+  `createOpenClawAdapter`.
+- Examples: V2 hello skill under `examples/js-eyes-skills/`; V1 sample
+  moved to `examples/legacy/`.
+- New `@js-eyes/skill-scaffold` package (`createSkillEntry`,
+  `createDefinitionEnvelope`, `buildSkillManifest`); official skill entries
+  and manifest generation use it.
+- First-class wire actions `click` / `fill` / `scroll` / `wait_for` (capability
+  `browser.page.interact`) that do not require `allowRawEval`. MCP safe profile
+  exposes `browser_click`, `browser_fill`, `browser_scroll`, `browser_wait_for`.
+  `js-browser-ops-skill` uses the new SDK methods instead of `executeScript`.
+- Split `@js-eyes/skill-install` (discovery/install/trust) out of
+  `@js-eyes/protocol`, and `@js-eyes/policy` out of `@js-eyes/client-sdk/policy`.
+  Old import paths re-export for compatibility; `server-core` depends on
+  `@js-eyes/policy` directly.
+- `openclaw-plugin` is a workspace package (`@js-eyes/openclaw-plugin`) that
+  depends on core packages by name instead of relative `createRequire` paths.
+- Root package no longer depends on `@js-eyes/visual-bridge-kit` (skill-optional).
+
+### Deprecated
+
+- External V1 `skill.contract.js` / `createOpenClawAdapter` activation
+  logs a warning and is scheduled for removal in JS Eyes 4.0.
+
 ## [2.8.5] - 2026-07-22
 
 > **Native MCP facade release.** Standard MCP hosts can now use the existing JS

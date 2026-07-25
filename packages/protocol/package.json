@@ -1,7 +1,7 @@
 {
   "name": "@js-eyes/protocol",
   "version": "2.9.0",
-  "description": "Shared protocol constants for JS Eyes runtime packages",
+  "description": "Shared protocol constants and browser-operation metadata for JS Eyes",
   "main": "index.js",
   "scripts": {
     "test": "node --test tests/*.test.js"
@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "browser-operations.js",
+    "browser-handlers.js",
     "skills.js",
     "zip-extract.js",
     "fs-io.js",
@@ -39,6 +40,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/skill-contract": "2.9.0"
+    "@js-eyes/skill-install": "2.9.0"
   }
 }

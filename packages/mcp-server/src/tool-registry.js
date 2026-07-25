@@ -1,16 +1,12 @@
 'use strict';
 
 const { z } = require('zod');
-const { BROWSER_OPERATION_BY_ID } = require('@js-eyes/protocol');
+const {
+  invokeBrowserOperation,
+  listBrowserOperationsForProfile,
+} = require('@js-eyes/protocol');
 const { errorResult, FacadeError } = require('./error-adapter');
 const { dataResult, screenshotResult } = require('./result-adapter');
-
-const target = z.string().min(1).max(200).optional()
-  .describe('Extension clientId or unique browser name.');
-const tabId = z.number().int().nonnegative().describe('Browser tab ID.');
-const timeout = z.number().positive().max(1800).optional()
-  .describe('Operation timeout in seconds.');
-const mcpTool = (id) => BROWSER_OPERATION_BY_ID[id].mcpTool;
 
 function annotations(options = {}) {
   return {
@@ -21,275 +17,189 @@ function annotations(options = {}) {
   };
 }
 
+function zodFromJsonSchema(schema) {
+  if (!schema || schema.type !== 'object') return z.object({});
+  const shape = {};
+  const required = new Set(schema.required || []);
+  for (const [key, prop] of Object.entries(schema.properties || {})) {
+    let field;
+    if (prop.type === 'string') {
+      field = z.string();
+      if (prop.format === 'uri' || prop.format === 'url') field = field.url();
+      if (prop.minLength != null) field = field.min(prop.minLength);
+      if (prop.maxLength != null) field = field.max(prop.maxLength);
+      if (Array.isArray(prop.enum)) field = z.enum(prop.enum);
+    } else if (prop.type === 'integer') {
+      field = z.number().int();
+      if (prop.minimum != null) field = field.min(prop.minimum);
+      if (prop.maximum != null) field = field.max(prop.maximum);
+      if (prop.exclusiveMinimum != null) field = field.gt(prop.exclusiveMinimum);
+    } else if (prop.type === 'number') {
+      field = z.number();
+      if (prop.minimum != null) field = field.min(prop.minimum);
+      if (prop.maximum != null) field = field.max(prop.maximum);
+      if (prop.exclusiveMinimum != null) field = field.gt(prop.exclusiveMinimum);
+      if (prop.positive) field = field.positive();
+    } else if (prop.type === 'boolean') {
+      field = z.boolean();
+    } else if (prop.type === 'array') {
+      let item = /** @type {any} */ (z.unknown());
+      if (prop.items?.type === 'object') {
+        item = zodFromJsonSchema(prop.items);
+      } else if (prop.items?.type === 'string') {
+        item = z.string();
+      }
+      field = z.array(item);
+      if (prop.minItems != null) field = field.min(prop.minItems);
+      if (prop.maxItems != null) field = field.max(prop.maxItems);
+    } else if (prop.type === 'object') {
+      field = zodFromJsonSchema(prop);
+    } else {
+      field = z.unknown();
+    }
+    if (prop.description) field = field.describe(prop.description);
+    shape[key] = required.has(key) ? field : field.optional();
+  }
+  return z.object(shape);
+}
+
+function needsResolvedTarget(operation) {
+  return operation.routing === 'extension' || operation.id === 'tabs.list';
+}
+
+async function runBrowserOperation(session, config, operation, args) {
+  const maxChars = config.maxTextChars || 100000;
+
+  if (operation.id === 'file.upload') {
+    const totalBytes = (args.files || []).reduce((sum, file) => sum + String(file.base64 || '').length, 0);
+    if (totalBytes > 50000000) {
+      throw new FacadeError('JS_EYES_INVALID_ARGUMENT', 'Combined upload payload exceeds 50 MB.');
+    }
+  }
+
+  let callOptions = {};
+  if (operation.id === 'tabs.list') {
+    const requested = args.target || config.target || undefined;
+    if (requested) {
+      callOptions.target = await session.resolveTarget(requested);
+    }
+    callOptions.timeout = args.timeout || config.requestTimeout;
+  } else if (operation.id === 'clients.list') {
+    callOptions.timeout = config.connectTimeout || config.requestTimeout;
+  } else if (needsResolvedTarget(operation)) {
+    // page.waitFor's timeout is wait duration; give the transport a buffer.
+    let transportTimeout = args.timeout;
+    if (operation.id === 'page.waitFor' && args.timeout != null) {
+      transportTimeout = Number(args.timeout) + 5;
+    }
+    callOptions = await session.operationOptions(args.target, {
+      timeout: transportTimeout,
+      includeSubdomains: args.includeSubdomains,
+      targetSelector: args.targetSelector,
+      format: args.format,
+      quality: args.quality,
+      fullPage: args.fullPage,
+    });
+  }
+
+  const raw = await invokeBrowserOperation(session.getBot(), operation, args, callOptions);
+
+  switch (operation.id) {
+    case 'tabs.list':
+      return dataResult(`Open tabs: ${(raw.tabs || []).length}`, raw, { maxChars });
+    case 'clients.list':
+      return dataResult(`Connected browser extensions: ${raw.length}`, raw, {
+        maxChars,
+        structured: { clients: raw },
+      });
+    case 'url.open':
+      return dataResult(`Opened ${args.url} in tab ${raw}.`, {
+        url: args.url,
+        tabId: raw,
+        target: callOptions.target,
+      }, { maxChars });
+    case 'tab.close':
+      return dataResult(`Closed tab ${args.tabId}.`, {
+        tabId: args.tabId,
+        target: callOptions.target,
+        closed: true,
+      }, { maxChars });
+    case 'page.html': {
+      const limit = args.maxChars || maxChars;
+      return dataResult('', raw || '', {
+        maxChars: limit,
+        structured: {
+          tabId: args.tabId,
+          target: callOptions.target,
+          html: String(raw || '').slice(0, limit),
+        },
+      });
+    }
+    case 'page.info':
+      return dataResult(`Page information for tab ${args.tabId}`, {
+        ...raw,
+        tabId: args.tabId,
+        target: callOptions.target,
+      }, { maxChars });
+    case 'screenshot.capture':
+      return screenshotResult(raw);
+    case 'script.execute':
+      return dataResult(`JavaScript executed in tab ${args.tabId}.`, raw, {
+        maxChars,
+        structured: { tabId: args.tabId, target: callOptions.target, result: raw },
+      });
+    case 'style.inject':
+      return dataResult(`CSS injected into tab ${args.tabId}.`, {
+        tabId: args.tabId,
+        target: callOptions.target,
+        injected: true,
+      }, { maxChars });
+    case 'cookies.read':
+      return dataResult(`Cookies returned: ${raw.length}`, raw, {
+        maxChars,
+        structured: { tabId: args.tabId, target: callOptions.target, cookies: raw },
+      });
+    case 'cookies.readDomain':
+      return dataResult(`Cookies returned for ${args.domain}: ${raw.length}`, raw, {
+        maxChars,
+        structured: { domain: args.domain, target: callOptions.target, cookies: raw },
+      });
+    case 'file.upload':
+      return dataResult(`Uploaded files: ${raw.length}`, raw, {
+        maxChars,
+        structured: { tabId: args.tabId, target: callOptions.target, uploadedFiles: raw },
+      });
+    default:
+      return dataResult(operation.title || operation.id, raw, { maxChars });
+  }
+}
+
 function createToolDefinitions(session, config, skillService = null) {
   const maxChars = config.maxTextChars || 100000;
-  const safe = [
-    {
-      name: 'browser_status',
-      title: 'JS Eyes: Browser Status',
-      description: 'Check JS Eyes server reachability and list connected browser extensions.',
-      inputSchema: z.object({}),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute() {
-        const status = await session.status();
-        return dataResult(status.healthy ? 'JS Eyes is ready.' : 'JS Eyes is not ready.', status, { maxChars });
-      },
-    },
-    {
-      name: mcpTool('clients.list'),
-      title: 'JS Eyes: List Browser Clients',
-      description: 'List browser extensions connected to the local JS Eyes server.',
-      inputSchema: z.object({}),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute() {
-        const clients = await session.listClients();
-        return dataResult(`Connected browser extensions: ${clients.length}`, clients, {
-          maxChars,
-          structured: { clients },
-        });
-      },
-    },
-    {
-      name: mcpTool('tabs.list'),
-      title: 'JS Eyes: List Tabs',
-      description: 'List open browser tabs. Without target, tabs from all connected extensions are returned.',
-      inputSchema: z.object({ target, timeout }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
+  const browserTools = listBrowserOperationsForProfile(config.toolProfile)
+    .filter((operation) => operation.mcpTool)
+    .map((operation) => ({
+      name: operation.mcpTool,
+      title: operation.title,
+      description: operation.description,
+      inputSchema: zodFromJsonSchema(operation.inputSchema),
+      annotations: annotations(operation.annotations || {}),
       async execute(args) {
-        const requested = args.target || config.target || undefined;
-        const resolvedTarget = requested
-          ? await session.resolveTarget(requested)
-          : undefined;
-        const result = await session.getBot().getTabs({
-          ...(resolvedTarget ? { target: resolvedTarget } : {}),
-          timeout: args.timeout || config.requestTimeout,
-        });
-        return dataResult(`Open tabs: ${(result.tabs || []).length}`, result, { maxChars });
+        return runBrowserOperation(session, config, operation, args || {});
       },
-    },
-    {
-      name: mcpTool('url.open'),
-      title: 'JS Eyes: Open URL',
-      description: 'Open a URL in a new tab or navigate an existing tab. JS Eyes egress policy applies.',
-      inputSchema: z.object({
-        url: z.string().url().max(8192),
-        tabId: z.number().int().nonnegative().optional(),
-        windowId: z.number().int().nonnegative().optional(),
-        target,
-        timeout,
-      }),
-      annotations: annotations({ openWorld: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        const openedTabId = await session.getBot().openUrl(
-          args.url,
-          args.tabId ?? null,
-          args.windowId ?? null,
-          options,
-        );
-        return dataResult(`Opened ${args.url} in tab ${openedTabId}.`, {
-          url: args.url,
-          tabId: openedTabId,
-          target: options.target,
-        }, { maxChars });
-      },
-    },
-    {
-      name: mcpTool('tab.close'),
-      title: 'JS Eyes: Close Tab',
-      description: 'Close a browser tab.',
-      inputSchema: z.object({ tabId, target, timeout }),
-      annotations: annotations({ destructive: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        await session.getBot().closeTab(args.tabId, options);
-        return dataResult(`Closed tab ${args.tabId}.`, {
-          tabId: args.tabId,
-          target: options.target,
-          closed: true,
-        }, { maxChars });
-      },
-    },
-    {
-      name: mcpTool('page.html'),
-      title: 'JS Eyes: Get Page HTML',
-      description: 'Read HTML from a browser tab. Output is truncated to the requested character limit.',
-      inputSchema: z.object({
-        tabId,
-        target,
-        timeout,
-        maxChars: z.number().int().min(1000).max(1000000).optional(),
-      }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        const html = await session.getBot().getTabHtml(args.tabId, options);
-        const limit = args.maxChars || maxChars;
-        return dataResult('', html || '', {
-          maxChars: limit,
-          structured: {
-            tabId: args.tabId,
-            target: options.target,
-            html: String(html || '').slice(0, limit),
-          },
-        });
-      },
-    },
-    {
-      name: mcpTool('page.info'),
-      title: 'JS Eyes: Get Page Info',
-      description: 'Read URL, title, status, and other metadata from a browser tab.',
-      inputSchema: z.object({ tabId, target, timeout }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        const info = await session.getBot().getPageInfo(args.tabId, options);
-        return dataResult(`Page information for tab ${args.tabId}`, {
-          ...info,
-          tabId: args.tabId,
-          target: options.target,
-        }, { maxChars });
-      },
-    },
-    {
-      name: mcpTool('screenshot.capture'),
-      title: 'JS Eyes: Take Screenshot',
-      description: 'Capture a browser tab and return native MCP image content.',
-      inputSchema: z.object({
-        tabId,
-        target,
-        timeout,
-        format: z.enum(['png', 'jpeg']).optional(),
-        quality: z.number().int().min(0).max(100).optional(),
-        fullPage: z.boolean().optional(),
-      }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, {
-          timeout: args.timeout,
-          format: args.format,
-          quality: args.quality,
-          fullPage: args.fullPage,
-        });
-        const screenshot = await session.getBot().captureScreenshot(args.tabId, options);
-        return screenshotResult(screenshot);
-      },
-    },
-  ];
+    }));
 
-  const full = [
-    {
-      name: mcpTool('script.execute'),
-      title: 'JS Eyes: Execute JavaScript',
-      description: 'Execute JavaScript in a browser tab. This is a high-risk full-profile tool.',
-      inputSchema: z.object({
-        tabId,
-        code: z.string().min(1).max(200000),
-        target,
-        timeout,
-      }),
-      annotations: annotations({ destructive: true, openWorld: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        const result = await session.getBot().executeScript(args.tabId, args.code, options);
-        return dataResult(`JavaScript executed in tab ${args.tabId}.`, result, {
-          maxChars,
-          structured: { tabId: args.tabId, target: options.target, result },
-        });
-      },
+  const statusTool = {
+    name: 'browser_status',
+    title: 'JS Eyes: Browser Status',
+    description: 'Check JS Eyes server reachability and list connected browser extensions.',
+    inputSchema: z.object({}),
+    annotations: annotations({ readOnly: true, idempotent: true }),
+    async execute() {
+      const status = await session.status();
+      return dataResult(status.healthy ? 'JS Eyes is ready.' : 'JS Eyes is not ready.', status, { maxChars });
     },
-    {
-      name: mcpTool('style.inject'),
-      title: 'JS Eyes: Inject CSS',
-      description: 'Inject CSS into a browser tab. This is a high-risk full-profile tool.',
-      inputSchema: z.object({
-        tabId,
-        css: z.string().min(1).max(200000),
-        target,
-        timeout,
-      }),
-      annotations: annotations({ destructive: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        await session.getBot().injectCss(args.tabId, args.css, options);
-        return dataResult(`CSS injected into tab ${args.tabId}.`, {
-          tabId: args.tabId,
-          target: options.target,
-          injected: true,
-        }, { maxChars });
-      },
-    },
-    {
-      name: mcpTool('cookies.read'),
-      title: 'JS Eyes: Get Cookies',
-      description: 'Read cookies for a browser tab. This sensitive tool is available only in the full profile.',
-      inputSchema: z.object({ tabId, target, timeout }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, { timeout: args.timeout });
-        const cookies = await session.getBot().getCookies(args.tabId, options);
-        return dataResult(`Cookies returned: ${cookies.length}`, cookies, {
-          maxChars,
-          structured: { tabId: args.tabId, target: options.target, cookies },
-        });
-      },
-    },
-    {
-      name: mcpTool('cookies.readDomain'),
-      title: 'JS Eyes: Get Cookies By Domain',
-      description: 'Read cookies by domain. This sensitive tool is available only in the full profile.',
-      inputSchema: z.object({
-        domain: z.string().min(1).max(253),
-        includeSubdomains: z.boolean().optional(),
-        target,
-        timeout,
-      }),
-      annotations: annotations({ readOnly: true, idempotent: true }),
-      async execute(args) {
-        const options = await session.operationOptions(args.target, {
-          timeout: args.timeout,
-          includeSubdomains: args.includeSubdomains,
-        });
-        const cookies = await session.getBot().getCookiesByDomain(args.domain, options);
-        return dataResult(`Cookies returned for ${args.domain}: ${cookies.length}`, cookies, {
-          maxChars,
-          structured: { domain: args.domain, target: options.target, cookies },
-        });
-      },
-    },
-    {
-      name: mcpTool('file.upload'),
-      title: 'JS Eyes: Upload File',
-      description: 'Upload base64-encoded files through a page file input. Available only in the full profile.',
-      inputSchema: z.object({
-        tabId,
-        files: z.array(z.object({
-          base64: z.string().min(1).max(20000000),
-          name: z.string().min(1).max(255),
-          type: z.string().min(1).max(255),
-        })).min(1).max(20),
-        targetSelector: z.string().min(1).max(2000).optional(),
-        target,
-        timeout,
-      }),
-      annotations: annotations({ destructive: true }),
-      async execute(args) {
-        const totalBytes = args.files.reduce((sum, file) => sum + file.base64.length, 0);
-        if (totalBytes > 50000000) {
-          throw new FacadeError('JS_EYES_INVALID_ARGUMENT', 'Combined upload payload exceeds 50 MB.');
-        }
-        const options = await session.operationOptions(args.target, {
-          timeout: args.timeout,
-          targetSelector: args.targetSelector,
-        });
-        const uploadedFiles = await session.getBot().uploadFileToTab(args.tabId, args.files, options);
-        return dataResult(`Uploaded files: ${uploadedFiles.length}`, uploadedFiles, {
-          maxChars,
-          structured: { tabId: args.tabId, target: options.target, uploadedFiles },
-        });
-      },
-    },
-  ];
+  };
 
   const skills = skillService ? [
     {
@@ -337,7 +247,8 @@ function createToolDefinitions(session, config, skillService = null) {
     },
   ] : [];
 
-  return config.toolProfile === 'full' ? [...safe, ...full, ...skills] : [...safe, ...skills];
+  // Keep browser_status first for stable discovery order, then operations table order.
+  return [statusTool, ...browserTools, ...skills];
 }
 
 function registerTools(server, definitions, logger = console) {
@@ -364,4 +275,4 @@ function registerTools(server, definitions, logger = console) {
   return definitions;
 }
 
-module.exports = { annotations, createToolDefinitions, registerTools };
+module.exports = { annotations, createToolDefinitions, registerTools, zodFromJsonSchema };

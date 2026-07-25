@@ -9,10 +9,10 @@ const {
   BrowserAutomation,
   PolicyBlockError,
   ServerPolicyError,
-} = require("../packages/client-sdk");
-const { loadConfig, setConfigValue } = require("../packages/config");
-const { createServer } = require("../packages/server-core");
-const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
+} = require("@js-eyes/client-sdk");
+const { loadConfig, setConfigValue } = require("@js-eyes/config");
+const { createServer } = require("@js-eyes/server-core");
+const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("@js-eyes/protocol");
 const {
   createSkillTrustStore,
   discoverSkillsFromSources,
@@ -20,10 +20,10 @@ const {
   planSkillInstall,
   resolveSkillSources,
   skillToolActionName,
-} = require("../packages/protocol/skills");
-const { SkillHostService } = require("../packages/skill-runtime");
-const { ensureRuntimePaths, chmodBestEffort } = require("../packages/runtime-paths");
-const { ensureToken } = require("../packages/runtime-paths/token.js");
+} = require("@js-eyes/skill-install/skills");
+const { SkillHostService } = require("@js-eyes/skill-runtime");
+const { ensureRuntimePaths, chmodBestEffort } = require("@js-eyes/runtime-paths");
+const { ensureToken } = require("@js-eyes/runtime-paths/token.js");
 import { createAuthHelpers } from "./auth.mjs";
 import { ensureNativeHost, logNativeHostResult } from "./native-host-setup.mjs";
 import { createSharedServerManager } from "./shared-server.mjs";

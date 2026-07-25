@@ -1,6 +1,6 @@
 # JS Eyes Release SOP
 
-Last updated: 2026-07-19
+Last updated: 2026-07-25
 
 ## Preferred Release Path
 
@@ -249,7 +249,25 @@ Then publish for real:
 npm run publish:workspaces
 ```
 
-The command is idempotent — packages whose `<name>@<version>` already exist on the registry are skipped. Dependency topological order (protocol → runtime-paths → config → skill-recording → client-sdk → server-core → native-host) is hard-coded in [packages/devtools/bin/js-eyes-dev.js](packages/devtools/bin/js-eyes-dev.js).
+The command is idempotent — packages whose `<name>@<version>` already exist on the registry are skipped. Canonical publish order lives in [scripts/release-packages.js](scripts/release-packages.js) (`skill-contract` → `skill-install` → `protocol` → `runtime-paths` → `config` → `policy` → … → `js-eyes` CLI).
+
+### Devtools command map
+
+Primary entry: `npm run devtools` → `packages/devtools/bin/js-eyes-dev.js`.
+
+| npm script | Devtools / script | Purpose |
+|------------|-------------------|---------|
+| `build` / `build:*` | `js-eyes-dev build …` | Site, skill bundle, Chrome/Firefox |
+| `release` / `release:dry-run` | `js-eyes-dev release` | Full local release orchestration |
+| `release:verify` | `scripts/verify-release.js` | Single verification entry (CI + local) |
+| `release:prepare-packages` | `scripts/prepare-release-packages.js` | Stage npm tarballs |
+| `release:publish-packages` | `scripts/publish-release-packages.js` | Publish staged packages |
+| `publish:workspaces` | `js-eyes-dev publish workspaces` | Workspace npm publish |
+| `publish:clawhub` | `js-eyes-dev release --skip-*` | ClawHub-only path |
+| `package:smoke` | `scripts/package-smoke.js` | Staged package smoke |
+| `sync` / `bundle` / `bump` | `js-eyes-dev …` | Version sync and bundling |
+
+Use `npm run release:verify` as the single local gate before opening a coordinated release; do not invent parallel verify scripts.
 
 Verify:
 

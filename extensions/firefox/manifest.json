@@ -23,6 +23,7 @@
       "background/connection-methods.js",
       "background/messaging-methods.js",
       "background/operations-methods.js",
+      "background/page-interact-methods.js",
       "background/routing-methods.js",
       "background/tabs-methods.js",
       "background/browser-control-methods.js",

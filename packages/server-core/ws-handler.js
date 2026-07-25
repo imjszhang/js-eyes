@@ -12,7 +12,7 @@ let PolicyContextCtor = null;
 function loadPolicyContext() {
   if (PolicyContextCtor !== null) return PolicyContextCtor;
   try {
-    PolicyContextCtor = require('@js-eyes/client-sdk/policy').PolicyContext;
+    PolicyContextCtor = require('@js-eyes/policy').PolicyContext;
   } catch {
     PolicyContextCtor = false;
   }
@@ -339,6 +339,18 @@ function handleExtensionMessage(raw, clientId, state) {
         requestId,
       }, state);
       break;
+    case 'click_complete':
+    case 'fill_complete':
+    case 'scroll_complete':
+    case 'wait_for_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: data.type,
+        tabId: data.tabId,
+        result: data.result,
+        requestId,
+      }, state);
+      break;
     case 'inject_css_complete':
       resolveRequest(requestId, {
         status: 'success',
@@ -560,6 +572,18 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     case 'get_page_info':
       forwardToExtension('get_page_info', data, socket, state, ['tabId'], target, clientId);
+      break;
+    case 'click':
+      forwardToExtension('click', data, socket, state, ['tabId', 'selector', 'text', 'index'], target, clientId);
+      break;
+    case 'fill':
+      forwardToExtension('fill', data, socket, state, ['tabId', 'selector', 'value', 'clearFirst', 'index'], target, clientId);
+      break;
+    case 'scroll':
+      forwardToExtension('scroll', data, socket, state, ['tabId', 'target', 'selector', 'pixels'], target, clientId);
+      break;
+    case 'wait_for':
+      forwardToExtension('wait_for', data, socket, state, ['tabId', 'selector', 'timeout', 'visible'], target, clientId);
       break;
     case 'upload_file_to_tab':
       forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);

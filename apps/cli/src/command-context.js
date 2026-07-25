@@ -48,12 +48,12 @@ const {
   runSkillCli,
   skillToolActionName,
   verifySkillIntegrity,
-} = require('@js-eyes/protocol/skills');
+} = require('@js-eyes/skill-install/skills');
 const {
   snapshotExtraDir,
   clearSnapshotForExtraDir,
   classifyExtraDir,
-} = require('@js-eyes/protocol/extra-integrity');
+} = require('@js-eyes/skill-install/extra-integrity');
 const { flagsToArgv } = require('./lib/args');
 const { print } = require('./lib/output');
 const { resolvePluginPath: resolvePluginPathFromLib } = require('./lib/plugin');

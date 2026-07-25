@@ -32,6 +32,8 @@ function createRuntime(config = {}, logger) {
 const TOOL_DEFINITIONS = [
   {
     name: 'youtube_get_video',
+    risk: 'read',
+    capabilities: ["network.direct","process.spawn"],
     label: 'YouTube Ops: Get Video',
     description: '读取 YouTube 视频元数据，可选同时返回字幕。',
     parameters: {
@@ -55,6 +57,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'youtube_get_subtitles',
+    risk: 'read',
+    capabilities: ["network.direct","process.spawn"],
     label: 'YouTube Ops: Get Subtitles',
     description: '读取 YouTube 视频字幕，返回语言列表和字幕文本。',
     parameters: {
@@ -76,25 +80,37 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [],
+  "network": {
+    "direct": true,
+    "hosts": [
+      "youtube.com"
+    ]
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [
+    "spawn"
+  ],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": false,
+  "browserExtension": false,
+  "login": false,
+  "platforms": [
+    "youtube.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS YouTube Ops Skill',
   version: pkg.version,
@@ -107,16 +123,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      optional: tool.optional,
-    })),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

@@ -1,115 +1,36 @@
 # examples/js-eyes-skills/
 
-遵循本仓库 [`skill.contract.js`](../../docs/dev/js-eyes-skills/contract.zh.md) 契约的**可运行样例**。
+可运行的 **Skill Runtime V2** 样例（`skill.manifest.json` + `skill.entry.js` +
+`skill.definition.js`）。发现阶段只读静态 manifest，不会执行 entry。
 
 ## 样例索引
 
 | 样例 | 难度 | 覆盖特性 |
 |------|------|---------|
-| [`js-hello-ops-skill/`](js-hello-ops-skill/) | ⭐ | 单工具、无副作用、不依赖 `@js-eyes/skill-recording` |
-| 更多进阶样例 | — | 规划中（多工具、录制、consent、CLI） |
+| [`js-hello-ops-skill/`](js-hello-ops-skill/) | 入门 | 单工具、V2 manifest/entry、本地 CLI |
+
+旧的 V1 `skill.contract.js` 样例见 [`examples/legacy/`](../legacy/)（已弃用）。
 
 ## 运行步骤
 
 ```bash
-# 1. 拷到工作目录（不要放回仓库 skills/）
 cp -R examples/js-eyes-skills/js-hello-ops-skill ~/my-skills/
 cd ~/my-skills/js-hello-ops-skill
-
-# 2. 安装依赖
 npm install
-```
 
-### 3. 在 OpenClaw 配置里接入（二选一）
-
-**A. 把 `skillsDir` 指向父目录（primary 模式，js-eyes 接管生命周期）**
-
-```jsonc
-// ~/.openclaw/openclaw.json
-{
-  "tools": { "alsoAllow": ["js-eyes"] },
-  "plugins": {
-    "entries": {
-      "js-eyes": {
-        "enabled": true,
-        "config": { "skillsDir": "/Users/you/my-skills" }
-      }
-    }
-  }
-}
-```
-
-**B. 保留默认 `skills/`，用 `extraSkillDirs` 挂接（extra 模式，只读）**
-
-```jsonc
-// ~/.openclaw/openclaw.json
-{
-  "tools": { "alsoAllow": ["js-eyes"] },
-  "plugins": {
-    "entries": {
-      "js-eyes": {
-        "enabled": true,
-        "config": {
-          "extraSkillDirs": [
-            "/Users/you/my-skills/js-hello-ops-skill"
-            // 父目录写法（扫 1 层子目录）：
-            // "/Users/you/my-skills"
-          ]
-        }
-      }
-    }
-  }
-}
-```
-
-> `extraSkillDirs` 里的 skill 不受 `js-eyes skills install/approve/verify` 管辖，只被发现并纳入 `js-eyes` 路由。详见[部署模式 D](../../docs/dev/js-eyes-skills/deployment.zh.md#5-部署模式-dprimary--extraskilldirs)。
-
-### 4. 启用与调用（零重启路径推荐）
-
-```bash
-# 零重启：把外部目录接入当前主机并自动启用
+# 接到当前主机（extra 模式）
 js-eyes skills link ~/my-skills/js-hello-ops-skill
 
-# 已在运行的 OpenClaw 会在 ~300ms 内通过 config 监听器热加载这个技能
-# js-eyes 的 skills/reload action 也能主动驱动 reload 并拿到 diff 摘要
-
-# 也可以直接用 CLI 跑
+# 或直接 CLI
 node ~/my-skills/js-hello-ops-skill/index.js title 123
-
-# 如果未来要临时停掉该 skill
-js-eyes skills disable js-hello-ops-skill   # 立即热卸载
-js-eyes skills unlink ~/my-skills/js-hello-ops-skill  # 从 extraSkillDirs 移除
 ```
 
-### 4.1 在你的 skill 里实现 `runtime.dispose()`
+## 新建 Skill 最小文件
 
-热卸载/热替换时，`SkillRegistry` 会调用 `runtime.dispose()` 清理长连接。建议模板：
+1. `package.json` — `name` 即 skill id  
+2. `skill.definition.js` — `TOOL_DEFINITIONS`（含 `risk` / `capabilities`）+ skill 级 `capabilities` / `requirements`  
+3. `skill.entry.js` — `handlers`（官方技能优先用 `@js-eyes/skill-scaffold` 的 `createSkillEntry`；也可手写或用 `@js-eyes/skill-runtime` 的 `createNativeHandlers`）  
+4. `skill.manifest.json` — 可用 `@js-eyes/skill-scaffold` 的 `buildSkillManifest` 从 definition 生成，须与 tools 一致  
+5. `SKILL.md` — 面向使用者的说明  
 
-```js
-function createRuntime(config = {}, logger) {
-  let bot = null;
-  return {
-    ensureBot() {
-      if (!bot) bot = new BrowserAutomation(serverUrl, { logger });
-      return bot;
-    },
-    async dispose() {
-      if (bot) {
-        try { bot.disconnect(); } catch {}
-        bot = null;
-      }
-    },
-  };
-}
-```
-
-参考 [`js-hello-ops-skill/skill.contract.js`](js-hello-ops-skill/skill.contract.js)。
-
-
-完整指南见 [docs/dev/js-eyes-skills/authoring.zh.md](../../docs/dev/js-eyes-skills/authoring.zh.md)。
-
-## 样例的命名约定
-
-- **目录名** = 技能 ID = `package.json.name`，统一用 `js-<domain>-ops-skill` 模式。
-- **工具名**：按主题加前缀，如 `hello_*`、`browser_*`、`x_*`。避免与 [内置 `js_eyes_*` 工具](../../openclaw-plugin/index.mjs)、其他 skill 的工具名冲突（主插件通过 `registeredNames` 防撞，冲突则跳过）。
-- **最小依赖**：能不引入 `@js-eyes/skill-recording` 就不引，保持样例简洁；需要录制再在进阶样例里演示。
+工具表以 `TOOL_DEFINITIONS` 为唯一源；不要再导出 `createOpenClawAdapter`。

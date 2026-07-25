@@ -15,6 +15,7 @@ import './utils.js';
 import './connection-methods.js';
 import './messaging-methods.js';
 import './operations-methods.js';
+import './page-interact-methods.js';
 import './routing-methods.js';
 import './tabs-methods.js';
 import './browser-control-methods.js';

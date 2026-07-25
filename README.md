@@ -64,18 +64,22 @@ JS Eyes now uses a publish-oriented monorepo layout:
 |------|---------|
 | `apps/cli` | Public `js-eyes` npm CLI |
 | `apps/native-host` | Browser Native Messaging host for auto-injecting `server.token` |
-| `packages/protocol` | Shared protocol constants and compatibility matrix |
+| `packages/protocol` | Shared protocol constants, browser operations, compatibility matrix |
+| `packages/skill-install` | Skill discovery, install, trust, and registry helpers |
+| `packages/policy` | Host-neutral policy context (egress / taint / task-origin) |
 | `packages/runtime-paths` | Runtime directories and filesystem layout |
-| `packages/config` | CLI config loading and persistence |
+| `packages/config` | CLI config loading and persistence (`~/.js-eyes` + `JS_EYES_*`) |
 | `packages/client-sdk` | Browser automation SDK for Node.js / skills |
+| `packages/skill-runtime` / `skill-scaffold` | Host-neutral Skill Runtime V2 and scaffolding |
 | `packages/server-core` | HTTP + WebSocket server core |
 | `packages/mcp-server` | Native stdio MCP facade for Codex, Claude, Cursor, and other MCP clients |
-| `openclaw-plugin` | Optional OpenClaw plugin component |
+| `openclaw-plugin` | Optional OpenClaw adapter (`@js-eyes/openclaw-plugin` workspace) |
+| `packages/visual-*` | Skill-optional visual bridge / replay libraries (not platform runtime) |
 | `packages/devtools` | Internal build/release tooling |
 | `extensions/*` | Browser extension assets; `extensions/shared` is the canonical cross-browser background runtime |
-| `skills/*` | Independent extension skills built on `@js-eyes/client-sdk` |
+| `skills/*` | Independent site skills |
 
-The source repository no longer keeps root-level compatibility trees like `server/`, `clients/`, or `cli/`. The `openclaw-plugin/` directory is now a first-class optional component at the repo root.
+Configuration entry point for operators is `~/.js-eyes` plus `JS_EYES_*` environment variables. MCP-specific `JS_EYES_MCP_*` flags override the same config layer. OpenClaw legacy `openclaw.json` skill enablement is migrated read-only and is not a second source of truth.
 
 ### Development
 
@@ -305,7 +309,7 @@ explains the trade-off in full.
 | `extraSkillDirs` skipped integrity verification | New switch off — 2.6.1 behaviour preserved | Set `security.verifyExtraSkillDirs=true`; `skills link` then auto-snapshots, `skills relink` after reviewed edits | `security.verifyExtraSkillDirs` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification)) | `js-eyes doctor` prints `integrity: verified \| drifted \| missing-snapshot` per extra; `js-eyes doctor --json` exposes it on each skill row |
 | Native-host install path runs remote code (`npx`) | `npx js-eyes native-host install` remains supported (does **not** seed the server token) | Use the local launcher `bin/js-eyes-native-host-install.sh \| .ps1` — zero network and 2.6.3+ also runs `js-eyes server token init` so popup **Sync Token From Host** works on first try | none — doc-only change in 2.6.2 ([notes](./SECURITY_SCAN_NOTES.md#d-npx-js-eyes-native-host-install-runs-remote-code)) | `node apps/cli/bin/js-eyes.js native-host status` + `js-eyes server token show` |
 | Server token handling | Generated on demand, file `0600` / Windows `icacls`, bearer on WS + HTTP | Keep defaults; rotate periodically; never set `allowAnonymous=true` in production | `security.allowAnonymous`, `js-eyes server token rotate` ([notes](./SECURITY_SCAN_NOTES.md#scope)) | `js-eyes doctor` → *Token* section; `js-eyes audit tail` |
-| npm install path (`installSkillDependencies`) | `spawnSync` with whitelisted argv, `shell:false`, filtered env ([safe-npm.js](./packages/protocol/safe-npm.js)) | Enforce strict lockfile usage so remote tarballs must match | `plugins.entries["js-eyes"].config.requireLockfile=true` ([notes](./SECURITY_SCAN_NOTES.md#1-packagesprotocolskillsjs536--shell-command-execution)) | `node --test packages/protocol/tests/safe-npm.test.js` |
+| npm install path (`installSkillDependencies`) | `spawnSync` with whitelisted argv, `shell:false`, filtered env ([safe-npm.js](./packages/skill-install/safe-npm.js)) | Enforce strict lockfile usage so remote tarballs must match | `plugins.entries["js-eyes"].config.requireLockfile=true` ([notes](./SECURITY_SCAN_NOTES.md#1-packagesprotocolskillsjs536--shell-command-execution)) | `node --test packages/skill-install/tests/safe-npm.test.js` |
 
 Run `js-eyes doctor --json` to get the live machine-readable snapshot of every
 row above; pipe to `jq` or your auditor's tool of choice.

@@ -540,6 +540,64 @@ class BrowserAutomation {
       skipped: response.skipped || null,
     };
   }
+
+  async click(tabId, params = {}, options = {}) {
+    const response = await this._sendRequest(browserWireAction('page.click'), {
+      tabId: parseInt(tabId, 10),
+      selector: params.selector,
+      text: params.text,
+      index: params.index,
+    }, options);
+    return response.result;
+  }
+
+  async fill(tabId, params = {}, options = {}) {
+    const response = await this._sendRequest(browserWireAction('page.fill'), {
+      tabId: parseInt(tabId, 10),
+      selector: params.selector,
+      value: params.value,
+      clearFirst: params.clearFirst,
+      index: params.index,
+    }, options);
+    return response.result;
+  }
+
+  async scroll(tabId, params = {}, options = {}) {
+    const payload = {
+      tabId: parseInt(tabId, 10),
+      selector: params.selector,
+      pixels: params.pixels,
+    };
+    // Wire field is `target` (top|bottom); keep scrollTarget alias for callers.
+    if (params.scrollTarget != null) payload.target = params.scrollTarget;
+    else if (params.target === 'top' || params.target === 'bottom') payload.target = params.target;
+    const response = await this._sendRequest(browserWireAction('page.scroll'), payload, options);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async waitFor(tabId, params = {}, options = {}) {
+    const callOptions = { ...options };
+    // Page-wait seconds must not starve the transport timeout.
+    if (params.timeout != null) {
+      const minTransport = Number(params.timeout) + 5;
+      if (callOptions.timeout == null || Number(callOptions.timeout) < minTransport) {
+        callOptions.timeout = minTransport;
+      }
+    }
+    const resolvedTabId = Number(tabId);
+    const response = await this._sendRequest(browserWireAction('page.waitFor'), {
+      tabId: resolvedTabId,
+      selector: params.selector,
+      timeout: params.timeout,
+      visible: params.visible,
+    }, callOptions);
+    return response.result;
+  }
 }
 
 module.exports = {

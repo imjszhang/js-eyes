@@ -442,6 +442,8 @@ const TOOL_DEFINITIONS = [
   // ---------- READ：4 个主工具走 lib/api.js（bridge-first + fallback） ----------
   {
     name: 'x_search_tweets',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","browser.screenshot"],
     label: 'X Ops: Search Tweets',
     description: '搜索 X.com (Twitter) 内容。支持关键词搜索、排序、日期范围、作者过滤、互动数过滤等。返回结构化帖子数据（含作者、内容、统计、媒体）。',
     parameters: {
@@ -487,6 +489,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_search_archive',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Search Archive (Official API)',
     description: '通过 X Official API 搜索推文（全库 search/all 或近期 search/recent）。需要 X_BEARER_TOKEN，可能产生 API 费用。与 x_search_tweets（浏览器 GraphQL 搜索）不同，无需 js-eyes 浏览器连接。',
     parameters: {
@@ -604,6 +608,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_create_article',
+    risk: 'destructive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","network.direct","secrets.xApiCredentials","filesystem.userFiles"],
     label: 'X Ops: Create Article (Official API)',
     description: '通过 X Official API 创建 Article 草稿（Markdown→DraftJS）。需要 OAuth 1.0a 写凭证；publish=true 时可能需 X Premium 并产生公开长文。无需 js-eyes 浏览器。',
     parameters: {
@@ -702,6 +708,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_publish_article',
+    risk: 'destructive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","network.direct","secrets.xApiCredentials","filesystem.userFiles"],
     label: 'X Ops: Publish Article (Official API)',
     description: '发布已有 X Article 草稿为公开长文。需要 OAuth 1.0a 写凭证，可能需 X Premium。destructive：会产生公开可见内容。',
     parameters: {
@@ -750,6 +758,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_get_profile',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","browser.screenshot"],
     label: 'X Ops: Get Profile Tweets',
     description: '浏览 X.com 指定用户的主页与时间线内容。返回用户资料和帖子列表。支持翻页、日期筛选、互动数过滤。',
     parameters: {
@@ -792,6 +802,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_get_post',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Get Post Detail',
     description: '读取 X.com 帖子或 Article 详情（自动识别 t.co / /i/article/ /status/）。包括内容、统计、媒体。可选获取对话线程和回复。**deprecated 写参数**（reply/post/quote/thread/media）会透传到 v2 scripts/x-post.js，将在 v3.1 移到独立工具：x_create_tweet / x_reply_tweet / x_quote_tweet / x_create_thread。',
     parameters: {
@@ -827,6 +839,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_download_media',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Download Post Media',
     description: '读取 X 推文并将图片/视频下载到本地目录（会产生 local file side effect，不入 skill READ cache 的纯 JSON 语义）。',
     parameters: {
@@ -865,6 +879,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_get_home_feed',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Get Home Feed',
     description: '浏览 X.com 首页 Feed（For You 或 Following）。返回帖子列表，支持翻页和过滤。',
     parameters: {
@@ -906,6 +922,8 @@ const TOOL_DEFINITIONS = [
   // ---------- READ：x_session_state（轻量，不进 cache，走 bridge.sessionState） ----------
   {
     name: 'x_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Session State',
     description: '读取当前浏览器中 X.com 的登录态 + whoami（home-bridge.sessionState）；已登录返回 {loggedIn, username, screenName, userId?, displayName?, name(=screen_name)}；未登录回 {loggedIn:false}。',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -925,6 +943,8 @@ const TOOL_DEFINITIONS = [
   // ---------- INTERACTIVE：4 个 navigate 工具（仅 location.assign） ----------
   {
     name: 'x_navigate_search',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Navigate To Search',
     description: '把浏览器导航到 X 搜索结果页（仅 location.assign）。',
     parameters: {
@@ -945,6 +965,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_navigate_profile',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Navigate To Profile',
     description: '把浏览器导航到指定用户主页（仅 location.assign）。',
     parameters: {
@@ -964,6 +986,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_navigate_post',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Navigate To Post',
     description: '把浏览器导航到推文详情页（仅 location.assign）。',
     parameters: {
@@ -984,6 +1008,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_navigate_home',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'X Ops: Navigate To Home',
     description: '把浏览器导航到 X 首页（仅 location.assign，不切 For You/Following Tab；切 Tab 由 UI 完成）。',
     parameters: {
@@ -1004,6 +1030,8 @@ const TOOL_DEFINITIONS = [
   // ---------- Monitor：5 个受控工具（不暴露 init/check/daemon/stop，后三项会触发外部副作用,仅 CLI） ----------
   {
     name: 'x_monitor_list_accounts',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'X Ops Monitor: List Accounts',
     description: '列出当前 monitor 配置中的所有监控账号（读本地 config.json，不访问 X，不产生任何外部副作用）。',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -1032,6 +1060,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_monitor_get_status',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'X Ops Monitor: Get Status',
     description: '汇总当前 monitor 的运行状态：每个账号的 lastCheck / knownTweetCount / lastError，以及 daemon 进程存活态（读本地 state + pid，不访问 X，不产生副作用）。',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -1079,6 +1109,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_monitor_add_account',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'X Ops Monitor: Add Account',
     description: '把一个 X 账号加入监控列表。**本工具会写本地配置文件 ~/.js-eyes/skill-data/js-x-ops-skill/monitor/config.json**；不会访问 X，不会对外发通知。若账号已存在则更新其 channels/enabled。',
     parameters: {
@@ -1118,6 +1150,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_monitor_remove_account',
+    risk: 'administrative',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'X Ops Monitor: Remove Account',
     description: '从监控列表移除一个 X 账号。**本工具会写本地配置文件**；不会访问 X，不会清除已有 state 文件（保留历史用于调试）。',
     parameters: {
@@ -1149,6 +1183,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'x_monitor_test_account',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute","filesystem.skillData"],
     label: 'X Ops Monitor: Test Account',
     description: '对单个账号跑一次时间线抓取用于配置调试。**对 X 是 READ，不写 state、不发任何通知**；复用 monitor 全局 defaults 或账号级覆盖。返回 sampleSize + 前 3 条预览。',
     parameters: {
@@ -1215,20 +1251,46 @@ function projectTool(tool) {
   };
 }
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => Object.assign(projectTool(tool), {
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "navigation",
+    "script.execute",
+    "screenshot"
+  ],
+  "network": {
+    "direct": true,
+    "hosts": [
+      "x.com",
+      "api.x.com",
+      "upload.twitter.com"
+    ]
+  },
+  "filesystem": [
+    "skillData",
+    "userFiles"
+  ],
+  "process": [],
+  "secrets": [
+    "xApiCredentials"
+  ],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "x.com",
+    "twitter.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS X Ops Skill',
   version: pkg.version,
@@ -1244,11 +1306,7 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map(projectTool),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
   // 工厂导出供测试 / 业务脚本复用
   makeReadToolExecutor,

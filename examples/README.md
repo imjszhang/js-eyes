@@ -1,12 +1,13 @@
 # examples/
 
-> Last updated: 2026-04-19
+> Last updated: 2026-07-25
 
 本目录放**可运行样例代码**，供开发者拷贝改造。按 skill 体系分层：
 
 | 子目录 | 指向规范 | 文档 |
 |--------|---------|------|
-| [`js-eyes-skills/`](js-eyes-skills/) | 本仓库 [`skill.contract.js`](../docs/dev/js-eyes-skills/contract.zh.md) 契约 | [docs/dev/js-eyes-skills/](../docs/dev/js-eyes-skills/) |
+| [`js-eyes-skills/`](js-eyes-skills/) | Skill Runtime V2（`skill.manifest.json` + `skill.entry.js`） | [docs/architecture/skill-runtime-v2.md](../docs/architecture/skill-runtime-v2.md) |
+| [`legacy/`](legacy/) | 已弃用的 V1 `skill.contract.js` 样例（勿用于新工作） | 同上「V1 soft sunset」 |
 | [`skills/`](skills/) | 未来兼容外部通用 Skills（占位） | [docs/dev/skills/](../docs/dev/skills/) |
 
 ## 为什么独立于 `skills/`

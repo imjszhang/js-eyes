@@ -148,6 +148,8 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
 const TOOL_DEFINITIONS = [
   {
     name: 'github_session_state',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Session State',
     description: '读取浏览器当前 GitHub 页推断的登录态（meta[name=user-login]）',
     parameters: { type: 'object', properties: {}, required: [] },
@@ -165,6 +167,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_get_repo',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Get Repo',
     description: '通过 GitHub REST API 读取公开仓库元数据（stars、forks、默认分支等）',
     parameters: {
@@ -190,6 +194,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_list_issues',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: List Issues',
     description: '列出仓库 Issues（默认排除 PR；api.github.com）',
     parameters: {
@@ -219,6 +225,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_get_issue',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Get Issue',
     description: '读取单条 Issue 详情（含正文摘要）',
     parameters: {
@@ -246,6 +254,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_navigate_repo',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Navigate Repo',
     description: '仅 location.assign 到仓库根路径',
     parameters: {
@@ -266,6 +276,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_navigate_issues',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Navigate Issues',
     description: '导航到 Issues 列表，可选 q 查询串',
     parameters: {
@@ -287,6 +299,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'github_navigate_issue',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read","browser.navigation","browser.script.execute"],
     label: 'GitHub Ops: Navigate Issue',
     description: '导航到指定 Issue 页',
     parameters: {
@@ -320,20 +334,37 @@ function projectTool(tool) {
   };
 }
 
-function createOpenClawAdapter(config = {}, logger) {
-  const runtime = createRuntime(config, logger);
-  return {
-    runtime,
-    tools: TOOL_DEFINITIONS.map((tool) => Object.assign(projectTool(tool), {
-      async execute(toolCallId, params) {
-        const result = await tool.execute(runtime, params, { toolCallId });
-        return runtime.jsonResult(result);
-      },
-    })),
-  };
-}
+
+
+const skillCapabilities = {
+  "browser": [
+    "tabs.read",
+    "navigation",
+    "script.execute"
+  ],
+  "network": {
+    "direct": false,
+    "hosts": []
+  },
+  "filesystem": [
+    "skillData"
+  ],
+  "process": [],
+  "secrets": [],
+  "background": false
+};
+const skillRequirements = {
+  "server": true,
+  "browserExtension": true,
+  "login": false,
+  "platforms": [
+    "github.com"
+  ]
+};
 
 module.exports = {
+  capabilities: skillCapabilities,
+  requirements: skillRequirements,
   id: pkg.name,
   name: 'JS GitHub Ops Skill',
   version: pkg.version,
@@ -348,10 +379,6 @@ module.exports = {
     entry: './cli/index.js',
     commands: CLI_COMMANDS,
   },
-  openclaw: {
-    tools: TOOL_DEFINITIONS.map(projectTool),
-  },
   createRuntime,
-  createOpenClawAdapter,
   TOOL_DEFINITIONS,
 };

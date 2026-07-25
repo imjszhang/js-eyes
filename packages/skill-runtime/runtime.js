@@ -26,6 +26,10 @@ const BROWSER_METHOD_CAPABILITIES = Object.freeze({
   getCookies: 'browser.cookies.read',
   getCookiesByDomain: 'browser.cookies.read',
   uploadFileToTab: 'browser.files.upload',
+  click: 'browser.page.interact',
+  fill: 'browser.page.interact',
+  scroll: 'browser.page.interact',
+  waitFor: 'browser.page.interact',
 });
 
 function noop() {}
