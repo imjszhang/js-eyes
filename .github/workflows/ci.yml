@@ -82,8 +82,8 @@ jobs:
         run: >-
           node --test
           test/import-boundaries.test.js
-          packages/protocol/tests/safe-npm.test.js
-          packages/protocol/tests/extra-integrity.test.js
+          packages/skill-install/tests/safe-npm.test.js
+          packages/skill-install/tests/extra-integrity.test.js
 
       - name: Audit production dependencies
         run: npm audit --omit=dev
