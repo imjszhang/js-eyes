@@ -56,7 +56,6 @@ function createBundlePackageJson(version) {
       '@js-eyes/server-core': version,
       '@js-eyes/skill-recording': version,
       '@js-eyes/skill-runtime': version,
-      '@js-eyes/skill-worker': version,
     },
     engines: {
       node: '>=22.0.0',

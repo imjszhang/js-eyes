@@ -2,7 +2,11 @@
 
 const crypto = require('crypto');
 const { URL } = require('url');
-const { REQUEST_TIMEOUT_MS } = require('@js-eyes/protocol');
+const {
+  ACTION_POLICY_TOOL_MAP,
+  REQUEST_TIMEOUT_MS,
+  SENSITIVE_BROWSER_ACTIONS,
+} = require('@js-eyes/protocol');
 
 let PolicyContextCtor = null;
 function loadPolicyContext() {
@@ -16,13 +20,8 @@ function loadPolicyContext() {
 }
 
 const ACTION_TOOL_MAP = {
-  execute_script: 'executeScript',
+  ...ACTION_POLICY_TOOL_MAP,
   inject_script: 'executeScript',
-  inject_css: 'injectCss',
-  get_cookies: 'getCookies',
-  get_cookies_by_domain: 'getCookiesByDomain',
-  upload_file_to_tab: 'uploadFileToTab',
-  open_url: 'openUrl',
 };
 
 function lookupTabUrlInState(state, tabId) {
@@ -428,13 +427,7 @@ function handleExtensionError(data, state) {
   }
 }
 
-const SENSITIVE_AUTOMATION_ACTIONS = new Set([
-  'execute_script',
-  'inject_css',
-  'get_cookies',
-  'get_cookies_by_domain',
-  'upload_file_to_tab',
-]);
+const SENSITIVE_AUTOMATION_ACTIONS = new Set(SENSITIVE_BROWSER_ACTIONS);
 
 async function handleAutomationMessage(raw, clientId, socket, state) {
   let data;

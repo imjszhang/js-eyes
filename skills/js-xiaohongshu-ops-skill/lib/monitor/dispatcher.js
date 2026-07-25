@@ -20,7 +20,7 @@
  */
 
 const fs = require('fs');
-const { BrowserAutomation } = require('../js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../runtimeConfig');
 const cfgMod = require('./config');
 const stateMod = require('./state');

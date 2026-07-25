@@ -81,7 +81,7 @@ function stateHomeOpts(options) {
  *
  * @param {Object} params
  * @param {Object} params.config   内存中的 config 对象（需先通过 validateConfig 校验）
- * @param {import('../js-eyes-client').BrowserAutomation} params.browser
+ * @param {import('@js-eyes/client-sdk').BrowserAutomation} params.browser
  * @param {Object} [params.options]
  * @returns {Promise<Object>}
  */

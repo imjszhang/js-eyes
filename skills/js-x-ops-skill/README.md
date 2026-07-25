@@ -64,7 +64,7 @@ node index.js home --feed following --max-pages 5
 
 ## 工作原理
 
-本技能通过 JS-Eyes SDK（`lib/js-eyes-client.js`）与浏览器交互：
+本技能通过共享 JS-Eyes SDK（`@js-eyes/client-sdk`）与浏览器交互：
 
 1. **Tab 复用**：文件锁 tab 注册表（`work_dir/cache/tab_registry.json`），同域名跨进程复用，30 分钟超时自动清理
 2. **GraphQL API**：动态扫描 JS bundle 发现 queryId（带 24h 缓存），在浏览器上下文中调用 X.com GraphQL API
@@ -86,7 +86,7 @@ node index.js home --feed following --max-pages 5
 ### 使用的 JS-Eyes API
 
 ```javascript
-const { BrowserAutomation } = require('./lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { searchTweets, getProfileTweets, getPost, getHomeFeed } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');

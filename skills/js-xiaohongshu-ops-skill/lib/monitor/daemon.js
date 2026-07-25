@@ -7,7 +7,7 @@
  */
 
 const fs = require('fs');
-const { BrowserAutomation } = require('../js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../runtimeConfig');
 const { loadConfig, ensureBaseDirs } = require('./config');
 const { resolvePaths } = require('./paths');

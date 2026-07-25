@@ -125,7 +125,7 @@ skills/js-zhihu-ops-skill/
   SKILL.md
   package.json
   index.js                     委托 cli/index.js
-  skill.contract.js            工厂化 + AI 工具表
+  skill.definition.js          工厂化 + AI 工具表
   cli/index.js                 dispatcher（读 lib/commands.js）
   lib/
     config.js                  PAGE_PROFILES（answer/article/question/search/user/home）
@@ -139,7 +139,7 @@ skills/js-zhihu-ops-skill/
       dispatcher.js
       paths.js
     runtimeConfig.js           server/recording 配置
-    js-eyes-client.js          BrowserAutomation
+    @js-eyes/client-sdk        BrowserAutomation
     zhihuUtils.js              旧脚本 fallback 抽取器
   bridges/
     common.js                  DOM helpers + sessionState + blocker detect

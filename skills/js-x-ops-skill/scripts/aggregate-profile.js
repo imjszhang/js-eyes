@@ -27,7 +27,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { runTool } = require('../lib/runTool');
 const { getPost } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');

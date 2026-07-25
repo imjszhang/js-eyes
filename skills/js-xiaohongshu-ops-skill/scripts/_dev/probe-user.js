@@ -5,7 +5,7 @@
  * 探当前 user profile 页的 follows/fans/interactions selector + 用户笔记卡片 token 候选位置。
  */
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../../lib/runtimeConfig');
 
 (async () => {

@@ -1,7 +1,9 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 const pkg = require('./package.json');
-const { BrowserAutomation } = require('./lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { runTool } = require('./lib/runTool');
 const { Session } = require('./lib/session');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
@@ -10,15 +12,15 @@ const targets = require('./lib/toolTargets');
 
 const CLI_COMMANDS = [
   { name: 'doctor', description: '连通性 + bridge + probe + state 诊断' },
-  { name: 'probe', description: '页面指纹' },
-  { name: 'state', description: '当前 profile 状态' },
-  { name: 'session-state', description: '登录态（meta）' },
-  { name: 'get-repo', description: 'REST 读取仓库' },
-  { name: 'list-issues', description: '列出 Issues' },
-  { name: 'get-issue', description: '读取单条 Issue' },
-  { name: 'navigate-repo', description: '导航到仓库（INTERACTIVE）' },
-  { name: 'navigate-issues', description: '导航到 Issues 列表（INTERACTIVE）' },
-  { name: 'navigate-issue', description: '导航到 Issue（INTERACTIVE）' },
+  { name: 'front', description: '首页列表' },
+  { name: 'item', description: '帖子详情 + 评论' },
+  { name: 'user', description: '用户页' },
+  { name: 'search', description: 'Algolia 搜索' },
+  { name: 'session-state', description: '登录态' },
+  { name: 'navigate-front', description: '导航首页（INTERACTIVE）' },
+  { name: 'navigate-item', description: '导航帖子（INTERACTIVE）' },
+  { name: 'navigate-user', description: '导航用户（INTERACTIVE）' },
+  { name: 'navigate-search', description: '导航搜索相关页（INTERACTIVE）' },
 ];
 
 function makeLogger(logger) {
@@ -58,7 +60,7 @@ function createRuntime(config = {}, logger) {
   };
 }
 
-function makeReadToolExecutor({ pageKey, method, toolName, buildTargetUrl }) {
+function makeReadToolExecutor({ pageKey, method, toolName, buildTargetUrl, cmdDef }) {
   return async function execute(runtime, params, context = {}) {
     const targetUrl = typeof buildTargetUrl === 'function' ? buildTargetUrl(params || {}) : null;
     return runTool(runtime.ensureBot(), {
@@ -67,13 +69,15 @@ function makeReadToolExecutor({ pageKey, method, toolName, buildTargetUrl }) {
       method,
       args: params || {},
       targetUrl,
+      cmdDef,
       options: {
         wsEndpoint: runtime.config.serverUrl,
         recording: runtime.config.recording,
         runId: context.toolCallId,
+        readMode: (params && params.readMode) || undefined,
         navigateOnReuse: false,
-        reuseAnyGithubTab: true,
-        createUrl: targetUrl || 'https://github.com/',
+        reuseAnyHnTab: true,
+        createUrl: targetUrl || 'https://news.ycombinator.com/news',
       },
     });
   };
@@ -90,8 +94,8 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
         wsEndpoint: runtime.config.serverUrl,
         createIfMissing: true,
         navigateOnReuse: false,
-        reuseAnyGithubTab: true,
-        createUrl: 'https://github.com/',
+        reuseAnyHnTab: true,
+        createUrl: 'https://news.ycombinator.com/news',
       },
     });
     try {
@@ -101,7 +105,7 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
       const navResp = await session.callApi(method, [params || {}]);
       if (!navResp || !navResp.ok) {
         return {
-          platform: 'github',
+          platform: 'hackernews',
           toolName,
           pageKey,
           method,
@@ -126,7 +130,7 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
             expectedUrl: expectedUrl || null,
           });
       return {
-        platform: 'github',
+        platform: 'hackernews',
         toolName,
         pageKey,
         method,
@@ -145,164 +149,207 @@ function makeNavigateToolExecutor({ pageKey, method, toolName }) {
 
 const TOOL_DEFINITIONS = [
   {
-    name: 'github_session_state',
-    label: 'GitHub Ops: Session State',
-    description: '读取浏览器当前 GitHub 页推断的登录态（meta[name=user-login]）',
+    name: 'hn_session_state',
+    label: 'HN Ops: Session State',
+    description: '读取浏览器当前 HN 页推断的登录态',
     parameters: { type: 'object', properties: {}, required: [] },
     optional: true,
     interactive: false,
     destructive: false,
-    pageKey: 'repo',
+    pageKey: 'front',
     method: 'sessionState',
     execute: makeReadToolExecutor({
-      toolName: 'github_session_state',
-      pageKey: 'repo',
+      toolName: 'hn_session_state',
+      pageKey: 'front',
       method: 'sessionState',
       buildTargetUrl: () => null,
     }),
   },
   {
-    name: 'github_get_repo',
-    label: 'GitHub Ops: Get Repo',
-    description: '通过 GitHub REST API 读取公开仓库元数据（stars、forks、默认分支等）',
+    name: 'hn_get_front_page',
+    label: 'HN Ops: Front Page',
+    description: '读取 HN 首页列表（Firebase API + DOM 兜底）',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string', description: '仓库 owner（与 repo 成对，或与 slug 二选一）' },
-        repo: { type: 'string' },
-        slug: { type: 'string', description: 'owner/repo 缩写，例如 octocat/Hello-World' },
+        feed: { type: 'string', enum: ['top', 'new', 'best', 'ask', 'show', 'job'], default: 'top' },
+        page: { type: 'number', description: '分页 ?p=N，默认 1' },
+        limit: { type: 'number', description: '条数，默认 30，最大 100' },
+        readMode: { type: 'string', enum: ['auto', 'api', 'dom'] },
       },
       required: [],
     },
     optional: true,
     interactive: false,
     destructive: false,
-    pageKey: 'repo',
-    method: 'getRepo',
+    pageKey: 'front',
+    method: 'getFrontPage',
     execute: makeReadToolExecutor({
-      toolName: 'github_get_repo',
-      pageKey: 'repo',
-      method: 'getRepo',
-      buildTargetUrl: (p) => targets.repoRootUrl(p),
+      toolName: 'hn_get_front_page',
+      pageKey: 'front',
+      method: 'getFrontPage',
+      buildTargetUrl: (p) => targets.frontUrl(p),
+      cmdDef: { domSupported: true, apiSupported: true, defaultReadMode: 'auto' },
     }),
   },
   {
-    name: 'github_list_issues',
-    label: 'GitHub Ops: List Issues',
-    description: '列出仓库 Issues（默认排除 PR；api.github.com）',
+    name: 'hn_get_item',
+    label: 'HN Ops: Get Item',
+    description: '读取帖子详情与评论树（Firebase 递归 kids + DOM 兜底）',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string' },
-        repo: { type: 'string' },
-        slug: { type: 'string' },
-        state: { type: 'string', enum: ['open', 'closed', 'all'], default: 'open' },
-        perPage: { type: 'number', description: '每页条数，默认 25，最大 100' },
-        page: { type: 'number', description: '页码，从 1 起' },
-        excludePulls: { type: 'boolean', default: true },
+        itemId: { type: 'number' },
+        url: { type: 'string' },
+        depth: { type: 'number', description: '评论树深度，默认 6' },
+        commentLimit: { type: 'number', description: '评论数量上限，默认 200' },
+        readMode: { type: 'string', enum: ['auto', 'api', 'dom'] },
       },
       required: [],
     },
     optional: true,
     interactive: false,
     destructive: false,
-    pageKey: 'issues',
-    method: 'listIssues',
+    pageKey: 'item',
+    method: 'getItem',
     execute: makeReadToolExecutor({
-      toolName: 'github_list_issues',
-      pageKey: 'issues',
-      method: 'listIssues',
-      buildTargetUrl: (p) => targets.issuesListUrl(p),
+      toolName: 'hn_get_item',
+      pageKey: 'item',
+      method: 'getItem',
+      buildTargetUrl: (p) => targets.itemUrl(p),
+      cmdDef: { domSupported: true, apiSupported: true, defaultReadMode: 'auto' },
     }),
   },
   {
-    name: 'github_get_issue',
-    label: 'GitHub Ops: Get Issue',
-    description: '读取单条 Issue 详情（含正文摘要）',
+    name: 'hn_get_user',
+    label: 'HN Ops: Get User',
+    description: '读取用户资料与提交/评论列表',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string' },
-        repo: { type: 'string' },
-        slug: { type: 'string' },
-        number: { type: 'number' },
-        bodyMaxLen: { type: 'number', description: '正文最大长度，默认 12000' },
+        userId: { type: 'string' },
+        tab: { type: 'string', enum: ['submitted', 'comments'], default: 'submitted' },
+        limit: { type: 'number' },
+        readMode: { type: 'string', enum: ['auto', 'api', 'dom'] },
       },
-      required: ['number'],
+      required: [],
     },
     optional: true,
     interactive: false,
     destructive: false,
-    pageKey: 'issue',
-    method: 'getIssue',
+    pageKey: 'user',
+    method: 'getUser',
     execute: makeReadToolExecutor({
-      toolName: 'github_get_issue',
-      pageKey: 'issue',
-      method: 'getIssue',
-      buildTargetUrl: (p) => targets.issueDetailUrl(p),
+      toolName: 'hn_get_user',
+      pageKey: 'user',
+      method: 'getUser',
+      buildTargetUrl: (p) => targets.userUrl(p),
+      cmdDef: { domSupported: true, apiSupported: true, defaultReadMode: 'auto' },
     }),
   },
   {
-    name: 'github_navigate_repo',
-    label: 'GitHub Ops: Navigate Repo',
-    description: '仅 location.assign 到仓库根路径',
+    name: 'hn_search',
+    label: 'HN Ops: Search',
+    description: 'Algolia 搜索 HN（hn.algolia.com）',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string' },
-        repo: { type: 'string' },
-        slug: { type: 'string' },
+        query: { type: 'string' },
+        tags: { type: 'string' },
+        sort: { type: 'string', enum: ['relevance', 'date'] },
+        page: { type: 'number' },
+        limit: { type: 'number' },
+        readMode: { type: 'string', enum: ['api'] },
+      },
+      required: ['query'],
+    },
+    optional: true,
+    interactive: false,
+    destructive: false,
+    pageKey: 'search',
+    method: 'search',
+    execute: makeReadToolExecutor({
+      toolName: 'hn_search',
+      pageKey: 'search',
+      method: 'search',
+      buildTargetUrl: () => null,
+      cmdDef: { domSupported: false, apiSupported: true, defaultReadMode: 'api' },
+    }),
+  },
+  {
+    name: 'hn_navigate_front',
+    label: 'HN Ops: Navigate Front',
+    description: '仅 location.assign 到首页 feed',
+    parameters: {
+      type: 'object',
+      properties: {
+        feed: { type: 'string', enum: ['top', 'new', 'best', 'ask', 'show', 'job'] },
+        page: { type: 'number' },
       },
       required: [],
     },
     optional: true,
     interactive: true,
     destructive: false,
-    pageKey: 'repo',
-    method: 'navigateRepo',
-    execute: makeNavigateToolExecutor({ toolName: 'github_navigate_repo', pageKey: 'repo', method: 'navigateRepo' }),
+    pageKey: 'front',
+    method: 'navigateFront',
+    execute: makeNavigateToolExecutor({ toolName: 'hn_navigate_front', pageKey: 'front', method: 'navigateFront' }),
   },
   {
-    name: 'github_navigate_issues',
-    label: 'GitHub Ops: Navigate Issues',
-    description: '导航到 Issues 列表，可选 q 查询串',
+    name: 'hn_navigate_item',
+    label: 'HN Ops: Navigate Item',
+    description: '仅 location.assign 到帖子页',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string' },
-        repo: { type: 'string' },
-        slug: { type: 'string' },
-        q: { type: 'string' },
+        itemId: { type: 'number' },
+        url: { type: 'string' },
       },
       required: [],
     },
     optional: true,
     interactive: true,
     destructive: false,
-    pageKey: 'issues',
-    method: 'navigateIssues',
-    execute: makeNavigateToolExecutor({ toolName: 'github_navigate_issues', pageKey: 'issues', method: 'navigateIssues' }),
+    pageKey: 'item',
+    method: 'navigateItem',
+    execute: makeNavigateToolExecutor({ toolName: 'hn_navigate_item', pageKey: 'item', method: 'navigateItem' }),
   },
   {
-    name: 'github_navigate_issue',
-    label: 'GitHub Ops: Navigate Issue',
-    description: '导航到指定 Issue 页',
+    name: 'hn_navigate_user',
+    label: 'HN Ops: Navigate User',
+    description: '仅 location.assign 到用户页',
     parameters: {
       type: 'object',
       properties: {
-        owner: { type: 'string' },
-        repo: { type: 'string' },
-        slug: { type: 'string' },
-        number: { type: 'number' },
+        userId: { type: 'string' },
+        tab: { type: 'string', enum: ['submitted', 'comments'] },
       },
-      required: ['number'],
+      required: [],
     },
     optional: true,
     interactive: true,
     destructive: false,
-    pageKey: 'issue',
-    method: 'navigateIssue',
-    execute: makeNavigateToolExecutor({ toolName: 'github_navigate_issue', pageKey: 'issue', method: 'navigateIssue' }),
+    pageKey: 'user',
+    method: 'navigateUser',
+    execute: makeNavigateToolExecutor({ toolName: 'hn_navigate_user', pageKey: 'user', method: 'navigateUser' }),
+  },
+  {
+    name: 'hn_navigate_search',
+    label: 'HN Ops: Navigate Search',
+    description: 'HN 无同源搜索页；打开 /news（请用 hn_search 走 Algolia）',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+      },
+      required: ['query'],
+    },
+    optional: true,
+    interactive: true,
+    destructive: false,
+    pageKey: 'search',
+    method: 'navigateSearch',
+    execute: makeNavigateToolExecutor({ toolName: 'hn_navigate_search', pageKey: 'search', method: 'navigateSearch' }),
   },
 ];
 
@@ -333,13 +380,13 @@ function createOpenClawAdapter(config = {}, logger) {
 
 module.exports = {
   id: pkg.name,
-  name: 'JS GitHub Ops Skill',
+  name: 'JS Hacker News Ops Skill',
   version: pkg.version,
   description: pkg.description,
   runtime: {
     requiresServer: true,
     requiresBrowserExtension: true,
-    platforms: ['github.com'],
+    platforms: ['news.ycombinator.com'],
     pageProfiles: Object.keys(PAGE_PROFILES),
   },
   cli: {

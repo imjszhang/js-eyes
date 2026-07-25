@@ -1,5 +1,7 @@
 'use strict';
 
+// Isolated-process backend owned by the Skill runtime package.
+
 const path = require('path');
 const { fork } = require('child_process');
 

@@ -2,7 +2,7 @@
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const contract = require('../skill.contract');
+const contract = require('../skill.definition');
 
 function printUsage(stdout = process.stdout) {
   const lines = [

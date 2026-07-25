@@ -1,7 +1,7 @@
 export function registerToolRouter({
   api,
   coreActions,
-  getSkillRegistry,
+  getSkillHostService,
   normalizeSkillAction,
   textResult,
 }) {
@@ -38,14 +38,18 @@ export function registerToolRouter({
           return core.execute(toolCallId, args);
         }
         if (action.startsWith("skill/")) {
-          const skillRegistry = getSkillRegistry();
-          if (!skillRegistry || typeof skillRegistry.executeAction !== "function") {
+          const skillHostService = getSkillHostService();
+          if (!skillHostService || typeof skillHostService.callAction !== "function") {
             return textResult(
-              `JS Eyes skill registry 当前不可用，可能正在重载或插件已进入关闭流程。\n` +
+              `JS Eyes skill host 当前不可用，可能正在重载或插件已进入关闭流程。\n` +
               `请稍后重试 action: ${action}`,
             );
           }
-          return skillRegistry.executeAction(normalizeSkillAction(action), toolCallId, args);
+          return skillHostService.callAction(
+            normalizeSkillAction(action),
+            args,
+            toolCallId,
+          );
         }
         return textResult(
           `不支持的 JS Eyes action: ${action}\n` +

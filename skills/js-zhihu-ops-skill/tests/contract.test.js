@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const contract = require('../skill.contract');
+const contract = require('../skill.definition');
 
 test('contract exposes explicit safety flags for every tool', () => {
   assert.ok(Array.isArray(contract.tools));

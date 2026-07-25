@@ -691,9 +691,6 @@ async function installSkillFromRegistry(options) {
 // network code in this module. See SECURITY_SCAN_NOTES.md.
 const { runSkillCli } = require('./skill-runner');
 
-// Assign to (rather than replace) module.exports so that modules which have
-// already captured a reference during circular require — notably
-// ./skill-registry — observe the final API once this module finishes loading.
 Object.assign(module.exports, {
   INSTALL_MANIFEST_FILE,
   INTEGRITY_FILE,
@@ -737,9 +734,3 @@ module.exports.fetchSkillsRegistry = fetchSkillsRegistry;
 module.exports.planSkillInstall = planSkillInstall;
 module.exports.resolveSkillSources = resolveSkillSources;
 module.exports.skillToolActionName = skillToolActionName;
-
-// After our own exports are populated, pull in the registry factory. This must
-// happen last so skill-registry.js sees a fully-populated skills API.
-const skillRegistry = require('./skill-registry');
-module.exports.createSkillRegistry = skillRegistry.createSkillRegistry;
-module.exports.purgeRequireCacheFor = skillRegistry.purgeRequireCacheFor;

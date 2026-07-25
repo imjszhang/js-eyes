@@ -4,7 +4,7 @@ const { Session } = require('../lib/session');
 const { COMMANDS, parseArgv, printHelp } = require('../lib/commands');
 const { PAGE_PROFILES, DEFAULT_PAGE } = require('../lib/config');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
-const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPost } = require('../lib/api');
 const { runTool } = require('../lib/runTool');
 const {

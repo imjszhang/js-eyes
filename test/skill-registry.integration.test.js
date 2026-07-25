@@ -14,7 +14,7 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSkillRegistry } = require('../packages/protocol/skills');
+const { createSkillRegistry } = require('../packages/skill-runtime');
 const { loadConfig, setConfigValue } = require('../packages/config');
 
 function writeSkillContract(dir, id, tool) {
@@ -101,6 +101,7 @@ describe('integration: link -> hot-load via real config IO', () => {
       configLoader: () => loadConfig(),
       setConfigValue: (k, v) => setConfigValue(k, v),
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
 

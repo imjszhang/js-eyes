@@ -113,7 +113,7 @@ function shouldFallBack(errCode, modeNorm, hasOtherPath) {
 }
 
 /**
- * @param {import('./js-eyes-client').BrowserAutomation} browser
+ * @param {import('@js-eyes/client-sdk').BrowserAutomation} browser
  * @param {Object} spec
  * @param {string} spec.toolName
  * @param {string} spec.pageKey  - PAGE_PROFILES key（note/search/user/home）

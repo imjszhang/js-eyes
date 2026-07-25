@@ -107,6 +107,7 @@ describe('runtime paths', () => {
     assert.equal(initial.serverHost, 'localhost');
     assert.equal(initial.serverPort, 18080);
     assert.deepEqual(initial.skillsEnabled, {});
+    assert.equal(initial.externalSkills.policy, 'prompt');
     assert.equal(initial.recording.mode, 'standard');
     assert.equal(initial.recording.cacheTtlMinutes, 60);
 
@@ -187,10 +188,12 @@ describe('repository layout', () => {
     assert.equal(fs.existsSync(path.join(repoRoot, 'cli', 'cli.js')), false);
   });
 
-  it('ships skill contracts and adapters for all platform skills', () => {
+  it('ships native V2 definitions and entries for all platform skills', () => {
     for (const skillId of skillIds) {
       const skillDir = path.join(repoRoot, 'skills', skillId);
-      assert.equal(fs.existsSync(path.join(skillDir, 'skill.contract.js')), true, `${skillId} missing skill.contract.js`);
+      assert.equal(fs.existsSync(path.join(skillDir, 'skill.definition.js')), true, `${skillId} missing skill.definition.js`);
+      assert.equal(fs.existsSync(path.join(skillDir, 'skill.entry.js')), true, `${skillId} missing skill.entry.js`);
+      assert.equal(fs.existsSync(path.join(skillDir, 'skill.contract.js')), false, `${skillId} should not ship a V1 contract`);
       assert.equal(fs.existsSync(path.join(skillDir, 'cli', 'index.js')), true, `${skillId} missing cli/index.js`);
       assert.equal(fs.existsSync(path.join(skillDir, 'openclaw-plugin', 'index.mjs')), false, `${skillId} should not ship child plugin entry`);
       assert.equal(fs.existsSync(path.join(skillDir, 'openclaw-plugin', 'package.json')), false, `${skillId} should not ship child plugin package`);

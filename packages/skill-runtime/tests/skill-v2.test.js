@@ -7,10 +7,10 @@ const { afterEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  createSkillRegistry,
   discoverLocalSkills,
   resolveSkillSources,
-} = require('../skills');
+} = require('@js-eyes/protocol/skills');
+const { createSkillRegistry } = require('..');
 
 let tempDir;
 afterEach(() => {

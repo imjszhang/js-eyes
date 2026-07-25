@@ -12,7 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../../package.json');
-const { BrowserAutomation } = require('../js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../runtimeConfig');
 const {
   loadConfig,

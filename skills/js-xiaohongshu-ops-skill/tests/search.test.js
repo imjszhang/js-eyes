@@ -7,7 +7,7 @@
  *   - search-bridge 文件结构（VERSION bump、对齐参考实现的关键编排函数存在）
  *   - CLI parseArgv 支持 --extract-details / --details-limit
  *   - monitor effectiveSearchSettings 透传 extractDetails / detailsLimit（默认 false）
- *   - skill.contract.js xhs_search_notes 工具暴露 detailsLimit 参数
+ *   - skill.definition.js xhs_search_notes 工具暴露 detailsLimit 参数
  */
 
 const test = require('node:test');
@@ -110,8 +110,8 @@ test('monitor effectiveSearchSettings 默认 extractDetails=false 且可覆盖',
   assert.equal(s3.extractDetails, false, 'extractDetails 必须严格 ===true 才生效');
 });
 
-test('skill.contract.js xhs_search_notes 暴露 detailsLimit + 描述提到点开详情', () => {
-  const contract = require('../skill.contract');
+test('skill.definition.js xhs_search_notes 暴露 detailsLimit + 描述提到点开详情', () => {
+  const contract = require('../skill.definition');
   const tool = contract.TOOL_DEFINITIONS.find((t) => t.name === 'xhs_search_notes');
   assert.ok(tool, 'xhs_search_notes 必须存在');
   assert.ok(tool.parameters.properties.detailsLimit, 'parameters 应含 detailsLimit');

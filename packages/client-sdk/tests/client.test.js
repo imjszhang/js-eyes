@@ -15,9 +15,11 @@ const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 function createMockServer(handler) {
   return new Promise((resolve) => {
     const wss = new WebSocketServer({ port: 0 });
+    const requests = [];
     wss.on('listening', () => {
       const port = wss.address().port;
       wss.on('connection', (ws, req) => {
+        requests.push(req);
         const url = new URL(req.url, `ws://localhost:${port}`);
         const clientType = url.searchParams.get('type');
 
@@ -38,7 +40,7 @@ function createMockServer(handler) {
           }
         });
       });
-      resolve({ wss, port, url: `ws://localhost:${port}` });
+      resolve({ wss, port, url: `ws://localhost:${port}`, requests });
     });
   });
 }
@@ -346,6 +348,20 @@ describe('connect / disconnect', () => {
   it('connect() is idempotent when already connected', async () => {
     await bot.connect();
     assert.equal(bot._wsState, 'connected');
+  });
+
+  it('sends tokens only in the Authorization header', async () => {
+    const authenticated = new BrowserAutomation(server.url, {
+      logger: silentLogger,
+      token: 'header-only-token',
+    });
+    await authenticated.connect();
+    const request = server.requests.at(-1);
+    const url = new URL(request.url, server.url);
+    assert.equal(url.searchParams.has('token'), false);
+    assert.equal(request.headers.authorization, 'Bearer header-only-token');
+    assert.equal(request.headers['sec-websocket-protocol'], undefined);
+    authenticated.disconnect();
   });
 
   it('disconnect cleans up state', () => {

@@ -14,7 +14,7 @@
  *   3. 如要探详情弹窗，先点开任意一条笔记后再跑一次（脚本会自动判断是否在弹窗态）
  */
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../../lib/runtimeConfig');
 
 (async () => {

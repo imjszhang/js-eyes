@@ -95,7 +95,7 @@
 | `lib/session.js`         | `{ Session }`              | 主调度器，外部脚本可以 `new Session({ opts:{ page, reuseAnyXTab:true } })` 后 `connect/resolveTarget/ensureBridge/callRaw/callApi` |
 | `lib/runTool.js`         | `{ runTool }`              | READ 工具通用 dispatcher：Session + bridge + recording + debug bundle 一站式                          |
 | `lib/bridgeAdapter.js`   | `{ scrapeViaBridge, ... }` | 调用新 bridge 方法 + 失败 fallback 回老 `scripts/x-*.js` 实现的统一封装                              |
-| `lib/js-eyes-client.js`  | `{ BrowserAutomation }`    | WS 客户端。`Session` 内部用，外部一般不直接 new                                                       |
+| `@js-eyes/client-sdk`    | `{ BrowserAutomation }`    | 共享 WS 客户端。`Session` 内部用，外部一般不直接 new                                                   |
 | `lib/commands.js`        | `{ COMMANDS }`             | 声明式命令表（kind/api/argSpec/targetUrl）                                                            |
 | `lib/toolTargets.js`     | `{ buildSearchUrl, ... }`  | 各命令 `targetUrl` 拼接                                                                              |
 
@@ -132,7 +132,7 @@ console.log(r.code, r.elapsedMs, r.outBytes);
 
 | 现象                                                                | 通常原因                                                            |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `connect WebSocket 401 / Unexpected server response: 401`           | js-eyes server 默认 `allowAnonymous=false`。CLI 没拿到 token：先 `js-eyes server token show --reveal`，再确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN`。`lib/js-eyes-client.js::_resolveToken` 优先级 options.token > env > runtime/server.token |
+| `connect WebSocket 401 / Unexpected server response: 401`           | js-eyes server 默认 `allowAnonymous=false`。CLI 没拿到 token：先 `js-eyes server token show --reveal`，再确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN`。共享 SDK 的优先级为 options.token > env > runtime/server.token |
 | `E_NAV_FAILED` / `E_NAV_VERIFY_FAILED` （v3.0.4+）                  | `Session::_navigateAndVerify` 在 `bot.openUrl` 失败或 `location.href` 不等于期望 URL 时抛出。`err.detail` 里看 `actual / targetUrl / fromUrl`。常见原因：扩展未连上 tab、X.com 把 URL 重定向（如未登录）、URL 里有特殊字符 navigate 后被规范化（用 `urlsEquivalent` 已经容忍 hash / 尾 / 参数顺序差异）。**v3.0.4 之前会被静默吞掉导致 bridge 在错误页面运行**，是 openclaw 调研里"在 profile 跑 search 拿到 profile 时间线"的根因 |
 | search 命令返回 `not_on_search_page` （v3.0.4+）                    | `search-bridge.js` 入口的 `location.pathname` 自检失败，或 `searchViaDom()` 里 `searchUrlMatches(keyword)` 失败（`reason: 'q_param_mismatch'`）。**典型场景**：当前 tab 停在 `/search?q=旧关键词`，`runTool` 默认 `navigateOnReuse=false` 不切 tab，bridge 拒绝读旧 DOM。修复手段：(a) 先调 `node index.js navigate-search "<keyword>"` 切到正确页面；或 (b) GraphQL 主路径成功时根本不会落到这条路径 —— 检查 `meta.graphqlEnabled / opName` |
 | `profile --include-replies` 返回 `meta.repliesFallback=true` （v3.0.4+） | `UserTweetsAndReplies` queryId 失效，重发现拿到同样 queryId 后自动 fallback 到 `UserTweets`（不带 replies）。`meta.fallbackReason` 形如 `UserTweetsAndReplies_unrecoverable:queryid_unchanged`；不影响主时间线分析。**这是降级，不是失败**；如必须拿 replies，等 X 更新 bundle 后 queryId 会变 |

@@ -21,7 +21,7 @@ OpenClaw / CLI / MCP
         |
   SkillRuntime -- config, browser, storage, logging, cancellation
         |
- in-process entry or Worker IPC
+ in-process entry or runtime-owned Worker IPC
 ```
 
 Each invocation receives an immutable context containing its id, source,
@@ -44,6 +44,8 @@ Policies are:
 - `prompt`: an external V2 Skill must be explicitly trusted.
 - `strict`: requires V2 plus explicit trust.
 
+`prompt` is the default. `legacy` must be selected explicitly.
+
 Use `js-eyes skills inspect`, `permissions`, `trust`, and `revoke`. Worker mode
 uses an allowlisted environment and brokers browser operations through the host.
 It is a crash/stability boundary, not an operating-system security sandbox.
@@ -54,8 +56,9 @@ contained without an OS sandbox; those declarations remain approval metadata
 and policy inputs, and Worker mode must not be described as a security sandbox.
 
 Tool input is validated against the manifest JSON Schema before its handler is
-entered. Risk is enforced by the host surface: MCP `safe` accepts only `read`
-Skill tools, while OpenClaw requires explicit, one-shot consent for
+entered. Risk and capability grants are intersected by the host surface: MCP
+`safe` accepts only approved read capabilities, while OpenClaw requires
+explicit, one-shot consent for
 `destructive` and `administrative` tools unless policy explicitly allows them.
 Invocation deadlines reject the host call even if a handler ignores its
 `AbortSignal`; disposal aborts and briefly drains active calls before releasing
@@ -73,6 +76,6 @@ registry and runtime as OpenClaw.
 
 OpenClaw configuration discovery, legacy `openclaw.json` migration, consent,
 tool routing, and watcher lifecycle are owned by `openclaw-plugin/`. Core
-packages do not read OpenClaw configuration or import the plugin. The V1
-`createOpenClawAdapter` name remains only as a legacy Skill-contract
-compatibility shim; V2 activation is host-neutral.
+packages do not read OpenClaw configuration or import the plugin. V1
+`createOpenClawAdapter` remains supported only by the external compatibility
+loader; official Skills use native V2 activation.

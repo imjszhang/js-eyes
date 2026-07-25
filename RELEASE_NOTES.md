@@ -8,10 +8,9 @@
 
 ### Highlights
 
-- **Host-neutral Skill Runtime V2**: the new public
-  `@js-eyes/skill-contract`, `@js-eyes/skill-runtime`, and
-  `@js-eyes/skill-worker` packages define static manifests, discovery,
-  invocation, trust, and Worker execution independently of any host.
+- **Host-neutral Skill Runtime V2**: the public `@js-eyes/skill-contract` and
+  `@js-eyes/skill-runtime` packages define static manifests, discovery,
+  invocation, trust, and isolated Worker execution independently of any host.
 - **CLI and MCP skill host**: invoke skills with `js-eyes skill call`; MCP
   clients can discover, describe, and call the same skills through
   `skill_list`, `skill_describe`, and `skill_call`.
@@ -24,9 +23,9 @@
 - **Reliable hot reload**: linked skill directories and configuration changes
   rebuild the runtime; updated per-skill configuration reaches the replacement
   Worker.
-- **Static official manifests**: all eleven bundled skills expose V2 manifests
-  and entries while retaining the V1 `createOpenClawAdapter` compatibility
-  shim.
+- **Native official Skills**: all eleven bundled skills expose V2 manifests
+  and host-owned Context handlers; their old V1 contracts and per-Skill client
+  shims have been removed.
 - **Real-host validation**: the release was exercised through the CLI, MCP
   stdio, and OpenClaw 2026.6.10, including Worker isolation and plugin hot
   reload.
@@ -37,7 +36,7 @@
   using `createOpenClawAdapter` during migration.
 - External V2 skills may require inspection and explicit trust when prompt or
   strict policy is enabled. A changed source digest invalidates prior trust.
-- The three Skill Runtime V2 packages are first published in this release, so
+- The Skill Runtime V2 packages are first published in this release, so
   upgrade the coordinated JS Eyes packages together to `2.9.0`.
 - Worker execution limits JavaScript reachability but is not an operating
   system sandbox. Only trust skills whose source and permissions you accept.
@@ -47,7 +46,6 @@
 - [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
 - [Skill contract (`@js-eyes/skill-contract`)](https://www.npmjs.com/package/@js-eyes/skill-contract)
 - [Skill runtime (`@js-eyes/skill-runtime`)](https://www.npmjs.com/package/@js-eyes/skill-runtime)
-- [Skill worker (`@js-eyes/skill-worker`)](https://www.npmjs.com/package/@js-eyes/skill-worker)
 - [Native MCP server (`@js-eyes/mcp-server`)](https://www.npmjs.com/package/@js-eyes/mcp-server)
 - [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
 - [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.9.0/js-eyes-chrome-v2.9.0.zip)

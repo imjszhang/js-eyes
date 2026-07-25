@@ -1,7 +1,7 @@
 export function registerManagementActions({
   getActiveServer,
   registerCoreAction,
-  skillRegistry,
+  skillHostService,
 }) {
 registerCoreAction(
     "skills/reload",
@@ -21,7 +21,7 @@ registerCoreAction(
       async execute(_toolCallId, params) {
         const reason = (params && typeof params.reason === 'string') ? params.reason : 'tool';
         try {
-          const summary = await skillRegistry.reload(reason);
+          const summary = await skillHostService.reload(reason);
           const lines = [
             `[js-eyes] reload 完成 (reason=${summary.reason || reason})`,
             `  added:    ${summary.added.join(', ') || '(none)'}`,

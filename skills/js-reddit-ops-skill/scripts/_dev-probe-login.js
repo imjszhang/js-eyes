@@ -5,7 +5,7 @@
 //   1) cookie 是否含 reddit_session / token_v2 / loid
 //   2) /api/v1/me.json 真实响应（status / 长度 / data.name）
 //   3) shreddit 当前的登录指示元素结构（覆盖现有 SKILL.md 写死的选择器之外）
-// 用完即删 / 不进 skill.contract，仅本仓库开发者用。
+// 用完即删 / 不进 skill.definition，仅本仓库开发者用。
 
 const { Session } = require('../lib/session');
 

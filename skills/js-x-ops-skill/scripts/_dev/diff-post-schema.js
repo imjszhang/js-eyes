@@ -18,7 +18,7 @@
 
 const path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
-const { BrowserAutomation } = require(path.join(ROOT, 'lib', 'js-eyes-client'));
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPost } = require(path.join(ROOT, 'lib', 'api'));
 
 const SCALAR_FIELDS = ['tweetId', 'content', 'publishTime', 'tweetUrl', 'authorName', 'authorUsername'];

@@ -1,3 +1,9 @@
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { BROWSER_OPERATION_BY_ID } = require("../../packages/protocol");
+const browserAction = (id) => BROWSER_OPERATION_BY_ID[id].openclawAction;
+
 export function registerBrowserActions({
   ensureBot,
   policyTextResultOrThrow,
@@ -5,9 +11,9 @@ export function registerBrowserActions({
   textResult,
 }) {
 registerCoreAction(
-    "browser/get-tabs",
+    browserAction("tabs.list"),
     {
-      name: "browser/get-tabs",
+      name: browserAction("tabs.list"),
       label: "JS Eyes: Get Tabs",
       description: "获取浏览器中所有已打开的标签页列表，包含每个标签页的 ID、URL、标题等信息。",
       parameters: {
@@ -41,9 +47,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/list-clients",
+    browserAction("clients.list"),
     {
-      name: "browser/list-clients",
+      name: browserAction("clients.list"),
       label: "JS Eyes: List Clients",
       description: "获取当前已连接到 JS-Eyes 服务器的浏览器扩展客户端列表。",
       parameters: { type: "object", properties: {} },
@@ -62,9 +68,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/open-url",
+    browserAction("url.open"),
     {
-      name: "browser/open-url",
+      name: browserAction("url.open"),
       label: "JS Eyes: Open URL",
       description: "在浏览器中打开指定 URL。可以打开新标签页，也可以在已有标签页中导航。返回标签页 ID。",
       parameters: {
@@ -101,9 +107,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/close-tab",
+    browserAction("tab.close"),
     {
-      name: "browser/close-tab",
+      name: browserAction("tab.close"),
       label: "JS Eyes: Close Tab",
       description: "关闭浏览器中指定 ID 的标签页。",
       parameters: {
@@ -127,9 +133,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/get-html",
+    browserAction("page.html"),
     {
-      name: "browser/get-html",
+      name: browserAction("page.html"),
       label: "JS Eyes: Get HTML",
       description: "获取指定标签页的完整 HTML 内容。",
       parameters: {
@@ -153,9 +159,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/execute-script",
+    browserAction("script.execute"),
     {
-      name: "browser/execute-script",
+      name: browserAction("script.execute"),
       label: "JS Eyes: Execute Script",
       description: "在指定标签页中执行 JavaScript 代码并返回执行结果。可用于提取页面数据、操作 DOM 等。",
       parameters: {
@@ -183,9 +189,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/get-cookies",
+    browserAction("cookies.read"),
     {
-      name: "browser/get-cookies",
+      name: browserAction("cookies.read"),
       label: "JS Eyes: Get Cookies",
       description: "获取指定标签页对应域名的所有 Cookie。",
       parameters: {
@@ -212,9 +218,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/inject-css",
+    browserAction("style.inject"),
     {
-      name: "browser/inject-css",
+      name: browserAction("style.inject"),
       label: "JS Eyes: Inject CSS",
       description: "向指定标签页注入自定义 CSS 样式。可用于隐藏页面元素、调整布局等。",
       parameters: {
@@ -239,9 +245,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/get-cookies-by-domain",
+    browserAction("cookies.readDomain"),
     {
-      name: "browser/get-cookies-by-domain",
+      name: browserAction("cookies.readDomain"),
       label: "JS Eyes: Get Cookies By Domain",
       description: "按域名获取浏览器中的所有 Cookie，无需指定标签页。支持包含子域名。",
       parameters: {
@@ -275,9 +281,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/get-page-info",
+    browserAction("page.info"),
     {
-      name: "browser/get-page-info",
+      name: browserAction("page.info"),
       label: "JS Eyes: Get Page Info",
       description: "获取指定标签页的页面信息，包括 URL、标题、状态和图标。",
       parameters: {
@@ -301,9 +307,9 @@ registerCoreAction(
   );
 
 registerCoreAction(
-    "browser/upload-file",
+    browserAction("file.upload"),
     {
-      name: "browser/upload-file",
+      name: browserAction("file.upload"),
       label: "JS Eyes: Upload File",
       description: "向指定标签页的文件上传控件上传文件。文件以 Base64 编码传入，自动设置到页面的 file input 元素。",
       parameters: {

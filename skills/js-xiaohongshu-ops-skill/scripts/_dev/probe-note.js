@@ -6,7 +6,7 @@
  * 输出：noteContainer 关键子树 outline + 候选 selector 命中情况。
  */
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../../lib/runtimeConfig');
 
 (async () => {

@@ -33,7 +33,7 @@ metadata:
 | INTERACTIVE | 仅 `location.assign` 到 `*.github.com` |
 | DESTRUCTIVE | **不做**（不 star / comment / PR / 写 API） |
 
-## AI 工具（`skill.contract.js`）
+## AI 工具（`skill.definition.js`）
 
 | 工具 | 说明 |
 |------|------|

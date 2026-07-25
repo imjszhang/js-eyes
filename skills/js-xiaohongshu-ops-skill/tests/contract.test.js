@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const contract = require('../skill.contract');
+const contract = require('../skill.definition');
 
 test('contract 暴露 v3.0 的全部 AI 工具（6 READ + 4 INTERACTIVE + 5 monitor）', () => {
   const names = contract.tools.map((t) => t.name).sort();

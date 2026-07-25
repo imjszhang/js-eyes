@@ -16,7 +16,7 @@
 const path = require('path');
 const { COMMANDS, parseArgv, printHelp } = require('../lib/commands');
 const { Session } = require('../lib/session');
-const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { runTool } = require('../lib/runTool');
 const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');

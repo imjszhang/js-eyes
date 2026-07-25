@@ -160,17 +160,16 @@ describe('OpenClaw module boundaries', () => {
       fromHost: 'latest', value: 2,
     });
 
-    const { createSkillRuntimeOptions } = await import('../openclaw-plugin/skill-runtime-options.mjs');
-    const runtimeOptions = createSkillRuntimeOptions({
-      hostVersion: '2.8.5',
-      loadEffectiveConfig: resolved.loadEffectiveSkillConfig,
+    const { SkillHostService } = require('../packages/skill-runtime');
+    const service = new SkillHostService(resolved.effectiveSkillConfig, {
+      configLoader: resolved.loadEffectiveSkillConfig,
       logger: { info() {}, warn() {}, error() {} },
       requestTimeout: 5,
       serverHost: '127.0.0.1',
       serverPort: 18080,
       trustStore: { inspect() { return {}; } },
     });
-    const runtime = runtimeOptions.runtimeFactory({
+    const runtime = service.createRuntimeFor({
       descriptor: { id: 'dynamic', capabilities: {} },
     });
     assert.equal(runtime.config.value, 2, 'runtime reads the latest host config');

@@ -26,7 +26,7 @@ export function createHotReloadWatchers({
   fullRuntime,
   pluginConfig,
   runtimePaths,
-  skillRegistry,
+  skillHostService,
   skillSources,
   getSkillSources,
 }) {
@@ -67,7 +67,7 @@ export function createHotReloadWatchers({
     if (reloadTimer) clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => {
       reloadTimer = null;
-      skillRegistry.reload(reason).catch((error) => {
+      skillHostService.reload(reason).catch((error) => {
         api.logger.warn(`[js-eyes] Hot reload failed: ${error.message}`);
       });
     }, 300);

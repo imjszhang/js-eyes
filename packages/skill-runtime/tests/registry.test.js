@@ -6,7 +6,7 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSkillRegistry, purgeRequireCacheFor } = require('../skills');
+const { createSkillRegistry, purgeRequireCacheFor } = require('..');
 
 function writeSkill(dir, id, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });
@@ -161,6 +161,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -185,6 +186,7 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -415,6 +417,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -430,7 +433,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
     assert.equal(io.snapshot().skillsEnabled.extern, true, 'extras should be default-enabled');
   });
 
-  it('default-enables extras on first discovery but keeps primary opt-in', async () => {
+  it('default-enables extras in legacy compatibility mode but keeps primary opt-in', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });
     writeSkill(path.join(primary, 'pri'), 'pri', { tool: 'pri_tool' });
@@ -447,6 +450,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -475,6 +479,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -606,6 +611,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       extrasProvider: () => extras,
       configLoader: io.loader,
       setConfigValue: io.setter,
+      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();

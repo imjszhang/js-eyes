@@ -1,6 +1,17 @@
 'use strict';
 
 const pkg = require('./package.json');
+const {
+  ACTION_POLICY_TOOL_MAP,
+  BROWSER_OPERATIONS,
+  BROWSER_OPERATION_BY_ID,
+  BROWSER_OPERATION_BY_MCP_TOOL,
+  BROWSER_OPERATION_BY_OPENCLAW_ACTION,
+  BROWSER_OPERATION_BY_WIRE_ACTION,
+  FORWARDABLE_ACTIONS,
+  SENSITIVE_BROWSER_ACTIONS,
+  SENSITIVE_BROWSER_TOOL_NAMES,
+} = require('./browser-operations');
 
 const DEFAULT_SERVER_HOST = 'localhost';
 const DEFAULT_SERVER_PORT = 18080;
@@ -11,24 +22,8 @@ const PACKAGE_VERSION = pkg.version;
 const SKILLS_REGISTRY_URL = 'https://js-eyes.com/skills.json';
 const RELEASE_BASE_URL = 'https://github.com/imjszhang/js-eyes/releases/download';
 
-const FORWARDABLE_ACTIONS = [
-  'open_url',
-  'close_tab',
-  'get_html',
-  'execute_script',
-  'inject_css',
-  'get_cookies',
-  'get_cookies_by_domain',
-  'get_page_info',
-  'upload_file_to_tab',
-];
-
 const SENSITIVE_TOOL_NAMES = Object.freeze([
-  'browser/execute-script',
-  'browser/get-cookies',
-  'browser/get-cookies-by-domain',
-  'browser/inject-css',
-  'browser/upload-file',
+  ...SENSITIVE_BROWSER_TOOL_NAMES,
   'skills/plan-install',
 ]);
 
@@ -257,7 +252,15 @@ module.exports = {
   PACKAGE_VERSION,
   SKILLS_REGISTRY_URL,
   RELEASE_BASE_URL,
+  ACTION_POLICY_TOOL_MAP,
+  BROWSER_OPERATIONS,
+  BROWSER_OPERATION_BY_ID,
+  BROWSER_OPERATION_BY_MCP_TOOL,
+  BROWSER_OPERATION_BY_OPENCLAW_ACTION,
+  BROWSER_OPERATION_BY_WIRE_ACTION,
   FORWARDABLE_ACTIONS,
+  SENSITIVE_BROWSER_ACTIONS,
+  SENSITIVE_BROWSER_TOOL_NAMES,
   SENSITIVE_TOOL_NAMES,
   COMPATIBILITY_MATRIX,
   WS_CLOSE_CODE_AUTH_REQUIRED,

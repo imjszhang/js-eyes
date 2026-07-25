@@ -297,7 +297,7 @@ skills/js-xiaohongshu-ops-skill/
   SKILL.md
   package.json
   index.js                     委托 cli/index.js
-  skill.contract.js            工厂化 + AI 工具表
+  skill.definition.js          工厂化 + AI 工具表
   cli/index.js                 dispatcher（读 lib/commands.js）
   lib/
     api.js                     编程 API（默认 useBridge）
@@ -308,7 +308,7 @@ skills/js-xiaohongshu-ops-skill/
     toolTargets.js             工具参数 → URL
     runtimeConfig.js           server/recording 配置
     bridgeAdapter.js           noteViaBridge / commentsViaBridge / 等
-    js-eyes-client.js          BrowserAutomation
+    @js-eyes/client-sdk        BrowserAutomation
     xhsUtils.js                URL 规整 / 字段标准化 / sanitize
   bridges/
     common.js                  fetchXhsApi + parseNoteMeta + DOM helpers + detectAntiCrawl

@@ -16,7 +16,7 @@
  *   2 - 参数错误或调用失败
  */
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { scrapeRedditPost } = require('../../lib/redditUtils');
 const { scrapeViaBridge } = require('../../lib/bridgeAdapter');
 const { resolveRuntimeConfig } = require('../../lib/runtimeConfig');

@@ -52,7 +52,7 @@ metadata:
 - 仅 `location.assign(newUrl)`，**禁止模拟点击任何 DOM CTA**
 - bridge 端 `navigateLocation()` 拒绝跨域 URL（必须是 `*.x.com` / `*.twitter.com`）
 - 调用返回 `{from, to, hint}`，CLI 端 `awaitBridgeAfterNav` 重注 bridge + state 自校验
-- `skill.contract.js` 里带 `interactive: true` / `destructive: false`
+- `skill.definition.js` 里带 `interactive: true` / `destructive: false`
 - 工具：`x_navigate_search` / `x_navigate_profile` / `x_navigate_post` / `x_navigate_home`
 
 ### DESTRUCTIVE（v3.0 透传 v2 行为，v3.1 拆专用工具）
@@ -82,7 +82,7 @@ metadata:
 | INTERACTIVE | `x_navigate_post` | `/i/status/<id>` | 仅 `location.assign` 切推文详情 |
 | INTERACTIVE | `x_navigate_home` | `/home[/following]` | 仅 `location.assign` 切首页 + feed |
 
-全部工具都是 `optional: true`（按需加载），入参详见 `skill.contract.js::TOOL_DEFINITIONS`。
+全部工具都是 `optional: true`（按需加载），入参详见 `skill.definition.js::TOOL_DEFINITIONS`。
 
 ### Monitor（账号监控，5 个受控 AI 工具 + CLI）
 
@@ -97,7 +97,7 @@ v3.0.5 新增：周期性拉 `x_get_profile` → 去重 → 发 webhook 通知�
 
 原则：**会对第三方通知渠道产生副作用的动作永远只走 CLI / 外部调度器**，AI 只能做配置管理 + READ 验证。
 
-### 内部踩点 CLI（不进 `skill.contract.js`，仅供本仓库开发者排查）
+### 内部踩点 CLI（不进 `skill.definition.js`，仅供本仓库开发者排查）
 
 下面两条只在 CLI 暴露、不暴露给 AI tool 列表，用于改版后定位 DOM 结构变化或抓 XHR 形态：
 
@@ -266,7 +266,7 @@ READ 单一管道为 **`lib/runTool.js`**：四座 bridge 同时注册 **`api_*`
 | `graphql` / `api` | 仅 GraphQL |
 | `dom` | 仅 DOM（不可用时会走兼容入口 `search` / `getProfile` 等） |
 
-- **OpenClaw / `skill.contract`**：各 READ 工具的 schema 可选 `readMode`，与 CLI `--read-mode` 一致。
+- **OpenClaw / `skill.definition`**：各 READ 工具的 schema 可选 `readMode`，与 CLI `--read-mode` 一致。
 - **编程 API**（`lib/api.js`）：`useBridge` 未关闭时内部 **`require('./runTool')`**，可传 `readMode`、`visualRecord`、`visualTrace`、`noFrames` 等与 CLI 对齐的选项。
 - **`runToolAudit`** 字段：`readMode` / `requestedReadMode` / `fallback` / `triedMethods` / `usedMethod`（v3.2 由 `mode` / `requestedMode` 改名）。
 - **visual 旋钮**（来自 `@js-eyes/visual-bridge-kit@0.6.0+`）：
@@ -333,14 +333,14 @@ Article 结果带 `contentKind: 'article'`，字段含 `articleId` / `title` / `
 
 ```text
 CLI / AI Tool call
-  └── skill.contract.js (createRuntime / TOOL_DEFINITIONS)
+  └── skill.definition.js (createRuntime / TOOL_DEFINITIONS)
         ├── lib/api.js          编程入口（4 个 READ；bridge 分支同样经 runTool，与 CLI 对齐）
         │     ├── lib/runTool.js        api_* / dom_* + visual kit + 兜底错误码
         │     └── scripts/x-*.js        `JS_X_DISABLE_BRIDGE=1` 时老路径（纯 GraphQL+DOM scripts）
         ├── lib/runTool.js      READ AI 工具 + CLI `kind=tool`（history + debug + 可选 visual-record）
         └── lib/session.js      Session（connect → resolveTarget → ensureBridge → callApi）
               ├── lib/config.js          PAGE_PROFILES + DEFAULT_WS_ENDPOINT
-              ├── lib/js-eyes-client.js  BrowserAutomation
+              ├── @js-eyes/client-sdk    BrowserAutomation
               └── bridges/*-bridge.js    + bridges/common.js (@@include)
                       └── fetchXGraphQL('/i/api/graphql/...')
                           └── 失败时由 collectTweetsFromDom / parseTweetArticle DOM 兜底
@@ -478,7 +478,7 @@ skills/js-x-ops-skill/
 ├── SKILL.md                  # 技能描述（本文件）
 ├── package.json
 ├── index.js                  # 一行 require 委托给 cli/index.js
-├── skill.contract.js         # 工具声明（5 READ + 4 INTERACTIVE）
+├── skill.definition.js         # 工具声明（5 READ + 4 INTERACTIVE）
 ├── cli/
 │   └── index.js              # CLI dispatcher（按 lib/commands.js）
 ├── lib/
@@ -491,7 +491,6 @@ skills/js-x-ops-skill/
 │   ├── toolTargets.js        # targetUrl 拼接
 │   ├── bridgeAdapter.js      # bridge 调用 + fallback 封装
 │   ├── runCliToFile.js       # spawn stdout 直写 fd（绕开 64KB 截断）
-│   ├── js-eyes-client.js     # WS 客户端
 │   ├── runtimeConfig.js      # CLI / env / config.json 解析
 │   ├── xUtils.js             # 余留 helpers（已大幅瘦身）
 │   └── monitor/              # 监控子系统（定时拉时间线 + 去重 + webhook 通知）

@@ -4,11 +4,12 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { SkillHostService } = require('../host-service');
+const { createSkillPermissionPolicy } = require('../permissions');
 
 describe('SkillHostService', () => {
   it('generates a unique invocation id for concurrent calls without a host id', async () => {
     const service = Object.create(SkillHostService.prototype);
-    service.allowedRisks = new Set(['read']);
+    service.permissionPolicy = createSkillPermissionPolicy({ allowedRisks: ['read'] });
     service.invocationSource = 'mcp';
     const invocationIds = [];
     service.ensureReady = async () => ({
@@ -35,7 +36,7 @@ describe('SkillHostService', () => {
 
   it('preserves an invocation id supplied by the host', async () => {
     const service = Object.create(SkillHostService.prototype);
-    service.allowedRisks = new Set(['read']);
+    service.permissionPolicy = createSkillPermissionPolicy({ allowedRisks: ['read'] });
     service.invocationSource = 'mcp';
     service.ensureReady = async () => ({
       describeSkill() {

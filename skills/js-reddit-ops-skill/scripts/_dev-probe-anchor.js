@@ -9,7 +9,7 @@
 //   5) __jse_visual.getConfig() / 是否暴露 setSiteAnchorResolver / __jse_visual.flashElement / mode / detailLevel
 //   6) 把结果写到 /tmp/jse-probe-anchor-<ts>.md，stdout 也给个 summary 表格
 //
-// 用完即删 / 不进 skill.contract，仅本仓库开发者用。
+// 用完即删 / 不进 skill.definition，仅本仓库开发者用。
 
 const fs = require('fs');
 const path = require('path');

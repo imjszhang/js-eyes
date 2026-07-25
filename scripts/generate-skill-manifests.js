@@ -28,7 +28,7 @@ function riskFor(tool) {
 
 function buildManifest(skillDir) {
   const packageJson = require(path.join(skillDir, 'package.json'));
-  const contract = require(path.join(skillDir, 'skill.contract.js'));
+  const contract = require(path.join(skillDir, 'skill.definition.js'));
   const processSkill = PROCESS_SKILLS.has(packageJson.name);
   const browserCapabilities = BROWSER_CAPABILITIES[packageJson.name] || [];
   const platforms = contract.runtime?.platforms || [];
@@ -96,7 +96,7 @@ function buildManifest(skillDir) {
 let stale = false;
 for (const name of fs.readdirSync(SKILLS_ROOT).sort()) {
   const skillDir = path.join(SKILLS_ROOT, name);
-  if (!fs.existsSync(path.join(skillDir, 'skill.contract.js'))) continue;
+  if (!fs.existsSync(path.join(skillDir, 'skill.definition.js'))) continue;
   const manifestPath = path.join(skillDir, 'skill.manifest.json');
   const expected = `${JSON.stringify(buildManifest(skillDir), null, 2)}\n`;
   const actual = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : '';
