@@ -49,10 +49,11 @@ credentials; no long-lived npm token is stored in GitHub.
 
 The remainder of this document is the detailed/manual fallback SOP.
 
-## 2.9.x Migration (Package Boundaries + V1 Skills)
+## 2.10.0 Migration (Package Boundaries + V1 Skills)
 
-Still on the **2.x** line (no 3.0/4.0 major). 2.9 removes compatibility shims
-and V1 skill activation in the same minor. Update before upgrading:
+Still on the **2.x** line (no 3.0/4.0 major). 2.10.0 removes compatibility
+shims and V1 skill activation that remained after the 2.9.0 Skill Runtime V2
+release. Update before upgrading:
 
 ### Package imports
 

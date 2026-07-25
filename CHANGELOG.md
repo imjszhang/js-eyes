@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-> **2.9.x platform line (still 2.x).** Package-boundary cleanup and V1 skill
-> removal ship in this minor without a 3.0/4.0 major bump. Update imports and
-> migrate external skills before upgrading — see [RELEASE.md](RELEASE.md)
-> Package Boundary / V1 migration notes.
+## [2.10.0] - 2026-07-25
+
+> **Architecture cleanup on the 2.x line.** Package-boundary cleanup and V1
+> skill removal ship in this minor without a 3.0/4.0 major bump. 2.9.0 remains
+> the previous Host-neutral Skill Runtime V2 release; upgrade to 2.10.0 only
+> after updating imports and migrating external skills — see
+> [RELEASE.md](RELEASE.md) Package Boundary / V1 migration notes.
 
 ### Fixed
 
@@ -22,6 +25,11 @@ All notable changes to this project will be documented in this file.
   `@js-eyes/skill-install` instead of empty protocol re-export shims.
 - V2 hello example CLI / `SKILL.md` / `engines.node` aligned with the
   manifest layout.
+- Xiaohongshu skill contract tests follow `TOOL_DEFINITIONS` (V2 definition
+  export).
+- `openclaw` is an optional peer of `@js-eyes/openclaw-plugin`, so workspace
+  `npm audit` no longer fails on OpenClaw transitive dependencies when the
+  peer is not installed.
 
 ### Changed
 

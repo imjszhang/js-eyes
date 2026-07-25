@@ -311,7 +311,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.9.0)
+### Security Posture (2.10.0)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -479,12 +479,12 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.9.0` |
-| Browser extension assets | `2.9.0` |
-| `@js-eyes/server-core` | `2.9.0` |
-| `@js-eyes/client-sdk` | `2.9.0` |
-| `@js-eyes/skill-runtime` | `2.9.0` |
-| `openclaw-plugin` | `2.9.0` |
+| CLI | `2.10.0` |
+| Browser extension assets | `2.10.0` |
+| `@js-eyes/server-core` | `2.10.0` |
+| `@js-eyes/client-sdk` | `2.10.0` |
+| `@js-eyes/skill-runtime` | `2.10.0` |
+| `openclaw-plugin` | `2.10.0` |
 | Bundled sub-skills (`skills/*`) | **Independent** semver — see each skill's `package.json` or `dist/skills.json` |
 
 ## Extension Skills

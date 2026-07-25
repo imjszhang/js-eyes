@@ -86,10 +86,10 @@ packages do not read OpenClaw configuration or import the plugin. Official
 Skills use native V2 activation only (`TOOL_DEFINITIONS` is the tool SSOT;
 `skill.manifest.json` is generated from it).
 
-## V1 removed (2.9.x, still 2.x)
+## V1 removed (2.10.0, still 2.x)
 
 V1 `skill.contract.js` / `createOpenClawAdapter` activation is **removed** in
-the 2.9 platform line without a major-version bump. `externalSkills.policy=legacy`
+2.10.0 without a major-version bump. `externalSkills.policy=legacy`
 is normalized to `prompt` with a warning. Skills must use
 `skill.manifest.json` + `skill.entry.js`. See `examples/js-eyes-skills/` for
 the V2 template.
