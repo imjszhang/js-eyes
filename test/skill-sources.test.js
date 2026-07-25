@@ -12,7 +12,7 @@ const {
   readSkillByIdFromSources,
   listSkillDirectories,
   discoverLocalSkills,
-} = require('../packages/protocol/skills');
+} = require('../packages/skill-install/skills');
 
 const { normalizeConfig } = require('../packages/config');
 
@@ -304,5 +304,38 @@ describe('config.extraSkillDirs normalization', () => {
   it('trims and dedupes entries', () => {
     const cfg = normalizeConfig({ extraSkillDirs: ['/x', ' /x ', '', '/y', '/y'] });
     assert.deepEqual(cfg.extraSkillDirs, ['/x', '/y']);
+  });
+});
+
+describe('config.externalSkills.policy normalization', () => {
+  it('keeps prompt and strict', () => {
+    assert.equal(normalizeConfig({ externalSkills: { policy: 'prompt' } }).externalSkills.policy, 'prompt');
+    assert.equal(normalizeConfig({ externalSkills: { policy: 'strict' } }).externalSkills.policy, 'strict');
+  });
+
+  it('remaps legacy to prompt with a warning', () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.join(' ')); };
+    try {
+      const cfg = normalizeConfig({ externalSkills: { policy: 'legacy' } });
+      assert.equal(cfg.externalSkills.policy, 'prompt');
+      assert.match(warnings.join('\n'), /externalSkills\.policy=legacy/);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('defaults unknown policy values to prompt with a warning', () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.join(' ')); };
+    try {
+      const cfg = normalizeConfig({ externalSkills: { policy: 'wat' } });
+      assert.equal(cfg.externalSkills.policy, 'prompt');
+      assert.match(warnings.join('\n'), /unknown externalSkills\.policy/);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
