@@ -9,7 +9,7 @@
 |------|------|---------|
 | [`js-hello-ops-skill/`](js-hello-ops-skill/) | 入门 | 单工具、V2 manifest/entry、本地 CLI |
 
-旧的 V1 `skill.contract.js` 样例见 [`examples/legacy/`](../legacy/)（已弃用）。
+V1 `skill.contract.js` 样例已移除；迁移说明见 [`examples/legacy/`](../legacy/)。
 
 ## 运行步骤
 

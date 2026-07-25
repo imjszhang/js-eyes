@@ -10,6 +10,9 @@ function textResult(text) {
  * Compatibility aliases remain context-backed: official skills use the
  * host-owned browser, config, logger, cancellation signal, and invocation
  * identity instead of constructing a second runtime/client.
+ *
+ * Ownership for skill packages lives in @js-eyes/skill-scaffold; this copy
+ * keeps the host-runtime public API free of an authoring-kit dependency.
  */
 function createNativeHandlers(toolDefinitions = [], options = {}) {
   return Object.fromEntries(toolDefinitions.map((tool) => [

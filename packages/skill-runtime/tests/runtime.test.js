@@ -66,6 +66,27 @@ describe('skill runtime', () => {
     assert.equal(runtime.activeInvocationCount, 0);
   });
 
+  it('accepts an injectable createRunContext provider', async () => {
+    let seen = null;
+    const runtime = makeRuntime({
+      grantedCapabilities: ['browser.page.read'],
+      createRunContext(options) {
+        seen = options;
+        return { mode: 'noop-provider', skillId: options.skillId };
+      },
+    });
+    await runtime.invoke({
+      name: 'example_read',
+      risk: 'read',
+      async execute(ctx) {
+        assert.deepEqual(ctx.recording, { mode: 'noop-provider', skillId: '@acme/example' });
+        return { ok: true };
+      },
+    }, {}, { toolCallId: 'call-noop', source: 'test' });
+    assert.equal(seen.skillId, '@acme/example');
+    assert.equal(seen.toolName, 'example_read');
+  });
+
   it('enforces declared grants on injected capabilities', async () => {
     const runtime = makeRuntime();
     assert.throws(() => runtime.requireCapability('browser.cookies.read'), SkillCapabilityError);

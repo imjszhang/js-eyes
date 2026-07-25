@@ -22,16 +22,12 @@
  * 对象做了深拷贝/快照，则 mutate 不会生效，但首次注册的 schema 仍然是正确的。
  * directActionsOnly 下子技能 schema 作为内部 definition
  * 保留给后续 introspection / 文档输出使用。
+ *
+ * Implementation is split across registry/* helpers (discover, trust-gate,
+ * activate-v2, reload); this module owns orchestration and the public API.
  */
 
-const fs = require('fs');
-const path = require('path');
 const { DEFAULT_EXTERNAL_SKILLS_CONFIG } = require('@js-eyes/config');
-const {
-  computeSkillSourceDigest,
-  normalizeV1Contract,
-  normalizeV2Contract,
-} = require('@js-eyes/skill-contract');
 
 // Use a lazy module reference to avoid a circular require hazard: skills.js also
 // re-exports factories from this module.
@@ -40,13 +36,28 @@ const skillsApi = require('@js-eyes/skill-install/skills');
 function buildAdapterTools(...args) { return skillsApi.buildAdapterTools(...args); }
 function discoverSkillsFromSources(...args) { return skillsApi.discoverSkillsFromSources(...args); }
 function isSkillEnabled(...args) { return skillsApi.isSkillEnabled(...args); }
-function loadSkillContract(...args) { return skillsApi.loadSkillContract(...args); }
 function readSkillIntegrity(...args) { return skillsApi.readSkillIntegrity(...args); }
 function resolveSkillSources(...args) { return skillsApi.resolveSkillSources(...args); }
 function skillToolActionName(...args) { return skillsApi.skillToolActionName(...args); }
 function verifySkillIntegrity(...args) { return skillsApi.verifySkillIntegrity(...args); }
 
-const { verifyExtraDir: verifyExtraSkillDir } = require('@js-eyes/skill-install/extra-integrity');
+const {
+  computeSkillFingerprint,
+  purgeRequireCacheFor,
+} = require('./registry/discover');
+const {
+  checkIntegrity: checkIntegrityGate,
+  checkExternalTrust: checkExternalTrustGate,
+} = require('./registry/trust-gate');
+const { activateV2Skill } = require('./registry/activate-v2');
+const {
+  safeStringify,
+  computeRuntimeConfigFingerprint,
+  skillNeedsReload,
+  callDispose,
+  removeBindingsFor,
+  createSkillDispose,
+} = require('./registry/reload');
 
 const DEFAULT_UNAVAILABLE_MESSAGE = (name) =>
   `Tool "${name}" is not currently loaded (skill disabled, removed, or reloading).`;
@@ -65,65 +76,15 @@ function makeLogger(candidate) {
   };
 }
 
-function isBundledPrimarySkill(skill) {
-  if (!skill || skill.source !== 'primary') return false;
-  const sourcePath = skill.sourcePath || '';
-  if (!sourcePath || path.basename(sourcePath) !== 'skills') return false;
-  const bundleRoot = path.dirname(sourcePath);
-  return (
-    fs.existsSync(path.join(bundleRoot, 'package.json'))
-    && fs.existsSync(path.join(bundleRoot, 'skills'))
-  );
-}
-
-/**
- * 计算 skillDir 内"驱动热更"的关键文件的指纹（mtime 组合）。
- * 任一文件缺失按 0 处理；出错时退化为空字符串（此时 reload 语义保守：会认为"没变"）。
- * 只用 mtime 是因为 chokidar 已经有 awaitWriteFinish 保护；要更强隔离可改 sha1。
- */
-function computeSkillFingerprint(skillDir) {
-  if (!skillDir) return '';
-  try {
-    return computeSkillSourceDigest(skillDir, { ignoredDirs: ['.git', 'node_modules'] });
-  } catch {
-    return '';
-  }
-}
-
-/**
- * 深度清理 require.cache：删除所有位于 skillDir 下（排除 node_modules）
- * 的已缓存模块，避免热加载时沿用旧模块实例。
- */
-function purgeRequireCacheFor(skillDir) {
-  if (!skillDir) return 0;
-  let normalized;
-  try {
-    normalized = fs.realpathSync(skillDir);
-  } catch (_) {
-    normalized = path.resolve(skillDir);
-  }
-  const prefix = normalized.endsWith(path.sep) ? normalized : normalized + path.sep;
-  let purged = 0;
-  for (const key of Object.keys(require.cache)) {
-    if (!key) continue;
-    if (key === normalized || key.startsWith(prefix)) {
-      if (key.includes(`${path.sep}node_modules${path.sep}`)) continue;
-      delete require.cache[key];
-      purged++;
-    }
-  }
-  return purged;
-}
-
 /**
  * 创建 SkillRegistry。
  *
  * options:
  *   - registerTool: 可选的宿主工具注册回调
  *   - sources: 初始 sources（resolveSkillSources 的结果）。init/reload 时会重新解析。
- *   - hostConfig: 传给 Skill runtime；V1 兼容层会继续传给旧 adapter
+ *   - hostConfig: 传给 Skill runtime / V2 entry activate
  *   - configLoader: () => hostConfig；默认从 @js-eyes/config 加载
- *   - setConfigValue: (key, value) => void；写入 host config（extras 默认 enable 用）
+ *   - setConfigValue: (key, value) => void；写入 host config（skillsEnabled 种子等）
  *   - skillsDir: primary 目录（用于 resolveSkillSources 回退）
  *   - extrasProvider: () => string[]，每次 reload 重新取 extras 列表
  *   - wrapSensitiveTool: 复用插件的敏感工具包装器
@@ -171,7 +132,7 @@ function createSkillRegistry(options = {}) {
   const executionBackendFactory = typeof options.executionBackendFactory === 'function'
     ? options.executionBackendFactory
     : null;
-  const externalSkillPolicy = ['legacy', 'prompt', 'strict'].includes(options.externalSkillPolicy)
+  const externalSkillPolicy = ['prompt', 'strict'].includes(options.externalSkillPolicy)
     ? options.externalSkillPolicy
     : DEFAULT_EXTERNAL_SKILLS_CONFIG.policy;
   const externalSkillPolicyProvider = typeof options.externalSkillPolicyProvider === 'function'
@@ -179,7 +140,14 @@ function createSkillRegistry(options = {}) {
     : () => externalSkillPolicy;
   const getExternalSkillPolicy = () => {
     const value = externalSkillPolicyProvider();
-    return ['legacy', 'prompt', 'strict'].includes(value) ? value : externalSkillPolicy;
+    if (value === 'legacy') {
+      logger.warn(
+        '[js-eyes] externalSkills.policy=legacy is no longer supported; using prompt. '
+        + 'Migrate external skills to skill.manifest.json + skill.entry.js.',
+      );
+      return 'prompt';
+    }
+    return ['prompt', 'strict'].includes(value) ? value : externalSkillPolicy;
   };
   const trustChecker = typeof options.trustChecker === 'function'
     ? options.trustChecker
@@ -225,29 +193,6 @@ function createSkillRegistry(options = {}) {
       ? definition.parameters
       : { type: 'object', properties: {} };
     return { label, description, parameters };
-  }
-
-  function safeStringify(value) {
-    try { return JSON.stringify(value); } catch (_) { return null; }
-  }
-
-  function stableConfigValue(value) {
-    if (Array.isArray(value)) return value.map(stableConfigValue);
-    if (!value || typeof value !== 'object') return value;
-    return Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, stableConfigValue(value[key])]),
-    );
-  }
-
-  function computeRuntimeConfigFingerprint(config, skillId) {
-    const source = config && typeof config === 'object' ? config : {};
-    const projected = {};
-    for (const key of Object.keys(source)) {
-      if (key === 'extraSkillDirs' || key === 'skillsEnabled' || key === 'skills') continue;
-      projected[key] = source[key];
-    }
-    projected.skill = source.skills?.[skillId] || null;
-    return safeStringify(stableConfigValue(projected)) || '';
   }
 
   function ensureDispatcher(toolName, optional, definition) {
@@ -305,86 +250,13 @@ function createSkillRegistry(options = {}) {
     }
   }
 
-  async function callDispose(state) {
-    if (!state || typeof state.dispose !== 'function') return;
-    try {
-      await state.dispose();
-    } catch (error) {
-      logger.warn(
-        `[js-eyes] dispose() for skill "${state.id}" threw: ${error.message}`,
-      );
-    }
-  }
-
-  function removeBindingsFor(skillId) {
-    const removed = [];
-    for (const [name, binding] of toolBindings) {
-      if (binding.skillId === skillId) {
-        toolBindings.delete(name);
-        removed.push(name);
-      }
-    }
-    for (const [action, binding] of actionBindings) {
-      if (binding.skillId === skillId) {
-        actionBindings.delete(action);
-      }
-    }
-    return removed;
-  }
-
   async function disposeSkill(skillId) {
     const state = skills.get(skillId);
     if (!state) return false;
-    removeBindingsFor(skillId);
-    await callDispose(state);
+    removeBindingsFor(skillId, toolBindings, actionBindings);
+    await callDispose(state, logger);
     skills.delete(skillId);
     return true;
-  }
-
-  function structuredHostResult(value) {
-    if (value && typeof value === 'object' && Array.isArray(value.content)) return value;
-    let text;
-    try {
-      text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-    } catch {
-      text = String(value);
-    }
-    return {
-      content: [{ type: 'text', text: text == null ? 'null' : text }],
-      structuredContent: value && typeof value === 'object' && !Array.isArray(value)
-        ? value
-        : { value },
-    };
-  }
-
-  function createAdapterFromDefinition(definition, runtime) {
-    return {
-      runtime,
-      tools: definition.tools.map((tool) => ({
-        name: tool.name,
-        label: tool.label,
-        description: tool.description,
-        parameters: tool.parameters,
-        optional: tool.optional,
-        risk: tool.risk,
-        interactive: tool.interactive,
-        destructive: tool.destructive,
-        capabilities: tool.capabilities,
-        resultMode: tool.resultMode,
-        async execute(toolCallId, params) {
-          const invocationOptions = {
-            toolCallId,
-            source: invocationSource,
-            toolName: tool.name,
-            risk: tool.risk,
-          };
-          const result = runtime && typeof runtime.invoke === 'function'
-            ? await runtime.invoke(tool, params || {}, invocationOptions)
-            : await tool.execute({ ...invocationOptions, runtime }, params || {});
-          return tool.resultMode === 'host' ? result : structuredHostResult(result);
-        },
-      })),
-    };
   }
 
   async function loadSkillState(skill, effectiveConfig) {
@@ -405,23 +277,19 @@ function createSkillRegistry(options = {}) {
       );
     }
 
-    let contract;
-    let entry = null;
     try {
       const purged = purgeRequireCacheFor(skill.skillDir);
       if (purged > 0) {
         logger.info(`[js-eyes] Purged ${purged} cached module(s) under "${skill.id}" skillDir before reload`);
       }
-      if (skill.contractVersion !== 2) {
-        contract = skill.contract || loadSkillContract(skill.skillDir);
-      }
     } catch (error) {
-      logger.warn(`[js-eyes] Failed to load contract for "${skill.id}": ${error.message}`);
+      logger.warn(`[js-eyes] Failed to purge cache for "${skill.id}": ${error.message}`);
       return null;
     }
-    if (skill.contractVersion !== 2 && (!contract || typeof contract.createOpenClawAdapter !== 'function')) {
+    if (skill.contractVersion !== 2) {
       logger.warn(
-        `[js-eyes] Skipping local skill "${skill.id}" because createOpenClawAdapter() is missing`,
+        `[js-eyes] Skipping skill "${skill.id}" because V1 skill.contract.js / createOpenClawAdapter `
+        + 'is no longer supported; migrate to skill.manifest.json + skill.entry.js',
       );
       return null;
     }
@@ -432,72 +300,21 @@ function createSkillRegistry(options = {}) {
     let activated = null;
     let executionBackend = null;
     try {
-      if (skill.contractVersion === 2) {
-        runtime = runtimeFactory
-          ? await runtimeFactory({
-              descriptor: skill.descriptor,
-              skill,
-              effectiveConfig,
-              hostConfig: effectiveConfig,
-              logger,
-            })
-          : null;
-        executionBackend = executionBackendFactory
-          ? await executionBackendFactory({
-              skill,
-              runtime,
-              effectiveConfig,
-              hostConfig: effectiveConfig,
-              logger,
-            })
-          : null;
-        if (executionBackend) {
-          await executionBackend.activate();
-          activated = {
-            handlers: Object.fromEntries(skill.descriptor.tools.map((tool) => [
-              tool.name,
-              (context, input) => executionBackend.invoke(tool.name, context, input),
-            ])),
-          };
-        } else {
-          delete require.cache[require.resolve(skill.entryPath)];
-          entry = require(skill.entryPath);
-          activated = entry && typeof entry.activate === 'function'
-            ? await entry.activate({
-                descriptor: skill.descriptor,
-                runtime,
-                config: runtime && runtime.config ? runtime.config : {},
-                logger: runtime && runtime.logger ? runtime.logger : logger,
-              })
-            : entry;
-        }
-        definition = normalizeV2Contract(
-          skill.descriptor,
-          activated && activated.handlers ? activated.handlers : activated,
-        );
-        adapter = createAdapterFromDefinition(definition, runtime);
-      } else {
-        logger.warn(
-          `[js-eyes] Skill "${skill.id}" uses deprecated V1 skill.contract.js `
-          + '(createOpenClawAdapter). Migrate to skill.manifest.json + skill.entry.js; '
-          + 'V1 support will be removed in JS Eyes 4.0.',
-        );
-        const legacyAdapter = contract.createOpenClawAdapter(effectiveConfig, logger);
-        definition = normalizeV1Contract(contract, {
-          adapter: legacyAdapter,
-          config: effectiveConfig,
-          logger,
-        });
-        runtime = definition.runtime;
-        adapter = createAdapterFromDefinition(definition, runtime);
-      }
+      ({
+        adapter,
+        definition,
+        runtime,
+        activated,
+        executionBackend,
+      } = await activateV2Skill({
+        skill,
+        effectiveConfig,
+        runtimeFactory,
+        executionBackendFactory,
+        logger,
+        invocationSource,
+      }));
     } catch (error) {
-      if (executionBackend && typeof executionBackend.dispose === 'function') {
-        try { await executionBackend.dispose(); } catch (_) {}
-      }
-      if (runtime && typeof runtime.dispose === 'function') {
-        try { await runtime.dispose(); } catch (_) {}
-      }
       logger.warn(`[js-eyes] Failed to activate skill "${skill.id}": ${error.message}`);
       return null;
     }
@@ -525,26 +342,16 @@ function createSkillRegistry(options = {}) {
       skillDir: skill.skillDir,
       fingerprint: computeSkillFingerprint(skill.skillDir),
       configFingerprint: computeRuntimeConfigFingerprint(effectiveConfig, skill.id),
-      contract,
       definition,
       adapter,
       toolNames: toolDefs.map((t) => t.toolName),
       actionNames: toolDefs.map((t) => skillToolActionName(skill.id, t.toolName)),
       // runtime.dispose is used by hot-unload to drain WS, clear intervals, etc.
-      dispose: async () => {
-        const activeRuntime = adapter && adapter.runtime;
-        if (executionBackend && typeof executionBackend.dispose === 'function') {
-          await executionBackend.dispose();
-        } else if (activated && typeof activated.dispose === 'function') {
-          await activated.dispose();
-        }
-        if (activeRuntime && typeof activeRuntime.dispose === 'function') {
-          await activeRuntime.dispose();
-        } else if (contract && contract.runtime && typeof contract.runtime.dispose === 'function') {
-          // Allow module-level runtime.dispose override as a convenience.
-          await contract.runtime.dispose();
-        }
-      },
+      dispose: createSkillDispose({
+        adapter,
+        activated,
+        executionBackend,
+      }),
       toolDefs,
     };
     return state;
@@ -626,102 +433,36 @@ function createSkillRegistry(options = {}) {
     const enabledMap = (hostConfig && hostConfig.skillsEnabled) || {};
     for (const skill of discovered) {
       if (Object.prototype.hasOwnProperty.call(enabledMap, skill.id)) continue;
-      if (skill.source === 'extra' && getExternalSkillPolicy() === 'legacy') {
-        // Extras are trusted project directories; enable on first discovery.
-        try {
-          if (suppressSelfWrites) suppressNextReload = true;
-          setConfigValue(`skillsEnabled.${skill.id}`, true);
-          mutated++;
-        } catch (error) {
-          logger.warn(`[js-eyes] Failed to default-enable extra skill "${skill.id}": ${error.message}`);
-        }
-      } else {
-        // Primary skills keep the "opt-in by default" security stance.
-        try {
-          if (suppressSelfWrites) suppressNextReload = true;
-          setConfigValue(`skillsEnabled.${skill.id}`, false);
-          mutated++;
-          logger.warn(
-            `[js-eyes] Skill "${skill.id}" left disabled by default; run \`js-eyes skills enable ${skill.id}\` to opt-in`,
-          );
-        } catch (error) {
-          logger.warn(`[js-eyes] Failed to seed skillsEnabled for "${skill.id}": ${error.message}`);
-        }
+      // Primary and external skills keep the "opt-in by default" security stance.
+      try {
+        if (suppressSelfWrites) suppressNextReload = true;
+        setConfigValue(`skillsEnabled.${skill.id}`, false);
+        mutated++;
+        logger.warn(
+          `[js-eyes] Skill "${skill.id}" left disabled by default; run \`js-eyes skills enable ${skill.id}\` to opt-in`,
+        );
+      } catch (error) {
+        logger.warn(`[js-eyes] Failed to seed skillsEnabled for "${skill.id}": ${error.message}`);
       }
     }
     return { mutated };
   }
 
   function checkIntegrity(skill, cfg = null) {
-    if (skill.source === 'extra') {
-      const effectiveCfg = cfg || configLoader();
-      const verifyEnabled = Boolean(
-        effectiveCfg
-          && effectiveCfg.security
-          && effectiveCfg.security.verifyExtraSkillDirs,
-      );
-      if (!verifyEnabled) return { ok: true, skipped: true };
-      // `sourcePath` for extras is the root that was passed via `extraSkillDirs`
-      // (either a skill dir or a parent dir). Verify that root — that matches
-      // what `snapshotExtraDir(abs-path)` was asked to capture.
-      const extraRoot = skill.sourcePath || skill.skillDir;
-      const result = verifyExtraSkillDir(extraRoot);
-      if (!result.hasSnapshot) {
-        logger.warn(
-          `[js-eyes] Refused extra skill "${skill.id}": no integrity snapshot for ${extraRoot}, run \`js-eyes skills relink ${extraRoot}\``,
-        );
-        return { ok: false };
-      }
-      if (!result.ok) {
-        logger.warn(
-          `[js-eyes] Refused extra skill "${skill.id}": integrity drift at ${extraRoot} (${result.drifted.length} changed, ${result.missing.length} missing, ${result.extra.length} new), run \`js-eyes skills relink ${extraRoot}\``,
-        );
-        return { ok: false };
-      }
-      return { ok: true };
-    }
-    if (skill.source !== 'primary') return { ok: true, skipped: true };
-    const integrity = verifySkillIntegrity(skill.skillDir);
-    if (integrity.hasIntegrity && !integrity.ok) {
-      logger.warn(
-        `[js-eyes] Refusing to load tampered skill "${skill.id}": ${integrity.mismatches.length} mismatched, ${integrity.missing.length} missing`,
-      );
-      return { ok: false };
-    }
-    if (!integrity.hasIntegrity) {
-      if (isBundledPrimarySkill(skill)) {
-        logger.info(
-          `[js-eyes] Skill "${skill.id}" has no .integrity.json because it is loaded from the bundled/source primary skills directory (${skill.sourcePath}); load allowed. Registry-installed primary skills should carry .integrity.json for tamper checks.`,
-        );
-      } else {
-        logger.warn(
-          `[js-eyes] Skill "${skill.id}" has no .integrity.json (legacy primary install); load allowed, but reinstall via \`js-eyes skills install ${skill.id}\` to restore tamper-check metadata`,
-        );
-      }
-    }
-    return { ok: true };
+    return checkIntegrityGate(skill, {
+      cfg,
+      configLoader,
+      verifySkillIntegrity,
+      logger,
+    });
   }
 
   function checkExternalTrust(skill) {
-    const policy = getExternalSkillPolicy();
-    if (skill.source !== 'extra' || policy === 'legacy') {
-      return { ok: true, skipped: true };
-    }
-    if (policy === 'strict' && skill.contractVersion !== 2) {
-      logger.warn(
-        `[js-eyes] Refused legacy external skill "${skill.id}" because externalSkills.policy=strict requires skill.manifest.json`,
-      );
-      return { ok: false, reason: 'legacy-contract' };
-    }
-    let trusted = false;
-    try { trusted = trustChecker(skill) === true; } catch (_) { trusted = false; }
-    if (!trusted) {
-      logger.warn(
-        `[js-eyes] External skill "${skill.id}" discovered but not trusted; inspect and approve it before loading`,
-      );
-      return { ok: false, reason: 'not-trusted' };
-    }
-    return { ok: true };
+    return checkExternalTrustGate(skill, {
+      getExternalSkillPolicy,
+      trustChecker,
+      logger,
+    });
   }
 
   async function init() {
@@ -845,13 +586,11 @@ function createSkillRegistry(options = {}) {
       // contract/package.json fingerprint or runtime-relevant config changed.
       const nextFingerprint = computeSkillFingerprint(skill.skillDir);
       const nextConfigFingerprint = computeRuntimeConfigFingerprint(effectiveConfig, skill.id);
-      const changed = force
-        || !existing
-        || existing.source !== skill.source
-        || existing.sourcePath !== skill.sourcePath
-        || existing.skillDir !== skill.skillDir
-        || existing.fingerprint !== nextFingerprint
-        || existing.configFingerprint !== nextConfigFingerprint;
+      const changed = skillNeedsReload(existing, skill, {
+        force,
+        nextFingerprint,
+        nextConfigFingerprint,
+      });
 
       if (existing && !changed) {
         // Still alive; nothing to do unless explicit reload is requested.

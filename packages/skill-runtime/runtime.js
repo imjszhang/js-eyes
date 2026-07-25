@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { loadConfig, mergeRecordingConfig } = require('@js-eyes/config');
-const { createSkillRunContext } = require('@js-eyes/skill-recording');
+const skillRecording = require('@js-eyes/skill-recording');
 const { ensureDir, getPaths } = require('@js-eyes/runtime-paths');
 const {
   SkillCancelledError,
@@ -80,6 +80,9 @@ function createSkillRuntime(options = {}) {
     recording: Object.freeze(mergeRecordingConfig(globalConfig.recording, skillConfig.recording)),
   });
   const logger = makeLogger(options.logger, { skillId: descriptor.id });
+  const createRunContext = typeof options.createRunContext === 'function'
+    ? options.createRunContext
+    : skillRecording.createSkillRunContext;
   const grantedCapabilities = normalizeCapabilitySet(options.grantedCapabilities);
   const runtimePaths = options.runtimePaths || getPaths(options.pathOptions);
   const encodedId = encodeURIComponent(descriptor.id).replace(/%/g, '_');
@@ -199,7 +202,7 @@ function createSkillRuntime(options = {}) {
       toolName: invocationOptions.toolName || 'unknown',
       invocationId,
     });
-    const recording = createSkillRunContext({
+    const recording = createRunContext({
       skillId: descriptor.id,
       skillVersion: descriptor.version,
       toolName: invocationOptions.toolName,

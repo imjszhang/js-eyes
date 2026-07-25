@@ -16,6 +16,7 @@
     "host-service.js",
     "runtime.js",
     "registry.js",
+    "registry/",
     "worker-backend.js",
     "worker-entry.js"
   ],
