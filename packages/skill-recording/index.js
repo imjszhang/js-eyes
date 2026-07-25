@@ -87,6 +87,33 @@ function createSkillRunContext(options = {}) {
   };
 }
 
+/**
+ * Shared URL-oriented run context for site skills.
+ *
+ * @param {any} options
+ */
+function createUrlSkillRunContext(options = {}) {
+  if (typeof options.normalizeUrl !== 'function') {
+    throw new TypeError('createUrlSkillRunContext requires normalizeUrl');
+  }
+  return createSkillRunContext({
+    ...options,
+    url: options.url,
+    normalizeInput: options.normalizeUrl,
+    buildCacheKeyParts: options.buildCacheKeyParts || (({
+      skillId,
+      scrapeType,
+      normalizedInput,
+      skillVersion,
+    }) => ({
+      skillId,
+      scrapeType,
+      url: normalizedInput,
+      version: skillVersion,
+    })),
+  });
+}
+
 function getHistoryFilePath(runContext, timestamp = new Date()) {
   const paths = ensureSkillRecordPaths(runContext.skillId, {
     recordingBaseDir: runContext.recording.baseDir,
@@ -267,6 +294,7 @@ module.exports = {
   createDebugState,
   createRunId,
   createSkillRunContext,
+  createUrlSkillRunContext,
   getCacheFilePath,
   getHistoryFilePath,
   readCacheEntry,

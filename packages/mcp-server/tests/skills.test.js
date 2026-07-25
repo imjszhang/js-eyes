@@ -52,7 +52,7 @@ describe('MCP skill router', () => {
       skillsDir,
       extraSkillDirs: [],
       skillsEnabled: { '@acme/mcp-example': true },
-      externalSkills: { policy: 'legacy', defaultExecution: 'worker' },
+      externalSkills: { policy: 'prompt', defaultExecution: 'worker' },
       serverUrl: 'ws://127.0.0.1:18080',
       requestTimeout: 5,
       recording: { mode: 'off' },

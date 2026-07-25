@@ -10,52 +10,72 @@ const { createSkillRegistry, purgeRequireCacheFor } = require('..');
 
 function writeSkill(dir, id, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });
+  const tool = opts.tool || `${id.replace(/-/g, '_')}_tool`;
+  const version = opts.version || '1.0.0';
   fs.writeFileSync(
     path.join(dir, 'package.json'),
-    JSON.stringify({ name: id, version: opts.version || '1.0.0' }, null, 2),
+    JSON.stringify({ name: id, version }, null, 2),
   );
-  const tool = opts.tool || `${id.replace(/-/g, '_')}_tool`;
-  const extra = opts.extraBody || '';
-  const disposeBody = opts.withDispose
-    ? `
-        // runtime.dispose is invoked during hot-unload
-        runtime.dispose = async () => { global.__jsEyesTestDisposeCalls = (global.__jsEyesTestDisposeCalls || 0) + 1; };`
-    : '';
-  const resultText = opts.withConfigValue
-    ? `String(pluginConfig.skills?.['${id}']?.config?.value)`
-    : `'from ${id}: ' + (params && params.msg ? params.msg : '')`;
-  fs.writeFileSync(
-    path.join(dir, 'skill.contract.js'),
-    `'use strict';
-const pkg = require('./package.json');
-${extra}
-function createOpenClawAdapter(pluginConfig, logger) {
-  const runtime = { hello: 'world' };${disposeBody}
-  return {
-    runtime,
+  fs.writeFileSync(path.join(dir, 'skill.manifest.json'), JSON.stringify({
+    manifestVersion: 2,
+    id,
+    name: opts.name || id,
+    version,
+    entry: './entry.js',
+    requirements: { platforms: ['example.com'] },
+    capabilities: { browser: ['page.read'] },
     tools: [{
-      name: '${tool}',
-      label: '${tool}',
-      description: 'test tool',
-      parameters: { type: 'object', properties: { msg: { type: 'string' } } },
+      name: tool,
+      title: tool,
+      description: opts.description || 'test tool',
+      risk: 'read',
       optional: true,
-      async execute(toolCallId, params) {
-        return { content: [{ type: 'text', text: ${resultText} }] };
-      },
+      inputSchema: { type: 'object', properties: { msg: { type: 'string' } } },
     }],
-  };
-}
+  }, null, 2));
+  const disposeBody = opts.withDispose
+    ? `async dispose() { global.__jsEyesTestDisposeCalls = (global.__jsEyesTestDisposeCalls || 0) + 1; },`
+    : '';
+  const resultExpr = opts.withConfigValue
+    ? `String(ctx.config?.value ?? '')`
+    : `('from ${id}: ' + (input && input.msg ? input.msg : ''))`;
+  fs.writeFileSync(
+    path.join(dir, 'entry.js'),
+    `'use strict';
 module.exports = {
-  id: '${id}',
-  name: '${opts.name || id}',
-  version: '${opts.version || '1.0.0'}',
-  description: '',
-  openclaw: { tools: [{ name: '${tool}', description: 'test', parameters: { type: 'object', properties: {} } }] },
-  createOpenClawAdapter,
+  async activate() {
+    return {
+      handlers: {
+        async ${tool}(ctx, input) {
+          return { content: [{ type: 'text', text: ${resultExpr} }] };
+        },
+      },
+      ${disposeBody}
+    };
+  },
 };
 `,
     'utf8',
   );
+}
+
+function createFakeRuntime(options = {}) {
+  const skillId = options.skill?.id || options.descriptor?.id;
+  const skillConfig = (options.effectiveConfig?.skills?.[skillId]?.config)
+    || (options.hostConfig?.skills?.[skillId]?.config)
+    || {};
+  return {
+    config: { ...skillConfig },
+    logger: { info() {}, warn() {}, error() {} },
+    async invoke(tool, input, invocation) {
+      return tool.execute({
+        ...invocation,
+        config: this.config,
+        skillId: invocation.skillId || skillId,
+      }, input);
+    },
+    async dispose() {},
+  };
 }
 
 function createFakeApi(overrides = {}) {
@@ -79,11 +99,15 @@ function createFakeApi(overrides = {}) {
   };
 }
 
-function registryHostOptions(api) {
+function registryHostOptions(api, overrides = {}) {
   return {
     logger: api.logger,
     registerTool: api.registerTool.bind(api),
     directActionsOnly: false,
+    runtimeFactory: (opts) => createFakeRuntime(opts),
+    trustChecker: () => true,
+    externalSkillPolicy: 'prompt',
+    ...overrides,
   };
 }
 
@@ -161,7 +185,6 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -186,7 +209,6 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -237,39 +259,46 @@ describe('createSkillRegistry — init + dispatcher indirection', () => {
     // Use disposeSkill() to unbind first so the subsequent reload() re-runs
     // loadSkillState (_reloadCore skips re-loading when skillDir is unchanged).
     await registry.disposeSkill('alpha');
-    fs.writeFileSync(
-      path.join(skillDir, 'skill.contract.js'),
-      `'use strict';
-const pkg = require('./package.json');
-function createOpenClawAdapter() {
-  return {
-    runtime: {},
-    tools: [{
-      name: 'alpha_tool',
-      label: 'Alpha (updated)',
-      description: 'updated description',
-      parameters: {
-        type: 'object',
-        properties: {
-          msg: { type: 'string', description: 'required msg' },
-          count: { type: 'number' },
+    fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify({
+      name: 'alpha', version: '1.0.1',
+    }, null, 2));
+    fs.writeFileSync(path.join(skillDir, 'skill.manifest.json'), JSON.stringify({
+      manifestVersion: 2,
+      id: 'alpha',
+      name: 'alpha',
+      version: '1.0.1',
+      entry: './entry.js',
+      requirements: { platforms: ['example.com'] },
+      capabilities: { browser: ['page.read'] },
+      tools: [{
+        name: 'alpha_tool',
+        title: 'Alpha (updated)',
+        description: 'updated description',
+        risk: 'read',
+        optional: true,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            msg: { type: 'string', description: 'required msg' },
+            count: { type: 'number' },
+          },
+          required: ['msg'],
         },
-        required: ['msg'],
-      },
-      optional: true,
-      async execute(_id, params) {
-        return { content: [{ type: 'text', text: 'updated:' + (params && params.msg) }] };
-      },
-    }],
-  };
-}
+      }],
+    }, null, 2));
+    fs.writeFileSync(
+      path.join(skillDir, 'entry.js'),
+      `'use strict';
 module.exports = {
-  id: 'alpha',
-  name: 'alpha',
-  version: '1.0.1',
-  description: '',
-  openclaw: { tools: [{ name: 'alpha_tool', description: 'updated description', parameters: { type: 'object', properties: {} } }] },
-  createOpenClawAdapter,
+  async activate() {
+    return {
+      handlers: {
+        async alpha_tool(ctx, input) {
+          return { content: [{ type: 'text', text: 'updated:' + (input && input.msg) }] };
+        },
+      },
+    };
+  },
 };
 `,
       'utf8',
@@ -417,23 +446,22 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
     assert.equal(api._registered.size, 1);
     assert.ok(api._registered.has('core_tool'));
 
-    // Link the external skill; reload should hot-load it.
+    // Link and explicitly enable the external skill; reload should hot-load it.
     extras = [externalDir];
+    io.setter('skillsEnabled.extern', true);
     const summary = await registry.reload('link');
     assert.deepEqual(summary.added, ['extern']);
     assert.equal(api._registered.size, 2);
     assert.ok(api._registered.has('extern_tool'));
-    assert.equal(io.snapshot().skillsEnabled.extern, true, 'extras should be default-enabled');
   });
 
-  it('default-enables extras in legacy compatibility mode but keeps primary opt-in', async () => {
+  it('keeps primary and external skills disabled (opt-in) by default', async () => {
     const primary = path.join(tempDir, 'primary');
     fs.mkdirSync(primary, { recursive: true });
     writeSkill(path.join(primary, 'pri'), 'pri', { tool: 'pri_tool' });
@@ -450,16 +478,15 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
 
     const snap = io.snapshot();
     assert.equal(snap.skillsEnabled.pri, false, 'primary is opt-in');
-    assert.equal(snap.skillsEnabled.ext, true, 'extras default on');
-    assert.ok(api._registered.has('ext_tool'));
-    assert.ok(!api._registered.has('pri_tool'), 'primary skill pri is disabled by default');
+    assert.equal(snap.skillsEnabled.ext, false, 'extras are opt-in');
+    assert.ok(!api._registered.has('ext_tool'));
+    assert.ok(!api._registered.has('pri_tool'));
   });
 
   it('removes bindings when extras directory is unlinked and dispose is called', async () => {
@@ -471,7 +498,7 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
 
     let extras = [externalDir];
     const api = createFakeApi();
-    const io = stubConfigIo({ skillsEnabled: {} });
+    const io = stubConfigIo({ skillsEnabled: { drain: true } });
     const registry = createSkillRegistry({
       ...registryHostOptions(api),
       skillsDir: primary,
@@ -479,7 +506,6 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       configLoader: io.loader,
       setConfigValue: io.setter,
       logger: api.logger,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
@@ -611,12 +637,12 @@ describe('createSkillRegistry — reload diff and lifecycle', () => {
       extrasProvider: () => extras,
       configLoader: io.loader,
       setConfigValue: io.setter,
-      externalSkillPolicy: 'legacy',
       suppressSelfWrites: false,
     });
     await registry.init();
 
     extras = [externalDir];
+    io.setter('skillsEnabled.newx', true);
     const summary = await registry.reload('link');
     assert.ok(summary.failedDispatchers.length >= 1);
     const warning = flaky._calls.find((c) => c[0] === 'warn' && /Failed to register dispatcher/.test(c[1]));

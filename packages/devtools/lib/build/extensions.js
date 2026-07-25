@@ -2,12 +2,15 @@
 
 const {
   CHROME_DIR,
+  CHROME_STAGE_DIR,
   DIST_DIR,
   EXCLUDE_PATTERNS,
   EXTENSIONS_DIR,
   EXTENSION_SHARED_COPIES,
+  EXTENSION_STAGE_ROOT,
   FIREFOX_DIR,
   FIREFOX_MANIFEST,
+  FIREFOX_STAGE_DIR,
   PROJECT_ROOT,
   SIGNED_DIR,
   ensureDir,
@@ -19,15 +22,79 @@ const {
 } = require('./context');
 const { createZipArchive } = require('./zip-archive');
 
-function assertExtensionSharedRuntime(extensionDir) {
-  const sharedDir = path.join(EXTENSIONS_DIR, 'shared');
-  for (const [sourceName, targetName] of EXTENSION_SHARED_COPIES) {
-    const source = fs.readFileSync(path.join(sharedDir, sourceName));
-    const targetPath = path.join(extensionDir, targetName);
-    if (!fs.existsSync(targetPath) || !source.equals(fs.readFileSync(targetPath))) {
-      throw new Error(`${path.relative(PROJECT_ROOT, targetPath)} is stale; run npm run sync:extension-shared`);
+const GENERATED_SHARED_TARGETS = new Set(
+  EXTENSION_SHARED_COPIES.map(([, targetName]) => targetName.replace(/\\/g, '/')),
+);
+
+function rmrf(targetPath) {
+  fs.rmSync(targetPath, { recursive: true, force: true });
+}
+
+function copyPlatformTree(sourceRoot, destinationRoot) {
+  ensureDir(destinationRoot);
+  const stack = [''];
+  while (stack.length > 0) {
+    const relative = stack.pop();
+    const sourceDir = relative ? path.join(sourceRoot, relative) : sourceRoot;
+    for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+      const childRelative = relative ? path.join(relative, entry.name) : entry.name;
+      const normalized = childRelative.replace(/\\/g, '/');
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      if (entry.isDirectory()) {
+        ensureDir(path.join(destinationRoot, childRelative));
+        stack.push(childRelative);
+        continue;
+      }
+      if (GENERATED_SHARED_TARGETS.has(normalized)) continue;
+      fs.copyFileSync(
+        path.join(sourceRoot, childRelative),
+        path.join(destinationRoot, childRelative),
+      );
     }
   }
+}
+
+function injectSharedRuntime(stageDir) {
+  const sharedDir = path.join(EXTENSIONS_DIR, 'shared');
+  for (const [sourceName, targetName] of EXTENSION_SHARED_COPIES) {
+    const sourcePath = path.join(sharedDir, sourceName);
+    const targetPath = path.join(stageDir, targetName);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`missing shared runtime file: ${path.relative(PROJECT_ROOT, sourcePath)}`);
+    }
+    ensureDir(path.dirname(targetPath));
+    fs.copyFileSync(sourcePath, targetPath);
+    const source = fs.readFileSync(sourcePath);
+    const target = fs.readFileSync(targetPath);
+    if (!source.equals(target)) {
+      throw new Error(`failed to inject ${path.relative(PROJECT_ROOT, targetPath)}`);
+    }
+  }
+}
+
+/**
+ * Stage a browser extension with shared runtime injected from extensions/shared.
+ * @param {'chrome'|'firefox'} platform
+ * @returns {string} absolute path to the staged extension directory
+ */
+function stageExtension(platform) {
+  const sourceRoot = platform === 'chrome' ? CHROME_DIR : FIREFOX_DIR;
+  const stageDir = platform === 'chrome' ? CHROME_STAGE_DIR : FIREFOX_STAGE_DIR;
+  if (!fs.existsSync(sourceRoot)) {
+    throw new Error(`extension source missing: ${path.relative(PROJECT_ROOT, sourceRoot)}`);
+  }
+  ensureDir(EXTENSION_STAGE_ROOT);
+  rmrf(stageDir);
+  copyPlatformTree(sourceRoot, stageDir);
+  injectSharedRuntime(stageDir);
+  return stageDir;
+}
+
+function stageAllExtensions() {
+  return {
+    chrome: stageExtension('chrome'),
+    firefox: stageExtension('firefox'),
+  };
 }
 
 function loadEnvFile() {
@@ -71,7 +138,9 @@ async function buildChrome(t) {
     console.error(`  ✗ ${t('chrome.dirMissing')}`);
     process.exit(1);
   }
-  assertExtensionSharedRuntime(CHROME_DIR);
+
+  const stageDir = stageExtension('chrome');
+  console.log(`  staged ${path.relative(PROJECT_ROOT, stageDir)}`);
 
   ensureDir(DIST_DIR);
 
@@ -99,7 +168,7 @@ async function buildChrome(t) {
       reject(err);
     });
     archive.pipe(output);
-    archive.glob('**/*', { cwd: CHROME_DIR, dot: false, ignore: EXCLUDE_PATTERNS });
+    archive.glob('**/*', { cwd: stageDir, dot: false, ignore: EXCLUDE_PATTERNS });
     archive.finalize();
   });
 }
@@ -145,11 +214,14 @@ async function buildFirefox(t, sign = true) {
     console.error(`  ✗ ${t('firefox.manifestMissing')}`);
     process.exit(1);
   }
-  assertExtensionSharedRuntime(FIREFOX_DIR);
+
+  const stageDir = stageExtension('firefox');
+  console.log(`  staged ${path.relative(PROJECT_ROOT, stageDir)}`);
 
   if (!sign) {
     console.log(`  ⚠ ${t('firefox.skipSign')}`);
     console.log(`  ${t('firefox.skipNote')}`);
+    console.log(`  load unpacked from ${path.relative(PROJECT_ROOT, stageDir)}`);
     return;
   }
 
@@ -204,7 +276,7 @@ async function buildFirefox(t, sign = true) {
     ];
     console.log(`  ${t('firefox.execCmd').replace('{cmd}', 'web-ext sign --api-key=*** --api-secret=*** --channel=unlisted')}`);
 
-    execFileSync('web-ext', args, { cwd: FIREFOX_DIR, stdio: 'inherit' });
+    execFileSync('web-ext', args, { cwd: stageDir, stdio: 'inherit' });
     console.log(`  ✓ ${t('firefox.signOk')}`);
     finalizeFirefoxArtifact(t, version);
   } catch (e) {
@@ -220,4 +292,4 @@ async function buildFirefox(t, sign = true) {
   }
 }
 
-module.exports = { buildChrome, buildFirefox };
+module.exports = { buildChrome, buildFirefox, stageExtension, stageAllExtensions };

@@ -1,6 +1,10 @@
 'use strict';
 
-const { createRunId, createSkillRunContext, resolveRecordingState } = require('@js-eyes/skill-recording');
+const {
+  createRunId,
+  createUrlSkillRunContext,
+  resolveRecordingState,
+} = require('@js-eyes/skill-recording');
 
 function normalizeJikeUrl(inputUrl) {
   if (typeof inputUrl !== 'string') {
@@ -19,16 +23,9 @@ function normalizeJikeUrl(inputUrl) {
 }
 
 function createRunContext(options) {
-  return createSkillRunContext({
+  return createUrlSkillRunContext({
     ...options,
-    url: options.url,
-    normalizeInput: normalizeJikeUrl,
-    buildCacheKeyParts: ({ skillId, scrapeType, normalizedInput, skillVersion }) => ({
-      skillId,
-      scrapeType,
-      url: normalizedInput,
-      version: skillVersion,
-    }),
+    normalizeUrl: normalizeJikeUrl,
   });
 }
 

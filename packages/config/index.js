@@ -138,6 +138,26 @@ function normalizeExtraSkillDirs(value) {
   return out;
 }
 
+function normalizeExternalSkillsPolicy(policy) {
+  if (['prompt', 'strict'].includes(policy)) return policy;
+  if (policy === 'legacy') {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(
+        '[js-eyes/config] externalSkills.policy=legacy is no longer supported; using prompt. '
+        + 'Migrate external skills to skill.manifest.json + skill.entry.js.',
+      );
+    }
+  } else if (policy != null && policy !== '') {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(
+        `[js-eyes/config] unknown externalSkills.policy=${JSON.stringify(policy)}; `
+        + `using ${DEFAULT_CONFIG.externalSkills.policy}.`,
+      );
+    }
+  }
+  return DEFAULT_CONFIG.externalSkills.policy;
+}
+
 function normalizeConfig(config = {}) {
   return {
     ...clone(DEFAULT_CONFIG),
@@ -146,9 +166,7 @@ function normalizeConfig(config = {}) {
     security: mergeSecurityConfig(config.security),
     extraSkillDirs: normalizeExtraSkillDirs(config ? config.extraSkillDirs : undefined),
     externalSkills: {
-      policy: ['legacy', 'prompt', 'strict'].includes(config?.externalSkills?.policy)
-        ? config.externalSkills.policy
-        : DEFAULT_CONFIG.externalSkills.policy,
+      policy: normalizeExternalSkillsPolicy(config?.externalSkills?.policy),
       defaultExecution: ['in-process', 'worker'].includes(config?.externalSkills?.defaultExecution)
         ? config.externalSkills.defaultExecution
         : DEFAULT_CONFIG.externalSkills.defaultExecution,

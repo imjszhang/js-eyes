@@ -11,7 +11,7 @@ const {
   buildAdapterTools,
   discoverLocalSkills,
   isSkillEnabled,
-} = require('../packages/protocol/skills');
+} = require('../packages/skill-install/skills');
 
 describe('skill bundle metadata', () => {
   let tempDir = null;

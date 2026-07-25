@@ -9,15 +9,7 @@
   "files": [
     "index.js",
     "browser-operations.js",
-    "browser-handlers.js",
-    "skills.js",
-    "zip-extract.js",
-    "fs-io.js",
-    "safe-npm.js",
-    "extra-integrity.js",
-    "skill-trust.js",
-    "skill-runner.js",
-    "registry-client.js"
+    "browser-handlers.js"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",
@@ -38,8 +30,5 @@
   ],
   "publishConfig": {
     "access": "public"
-  },
-  "dependencies": {
-    "@js-eyes/skill-install": "2.9.0"
   }
 }

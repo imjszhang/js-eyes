@@ -13,7 +13,7 @@ const {
   TaskOriginTracker,
   TaintRegistry,
   EgressGate,
-} = require('./policy');
+} = require('@js-eyes/policy');
 
 const DEFAULT_SERVER_URL = `ws://${DEFAULT_SERVER_HOST}:${DEFAULT_SERVER_PORT}`;
 const browserWireAction = (id) => BROWSER_OPERATION_BY_ID[id].wireAction;

@@ -14,14 +14,14 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
 - `apps/cli` contains the public `js-eyes` command.
 - `apps/native-host` contains the browser Native Messaging host.
 - `packages/protocol` owns shared protocol constants, browser-operation
-  metadata/handlers, and compatibility data. Legacy subpath re-exports for
-  install helpers remain for one release cycle.
+  metadata/handlers, and browser-operation catalogs. Install helpers live in
+  `@js-eyes/skill-install` (not under `protocol`).
 - `packages/skill-install` owns skill discovery, install, trust, ZIP/npm, and
   registry helpers (formerly under `protocol`).
 - `packages/policy` owns `PolicyContext` and related egress/taint/task-origin
   policy primitives used by server-core and the client SDK.
-- `packages/client-sdk` owns the Node.js browser client (re-exports policy for
-  compatibility).
+- `packages/client-sdk` owns the Node.js browser client (may re-export selected
+  policy symbols from its main entry; prefer `@js-eyes/policy` directly).
 - `packages/server-core` owns the local HTTP and WebSocket server.
 - `packages/mcp-server` is the native stdio MCP facade.
 - `packages/skill-contract` validates Skill metadata; `packages/skill-runtime`
@@ -70,9 +70,10 @@ CLI / MCP / optional OpenClaw adapter
 ## Browser extension changes
 
 - Edit shared cross-browser behavior in `extensions/shared` first.
-- Do not independently patch generated Chrome and Firefox copies.
-- After shared changes, regenerate the browser copies with
-  `npm run sync:extension-shared`.
+- Do not independently patch injected Chrome and Firefox runtime copies.
+- After shared changes, prepare staging with `npm run sync:extension-shared`
+  (writes `dist/extensions-stage/{chrome,firefox}`); builders inject shared
+  the same way. Load unpacked extensions from the staged directories.
 - Keep Chrome MV3 and Firefox MV2 loading differences in their platform entry
   modules.
 - Treat authentication, request validation, deduplication, rate limiting,
@@ -85,7 +86,7 @@ CLI / MCP / optional OpenClaw adapter
   version and compatibility range.
 - Keep `skill.manifest.json`, `skill.entry.js`, `skill.definition.js`,
   `package.json`, and `SKILL.md` consistent for official V2 Skills. Treat
-  `skill.contract.js` as an external V1 compatibility format only.
+  `skill.contract.js` is no longer activated by the runtime (V1 removed).
 - New tools must have a stable name, JSON Schema input, risk classification,
   and the minimum capabilities required.
 - `read`, `interactive`, `destructive`, and `administrative` are meaningful

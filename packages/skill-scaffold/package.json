@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "entry.js",
+    "native-handlers.js",
     "definition.js",
     "manifest.js"
   ],
@@ -26,7 +27,5 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "dependencies": {
-    "@js-eyes/skill-runtime": "2.9.0"
-  }
+  "dependencies": {}
 }

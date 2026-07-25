@@ -77,4 +77,4 @@ js-hello-ops-skill/
 
 - 开发指南：[docs/dev/js-eyes-skills/authoring.zh.md](../../../docs/dev/js-eyes-skills/authoring.zh.md)
 - 部署启用：[docs/dev/js-eyes-skills/deployment.zh.md](../../../docs/dev/js-eyes-skills/deployment.zh.md)
-- V1 契约样例（已弃用）：[examples/legacy/](../../legacy/)
+- V1 已移除；迁移说明：[examples/legacy/](../../legacy/)

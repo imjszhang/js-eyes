@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+> **2.9.x platform line (still 2.x).** Package-boundary cleanup and V1 skill
+> removal ship in this minor without a 3.0/4.0 major bump. Update imports and
+> migrate external skills before upgrading — see [RELEASE.md](RELEASE.md)
+> Package Boundary / V1 migration notes.
+
 ### Fixed
 
 - Skill Runtime scoped browser now maps `click` / `fill` / `scroll` /
@@ -20,6 +25,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Official site skills' `lib/runContext.js` converge on
+  `@js-eyes/skill-recording.createUrlSkillRunContext` (shared URL normalize +
+  cache-key defaults; skill-specific normalizers preserved).
 - Host-neutral browser operations: MCP and OpenClaw share
   `packages/protocol/browser-operations.js` metadata and
   `invokeBrowserOperation()` instead of duplicated handlers.
@@ -28,8 +36,7 @@ All notable changes to this project will be documented in this file.
   `requirements` on the definition). Manifest generation no longer uses
   name-based heuristics. Official skills no longer export
   `createOpenClawAdapter`.
-- Examples: V2 hello skill under `examples/js-eyes-skills/`; V1 sample
-  moved to `examples/legacy/`.
+- Examples: V2 hello skill under `examples/js-eyes-skills/`.
 - New `@js-eyes/skill-scaffold` package (`createSkillEntry`,
   `createDefinitionEnvelope`, `buildSkillManifest`); official skill entries
   and manifest generation use it.
@@ -39,16 +46,41 @@ All notable changes to this project will be documented in this file.
   `js-browser-ops-skill` uses the new SDK methods instead of `executeScript`.
 - Split `@js-eyes/skill-install` (discovery/install/trust) out of
   `@js-eyes/protocol`, and `@js-eyes/policy` out of `@js-eyes/client-sdk/policy`.
-  Old import paths re-export for compatibility; `server-core` depends on
-  `@js-eyes/policy` directly.
+  `server-core` and `client-sdk` depend on `@js-eyes/policy` directly.
+- Skill Runtime registry split into `registry.js` plus
+  `registry/{discover,trust-gate,activate-v2,reload}.js`.
+- `@js-eyes/skill-scaffold` owns `createNativeHandlers` for official skills and
+  no longer depends on `@js-eyes/skill-runtime`; the runtime keeps a local copy
+  of the same helper for its public API.
+- OpenClaw plugin splits server lifecycle and skills admin into
+  `server-lifecycle.mjs` / `skills-admin.mjs`.
+- Extension shared runtime is injected at build/sync time into
+  `dist/extensions-stage/{chrome,firefox}`; generated copies are no longer
+  committed under `extensions/chrome` / `extensions/firefox`.
 - `openclaw-plugin` is a workspace package (`@js-eyes/openclaw-plugin`) that
   depends on core packages by name instead of relative `createRequire` paths.
 - Root package no longer depends on `@js-eyes/visual-bridge-kit` (skill-optional).
+- Config normalization warns when remapping removed `externalSkills.policy=legacy`
+  (and unknown policy values) to `prompt`.
 
-### Deprecated
+### Removed
 
-- External V1 `skill.contract.js` / `createOpenClawAdapter` activation
-  logs a warning and is scheduled for removal in JS Eyes 4.0.
+- Compatibility re-exports under `@js-eyes/protocol/{skills,zip-extract,fs-io,safe-npm,extra-integrity,skill-trust,skill-runner,registry-client}`.
+  Import from `@js-eyes/skill-install` (and its subpaths) instead.
+  `@js-eyes/protocol` no longer depends on `@js-eyes/skill-install`.
+- `@js-eyes/client-sdk/policy` directory. Import from `@js-eyes/policy`;
+  `client-sdk` main entry still re-exports selected policy symbols.
+- V1 skill activation (`createOpenClawAdapter` / `skill.contract.js` loading)
+  and `externalSkills.policy=legacy`. Migrate to V2 manifests; see
+  `examples/js-eyes-skills/`. The obsolete V1 sample under `examples/legacy/`
+  was removed.
+
+### Added
+
+- `createSkillRuntime({ createRunContext })` injects the recording run-context
+  factory (defaults to `@js-eyes/skill-recording.createSkillRunContext`).
+- `@js-eyes/skill-recording.createUrlSkillRunContext` for shared URL-oriented
+  skill run contexts (used by official site skills).
 
 ## [2.8.5] - 2026-07-22
 

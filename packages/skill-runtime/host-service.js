@@ -118,7 +118,7 @@ class SkillHostService {
     const config = this.currentConfig();
     const policy = config.externalSkills?.policy || DEFAULT_EXTERNAL_SKILLS_CONFIG.policy;
     const mode = trust.approval?.executionMode
-      || (policy === 'legacy' ? 'in-process' : (config.externalSkills?.defaultExecution || 'worker'));
+      || (config.externalSkills?.defaultExecution || 'worker');
     return mode === 'worker'
       ? createSkillWorkerBackend({
           skill,

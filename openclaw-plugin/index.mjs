@@ -11,64 +11,37 @@ const {
   ServerPolicyError,
 } = require("@js-eyes/client-sdk");
 const { loadConfig, setConfigValue } = require("@js-eyes/config");
-const { createServer } = require("@js-eyes/server-core");
-const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("@js-eyes/protocol");
-const {
-  createSkillTrustStore,
-  discoverSkillsFromSources,
-  fetchSkillsRegistry,
-  planSkillInstall,
-  resolveSkillSources,
-  skillToolActionName,
-} = require("@js-eyes/skill-install/skills");
-const { SkillHostService } = require("@js-eyes/skill-runtime");
-const { ensureRuntimePaths, chmodBestEffort } = require("@js-eyes/runtime-paths");
-const { ensureToken } = require("@js-eyes/runtime-paths/token.js");
+const { SENSITIVE_TOOL_NAMES, resolveSecurityConfig } = require("@js-eyes/protocol");
 import { createAuthHelpers } from "./auth.mjs";
 import { ensureNativeHost, logNativeHostResult } from "./native-host-setup.mjs";
-import { createSharedServerManager } from "./shared-server.mjs";
 import { createHotReloadWatchers } from "./watchers.mjs";
 import { createRegistrationContext } from "./registration-context.mjs";
 import { registerPluginCli } from "./cli-registration.mjs";
 import { createToolPolicy } from "./tool-policy.mjs";
-import { registerServerService } from "./server-service.mjs";
 import { registerToolRouter } from "./tool-router.mjs";
 import { createPluginLifecycle } from "./lifecycle.mjs";
 import { registerBrowserActions } from "./actions/browser.mjs";
-import { registerSkillDiscoveryActions } from "./actions/skills.mjs";
-import { registerManagementActions } from "./actions/management.mjs";
 import { resolveOpenClawSkillConfig } from "./skill-config.mjs";
+import {
+  chmodBestEffort,
+  createServer,
+  ensureRuntimePaths,
+  registerJsEyesServerService,
+  sharedServer,
+} from "./server-lifecycle.mjs";
+import {
+  DEFAULT_REGISTRY,
+  SKILL_ROOT,
+  resolveSkillSources,
+  setupSkillsAdmin,
+} from "./skills-admin.mjs";
 
 const nodeCrypto = require("node:crypto");
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
 
-const PLUGIN_DIR = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
-
-function resolveSkillRoot() {
-  const pluginDir = process.platform === "win32"
-    ? PLUGIN_DIR.replace(/^\//, "")
-    : PLUGIN_DIR;
-
-  const candidates = [
-    nodePath.resolve(pluginDir, ".."),
-    nodePath.resolve(pluginDir, "..", ".."),
-    pluginDir,
-  ];
-
-  const withSkillsDir = candidates.find((candidate) =>
-    nodeFs.existsSync(nodePath.join(candidate, "skills")));
-  if (withSkillsDir) {
-    return withSkillsDir;
-  }
-
-  return candidates.find((candidate) =>
-    nodeFs.existsSync(nodePath.join(candidate, "package.json"))) || pluginDir;
-}
-
-const SKILL_ROOT = resolveSkillRoot();
-const DEFAULT_REGISTRY = SKILLS_REGISTRY_URL;
 const BUILTIN_TOOL_NAMES = [];
+const lifecycle = createPluginLifecycle(sharedServer);
 
 function resolvePluginEntry(definition) {
   try {
@@ -81,9 +54,6 @@ function resolvePluginEntry(definition) {
   }
   return definition.register;
 }
-
-const sharedServer = createSharedServerManager(createServer);
-const lifecycle = createPluginLifecycle(sharedServer);
 
 function isFullRegistration(api) {
   const mode = api.registrationMode;
@@ -112,9 +82,6 @@ function register(api) {
   });
 
   const runtimePaths = ensureRuntimePaths();
-  const skillTrustStore = createSkillTrustStore({
-    filePath: nodePath.join(runtimePaths.configDir, "skill-trust.json"),
-  });
   const security = resolveSecurityConfig(hostConfig);
 
   const { getServerToken, getLocalRequestHeaders } = createAuthHelpers(serverHost);
@@ -156,13 +123,12 @@ function register(api) {
     );
   }
 
-  registerServerService({
+  registerJsEyesServerService({
     api,
     autoStart,
     clearCurrentRegistration: lifecycle.clearCurrentRegistration,
     consumePreviousTeardown,
     ensureNativeHost,
-    ensureToken,
     fullRuntime,
     hostConfig,
     logNativeHostResult,
@@ -172,44 +138,34 @@ function register(api) {
     security,
     serverHost,
     serverPort,
-    sharedServer,
     state,
     teardownRegistration,
   });
 
   registerBrowserActions({ ensureBot, policyTextResultOrThrow, registerCoreAction, textResult });
 
-  registerSkillDiscoveryActions({ api, chmodBestEffort, discoverSkillsFromSources, fetchSkillsRegistry, loadConfig, nodeFs, nodePath, planSkillInstall, registerCoreAction, resolveSkillSources, runtimePaths, skillToolActionName, skillsDir, skillsRegistryUrl, textResult });
-
-  state.skillHostService = new SkillHostService(effectiveSkillConfig, {
-    configLoader: loadEffectiveSkillConfig,
-    skillsDir,
-    extrasProvider: resolveExtraSkillDirs,
-    setConfigValue: (key, value) => setConfigValue(key, value),
-    logger: api.logger,
-    invocationSource: "openclaw",
-    hostVersion: manifest.version,
-    browserFactory: () => ensureBot(),
-    disposeBrowser: false,
-    trustStore: skillTrustStore,
-    registryOptions: {
-      wrapSensitiveTool,
-      builtinToolNames: BUILTIN_TOOL_NAMES,
-    },
-  });
-  state.skillRegistry = state.skillHostService.createRegistry();
-
-  if (fullRuntime) {
-    const initPromise = state.skillHostService.ensureReady().catch((error) => {
-      api.logger.warn(`[js-eyes] Skill host init failed: ${error.message}`);
-    });
-    void initPromise;
-  }
-
-  registerManagementActions({
+  setupSkillsAdmin({
+    api,
+    builtinToolNames: BUILTIN_TOOL_NAMES,
+    chmodBestEffort,
+    ensureBot,
+    effectiveSkillConfig,
+    fullRuntime,
     getActiveServer,
+    hostVersion: manifest.version,
+    loadConfig,
+    loadEffectiveSkillConfig,
+    nodeFs,
+    nodePath,
     registerCoreAction,
-    skillHostService: state.skillHostService,
+    resolveExtraSkillDirs,
+    runtimePaths,
+    setConfigValue,
+    skillsDir,
+    skillsRegistryUrl,
+    state,
+    textResult,
+    wrapSensitiveTool,
   });
 
   registerToolRouter({

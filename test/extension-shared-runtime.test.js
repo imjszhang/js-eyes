@@ -9,6 +9,8 @@ const vm = require('vm');
 const root = path.join(__dirname, '..');
 const config = require('../extensions/shared/config');
 const sharedBrowserControl = require('../extensions/shared/browser-control-methods');
+const { stageAllExtensions } = require('../packages/devtools/lib/build/extensions');
+const { EXTENSION_SHARED_COPIES } = require('../packages/devtools/lib/build/context');
 const methodModuleNames = ['connection', 'messaging', 'operations', 'page-interact', 'routing', 'tabs'];
 const platformModuleNames = ['connection', 'server', 'operations', 'runtime', 'tabs'];
 
@@ -17,17 +19,21 @@ function read(relativePath) {
 }
 
 describe('extension shared runtime contract', () => {
-  it('keeps generated platform copies byte-identical to the shared source', () => {
-    assert.equal(read('extensions/chrome/config.js'), read('extensions/shared/config.js'));
-    assert.equal(read('extensions/firefox/config.js'), read('extensions/shared/config.js'));
-    assert.equal(read('extensions/chrome/background/utils.js'), read('extensions/shared/utils.js'));
-    assert.equal(read('extensions/firefox/background/utils.js'), read('extensions/shared/utils.js'));
-    for (const name of methodModuleNames) {
-      assert.equal(read(`extensions/chrome/background/${name}-methods.js`), read(`extensions/shared/${name}-methods.js`));
-      assert.equal(read(`extensions/firefox/background/${name}-methods.js`), read(`extensions/shared/${name}-methods.js`));
+  it('stages shared runtime into dist/extensions-stage byte-identical to shared', () => {
+    const staged = stageAllExtensions();
+    for (const [sourceName, targetName] of EXTENSION_SHARED_COPIES) {
+      const sharedText = read(path.join('extensions/shared', sourceName));
+      assert.equal(
+        fs.readFileSync(path.join(staged.chrome, targetName), 'utf8'),
+        sharedText,
+        `chrome stage ${targetName}`,
+      );
+      assert.equal(
+        fs.readFileSync(path.join(staged.firefox, targetName), 'utf8'),
+        sharedText,
+        `firefox stage ${targetName}`,
+      );
     }
-    assert.equal(read('extensions/chrome/background/browser-control-methods.js'), read('extensions/shared/browser-control-methods.js'));
-    assert.equal(read('extensions/firefox/background/browser-control-methods.js'), read('extensions/shared/browser-control-methods.js'));
   });
 
   it('loads shared files before each platform background entrypoint', () => {
@@ -61,14 +67,17 @@ describe('extension shared runtime contract', () => {
   });
 
   it('loads Firefox background dependencies in one classic-script scope', () => {
+    const staged = stageAllExtensions();
     const firefoxManifest = JSON.parse(read('extensions/firefox/manifest.json'));
     const context = vm.createContext({ console });
     const dependencyScripts = firefoxManifest.background.scripts.slice(0, -1);
 
     for (const relativePath of dependencyScripts) {
-      vm.runInContext(read(path.join('extensions/firefox', relativePath)), context, {
-        filename: relativePath,
-      });
+      vm.runInContext(
+        fs.readFileSync(path.join(staged.firefox, relativePath), 'utf8'),
+        context,
+        { filename: relativePath },
+      );
     }
 
     for (const globalName of [

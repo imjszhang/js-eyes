@@ -55,10 +55,15 @@ npm run test:client
 npm run test:cli
 ```
 
-Cross-browser background configuration, stability helpers, and shared
-`BrowserControl` methods live in `extensions/shared`. After editing them, run
-`npm run sync:extension-shared`; CI and both extension builders reject stale
-Chrome/Firefox runtime copies.
+Edit cross-browser extension behavior only in `extensions/shared` — never
+hand-edit injected runtime files under Chrome/Firefox. Shared modules are
+injected into `dist/extensions-stage/{chrome,firefox}` at build/sync time;
+platform entry modules (`background.js`, `platform-*`, manifests) stay in
+`extensions/chrome` and `extensions/firefox`. After shared changes, run
+`npm run sync:extension-shared` (or `npm run build:chrome` /
+`npm run build:firefox:dev`) and load the unpacked extension from the staged
+directory. CI runs `npm run check:extension-shared` on every PR to validate
+the protocol catalog against `extensions/shared/config.js`.
 
 ## Adding a site Skill
 

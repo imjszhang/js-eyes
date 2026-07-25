@@ -90,8 +90,8 @@ it. Every residual is gated by the scanner's allowlist in
 
 | Module | Why it owns `child_process` | Hardening |
 | --- | --- | --- |
-| [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js) | Only entrypoint for `npm ci` / `npm install` during skill-dependency install. | Whitelisted subcommand, constant argv, `shell:false`, `windowsHide:true`, whitelisted env; secrets in `process.env` never forwarded. (`packages/protocol/safe-npm.js` is a compatibility re-export.) |
-| [`packages/skill-install/skill-runner.js`](packages/skill-install/skill-runner.js) | Launches a sub-skill's own Node CLI entry (`process.execPath` + argv). | `shell:false`, `windowsHide:true`; argv starts with `process.execPath` (no lookup via PATH); does not import any network helper (enforced by `test/import-boundaries.test.js`). (`packages/protocol/skill-runner.js` is a compatibility re-export.) |
+| [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js) | Only entrypoint for `npm ci` / `npm install` during skill-dependency install. | Whitelisted subcommand, constant argv, `shell:false`, `windowsHide:true`, whitelisted env; secrets in `process.env` never forwarded. Import `@js-eyes/skill-install/safe-npm`. |
+| [`packages/skill-install/skill-runner.js`](packages/skill-install/skill-runner.js) | Launches a sub-skill's own Node CLI entry (`process.execPath` + argv). | `shell:false`, `windowsHide:true`; argv starts with `process.execPath` (no lookup via PATH); does not import any network helper (enforced by `test/import-boundaries.test.js`). Import `@js-eyes/skill-install/skill-runner`. |
 | [`openclaw-plugin/windows-hide-patch.mjs`](openclaw-plugin/windows-hide-patch.mjs) | Boot-time patch: on Windows only, forces `windowsHide:true` on every `child_process.spawn` / `execFile` initiated from the plugin process. | No-op on POSIX; never spawns anything itself — only wraps existing APIs. Does not import any network helper. |
 
 Adding a new `child_process` call in any other module **will** fail the
@@ -112,8 +112,8 @@ module that now owns the operation in 2.6.2.
   manifests.
 - **2.6.2 mitigation** (paths as of the skill-install split): the only
   `child_process` call for npm install now lives in
-  [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js)
-  (`@js-eyes/protocol/safe-npm` re-exports it). That module enforces:
+  [`packages/skill-install/safe-npm.js`](packages/skill-install/safe-npm.js).
+  That module enforces:
   - subcommand selected from an **immutable whitelist** (`ci`, `install`) — callers
     pick by name, never by free-form string;
   - argv is built from constant arrays (`--no-audit`, `--no-fund`, etc.); no
@@ -251,7 +251,7 @@ module that now owns the operation in 2.6.2.
 - **Residual risk**: the switch stays **off by default** to preserve 2.6.1
   compatibility for existing operators. The 2.7 plan is to flip it on by
   default and require explicit opt-out.
-- **Tests**: [`packages/protocol/tests/extra-integrity.test.js`](packages/protocol/tests/extra-integrity.test.js).
+- **Tests**: [`packages/skill-install/tests/extra-integrity.test.js`](packages/skill-install/tests/extra-integrity.test.js).
 
 ### D. `npx js-eyes native-host install` runs remote code
 

@@ -2,10 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const contract = require('../skill.definition');
+const definition = require('../skill.definition');
+const tools = definition.TOOL_DEFINITIONS;
 
-test('contract 暴露 v3.0 的全部 AI 工具（6 READ + 4 INTERACTIVE + 5 monitor）', () => {
-  const names = contract.tools.map((t) => t.name).sort();
+test('definition 暴露 v3.0 的全部 AI 工具（6 READ + 4 INTERACTIVE + 5 monitor）', () => {
+  const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     'xhs_get_note',
     'xhs_get_note_comments',
@@ -26,7 +27,7 @@ test('contract 暴露 v3.0 的全部 AI 工具（6 READ + 4 INTERACTIVE + 5 moni
 });
 
 test('monitor 工具集合不包含 init/check/daemon/stop（这些只在 CLI 暴露）', () => {
-  const names = contract.tools.map((t) => t.name);
+  const names = tools.map((t) => t.name);
   assert.equal(names.includes('xhs_monitor_init'), false);
   assert.equal(names.includes('xhs_monitor_check'), false);
   assert.equal(names.includes('xhs_monitor_daemon'), false);
@@ -34,13 +35,13 @@ test('monitor 工具集合不包含 init/check/daemon/stop（这些只在 CLI �
 });
 
 test('所有工具 destructive=false（小红书 ops skill 永不引入 DESTRUCTIVE）', () => {
-  for (const tool of contract.tools) {
+  for (const tool of tools) {
     assert.equal(tool.destructive, false, `${tool.name} should be non-destructive`);
   }
 });
 
 test('READ 工具 interactive=false，navigate 工具 interactive=true', () => {
-  for (const tool of contract.tools) {
+  for (const tool of tools) {
     if (tool.name.startsWith('xhs_navigate_')) {
       assert.equal(tool.interactive, true, `${tool.name} should be interactive`);
     } else {
@@ -50,7 +51,7 @@ test('READ 工具 interactive=false，navigate 工具 interactive=true', () => {
 });
 
 test('xhs_get_note 参数 schema 含 readMode 与 withComments / maxCommentPages', () => {
-  const tool = contract.tools.find((t) => t.name === 'xhs_get_note');
+  const tool = tools.find((t) => t.name === 'xhs_get_note');
   assert.ok(tool);
   const props = tool.parameters.properties;
   assert.ok(props.url);
@@ -60,14 +61,14 @@ test('xhs_get_note 参数 schema 含 readMode 与 withComments / maxCommentPages
   assert.ok(props.maxCommentPages);
 });
 
-test('contract 暴露 makeReadToolExecutor / makeNavigateToolExecutor 工厂', () => {
-  assert.equal(typeof contract.makeReadToolExecutor, 'function');
-  assert.equal(typeof contract.makeBridgeReadExecutor, 'function');
-  assert.equal(typeof contract.makeNavigateToolExecutor, 'function');
+test('definition 暴露 makeReadToolExecutor / makeNavigateToolExecutor 工厂', () => {
+  assert.equal(typeof definition.makeReadToolExecutor, 'function');
+  assert.equal(typeof definition.makeBridgeReadExecutor, 'function');
+  assert.equal(typeof definition.makeNavigateToolExecutor, 'function');
 });
 
-test('contract.cli.commands 至少包含 note / comments / session-state', () => {
-  const names = contract.cli.commands.map((c) => c.name);
+test('definition.cli.commands 至少包含 note / comments / session-state', () => {
+  const names = definition.cli.commands.map((c) => c.name);
   assert.ok(names.includes('note'));
   assert.ok(names.includes('comments'));
   assert.ok(names.includes('session-state'));

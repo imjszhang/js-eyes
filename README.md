@@ -153,10 +153,20 @@ Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Fir
 
 #### Chrome / Edge
 
-1. Open browser and navigate to `chrome://extensions/` (or `edge://extensions/`)
-2. Enable "Developer mode" in the top right
+**From a release zip** (recommended): download `js-eyes-chrome-v<version>.zip`,
+extract it, then Load unpacked on the extracted folder.
+
+**From this repo** (development):
+
+```bash
+npm run sync:extension-shared   # or: npm run build:chrome
+```
+
+1. Open `chrome://extensions/` (or `edge://extensions/`)
+2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select the `extensions/chrome` folder
+4. Select `dist/extensions-stage/chrome` (not `extensions/chrome` — shared
+   runtime is injected into the staged tree at build/sync time)
 
 Raw `execute_script` support on Chrome/Edge additionally requires version 135+. On version 138+, open the extension details and enable **Allow User Scripts**; on versions 135-137, keeping Developer mode enabled is sufficient. Other extension features remain available on the baseline versions above.
 
@@ -164,7 +174,14 @@ Raw `execute_script` support on Chrome/Edge additionally requires version 135+. 
 
 **Signed XPI** (recommended): drag and drop the `.xpi` file into Firefox.
 
-**Temporary** (development): open `about:debugging` > This Firefox > Load Temporary Add-on > select `extensions/firefox/manifest.json`.
+**Temporary** (development):
+
+```bash
+npm run sync:extension-shared   # or: npm run build:firefox:dev
+```
+
+Then open `about:debugging` > This Firefox > Load Temporary Add-on > select
+`dist/extensions-stage/firefox/manifest.json`.
 
 ### OpenClaw Skill Bundle
 
@@ -451,8 +468,8 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | `requestTimeout` | number | `1800` | Request timeout in seconds (default 30 minutes; server reads this value on startup) |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | URL of the extension skill registry |
 | `skillsDir` | string | `""` | Primary skill install directory — empty = auto-detect `skills/` under skill root. All `install` / `approve` / `uninstall` / integrity checks target this directory only. |
-| `extraSkillDirs` | string[] | `[]` | Additional read-only skill sources. An entry can be a V2 directory containing `skill.manifest.json`, a legacy `skill.contract.js` directory, or a parent directory. Primary wins on id conflicts. |
-| `externalSkills.policy` | string | `"legacy"` | External Skill policy: `legacy`, `prompt`, or `strict`. `prompt`/`strict` require approval bound to path, manifest, source/dependency digest, and execution mode. |
+| `extraSkillDirs` | string[] | `[]` | Additional read-only skill sources. An entry can be a V2 directory containing `skill.manifest.json`, or a parent directory scanned one level deep. Primary wins on id conflicts. V1 `skill.contract.js` directories are no longer activated. |
+| `externalSkills.policy` | string | `"prompt"` | External Skill policy: `prompt` or `strict`. Both require approval bound to path, manifest, source/dependency digest, and execution mode. `legacy` is rejected and normalized to `prompt` with a warning. |
 | `externalSkills.defaultExecution` | string | `"worker"` | Execution mode recorded when external V2 Skills are approved: `worker` or `in-process`. Worker is an isolation boundary, not an OS sandbox. |
 
 ## Compatibility Matrix

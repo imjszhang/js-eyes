@@ -1,6 +1,6 @@
 # Skill Runtime V2
 
-Status: implemented with V1 compatibility.
+Status: implemented (V1 activation removed).
 
 ## Architecture
 
@@ -17,18 +17,24 @@ OpenClaw / CLI / MCP
         |
   SkillHostService
         |
-  SkillRegistry -- static manifest + trust + compatibility
+  SkillRegistry (registry.js + registry/*) -- static manifest + trust
         |
   SkillRuntime -- config, browser, storage, logging, cancellation
         |
  in-process entry or runtime-owned Worker IPC
 ```
 
+`packages/skill-runtime/registry.js` is the public orchestration entry
+(`createSkillRegistry`, `purgeRequireCacheFor`). Cohesive helpers live under
+`packages/skill-runtime/registry/`: `discover.js` (static scan / fingerprint /
+require-cache purge), `trust-gate.js` (integrity and external approval),
+`activate-v2.js` (V2 activation), and `reload.js` (fingerprint compare, dispose,
+binding replace).
+
 Each invocation receives an immutable context containing its id, source,
 deadline, `AbortSignal`, logger, read-only config, scoped storage paths, and a
 capability-gated browser proxy. The host owns the physical browser connection
-and disposes resources in reverse registration order. V1 `skill.contract.js`
-remains supported by the normalizer during migration.
+and disposes resources in reverse registration order.
 
 ## External skills
 
@@ -40,11 +46,11 @@ change invalidates that approval and requires review again.
 
 Policies are:
 
-- `legacy`: compatibility mode; external Skills may run in-process.
-- `prompt`: an external V2 Skill must be explicitly trusted.
+- `prompt`: an external V2 Skill must be explicitly trusted (default).
 - `strict`: requires V2 plus explicit trust.
 
-`prompt` is the default. `legacy` must be selected explicitly.
+`externalSkills.policy=legacy` is no longer accepted. Config normalization and
+the registry remap it to `prompt` with a warning.
 
 Use `js-eyes skills inspect`, `permissions`, `trust`, and `revoke`. Worker mode
 uses an allowlisted environment and brokers browser operations through the host.
@@ -80,11 +86,10 @@ packages do not read OpenClaw configuration or import the plugin. Official
 Skills use native V2 activation only (`TOOL_DEFINITIONS` is the tool SSOT;
 `skill.manifest.json` is generated from it).
 
-## V1 soft sunset
+## V1 removed (2.9.x, still 2.x)
 
-External V1 skills that export `createOpenClawAdapter` from `skill.contract.js`
-still load, but the registry logs a deprecation warning. Support remains
-through the 3.x line and is scheduled for removal in **JS Eyes 4.0**. New
-skills must use `skill.manifest.json` + `skill.entry.js`. See
-`examples/js-eyes-skills/` for the V2 template and `examples/legacy/` for the
-deprecated V1 sample.
+V1 `skill.contract.js` / `createOpenClawAdapter` activation is **removed** in
+the 2.9 platform line without a major-version bump. `externalSkills.policy=legacy`
+is normalized to `prompt` with a warning. Skills must use
+`skill.manifest.json` + `skill.entry.js`. See `examples/js-eyes-skills/` for
+the V2 template.

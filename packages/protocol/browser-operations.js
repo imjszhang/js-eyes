@@ -28,12 +28,12 @@ const TIMEOUT_PROP = Object.freeze({
 });
 
 function objectSchema(properties, required = [], extras = {}) {
-  const schema = {
+  const schema = /** @type {Record<string, any>} */ ({
     type: 'object',
     properties: Object.freeze(properties),
     ...(required.length ? { required: Object.freeze(required.slice()) } : {}),
     additionalProperties: false,
-  };
+  });
   if (extras.anyOf) {
     schema.anyOf = Object.freeze(extras.anyOf.map((item) => Object.freeze({
       ...item,

@@ -1,6 +1,6 @@
 'use strict';
 
-const { createNativeHandlers } = require('@js-eyes/skill-runtime');
+const { createNativeHandlers } = require('./native-handlers');
 
 /**
  * Standard V2 skill.entry.js body.
@@ -15,4 +15,4 @@ function createSkillEntry(toolDefinitions, options = {}) {
   };
 }
 
-module.exports = { createSkillEntry };
+module.exports = { createSkillEntry, createNativeHandlers };
