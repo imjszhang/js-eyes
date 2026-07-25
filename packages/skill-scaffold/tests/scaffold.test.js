@@ -5,11 +5,29 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const {
   createSkillEntry,
+  createNativeHandlers,
   createDefinitionEnvelope,
   buildSkillManifest,
 } = require('../index');
+const runtimeHandlers = require('@js-eyes/skill-runtime');
 
 describe('skill-scaffold', () => {
+  it('createNativeHandlers matches skill-runtime public helper', async () => {
+    const tools = [{
+      name: 'parity',
+      async execute(ctx, input) {
+        return { n: input.n, bot: typeof ctx.ensureBot };
+      },
+    }];
+    const context = { browser: { id: 1 }, config: { a: 1 }, logger: console };
+    const fromScaffold = createNativeHandlers(tools, { configDefaults: { d: 2 } });
+    const fromRuntime = runtimeHandlers.createNativeHandlers(tools, { configDefaults: { d: 2 } });
+    const a = await fromScaffold.parity(context, { n: 7 });
+    const b = await fromRuntime.parity(context, { n: 7 });
+    assert.deepEqual(a, b);
+    assert.deepEqual(a, { n: 7, bot: 'function' });
+  });
+
   it('createSkillEntry binds TOOL_DEFINITIONS to handlers', async () => {
     const entry = createSkillEntry([{
       name: 'demo_tool',

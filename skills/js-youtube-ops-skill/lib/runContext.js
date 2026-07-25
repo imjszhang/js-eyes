@@ -1,6 +1,10 @@
 'use strict';
 
-const { createRunId, createSkillRunContext, resolveRecordingState } = require('@js-eyes/skill-recording');
+const {
+  createRunId,
+  createUrlSkillRunContext,
+  resolveRecordingState,
+} = require('@js-eyes/skill-recording');
 const { extractVideoId } = require('./youtubeUtils');
 
 function normalizeYoutubeUrl(inputUrl) {
@@ -12,10 +16,9 @@ function normalizeYoutubeUrl(inputUrl) {
 }
 
 function createRunContext(options) {
-  return createSkillRunContext({
+  return createUrlSkillRunContext({
     ...options,
-    url: options.url,
-    normalizeInput: normalizeYoutubeUrl,
+    normalizeUrl: normalizeYoutubeUrl,
     buildCacheKeyParts: ({ skillId, scrapeType, normalizedInput, skillVersion, options: runOptions }) => ({
       skillId,
       scrapeType,

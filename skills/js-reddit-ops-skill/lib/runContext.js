@@ -2,7 +2,7 @@
 
 const {
   createRunId,
-  createSkillRunContext,
+  createUrlSkillRunContext,
   resolveRecordingState,
 } = require('@js-eyes/skill-recording');
 
@@ -22,16 +22,9 @@ function normalizeRedditUrl(inputUrl) {
 }
 
 function createRunContext(options) {
-  return createSkillRunContext({
+  return createUrlSkillRunContext({
     ...options,
-    url: options.url,
-    normalizeInput: normalizeRedditUrl,
-    buildCacheKeyParts: ({ skillId, scrapeType, normalizedInput, skillVersion }) => ({
-      skillId,
-      scrapeType,
-      url: normalizedInput,
-      version: skillVersion,
-    }),
+    normalizeUrl: normalizeRedditUrl,
   });
 }
 
