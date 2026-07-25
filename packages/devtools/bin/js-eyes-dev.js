@@ -243,18 +243,7 @@ async function cmdBundle() {
   }
 }
 
-const WORKSPACE_PUBLISH_ORDER = [
-  { name: '@js-eyes/skill-contract', dir: 'packages/skill-contract' },
-  { name: '@js-eyes/protocol', dir: 'packages/protocol' },
-  { name: '@js-eyes/runtime-paths', dir: 'packages/runtime-paths' },
-  { name: '@js-eyes/config', dir: 'packages/config' },
-  { name: '@js-eyes/skill-recording', dir: 'packages/skill-recording' },
-  { name: '@js-eyes/client-sdk', dir: 'packages/client-sdk' },
-  { name: '@js-eyes/skill-runtime', dir: 'packages/skill-runtime' },
-  { name: '@js-eyes/server-core', dir: 'packages/server-core' },
-  { name: '@js-eyes/mcp-server', dir: 'packages/mcp-server' },
-  { name: '@js-eyes/native-host', dir: 'apps/native-host' },
-];
+const { RELEASE_PACKAGES: WORKSPACE_PUBLISH_ORDER } = require('../../../scripts/release-packages');
 
 async function cmdPublish(sub, flags) {
   if (sub !== 'workspaces') {
