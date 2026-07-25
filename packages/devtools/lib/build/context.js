@@ -46,7 +46,6 @@ const BUNDLE_RUNTIME_PACKAGES = [
   'client-sdk',
   'skill-recording',
   'skill-runtime',
-  'skill-worker',
   'server-core',
 ];
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
