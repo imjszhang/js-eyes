@@ -19,11 +19,19 @@ Since Git is not suitable for storing binary files, PNG icons need to be generat
 
 #### Method 1: Developer Mode (Recommended, avoids 403 errors)
 
+From the repository root, prepare the staged extension (shared runtime is
+injected at sync/build time — do not load `extensions/firefox` directly):
+
+```bash
+npm run sync:extension-shared
+# or: npm run build:firefox:dev
+```
+
 1. Open Firefox browser
 2. Type in the address bar: `about:debugging`
 3. Click "This Firefox" on the left
 4. Click "Load Temporary Add-on" button
-5. Navigate to the `extensions/firefox` directory
+5. Navigate to `dist/extensions-stage/firefox`
 6. Select the `manifest.json` file
 7. Click "Open"
 

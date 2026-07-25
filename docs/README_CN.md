@@ -113,10 +113,19 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 
 #### Chrome / Edge
 
-1. 打开浏览器，访问 `chrome://extensions/`（Edge 访问 `edge://extensions/`）
-2. 开启右上角的"开发者模式"
+**发布包**（推荐）：下载 `js-eyes-chrome-v<version>.zip`，解压后加载该目录。
+
+**从本仓库开发加载**：
+
+```bash
+npm run sync:extension-shared   # 或：npm run build:chrome
+```
+
+1. 打开 `chrome://extensions/`（Edge 访问 `edge://extensions/`）
+2. 开启"开发者模式"
 3. 点击"加载已解压的扩展程序"
-4. 选择 `extensions/chrome` 文件夹
+4. 选择 `dist/extensions-stage/chrome`（不要直接选 `extensions/chrome`；
+   shared 运行时在 build/sync 时注入到 stage 目录）
 
 Chrome/Edge 的原始 `execute_script` 额外需要 135+ 版本。138+ 请进入扩展详情页开启“允许用户脚本”；135-137 保持开发者模式即可。其他扩展功能仍支持上表中的基础版本。
 
@@ -124,7 +133,14 @@ Chrome/Edge 的原始 `execute_script` 额外需要 135+ 版本。138+ 请进入
 
 **已签名 XPI**（推荐）：将 `.xpi` 文件拖拽到 Firefox 窗口中。
 
-**临时安装**（开发模式）：打开 `about:debugging` > 此 Firefox > 临时载入附加组件 > 选择 `extensions/firefox/manifest.json`。
+**临时安装**（开发模式）：
+
+```bash
+npm run sync:extension-shared   # 或：npm run build:firefox:dev
+```
+
+然后打开 `about:debugging` > 此 Firefox > 临时载入附加组件 > 选择
+`dist/extensions-stage/firefox/manifest.json`。
 
 ### OpenClaw 技能包
 
@@ -383,8 +399,8 @@ JS Eyes 可选注册为 [OpenClaw](https://openclaw.ai/) 插件，通过一个�
 | `requestTimeout` | number | `1800` | 请求超时秒数（默认 30 分钟；服务器启动时会读取该配置） |
 | `skillsRegistryUrl` | string | `"https://js-eyes.com/skills.json"` | 扩展技能注册表 URL |
 | `skillsDir` | string | `""` | 主技能安装目录（primary），空值则自动使用技能包内的 `skills/`。`install` / `approve` / `uninstall` / 完整性校验**只作用于此目录**。 |
-| `extraSkillDirs` | string[] | `[]` | 额外的只读技能来源。每个条目可以是含 `skill.manifest.json` 的 V2 技能目录、旧版 `skill.contract.js` 目录或父目录。同 id 冲突时 primary 优先。 |
-| `externalSkills.policy` | string | `"legacy"` | 外部技能策略：`legacy`、`prompt` 或 `strict`；后两者要求按路径、manifest、源码/依赖摘要、权限和执行模式显式信任。 |
+| `extraSkillDirs` | string[] | `[]` | 额外的只读技能来源。每个条目可以是含 `skill.manifest.json` 的 V2 技能目录，或向下扫描一层的父目录。同 id 冲突时 primary 优先。V1 `skill.contract.js` 目录不再被激活。 |
+| `externalSkills.policy` | string | `"prompt"` | 外部技能策略：`prompt` 或 `strict`。二者均要求按路径、manifest、源码/依赖摘要、权限和执行模式显式信任。`legacy` 会被拒绝并带警告归一为 `prompt`。 |
 | `externalSkills.defaultExecution` | string | `"worker"` | 外部 V2 技能默认执行模式：`worker` 或 `in-process`。Worker 是隔离边界，不是操作系统沙箱。 |
 
 ## 扩展技能

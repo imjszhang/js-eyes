@@ -49,6 +49,36 @@ credentials; no long-lived npm token is stored in GitHub.
 
 The remainder of this document is the detailed/manual fallback SOP.
 
+## 2.9.x Migration (Package Boundaries + V1 Skills)
+
+Still on the **2.x** line (no 3.0/4.0 major). 2.9 removes compatibility shims
+and V1 skill activation in the same minor. Update before upgrading:
+
+### Package imports
+
+| Removed | Use instead |
+| --- | --- |
+| `@js-eyes/protocol/skills` (and related install subpaths) | `@js-eyes/skill-install` / `@js-eyes/skill-install/skills` (same for `zip-extract`, `fs-io`, `safe-npm`, `extra-integrity`, `skill-trust`, `skill-runner`, `registry-client`) |
+| `@js-eyes/client-sdk/policy` | `@js-eyes/policy` |
+
+`@js-eyes/client-sdk` may still re-export selected policy symbols from its main
+entry; new code should depend on `@js-eyes/policy` directly. Server-side policy
+enforcement remains in `@js-eyes/server-core`.
+
+### V1 skills
+
+- `skill.contract.js` / `createOpenClawAdapter` are no longer activated.
+- `externalSkills.policy=legacy` is remapped to `prompt` with a warning.
+- Migrate to `skill.manifest.json` + `skill.entry.js` (see
+  `examples/js-eyes-skills/`).
+
+### Local extension development
+
+Shared runtime is injected into `dist/extensions-stage/{chrome,firefox}`.
+Do not load `extensions/chrome` or `extensions/firefox` directly for unpacked
+testing — run `npm run sync:extension-shared` (or `npm run build:chrome` /
+`npm run build:firefox:dev`) and load the staged directory.
+
 ## 2.3.0 Migration Guide (Policy Engine)
 
 JS Eyes 2.3.0 adds a non-interactive security policy engine in front of the browser automation sinks. **No breaking changes by default** — `security.enforcement` ships as `soft`, which means violating calls are audited and routed to plan-only / pending-egress records instead of being rejected.
@@ -426,7 +456,7 @@ Implementation: [packages/devtools/lib/clawhub-publish.js](packages/devtools/lib
   - `--changelog` is auto-extracted from the `## v<version>` block in `RELEASE_NOTES.md`.
   - Slug defaults to `js-eyes`; override with `--clawhub-slug <other>` if you ever ship a different bundle.
 - Parses the trailing `(<id>)` from the `clawhub` output and prints `published js-eyes@<version> (<id>) as @<who>`.
-- After publish, ClawHub hides the new version until its security scan completes. The `js-eyes` bundle intentionally contains `child_process` / `fs` / `ws` usage in `packages/protocol/skills.js` that the scanner flags — this is expected; the release stays in "scanning" state briefly and then becomes public.
+- After publish, ClawHub hides the new version until its security scan completes. The `js-eyes` bundle intentionally contains `child_process` / `fs` / `ws` usage in `@js-eyes/skill-install` that the scanner flags — this is expected; the release stays in "scanning" state briefly and then becomes public.
 
 ### 7.4 Verify
 
