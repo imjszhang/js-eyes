@@ -54,6 +54,11 @@ describe('OpenClaw module boundaries', () => {
     assert.ok(entry.split('\n').length <= 300, 'openclaw-plugin/index.mjs must stay below 300 lines');
     assert.doesNotMatch(entry, /chokidar\.watch/);
     assert.doesNotMatch(entry, /registerCoreAction\(\s*["']browser\//);
+    assert.match(entry, /from ["']\.\/server-lifecycle\.mjs["']/);
+    assert.match(entry, /from ["']\.\/skills-admin\.mjs["']/);
+    assert.doesNotMatch(entry, /@js-eyes\/server-core/);
+    assert.doesNotMatch(entry, /@js-eyes\/skill-install/);
+    assert.doesNotMatch(entry, /@js-eyes\/runtime-paths/);
 
     const moduleFiles = [
       'actions/browser.mjs',
@@ -63,9 +68,11 @@ describe('OpenClaw module boundaries', () => {
       'lifecycle.mjs',
       'legacy-config.mjs',
       'registration-context.mjs',
+      'server-lifecycle.mjs',
       'server-service.mjs',
       'shared-server.mjs',
       'skill-config.mjs',
+      'skills-admin.mjs',
       'tool-policy.mjs',
       'tool-router.mjs',
       'watchers.mjs',
@@ -75,6 +82,46 @@ describe('OpenClaw module boundaries', () => {
       assert.ok(source.split('\n').length <= 700, `${relativePath} became a new hotspot`);
       assert.doesNotMatch(source, /from ["'][^"']*index\.mjs["']/);
     }
+  });
+
+  it('owns server lifecycle and skills-admin module boundaries', async () => {
+    const serverLifecycle = fs.readFileSync(path.join(pluginRoot, 'server-lifecycle.mjs'), 'utf8');
+    assert.match(serverLifecycle, /@js-eyes\/server-core/);
+    assert.match(serverLifecycle, /ensureToken/);
+    assert.match(serverLifecycle, /ensureRuntimePaths/);
+    assert.match(serverLifecycle, /registerServerService|registerJsEyesServerService/);
+
+    const skillsAdmin = fs.readFileSync(path.join(pluginRoot, 'skills-admin.mjs'), 'utf8');
+    assert.match(skillsAdmin, /@js-eyes\/skill-install/);
+    assert.match(skillsAdmin, /setupSkillsAdmin/);
+    assert.match(skillsAdmin, /registerSkillDiscoveryActions/);
+    assert.match(skillsAdmin, /SkillHostService/);
+
+    const {
+      createServer,
+      ensureRuntimePaths,
+      ensureToken,
+      registerJsEyesServerService,
+      sharedServer,
+    } = await import('../openclaw-plugin/server-lifecycle.mjs');
+    assert.equal(typeof createServer, 'function');
+    assert.equal(typeof ensureRuntimePaths, 'function');
+    assert.equal(typeof ensureToken, 'function');
+    assert.equal(typeof registerJsEyesServerService, 'function');
+    assert.equal(typeof sharedServer.acquire, 'function');
+
+    const {
+      DEFAULT_REGISTRY,
+      SKILL_ROOT,
+      resolveSkillRoot,
+      resolveSkillSources,
+      setupSkillsAdmin,
+    } = await import('../openclaw-plugin/skills-admin.mjs');
+    assert.equal(typeof DEFAULT_REGISTRY, 'string');
+    assert.equal(typeof SKILL_ROOT, 'string');
+    assert.equal(typeof resolveSkillRoot, 'function');
+    assert.equal(typeof resolveSkillSources, 'function');
+    assert.equal(typeof setupSkillsAdmin, 'function');
   });
 
   it('preserves the complete built-in action contract', async () => {
