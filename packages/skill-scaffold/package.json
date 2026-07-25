@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/skill-scaffold",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "Shared scaffolding for JS Eyes V2 site skills",
   "main": "index.js",
   "scripts": {

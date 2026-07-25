@@ -45,6 +45,6 @@
     "@js-eyes/visual-bridge-kit": "file:../../packages/visual-bridge-kit",
     "@js-eyes/visual-replay-hyperframes": "file:../../packages/visual-replay-hyperframes",
     "cheerio": "^1.1.2",
-    "@js-eyes/skill-scaffold": "^2.9.0"
+    "@js-eyes/skill-scaffold": "^2.10.0"
   }
 }

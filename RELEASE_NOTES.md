@@ -1,5 +1,64 @@
 # Release Notes
 
+## v2.10.0
+
+> **Architecture cleanup release.** Completes the package-boundary split and
+> removes V1 skill activation while staying on the 2.x line. Upgrade from
+> 2.9.0 only after updating imports and migrating remaining V1 skills.
+
+### Highlights
+
+- **Package boundaries**: install/trust helpers live in `@js-eyes/skill-install`;
+  policy primitives live in `@js-eyes/policy`. Compatibility re-exports under
+  `@js-eyes/protocol/*` and `@js-eyes/client-sdk/policy` are removed.
+- **V1 skill activation removed**: `createOpenClawAdapter` /
+  `skill.contract.js` loading and `externalSkills.policy=legacy` are gone.
+  Migrate to V2 `skill.manifest.json` + `skill.entry.js`.
+- **First-class page interact**: `click` / `fill` / `scroll` / `wait_for` no
+  longer require `allowRawEval`; MCP safe profile exposes matching tools.
+- **Skill scaffold**: official Skills use `@js-eyes/skill-scaffold` and
+  `TOOL_DEFINITIONS` as the tool SSOT.
+- **Extension staging**: shared runtime is injected into
+  `dist/extensions-stage/{chrome,firefox}` instead of committed browser copies.
+- **OpenClaw optional peer**: `@js-eyes/openclaw-plugin` no longer pulls
+  OpenClaw into workspace production audits when the peer is absent.
+
+### Migration Notes
+
+- Replace `@js-eyes/protocol/{skills,zip-extract,fs-io,safe-npm,extra-integrity,skill-trust,skill-runner,registry-client}`
+  imports with `@js-eyes/skill-install` (and matching subpaths).
+- Replace `@js-eyes/client-sdk/policy` with `@js-eyes/policy`.
+- Migrate V1 skills before upgrading; see `examples/js-eyes-skills/` and
+  [RELEASE.md](RELEASE.md) § 2.10.0 Migration.
+- For unpacked extension development, load
+  `dist/extensions-stage/{chrome,firefox}` after `npm run sync:extension-shared`
+  or a browser build — not the source `extensions/*` trees.
+- Upgrade coordinated JS Eyes packages together to `2.10.0`.
+
+### Downloads
+
+- [npm CLI (`js-eyes`)](https://www.npmjs.com/package/js-eyes)
+- [Skill contract (`@js-eyes/skill-contract`)](https://www.npmjs.com/package/@js-eyes/skill-contract)
+- [Skill runtime (`@js-eyes/skill-runtime`)](https://www.npmjs.com/package/@js-eyes/skill-runtime)
+- [Skill install (`@js-eyes/skill-install`)](https://www.npmjs.com/package/@js-eyes/skill-install)
+- [Policy (`@js-eyes/policy`)](https://www.npmjs.com/package/@js-eyes/policy)
+- [Native MCP server (`@js-eyes/mcp-server`)](https://www.npmjs.com/package/@js-eyes/mcp-server)
+- [npm scope (`@js-eyes/*`)](https://www.npmjs.com/org/js-eyes)
+- [Chrome Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.10.0/js-eyes-chrome-v2.10.0.zip)
+- [Firefox Extension](https://github.com/imjszhang/js-eyes/releases/download/v2.10.0/js-eyes-firefox-v2.10.0.xpi)
+- [Skill Bundle](https://github.com/imjszhang/js-eyes/releases/download/v2.10.0/js-eyes-skill-v2.10.0.zip)
+
+### Installation Instructions
+
+1. Upgrade the `js-eyes` CLI and coordinated `@js-eyes/*` packages to `2.10.0`,
+   then reload the browser extensions.
+2. Start the local server and verify the extension connection with
+   `js-eyes doctor`.
+3. Use the CLI directly, add `@js-eyes/mcp-server` to a trusted MCP host, or
+   install the optional OpenClaw plugin according to the host you need.
+4. Inspect and trust external V2 skills before first use when prompt or strict
+   trust policy is enabled.
+
 ## v2.9.0
 
 > **Host-neutral Skill Runtime V2 release.** JS Eyes Skills can now be
