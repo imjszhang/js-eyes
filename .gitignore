@@ -3,6 +3,26 @@ work_dir/
 # Firefox AMO upload metadata
 extensions/firefox/.amo-upload-uuid
 
+# Shared runtime is injected into dist/extensions-stage at build/sync time
+extensions/chrome/config.js
+extensions/firefox/config.js
+extensions/chrome/background/utils.js
+extensions/firefox/background/utils.js
+extensions/chrome/background/connection-methods.js
+extensions/firefox/background/connection-methods.js
+extensions/chrome/background/messaging-methods.js
+extensions/firefox/background/messaging-methods.js
+extensions/chrome/background/operations-methods.js
+extensions/firefox/background/operations-methods.js
+extensions/chrome/background/page-interact-methods.js
+extensions/firefox/background/page-interact-methods.js
+extensions/chrome/background/routing-methods.js
+extensions/firefox/background/routing-methods.js
+extensions/chrome/background/tabs-methods.js
+extensions/firefox/background/tabs-methods.js
+extensions/chrome/background/browser-control-methods.js
+extensions/firefox/background/browser-control-methods.js
+
 # Environment variables
 .env
 .env.local

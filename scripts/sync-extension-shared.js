@@ -7,49 +7,15 @@ const {
   FORWARDABLE_ACTIONS,
   SENSITIVE_BROWSER_ACTIONS,
 } = require('../packages/protocol');
+const {
+  EXTENSION_SHARED_COPIES,
+  EXTENSIONS_DIR,
+  PROJECT_ROOT,
+} = require('../packages/devtools/lib/build/context');
+const { stageAllExtensions } = require('../packages/devtools/lib/build/extensions');
 
-const root = path.join(__dirname, '..');
+const root = PROJECT_ROOT;
 const write = process.argv.includes('--write');
-
-const copies = [
-  ['extensions/shared/config.js', 'extensions/chrome/config.js'],
-  ['extensions/shared/config.js', 'extensions/firefox/config.js'],
-  ['extensions/shared/utils.js', 'extensions/chrome/background/utils.js'],
-  ['extensions/shared/utils.js', 'extensions/firefox/background/utils.js'],
-  ['extensions/shared/connection-methods.js', 'extensions/chrome/background/connection-methods.js'],
-  ['extensions/shared/connection-methods.js', 'extensions/firefox/background/connection-methods.js'],
-  ['extensions/shared/messaging-methods.js', 'extensions/chrome/background/messaging-methods.js'],
-  ['extensions/shared/messaging-methods.js', 'extensions/firefox/background/messaging-methods.js'],
-  ['extensions/shared/operations-methods.js', 'extensions/chrome/background/operations-methods.js'],
-  ['extensions/shared/operations-methods.js', 'extensions/firefox/background/operations-methods.js'],
-  ['extensions/shared/page-interact-methods.js', 'extensions/chrome/background/page-interact-methods.js'],
-  ['extensions/shared/page-interact-methods.js', 'extensions/firefox/background/page-interact-methods.js'],
-  ['extensions/shared/routing-methods.js', 'extensions/chrome/background/routing-methods.js'],
-  ['extensions/shared/routing-methods.js', 'extensions/firefox/background/routing-methods.js'],
-  ['extensions/shared/tabs-methods.js', 'extensions/chrome/background/tabs-methods.js'],
-  ['extensions/shared/tabs-methods.js', 'extensions/firefox/background/tabs-methods.js'],
-  ['extensions/shared/browser-control-methods.js', 'extensions/chrome/background/browser-control-methods.js'],
-  ['extensions/shared/browser-control-methods.js', 'extensions/firefox/background/browser-control-methods.js'],
-];
-
-function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), 'utf8');
-}
-
-function writeCopy(source, target) {
-  const sourceText = read(source);
-  const targetPath = path.join(root, target);
-  const targetText = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : null;
-  if (sourceText === targetText) return true;
-  if (!write) {
-    console.error(`${target} is out of sync with ${source}`);
-    return false;
-  }
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, sourceText, 'utf8');
-  console.log(`synced ${target}`);
-  return true;
-}
 
 function validateBrowserOperationCatalog() {
   const config = require('../extensions/shared/config');
@@ -105,12 +71,32 @@ function migrateChromeInlineRuntime() {
   return true;
 }
 
-let ok = validateBrowserOperationCatalog() && migrateChromeInlineRuntime();
-for (const [source, target] of copies) ok = writeCopy(source, target) && ok;
+function validateSharedSourcesExist() {
+  let ok = true;
+  for (const [sourceName] of EXTENSION_SHARED_COPIES) {
+    const sourcePath = path.join(EXTENSIONS_DIR, 'shared', sourceName);
+    if (!fs.existsSync(sourcePath)) {
+      console.error(`missing shared runtime source: ${path.relative(root, sourcePath)}`);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+let ok = validateBrowserOperationCatalog()
+  && migrateChromeInlineRuntime()
+  && validateSharedSourcesExist();
 
 if (!ok) {
-  console.error('Run `npm run sync:extension-shared` and commit the generated copies.');
+  console.error('Extension shared catalog/source validation failed.');
   process.exit(1);
 }
 
-if (!write) console.log('extension shared runtime copies are in sync');
+if (write) {
+  const staged = stageAllExtensions();
+  console.log(`staged chrome -> ${path.relative(root, staged.chrome)}`);
+  console.log(`staged firefox -> ${path.relative(root, staged.firefox)}`);
+} else {
+  console.log('extension shared catalog and sources are valid');
+  console.log('run `npm run sync:extension-shared` to prepare dist/extensions-stage for unpacked loading');
+}

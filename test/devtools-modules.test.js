@@ -22,6 +22,8 @@ describe('devtools builder module boundaries', () => {
       'getVersion',
       'parseSkillFrontmatter',
       'prepareMainSkillBundleStage',
+      'stageAllExtensions',
+      'stageExtension',
     ].sort());
   });
 

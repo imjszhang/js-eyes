@@ -52,6 +52,7 @@
     "skills:manifests": "node scripts/generate-skill-manifests.js",
     "skills:manifests:check": "node scripts/generate-skill-manifests.js --check",
     "sync:extension-shared": "node scripts/sync-extension-shared.js --write",
+    "prepare:extensions": "node scripts/sync-extension-shared.js --write",
     "check:extension-shared": "node scripts/sync-extension-shared.js",
     "test:server": "node --test packages/server-core/tests/ws-handler.test.js packages/server-core/tests/security-hot-reload.test.js",
     "test:extension": "node --test test/utils.test.js test/extension-shared-runtime.test.js",
