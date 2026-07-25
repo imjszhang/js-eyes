@@ -6,12 +6,12 @@ const assert = require('node:assert/strict');
 // 目标：验证 post CLI 的 READ 请求统一走 lib/api.js::getPost，
 // 由它负责 Tweet / Article 的单条、批量和混合输入分派。
 //
-// 做法：在 require('../cli') 之前，把 lib/api / lib/runTool / lib/js-eyes-client
+// 做法：在 require('../cli') 之前，把 lib/api / lib/runTool / client SDK
 // 三个模块的 require cache 换成 stub，观察 CLI 分派。
 
 const apiModPath = require.resolve('../lib/api');
 const runToolModPath = require.resolve('../lib/runTool');
-const clientModPath = require.resolve('../lib/js-eyes-client');
+const clientModPath = require.resolve('@js-eyes/client-sdk');
 
 let getPostCalls = [];
 let runToolCalls = [];

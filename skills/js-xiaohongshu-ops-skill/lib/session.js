@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { BrowserAutomation } = require('./js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPageProfile, DEFAULT_WS_ENDPOINT, isXhsHostname } = require('./config');
 const {
   makeBridgeExpander,

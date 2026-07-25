@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../../lib/runtimeConfig');
 
 (async () => {

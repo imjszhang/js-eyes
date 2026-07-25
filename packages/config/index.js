@@ -23,6 +23,11 @@ const DEFAULT_RECORDING_CONFIG = {
   maxDebugBundles: 10,
 };
 
+const DEFAULT_EXTERNAL_SKILLS_CONFIG = Object.freeze({
+  policy: 'prompt',
+  defaultExecution: 'worker',
+});
+
 const DEFAULT_CONFIG = {
   serverHost: DEFAULT_SERVER_HOST,
   serverPort: DEFAULT_SERVER_PORT,
@@ -31,10 +36,7 @@ const DEFAULT_CONFIG = {
   skillsRegistryUrl: SKILLS_REGISTRY_URL,
   skillsDir: '',
   extraSkillDirs: [],
-  externalSkills: {
-    policy: 'legacy',
-    defaultExecution: 'worker',
-  },
+  externalSkills: DEFAULT_EXTERNAL_SKILLS_CONFIG,
   skillsEnabled: {},
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
@@ -310,6 +312,7 @@ function resolveHotReloadableSecurity(nextSecurity, prevSecurity) {
 
 module.exports = {
   DEFAULT_CONFIG,
+  DEFAULT_EXTERNAL_SKILLS_CONFIG,
   DEFAULT_RECORDING_CONFIG,
   HOT_RELOADABLE_SECURITY_KEYS,
   getConfigValue,

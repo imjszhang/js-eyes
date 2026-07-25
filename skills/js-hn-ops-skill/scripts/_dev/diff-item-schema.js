@@ -5,7 +5,7 @@
  * Usage: node scripts/_dev/diff-item-schema.js <itemId>
  */
 
-const { BrowserAutomation } = require('../../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { Session } = require('../../lib/session');
 
 async function main() {

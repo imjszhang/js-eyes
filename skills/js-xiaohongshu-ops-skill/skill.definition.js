@@ -1,9 +1,11 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 /**
- * skill.contract.js（v2.1+ 工厂化版本）
+ * skill.definition.js（V2 声明与工具实现）
  *
- * 与 skills/js-x-ops-skill/skill.contract.js 同形态：
+ * 与 skills/js-x-ops-skill/skill.definition.js 同形态：
  *   - makeReadToolExecutor / makeBridgeReadExecutor / makeNavigateToolExecutor
  *   - 所有 READ / INTERACTIVE 工具显式 interactive / destructive 标记
  *   - 工具执行经 lib/runTool.js（READ）或直接 bridge.navigateXxx（INTERACTIVE）
@@ -12,7 +14,7 @@
  */
 
 const pkg = require('./package.json');
-const { BrowserAutomation } = require('./lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 const { runTool } = require('./lib/runTool');
 const { Session } = require('./lib/session');

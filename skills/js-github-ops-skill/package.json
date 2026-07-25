@@ -18,7 +18,6 @@
     "@js-eyes/client-sdk": "^2.8.5",
     "@js-eyes/config": "^2.0.0",
     "@js-eyes/skill-runtime": "^2.8.5",
-    "@js-eyes/skill-recording": "^2.0.0",
-    "ws": "^8.18.0"
+    "@js-eyes/skill-recording": "^2.0.0"
   }
 }

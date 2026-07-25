@@ -1,6 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { BROWSER_OPERATION_BY_ID } = require('@js-eyes/protocol');
 const { errorResult, FacadeError } = require('./error-adapter');
 const { dataResult, screenshotResult } = require('./result-adapter');
 
@@ -9,6 +10,7 @@ const target = z.string().min(1).max(200).optional()
 const tabId = z.number().int().nonnegative().describe('Browser tab ID.');
 const timeout = z.number().positive().max(1800).optional()
   .describe('Operation timeout in seconds.');
+const mcpTool = (id) => BROWSER_OPERATION_BY_ID[id].mcpTool;
 
 function annotations(options = {}) {
   return {
@@ -34,7 +36,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_list_clients',
+      name: mcpTool('clients.list'),
       title: 'JS Eyes: List Browser Clients',
       description: 'List browser extensions connected to the local JS Eyes server.',
       inputSchema: z.object({}),
@@ -48,7 +50,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_list_tabs',
+      name: mcpTool('tabs.list'),
       title: 'JS Eyes: List Tabs',
       description: 'List open browser tabs. Without target, tabs from all connected extensions are returned.',
       inputSchema: z.object({ target, timeout }),
@@ -66,7 +68,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_open_url',
+      name: mcpTool('url.open'),
       title: 'JS Eyes: Open URL',
       description: 'Open a URL in a new tab or navigate an existing tab. JS Eyes egress policy applies.',
       inputSchema: z.object({
@@ -93,7 +95,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_close_tab',
+      name: mcpTool('tab.close'),
       title: 'JS Eyes: Close Tab',
       description: 'Close a browser tab.',
       inputSchema: z.object({ tabId, target, timeout }),
@@ -109,7 +111,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_get_html',
+      name: mcpTool('page.html'),
       title: 'JS Eyes: Get Page HTML',
       description: 'Read HTML from a browser tab. Output is truncated to the requested character limit.',
       inputSchema: z.object({
@@ -134,7 +136,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_get_page_info',
+      name: mcpTool('page.info'),
       title: 'JS Eyes: Get Page Info',
       description: 'Read URL, title, status, and other metadata from a browser tab.',
       inputSchema: z.object({ tabId, target, timeout }),
@@ -150,7 +152,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_take_screenshot',
+      name: mcpTool('screenshot.capture'),
       title: 'JS Eyes: Take Screenshot',
       description: 'Capture a browser tab and return native MCP image content.',
       inputSchema: z.object({
@@ -177,7 +179,7 @@ function createToolDefinitions(session, config, skillService = null) {
 
   const full = [
     {
-      name: 'browser_execute_script',
+      name: mcpTool('script.execute'),
       title: 'JS Eyes: Execute JavaScript',
       description: 'Execute JavaScript in a browser tab. This is a high-risk full-profile tool.',
       inputSchema: z.object({
@@ -197,7 +199,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_inject_css',
+      name: mcpTool('style.inject'),
       title: 'JS Eyes: Inject CSS',
       description: 'Inject CSS into a browser tab. This is a high-risk full-profile tool.',
       inputSchema: z.object({
@@ -218,7 +220,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_get_cookies',
+      name: mcpTool('cookies.read'),
       title: 'JS Eyes: Get Cookies',
       description: 'Read cookies for a browser tab. This sensitive tool is available only in the full profile.',
       inputSchema: z.object({ tabId, target, timeout }),
@@ -233,7 +235,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_get_cookies_by_domain',
+      name: mcpTool('cookies.readDomain'),
       title: 'JS Eyes: Get Cookies By Domain',
       description: 'Read cookies by domain. This sensitive tool is available only in the full profile.',
       inputSchema: z.object({
@@ -256,7 +258,7 @@ function createToolDefinitions(session, config, skillService = null) {
       },
     },
     {
-      name: 'browser_upload_file',
+      name: mcpTool('file.upload'),
       title: 'JS Eyes: Upload File',
       description: 'Upload base64-encoded files through a page file input. Available only in the full profile.',
       inputSchema: z.object({

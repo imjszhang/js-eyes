@@ -1,5 +1,7 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 /**
  * js-x-ops-skill skill contract（v3.0）
  *
@@ -21,7 +23,7 @@
  */
 
 const pkg = require('./package.json');
-const { BrowserAutomation } = require('./lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const {
   classifyXPostInput,
   buildPostBridgeArgs,

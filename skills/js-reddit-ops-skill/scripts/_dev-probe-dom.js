@@ -11,7 +11,7 @@
 //   node skills/js-reddit-ops-skill/scripts/_dev-probe-dom.js --page search
 //   node skills/js-reddit-ops-skill/scripts/_dev-probe-dom.js --all
 //
-// 不进 skill.contract，仅本仓库开发者用。
+// 不进 skill.definition，仅本仓库开发者用。
 // ---------------------------------------------------------------------------
 
 const { Session } = require('../lib/session');

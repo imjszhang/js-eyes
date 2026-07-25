@@ -11,10 +11,11 @@ class SkillRuntimeError extends Error {
 }
 
 class SkillCapabilityError extends SkillRuntimeError {
-  constructor(capability) {
-    super(`Skill capability is not granted: ${capability}`, {
+  constructor(capability, details = {}) {
+    const source = details.source ? ` by the ${details.source} host profile` : '';
+    super(`Skill capability is not granted${source}: ${capability}`, {
       code: 'SKILL_CAPABILITY_DENIED',
-      safeDetails: { capability },
+      safeDetails: { capability, ...details },
     });
     this.capability = capability;
   }

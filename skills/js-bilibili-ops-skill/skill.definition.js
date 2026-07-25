@@ -1,5 +1,7 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 const pkg = require('./package.json');
 const { getVideo, getSubtitles } = require('./lib/api');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');

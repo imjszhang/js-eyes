@@ -22,7 +22,7 @@ const DIST_ROOT = path.join(REPO_ROOT, 'dist', 'js-eyes');
 // native-host 来自 apps/，其余来自 packages/
 const BUNDLED_PACKAGES = [
   'skill-contract', 'protocol', 'runtime-paths', 'config', 'skill-recording',
-  'client-sdk', 'skill-worker', 'skill-runtime', 'server-core', 'native-host',
+  'client-sdk', 'skill-runtime', 'server-core', 'native-host',
 ];
 
 function resolveSourcePackageDir(name) {

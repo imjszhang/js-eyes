@@ -1,72 +1,73 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 const pkg = require('./package.json');
-const { getVideo, getSubtitles } = require('./lib/api');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
+const { getPost } = require('./lib/api');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
-  { name: 'video', description: '读取 YouTube 视频元数据' },
-  { name: 'subtitles', description: '读取 YouTube 视频字幕' },
+  { name: 'post', description: '读取即刻帖子详情' },
 ];
+
+function makeLogger(logger) {
+  return {
+    info: typeof logger?.info === 'function' ? logger.info.bind(logger) : console.log.bind(console),
+    warn: typeof logger?.warn === 'function' ? logger.warn.bind(logger) : console.warn.bind(console),
+    error: typeof logger?.error === 'function' ? logger.error.bind(logger) : console.error.bind(console),
+  };
+}
 
 function createRuntime(config = {}, logger) {
   const resolvedConfig = resolveRuntimeConfig(config);
+  const runtimeConfig = {
+    serverUrl: resolvedConfig.serverUrl,
+    recording: resolvedConfig.recording,
+  };
+  const resolvedLogger = makeLogger(logger);
+  let bot = null;
+
   return {
-    config: {
-      cookiesFromBrowser: config.cookiesFromBrowser || 'firefox',
-      subLangs: config.subLangs || 'zh-Hans,zh-Hant,en',
-      recording: resolvedConfig.recording,
+    config: runtimeConfig,
+    logger: resolvedLogger,
+    ensureBot() {
+      if (!bot) {
+        bot = new BrowserAutomation(runtimeConfig.serverUrl, { logger: resolvedLogger });
+      }
+      return bot;
     },
-    logger: logger || console,
     textResult(text) {
       return { content: [{ type: 'text', text }] };
     },
     jsonResult(value) {
       return this.textResult(JSON.stringify(value, null, 2));
     },
+    dispose() {
+      if (bot && typeof bot.disconnect === 'function') {
+        try { bot.disconnect(); } catch {}
+      }
+      bot = null;
+    },
   };
 }
 
 const TOOL_DEFINITIONS = [
   {
-    name: 'youtube_get_video',
-    label: 'YouTube Ops: Get Video',
-    description: '读取 YouTube 视频元数据，可选同时返回字幕。',
+    name: 'jike_get_post',
+    label: 'Jike Ops: Get Post',
+    description: '读取即刻帖子详情，返回正文、图片、作者、互动数据和评论。',
     parameters: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'YouTube 视频 URL' },
-        includeSubtitles: { type: 'boolean', description: '是否同时获取字幕' },
+        url: { type: 'string', description: '即刻帖子 URL' },
       },
       required: ['url'],
     },
     optional: true,
     async execute(runtime, params, context = {}) {
-      return getVideo(params.url, {
-        cookiesFromBrowser: runtime.config.cookiesFromBrowser,
-        subLangs: runtime.config.subLangs,
-        includeSubtitles: params.includeSubtitles !== false,
-        recording: runtime.config.recording,
-        runId: context.toolCallId,
-      });
-    },
-  },
-  {
-    name: 'youtube_get_subtitles',
-    label: 'YouTube Ops: Get Subtitles',
-    description: '读取 YouTube 视频字幕，返回语言列表和字幕文本。',
-    parameters: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'YouTube 视频 URL' },
-      },
-      required: ['url'],
-    },
-    optional: true,
-    async execute(runtime, params, context = {}) {
-      return getSubtitles(params.url, {
-        cookiesFromBrowser: runtime.config.cookiesFromBrowser,
-        subLangs: runtime.config.subLangs,
+      return getPost(runtime.ensureBot(), params.url, {
+        browserServer: runtime.config.serverUrl,
         recording: runtime.config.recording,
         runId: context.toolCallId,
       });
@@ -94,12 +95,13 @@ function createOpenClawAdapter(config = {}, logger) {
 
 module.exports = {
   id: pkg.name,
-  name: 'JS YouTube Ops Skill',
+  name: 'JS Jike Ops Skill',
   version: pkg.version,
   description: pkg.description,
   runtime: {
-    requiresLocalBrowserCookies: true,
-    platforms: ['youtube.com'],
+    requiresServer: true,
+    requiresBrowserExtension: true,
+    platforms: ['okjike.com'],
   },
   cli: {
     entry: './cli/index.js',

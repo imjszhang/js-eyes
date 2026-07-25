@@ -10,6 +10,7 @@ export function createRegistrationContext({
   const state = {
     bot: null,
     server: null,
+    skillHostService: null,
     skillRegistry: null,
     watchers: null,
     serverUsesSharedRef: false,
@@ -39,7 +40,11 @@ export function createRegistrationContext({
       try { await state.watchers.close(); } catch {}
       state.watchers = null;
     }
-    if (state.skillRegistry) {
+    if (state.skillHostService) {
+      try { await state.skillHostService.dispose(); } catch {}
+      state.skillHostService = null;
+      state.skillRegistry = null;
+    } else if (state.skillRegistry) {
       try { await state.skillRegistry.disposeAll(); } catch {}
       state.skillRegistry = null;
     }

@@ -30,7 +30,7 @@ function assertExecutionAllowed(skill, config, paths) {
       throw new Error(`技能与当前宿主不兼容: ${skill.id} (${JSON.stringify(compatibility.failures)})`);
     }
   }
-  const policy = config.externalSkills?.policy || 'legacy';
+  const policy = config.externalSkills?.policy || 'prompt';
   if (skill.source !== 'extra' || policy === 'legacy') return;
   if (skill.contractVersion !== 2) {
     throw new Error(`外部技能 ${skill.id} 使用 V1 契约，${policy} 策略拒绝执行`);

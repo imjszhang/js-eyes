@@ -136,7 +136,7 @@ node index.js interact click --tab-id 123 --selector "..." --no-visual
 - 每次工具调用 +2 RTT（before+install 合并、after+drain 合并）。`installVisualBridgeKit` 自带 `__installed` 短路锁，重复 inject 接近 0 成本。
 - `--no-visual` 时 `withVisual` 直接 bypass，调用路径与 v2.1.1 完全一致。
 - chrome:// / file:// 等受限页 visual 注入静默失败，业务返回不受影响。
-- skill.contract（openclaw）默认走 `enabled:true`，向后兼容。
+- 原生 V2 入口默认走 `enabled:true`，向后兼容。
 
 ## 工作原理
 
@@ -166,14 +166,13 @@ skills/js-browser-ops-skill/
 ├── SKILL.md                  # 技能描述（本文件）
 ├── CHANGELOG.md              # 版本记录
 ├── package.json
-├── skill.contract.js         # OpenClaw 契约
+├── skill.definition.js       # CLI 与 V2 入口共享的工具声明
 ├── index.js                  # CLI 入口
 ├── cli/index.js              # CLI 封装
 ├── bridges/
 │   └── _visual-browser.js    # 站点 anchor resolver（CSS/XPath/text/url）
 ├── lib/
 │   ├── api.js                # 业务 API（withVisual 包装）
-│   ├── js-eyes-client.js     # 浏览器控制客户端
 │   ├── browserUtils.js       # 注入脚本模板（业务零侵入）
 │   ├── visualHint.js         # 6 工具的 hint + buildSummary
 │   ├── cliVisualFlags.js     # CLI 视觉旋钮解析

@@ -20,7 +20,7 @@ function requireFresh(modulePath) {
 
 function withMockedRunTool(fn) {
   const runToolPath = require.resolve('../lib/runTool');
-  const browserPath = require.resolve('../lib/js-eyes-client');
+  const browserPath = require.resolve('@js-eyes/client-sdk');
   const sessionPath = require.resolve('../lib/session');
 
   const realRunTool = require.cache[runToolPath];

@@ -1,7 +1,9 @@
 'use strict';
 
+// Shared declarative metadata for the CLI and the native V2 entry.
+
 const pkg = require('./package.json');
-const { BrowserAutomation } = require('./lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPost } = require('./lib/api');
 const { runTool } = require('./lib/runTool');
 const { Session } = require('./lib/session');

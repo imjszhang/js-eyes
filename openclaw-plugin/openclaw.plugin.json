@@ -70,7 +70,7 @@
         "type": "object",
         "additionalProperties": false,
         "default": {
-          "policy": "legacy",
+          "policy": "prompt",
           "defaultExecution": "worker"
         },
         "description": "外部技能的发现、信任和执行策略。legacy 保持兼容；prompt 要求批准；strict 还要求 V2 静态 Manifest。",
@@ -82,7 +82,7 @@
               "prompt",
               "strict"
             ],
-            "default": "legacy"
+            "default": "prompt"
           },
           "defaultExecution": {
             "type": "string",
@@ -102,7 +102,7 @@
       "devWatchSkills": {
         "type": "boolean",
         "default": true,
-        "description": "开发模式：监听已发现技能目录的文件变更（默认 ~300ms 防抖），改完 skill.contract.js 自动 reload。仅推荐在本地开发用；生产可关闭以减少 fs 监听负载。"
+        "description": "开发模式：监听已发现技能目录的文件变更（默认 ~300ms 防抖），改完 Skill 源文件自动 reload。仅推荐在本地开发用；生产可关闭以减少 fs 监听负载。"
       },
       "nativeHost": {
         "type": "object",
@@ -203,7 +203,7 @@
     },
     "devWatchSkills": {
       "label": "监听技能目录（开发模式）",
-      "help": "默认开启。监听已发现技能目录里的文件变更，改完 skill.contract.js 自动 reload。生产环境可关闭。",
+      "help": "默认开启。监听已发现技能目录里的文件变更，改完 Skill 源文件自动 reload。生产环境可关闭。",
       "advanced": true
     },
     "nativeHost": {

@@ -13,7 +13,7 @@ const SKILLS_ROOT = path.join(ROOT, 'skills');
 function officialSkillDirs() {
   return fs.readdirSync(SKILLS_ROOT)
     .map((name) => path.join(SKILLS_ROOT, name))
-    .filter((dir) => fs.existsSync(path.join(dir, 'skill.contract.js')))
+    .filter((dir) => fs.existsSync(path.join(dir, 'skill.manifest.json')))
     .sort();
 }
 
@@ -32,12 +32,10 @@ test('every official skill exposes a complete static V2 manifest and entry', () 
   }
 });
 
-test('official browser skills use the shared client SDK compatibility shim', () => {
+test('official V2 entries do not use the legacy-entry adapter', () => {
   for (const skillDir of officialSkillDirs()) {
-    const shim = path.join(skillDir, 'lib', 'js-eyes-client.js');
-    if (!fs.existsSync(shim)) continue;
-    const source = fs.readFileSync(shim, 'utf8');
-    assert.match(source, /require\(['"]@js-eyes\/client-sdk['"]\)/);
-    assert.doesNotMatch(source, /class BrowserAutomation/);
+    const source = fs.readFileSync(path.join(skillDir, 'skill.entry.js'), 'utf8');
+    assert.match(source, /createNativeHandlers/);
+    assert.doesNotMatch(source, /legacy-entry|createLegacyHandlers|createRuntime/);
   }
 });

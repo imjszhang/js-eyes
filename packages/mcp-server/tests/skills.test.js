@@ -37,11 +37,16 @@ describe('MCP skill router', () => {
       }, {
         name: 'mcp_example_delete', title: 'Delete', risk: 'destructive',
         inputSchema: { type: 'object', properties: {} },
+      }, {
+        name: 'mcp_example_script', title: 'Script', risk: 'read',
+        capabilities: ['browser.script.execute'],
+        inputSchema: { type: 'object', properties: {} },
       }],
     }));
     fs.writeFileSync(path.join(skillDir, 'entry.js'), `module.exports = { handlers: {
       async mcp_example_read(ctx, input) { return { value: input.value, source: ctx.source }; },
-      async mcp_example_delete() { return { deleted: true }; }
+      async mcp_example_delete() { return { deleted: true }; },
+      async mcp_example_script() { return { executed: true }; }
     } };`);
     const config = {
       skillsDir,
@@ -70,6 +75,10 @@ describe('MCP skill router', () => {
     await assert.rejects(
       () => service.call('@acme/mcp-example', 'mcp_example_delete', {}, 'call-2'),
       (error) => error.code === 'SKILL_RISK_DENIED',
+    );
+    await assert.rejects(
+      () => service.call('@acme/mcp-example', 'mcp_example_script', {}, 'call-3'),
+      (error) => error.code === 'SKILL_CAPABILITY_DENIED',
     );
   });
 });

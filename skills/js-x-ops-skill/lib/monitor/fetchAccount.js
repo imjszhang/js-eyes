@@ -10,7 +10,7 @@
 const { getProfileTweets } = require('../api');
 
 /**
- * @param {import('../js-eyes-client').BrowserAutomation} browser
+ * @param {import('@js-eyes/client-sdk').BrowserAutomation} browser
  * @param {Object} settings   effectiveAccountSettings 的返回值
  * @param {Object} options    { recording, logger }
  */

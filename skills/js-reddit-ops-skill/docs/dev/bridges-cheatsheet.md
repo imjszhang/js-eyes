@@ -112,7 +112,7 @@ limitChildren 可选，单次提交 child id 上限（默认 200，最大 500）
 | ------------------------ | --------------------- | ------------------------------------------------------------------------------------------ |
 | `lib/runCliToFile.js`    | `{ runCliToFile }`    | 跑 `node index.js <args...>` 把 stdout 直写到目标文件，绕开 spawn().stdout 的 64KB 截断。批量调研脚本（多个 search/list-subreddit 串跑）必备 |
 | `lib/session.js`         | `{ Session }`         | 主调度器，外部脚本可以 `new Session({ opts:{ page, reuseAnyRedditTab:true } })` 后 `connect/resolveTarget/callRaw/callApi` |
-| `lib/js-eyes-client.js`  | `{ BrowserAutomation }` | WS 客户端。`Session` 内部用，外部一般不直接 new                                             |
+| `@js-eyes/client-sdk`    | `{ BrowserAutomation }` | 共享 WS 客户端。`Session` 内部用，外部一般不直接 new                                         |
 | `lib/bridgeAdapter.js`   | `{ scrapeViaBridge }` | 标准化的"调用 bridge 方法 + 失败兜底"包装                                                  |
 
 `runCliToFile` 速用：
@@ -137,7 +137,7 @@ console.log(r.code, r.elapsedMs, r.outBytes);
 
 | 现象                                                                | 通常原因                                                            |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `connect WebSocket 401 / Unexpected server response: 401`             | js-eyes server 默认 `allowAnonymous=false`。CLI 没拿到 token：先 `js-eyes server token show --reveal` 拿值，再确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN`。`lib/js-eyes-client.js::_resolveToken` 优先级 options.token > env > runtime/server.token > secrets/server-token |
+| `connect WebSocket 401 / Unexpected server response: 401`             | js-eyes server 默认 `allowAnonymous=false`。CLI 没拿到 token：先 `js-eyes server token show --reveal` 拿值，再确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN`。共享 SDK 的优先级为 options.token > env > runtime/server.token |
 | `bridgeFallback=true` + `bridgeFallbackReason='bridge_returned_error'` | bridge 拿到 reddit 响应但语义上失败（如 403 / 路由不命中）。看 `bridgeFallbackMessage` 取原始 reddit error |
 | `bridgeFallbackReason='bridge_inject_failed'`                       | 注入失败，常因网页 CSP 或扩展未连上 tab。先跑 `node index.js doctor` |
 | `bridgeFallbackReason='bridge_no_target_tab'`                       | 没有任何 reddit tab 且 `createIfMissing=false`。READ 工具默认 true     |

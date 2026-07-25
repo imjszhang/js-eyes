@@ -40,7 +40,7 @@
 
 // v3.0：READ 主流程 / CLI 入口已被 cli/index.js + lib/api.js 替代；本文件仅保留 helper exports（lib/api.js fallback 用）。
 
-const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const path = require('path');
 const { getHomeFeed } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');

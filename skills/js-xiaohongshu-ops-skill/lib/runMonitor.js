@@ -19,7 +19,7 @@ const { runCheckCore } = require('./monitor/runCheck');
 const { readExistingPid } = require('./monitor/daemon');
 const { resolvePaths } = require('./monitor/paths');
 const { resolveRuntimeConfig } = require('./runtimeConfig');
-const { BrowserAutomation } = require('./js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 
 function _loadOrInit() {
   if (!cfgMod.exists()) cfgMod.saveConfig(cfgMod.defaultConfig());

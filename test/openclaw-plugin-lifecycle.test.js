@@ -167,7 +167,7 @@ describe('openclaw plugin lifecycle', () => {
       args: { tabId: 1 },
     });
 
-    assert.match(result.content[0].text, /skill registry 当前不可用/);
+    assert.match(result.content[0].text, /skill host 当前不可用/);
     assert.match(result.content[0].text, /browser_screenshot/);
   });
 });

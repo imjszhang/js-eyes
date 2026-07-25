@@ -26,6 +26,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { DEFAULT_EXTERNAL_SKILLS_CONFIG } = require('@js-eyes/config');
 const {
   computeSkillSourceDigest,
   normalizeV1Contract,
@@ -35,7 +36,7 @@ const {
 // Use a lazy module reference to avoid a circular require hazard: skills.js also
 // re-exports factories from this module.
 /** @type {Record<string, (...args: any[]) => any>} */
-const skillsApi = require('./skills');
+const skillsApi = require('@js-eyes/protocol/skills');
 function buildAdapterTools(...args) { return skillsApi.buildAdapterTools(...args); }
 function discoverSkillsFromSources(...args) { return skillsApi.discoverSkillsFromSources(...args); }
 function isSkillEnabled(...args) { return skillsApi.isSkillEnabled(...args); }
@@ -45,7 +46,7 @@ function resolveSkillSources(...args) { return skillsApi.resolveSkillSources(...
 function skillToolActionName(...args) { return skillsApi.skillToolActionName(...args); }
 function verifySkillIntegrity(...args) { return skillsApi.verifySkillIntegrity(...args); }
 
-const { verifyExtraDir: verifyExtraSkillDir } = require('./extra-integrity');
+const { verifyExtraDir: verifyExtraSkillDir } = require('@js-eyes/protocol/extra-integrity');
 
 const DEFAULT_UNAVAILABLE_MESSAGE = (name) =>
   `Tool "${name}" is not currently loaded (skill disabled, removed, or reloading).`;
@@ -172,7 +173,7 @@ function createSkillRegistry(options = {}) {
     : null;
   const externalSkillPolicy = ['legacy', 'prompt', 'strict'].includes(options.externalSkillPolicy)
     ? options.externalSkillPolicy
-    : 'legacy';
+    : DEFAULT_EXTERNAL_SKILLS_CONFIG.policy;
   const externalSkillPolicyProvider = typeof options.externalSkillPolicyProvider === 'function'
     ? options.externalSkillPolicyProvider
     : () => externalSkillPolicy;
@@ -186,6 +187,9 @@ function createSkillRegistry(options = {}) {
   const compatibilityChecker = typeof options.compatibilityChecker === 'function'
     ? options.compatibilityChecker
     : () => ({ compatible: true, failures: [] });
+  const authorizeInvocation = typeof options.authorizeInvocation === 'function'
+    ? options.authorizeInvocation
+    : null;
   const invocationSource = options.invocationSource || 'host';
 
   // id -> { source, sourcePath, skillDir, contract, adapter, toolNames, enabled, dispose }
@@ -924,6 +928,18 @@ function createSkillRegistry(options = {}) {
     const binding = actionBindings.get(action);
     if (!binding) {
       return { content: [{ type: 'text', text: DEFAULT_UNAVAILABLE_MESSAGE(action) }] };
+    }
+    if (authorizeInvocation) {
+      await authorizeInvocation({
+        action,
+        toolCallId,
+        params: params || {},
+        skillId: binding.skillId,
+        toolName: binding.toolName,
+        risk: binding.definition.risk || 'read',
+        capabilities: binding.definition.capabilities || [],
+        source: invocationSource,
+      });
     }
     return binding.definition.execute(toolCallId, params);
   }

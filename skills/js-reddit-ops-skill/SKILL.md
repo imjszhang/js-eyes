@@ -53,7 +53,7 @@ metadata:
 - 仅 `location.assign(newUrl)`，**禁止模拟点击任何 DOM CTA**
 - bridge 端 `navigateLocation()` 拒绝跨域 URL（必须是 `*.reddit.com`）
 - 调用返回 `{from, to, hint}`，CLI 端 `awaitBridgeAfterNav` 重注 bridge + state 自校验
-- `skill.contract.js` 里带 `interactive: true` / `destructive: false`
+- `skill.definition.js` 里带 `interactive: true` / `destructive: false`
 - 工具：`reddit_navigate_post` / `reddit_navigate_subreddit` / `reddit_navigate_search` / `reddit_navigate_user` / `reddit_navigate_inbox` / `reddit_navigate_home`
 
 ### DESTRUCTIVE（永不做）
@@ -66,7 +66,7 @@ metadata:
 - 不发送 / 删除 / 标记已读私信
 - 不实现登录自动化 / 不注入 cookie / 不伪造 modhash / bearer token
 
-如果未来真的要做，将在 `skill.contract.js` 里把该工具标记 `destructive: true`，并要求调用方显式 `--confirm` 走 Safe Default Mode consent 流程。
+如果未来真的要做，将在 `skill.definition.js` 里把该工具标记 `destructive: true`，并要求调用方显式 `--confirm` 走 Safe Default Mode consent 流程。
 
 ## 提供的 AI 工具
 
@@ -88,9 +88,9 @@ metadata:
 | INTERACTIVE | `reddit_navigate_inbox` | `/message/<box>` | 仅 `location.assign` 切 inbox box |
 | INTERACTIVE | `reddit_navigate_home` | `/`、`/r/popular`、`/r/all` | 仅 `location.assign` 切主 feed + sort |
 
-全部工具都是 `optional: true`（按需加载），入参详见 `skill.contract.js::TOOL_DEFINITIONS`。
+全部工具都是 `optional: true`（按需加载），入参详见 `skill.definition.js::TOOL_DEFINITIONS`。
 
-### 内部踩点 CLI（不进 `skill.contract.js`，仅供本仓库开发者排查）
+### 内部踩点 CLI（不进 `skill.definition.js`，仅供本仓库开发者排查）
 
 下面两条只在 CLI 暴露、不暴露给 AI tool 列表，用于改版后定位 DOM 结构变化或抓 XHR 形态：
 
@@ -310,12 +310,12 @@ node index.js list-subreddit MachineLearning --limit 8 --visual-record runs/pivo
 
 ```text
 CLI / AI Tool call
-  └── skill.contract.js  (createRuntime / TOOL_DEFINITIONS)
+  └── skill.definition.js  (createRuntime / TOOL_DEFINITIONS)
         ├── lib/api.js          兼容入口（reddit_get_post → scrapeViaBridge → DOM 兜底）
         ├── lib/runTool.js      新 READ 工具入口（history + debug bundle，不走 cache）
         └── lib/session.js      Session（connect → resolveTarget → ensureBridge → callApi）
               ├── lib/config.js          PAGE_PROFILES + DEFAULT_WS_ENDPOINT
-              ├── lib/js-eyes-client.js  BrowserAutomation
+              ├── @js-eyes/client-sdk    BrowserAutomation
               └── bridges/*-bridge.js    + bridges/common.js (@@include)
                       └── fetchRedditJson('*.json' / oauth.reddit.com)
                           └── 失败时由 lib/redditUtils.js 用 cheerio DOM 兜底（仅 reddit_get_post 走）

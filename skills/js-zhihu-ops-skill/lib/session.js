@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { BrowserAutomation } = require('./js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPageProfile, DEFAULT_WS_ENDPOINT, isZhihuHostname } = require('./config');
 const { makeBridgeExpander, applyVisualConfig } = require('@js-eyes/visual-bridge-kit');
 

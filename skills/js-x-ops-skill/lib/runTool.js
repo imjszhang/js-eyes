@@ -100,7 +100,7 @@ function shouldFallBackToDom(errCode, modeNorm, domSupported) {
 }
 
 /**
- * @param {import('./js-eyes-client').BrowserAutomation} browser
+ * @param {import('@js-eyes/client-sdk').BrowserAutomation} browser
  * @param {Object} spec
  * @param {Object} [spec.cmdDef]
  * @param {string} [spec.cmdDef.methodBase]

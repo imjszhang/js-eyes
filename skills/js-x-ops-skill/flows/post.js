@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { BrowserAutomation } = require('../lib/js-eyes-client');
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getPost } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const {

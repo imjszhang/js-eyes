@@ -10,9 +10,9 @@ const {
   SkillCapabilityError,
   SkillDisposedError,
   SkillTimeoutError,
+  createNativeHandlers,
   createSkillRuntime,
 } = require('..');
-const { createLegacyRuntime } = require('../legacy-entry');
 
 let tempDir;
 afterEach(() => {
@@ -32,19 +32,22 @@ function makeRuntime(options = {}) {
 }
 
 describe('skill runtime', () => {
-  it('preserves official legacy runtime config defaults while injecting the host browser', () => {
+  it('binds native handlers to host config defaults and the host browser', async () => {
     const browser = { hostOwned: true };
     const context = {
       config: { raw: true },
       logger: { info() {}, warn() {}, error() {} },
       browser,
     };
-    const bridged = createLegacyRuntime(context, (config) => ({
-      config: { ...config, defaulted: 42 },
-      ensureBot() { throw new Error('legacy browser must not be constructed'); },
-    }));
-    assert.deepEqual(bridged.config, { raw: true, defaulted: 42 });
-    assert.strictEqual(bridged.ensureBot(), browser);
+    const handlers = createNativeHandlers([{
+      name: 'read',
+      execute(ctx) {
+        return { config: ctx.config, browser: ctx.ensureBot() };
+      },
+    }], { configDefaults: { defaulted: 42 } });
+    const result = await handlers.read(context);
+    assert.deepEqual(result.config, { defaulted: 42, raw: true });
+    assert.strictEqual(result.browser, browser);
   });
 
   it('creates and finishes per-call invocation contexts', async () => {

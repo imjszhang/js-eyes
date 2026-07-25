@@ -3,6 +3,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  FORWARDABLE_ACTIONS,
+  SENSITIVE_BROWSER_ACTIONS,
+} = require('../packages/protocol');
 
 const root = path.join(__dirname, '..');
 const write = process.argv.includes('--write');
@@ -45,6 +49,29 @@ function writeCopy(source, target) {
   return true;
 }
 
+function validateBrowserOperationCatalog() {
+  const config = require('../extensions/shared/config');
+  const allowed = new Set(config.SECURITY?.allowedActions || []);
+  const sensitive = new Set(config.SECURITY?.sensitiveActions || []);
+  const missingAllowed = FORWARDABLE_ACTIONS.filter((action) => !allowed.has(action));
+  const missingSensitive = SENSITIVE_BROWSER_ACTIONS.filter((action) => !sensitive.has(action));
+  const unexpectedSensitive = [...sensitive]
+    .filter((action) => !SENSITIVE_BROWSER_ACTIONS.includes(action));
+  if (missingAllowed.length || missingSensitive.length || unexpectedSensitive.length) {
+    if (missingAllowed.length) {
+      console.error(`extension allowedActions missing: ${missingAllowed.join(', ')}`);
+    }
+    if (missingSensitive.length) {
+      console.error(`extension sensitiveActions missing: ${missingSensitive.join(', ')}`);
+    }
+    if (unexpectedSensitive.length) {
+      console.error(`extension sensitiveActions not in browser catalog: ${unexpectedSensitive.join(', ')}`);
+    }
+    return false;
+  }
+  return true;
+}
+
 function migrateChromeInlineRuntime() {
   const relativePath = 'extensions/chrome/background/background.js';
   const filePath = path.join(root, relativePath);
@@ -76,7 +103,7 @@ function migrateChromeInlineRuntime() {
   return true;
 }
 
-let ok = migrateChromeInlineRuntime();
+let ok = validateBrowserOperationCatalog() && migrateChromeInlineRuntime();
 for (const [source, target] of copies) ok = writeCopy(source, target) && ok;
 
 if (!ok) {

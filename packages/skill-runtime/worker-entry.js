@@ -1,5 +1,7 @@
 'use strict';
 
+// Child-process entry for the runtime-owned isolated execution backend.
+
 let activated = null;
 let descriptor = null;
 /** @type {Readonly<Record<string, any>>} */

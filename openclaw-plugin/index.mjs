@@ -14,7 +14,6 @@ const { loadConfig, setConfigValue } = require("../packages/config");
 const { createServer } = require("../packages/server-core");
 const { SENSITIVE_TOOL_NAMES, SKILLS_REGISTRY_URL, resolveSecurityConfig } = require("../packages/protocol");
 const {
-  createSkillRegistry,
   createSkillTrustStore,
   discoverSkillsFromSources,
   fetchSkillsRegistry,
@@ -22,6 +21,7 @@ const {
   resolveSkillSources,
   skillToolActionName,
 } = require("../packages/protocol/skills");
+const { SkillHostService } = require("../packages/skill-runtime");
 const { ensureRuntimePaths, chmodBestEffort } = require("../packages/runtime-paths");
 const { ensureToken } = require("../packages/runtime-paths/token.js");
 import { createAuthHelpers } from "./auth.mjs";
@@ -37,7 +37,6 @@ import { createPluginLifecycle } from "./lifecycle.mjs";
 import { registerBrowserActions } from "./actions/browser.mjs";
 import { registerSkillDiscoveryActions } from "./actions/skills.mjs";
 import { registerManagementActions } from "./actions/management.mjs";
-import { createSkillRuntimeOptions } from "./skill-runtime-options.mjs";
 import { resolveOpenClawSkillConfig } from "./skill-config.mjs";
 
 const nodeCrypto = require("node:crypto");
@@ -103,8 +102,8 @@ function register(api) {
   }
 
   const {
-    autoStart, effectiveSkillConfig, externalSkills, hostConfig,
-    loadEffectiveSkillConfig, pluginConfig: pluginCfg, requestTimeout,
+    autoStart, effectiveSkillConfig, hostConfig,
+    loadEffectiveSkillConfig, requestTimeout,
     resolveCurrentSkillSources, resolveExtraSkillDirs, serverHost, serverPort,
     skillSources, skillsDir, skillsRegistryUrl,
   } = resolveOpenClawSkillConfig({
@@ -182,45 +181,41 @@ function register(api) {
 
   registerSkillDiscoveryActions({ api, chmodBestEffort, discoverSkillsFromSources, fetchSkillsRegistry, loadConfig, nodeFs, nodePath, planSkillInstall, registerCoreAction, resolveSkillSources, runtimePaths, skillToolActionName, skillsDir, skillsRegistryUrl, textResult });
 
-  state.skillRegistry = createSkillRegistry({
-    hostConfig: effectiveSkillConfig,
-    wrapSensitiveTool,
-    builtinToolNames: BUILTIN_TOOL_NAMES,
+  state.skillHostService = new SkillHostService(effectiveSkillConfig, {
+    configLoader: loadEffectiveSkillConfig,
     skillsDir,
     extrasProvider: resolveExtraSkillDirs,
-    configLoader: loadEffectiveSkillConfig,
     setConfigValue: (key, value) => setConfigValue(key, value),
     logger: api.logger,
     invocationSource: "openclaw",
-    externalSkillPolicy: externalSkills.policy || "legacy",
-    externalSkillPolicyProvider: () => (
-      pluginCfg.externalSkills?.policy || loadConfig().externalSkills?.policy || "legacy"
-    ),
-    trustChecker: (skill) => skillTrustStore.isApproved(skill),
-    ...createSkillRuntimeOptions({
-      hostVersion: manifest.version,
-      loadEffectiveConfig: loadEffectiveSkillConfig,
-      logger: api.logger,
-      requestTimeout,
-      serverHost,
-      serverPort,
-      trustStore: skillTrustStore,
-    }),
+    hostVersion: manifest.version,
+    browserFactory: () => ensureBot(),
+    disposeBrowser: false,
+    trustStore: skillTrustStore,
+    registryOptions: {
+      wrapSensitiveTool,
+      builtinToolNames: BUILTIN_TOOL_NAMES,
+    },
   });
+  state.skillRegistry = state.skillHostService.createRegistry();
 
   if (fullRuntime) {
-    const initPromise = state.skillRegistry.init().catch((error) => {
-      api.logger.warn(`[js-eyes] SkillRegistry init failed: ${error.message}`);
+    const initPromise = state.skillHostService.ensureReady().catch((error) => {
+      api.logger.warn(`[js-eyes] Skill host init failed: ${error.message}`);
     });
     void initPromise;
   }
 
-  registerManagementActions({ getActiveServer, registerCoreAction, skillRegistry: state.skillRegistry });
+  registerManagementActions({
+    getActiveServer,
+    registerCoreAction,
+    skillHostService: state.skillHostService,
+  });
 
   registerToolRouter({
     api,
     coreActions,
-    getSkillRegistry: () => state.skillRegistry,
+    getSkillHostService: () => state.skillHostService,
     normalizeSkillAction,
     textResult,
   });
@@ -230,7 +225,7 @@ function register(api) {
     fullRuntime,
     pluginConfig: effectiveSkillConfig,
     runtimePaths,
-    skillRegistry: state.skillRegistry,
+    skillHostService: state.skillHostService,
     skillSources,
     getSkillSources: resolveCurrentSkillSources,
   });

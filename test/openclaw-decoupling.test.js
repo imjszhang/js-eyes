@@ -25,7 +25,7 @@ describe('OpenClaw integration boundary', () => {
   it('does not let core runtime packages import the OpenClaw plugin', () => {
     for (const relativePath of [
       'packages/protocol/skills.js',
-      'packages/protocol/skill-registry.js',
+      'packages/skill-runtime/registry.js',
       'packages/skill-runtime/host-service.js',
       'packages/mcp-server/src/skill-service.js',
     ]) {

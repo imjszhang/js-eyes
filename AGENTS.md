@@ -18,8 +18,8 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
 - `packages/client-sdk` owns the Node.js browser client and client-side policy.
 - `packages/server-core` owns the local HTTP and WebSocket server.
 - `packages/mcp-server` is the native stdio MCP facade.
-- `packages/skill-contract`, `packages/skill-runtime`, and
-  `packages/skill-worker` implement host-neutral Skill Runtime V2.
+- `packages/skill-contract` validates Skill metadata; `packages/skill-runtime`
+  owns host-neutral Skill Runtime V2, including isolated worker execution.
 - `openclaw-plugin` is an optional OpenClaw adapter. Core packages must not
   import it.
 - `extensions/shared` is the canonical source for cross-browser extension
@@ -77,8 +77,9 @@ CLI / MCP / optional OpenClaw adapter
 
 - Each directory under `skills/` is an independent package with its own
   version and compatibility range.
-- Keep `skill.manifest.json`, `skill.entry.js`, `skill.contract.js`,
-  `package.json`, and `SKILL.md` consistent.
+- Keep `skill.manifest.json`, `skill.entry.js`, `skill.definition.js`,
+  `package.json`, and `SKILL.md` consistent for official V2 Skills. Treat
+  `skill.contract.js` as an external V1 compatibility format only.
 - New tools must have a stable name, JSON Schema input, risk classification,
   and the minimum capabilities required.
 - `read`, `interactive`, `destructive`, and `administrative` are meaningful

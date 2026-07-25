@@ -8,12 +8,12 @@
   },
   "files": [
     "index.js",
+    "browser-operations.js",
     "skills.js",
     "zip-extract.js",
     "fs-io.js",
     "safe-npm.js",
     "extra-integrity.js",
-    "skill-registry.js",
     "skill-trust.js",
     "skill-runner.js",
     "registry-client.js"

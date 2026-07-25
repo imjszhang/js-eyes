@@ -1,6 +1,6 @@
 'use strict';
 
-const { createLegacyHandlers } = require('@js-eyes/skill-runtime/legacy-entry');
-const { TOOL_DEFINITIONS, createRuntime } = require('./skill.contract');
+const { createNativeHandlers } = require('@js-eyes/skill-runtime');
+const { TOOL_DEFINITIONS } = require('./skill.definition');
 
-module.exports = { handlers: createLegacyHandlers(TOOL_DEFINITIONS, { createRuntime }) };
+module.exports = { handlers: createNativeHandlers(TOOL_DEFINITIONS) };
