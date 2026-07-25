@@ -251,7 +251,7 @@ module that now owns the operation in 2.6.2.
 - **Residual risk**: the switch stays **off by default** to preserve 2.6.1
   compatibility for existing operators. The 2.7 plan is to flip it on by
   default and require explicit opt-out.
-- **Tests**: [`packages/protocol/tests/extra-integrity.test.js`](packages/protocol/tests/extra-integrity.test.js).
+- **Tests**: [`packages/skill-install/tests/extra-integrity.test.js`](packages/skill-install/tests/extra-integrity.test.js).
 
 ### D. `npx js-eyes native-host install` runs remote code
 

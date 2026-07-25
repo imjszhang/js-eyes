@@ -28,6 +28,11 @@
   "peerDependencies": {
     "openclaw": ">=0.0.0"
   },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
   "openclaw": {
     "extensions": [
       "./index.mjs"
