@@ -56,7 +56,7 @@
           "type": "string"
         },
         "default": [],
-        "description": "额外只读技能来源（绝对路径列表）。每条可以是单个 V2/V1 技能目录或父目录（扫描 1 层子目录）。同 id 冲突时 primary 优先；可通过 host security.verifyExtraSkillDirs 启用快照校验。"
+        "description": "额外只读技能来源（绝对路径列表）。每条可以是单个 V2 技能目录（skill.manifest.json）或父目录（扫描 1 层子目录）。同 id 冲突时 primary 优先；可通过 host security.verifyExtraSkillDirs 启用快照校验。"
       },
       "skills": {
         "type": "object",
@@ -73,12 +73,11 @@
           "policy": "prompt",
           "defaultExecution": "worker"
         },
-        "description": "外部技能的发现、信任和执行策略。legacy 保持兼容；prompt 要求批准；strict 还要求 V2 静态 Manifest。",
+        "description": "外部技能的发现、信任和执行策略。prompt 要求批准；strict 还要求 V2 静态 Manifest。已移除的 legacy 值若出现在宿主配置中会被归一为 prompt 并警告。",
         "properties": {
           "policy": {
             "type": "string",
             "enum": [
-              "legacy",
               "prompt",
               "strict"
             ],
@@ -193,7 +192,7 @@
     },
     "externalSkills": {
       "label": "外部技能策略",
-      "help": "legacy 保持现有自动启用语义；prompt 要求先批准；strict 仅允许已批准且带 skill.manifest.json 的外部技能。",
+      "help": "prompt 要求先批准；strict 仅允许已批准且带 skill.manifest.json 的外部技能。legacy 已移除，若仍写在宿主配置中会归一为 prompt 并警告。",
       "advanced": true
     },
     "watchConfig": {

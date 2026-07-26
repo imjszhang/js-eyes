@@ -70,7 +70,7 @@ window.I18nLocales['en-US'] = {
         openclaw: {
             name: 'OpenClaw',
             badge: 'PLUGIN',
-            desc: 'Registers as an OpenClaw plugin with 9 AI tools, a background server, and CLI commands. Best for the standard ClawHub/OpenClaw path with Node.js 22+.',
+            desc: 'Registers as an OpenClaw plugin with 1 AI tool (js-eyes router), a background server, and CLI commands. Best for the standard ClawHub/OpenClaw path with Node.js 22+.',
             btn: 'Get OpenClaw',
             hot: 'HOT',
         },

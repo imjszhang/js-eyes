@@ -91,7 +91,7 @@ Development requires Node.js 22 or newer. Install the committed dependency graph
 |-----------|-------------|
 | MCP clients + [`@js-eyes/mcp-server`](./packages/mcp-server) | Native stdio MCP facade with a safe-by-default browser tool profile |
 | [apps/cli](./apps/cli) + [packages/server-core](./packages/server-core) | Lightweight built-in server and published npm CLI |
-| [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](./openclaw-plugin) | Registers as OpenClaw plugin — 9 AI tools, background service, CLI commands |
+| [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](./openclaw-plugin) | Registers as OpenClaw plugin — 1 AI tool (`js-eyes` router), background service, CLI commands |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | Full-featured agent framework (separate WS port, HMAC auth, SSE, rate limiting) |
 
 ### Native MCP Server

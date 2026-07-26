@@ -70,7 +70,7 @@ window.I18nLocales['zh-CN'] = {
         openclaw: {
             name: 'OpenClaw',
             badge: '\u63d2\u4ef6',
-            desc: '\u6ce8\u518c\u4e3a OpenClaw \u63d2\u4ef6\uff0c\u63d0\u4f9b 9 \u4e2a AI \u5de5\u5177\u3001\u540e\u53f0\u670d\u52a1\u548c CLI \u547d\u4ee4\u3002\u9002\u5408 Node.js 22+ \u7684\u6807\u51c6 ClawHub/OpenClaw \u5b89\u88c5\u8def\u5f84\u3002',
+            desc: '\u6ce8\u518c\u4e3a OpenClaw \u63d2\u4ef6\uff0c\u63d0\u4f9b 1 \u4e2a AI \u5de5\u5177\uff08js-eyes \u8def\u7531\u5668\uff09\u3001\u540e\u53f0\u670d\u52a1\u548c CLI \u547d\u4ee4\u3002\u9002\u5408 Node.js 22+ \u7684\u6807\u51c6 ClawHub/OpenClaw \u5b89\u88c5\u8def\u5f84\u3002',
             btn: '\u83b7\u53d6 OpenClaw',
             hot: '\u70ed\u95e8',
         },

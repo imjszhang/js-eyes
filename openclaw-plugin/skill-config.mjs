@@ -1,10 +1,15 @@
+import { createRequire } from 'node:module';
 import { readLegacyOpenClawSkillState } from './legacy-config.mjs';
+
+const require = createRequire(import.meta.url);
+const { normalizeConfig: defaultNormalizeConfig } = require('@js-eyes/config');
 
 export function resolveOpenClawSkillConfig({
   api,
   defaultRegistry,
   loadConfig,
   loadLegacySkillState = readLegacyOpenClawSkillState,
+  normalizeConfig = defaultNormalizeConfig,
   nodePath,
   resolveSkillSources,
   skillRoot,
@@ -39,7 +44,7 @@ export function resolveOpenClawSkillConfig({
       }];
     }),
   );
-  const mergeSkillConfig = (current = hostConfig) => ({
+  const mergeSkillConfig = (current = hostConfig) => normalizeConfig({
     ...current,
     ...pluginConfig,
     extraSkillDirs: resolveExtraSkillDirs(),

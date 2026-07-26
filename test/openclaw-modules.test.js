@@ -227,6 +227,32 @@ describe('OpenClaw module boundaries', () => {
     await runtime.dispose();
   });
 
+  it('normalizes removed externalSkills.policy=legacy from plugin overlay', async () => {
+    const { resolveOpenClawSkillConfig } = await import('../openclaw-plugin/skill-config.mjs');
+    const { normalizeConfig } = require('../packages/config');
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.join(' ')); };
+    try {
+      const resolved = resolveOpenClawSkillConfig({
+        api: { pluginConfig: { externalSkills: { policy: 'legacy' } } },
+        defaultRegistry: 'https://registry.example',
+        loadConfig: () => normalizeConfig({
+          externalSkills: { policy: 'strict', defaultExecution: 'worker' },
+        }),
+        loadLegacySkillState: () => ({}),
+        nodePath: path,
+        resolveSkillSources: ({ primary, extras }) => ({ primary, extras }),
+        skillRoot: '/bundle',
+      });
+      assert.equal(resolved.effectiveSkillConfig.externalSkills.policy, 'prompt');
+      assert.equal(resolved.externalSkills.policy, 'prompt');
+      assert.match(warnings.join('\n'), /externalSkills\.policy=legacy/);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it('keeps shared server acquisition reference-counted', async () => {
     const { createSharedServerManager } = await import('../openclaw-plugin/shared-server.mjs');
     let createCount = 0;

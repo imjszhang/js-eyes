@@ -72,7 +72,7 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 | 框架 | 说明 |
 |------|------|
 | [apps/cli](../apps/cli) + [packages/server-core](../packages/server-core) | 已发布的 npm CLI 与内置轻量服务器（2.2.0+ 起默认 Bearer Token 认证） |
-| [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](../openclaw-plugin) | 注册为 OpenClaw 插件 — 9 个 AI 工具、后台服务、CLI 命令 |
+| [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](../openclaw-plugin) | 注册为 OpenClaw 插件 — 1 个 AI 工具（`js-eyes` 路由器）、后台服务、CLI 命令 |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | 完整版 Agent 框架（独立 WS 端口、HMAC 认证、SSE、限流） |
 
 ## 功能特性
