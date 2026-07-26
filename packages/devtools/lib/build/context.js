@@ -61,8 +61,9 @@ const BUNDLE_RUNTIME_PACKAGES = [
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
 const SITE_URL = 'https://js-eyes.com';
 const SUB_SKILL_EXCLUDE = [
-  'node_modules/**', '**/node_modules/**', 'work_dir/**', '**/work_dir/**',
-  'package-lock.json', '.git/**', '**/.git/**', '**/.DS_Store', '**/Thumbs.db',
+  'node_modules/**', '**/node_modules/**', 'runs/**', '**/runs/**',
+  'work_dir/**', '**/work_dir/**',
+  '.git/**', '**/.git/**', '**/.DS_Store', '**/Thumbs.db',
 ];
 const PLATFORM_VERSION_EXCLUDE = new Set([
   'visual-bridge-kit',

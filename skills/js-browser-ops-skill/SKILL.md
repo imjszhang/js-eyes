@@ -21,8 +21,13 @@ metadata:
 
 本技能依赖 **js-eyes** 技能提供的浏览器自动化能力。使用前请确保：
 
-1. JS-Eyes Server 已运行
+1. Node.js 22+、JS Eyes 2.8.5+，且 JS-Eyes Server 已运行
 2. 浏览器已安装 JS-Eyes 扩展并连接到服务器
+3. `browser_click` / `browser_fill_form` / `browser_wait_for` / `browser_scroll` 使用扩展内置操作，不要求 Raw Eval；页面正文抽取等脚本能力需要宿主设置 `security.allowRawEval: true`
+4. JS Eyes 2.5+ 会把宿主的 Raw Eval 设置同步到扩展；扩展存储中的显式 `false` 仍可强制关闭
+5. Chrome 脚本能力要求 Chrome 135+；Chrome 138+ 还需在浏览器扩展设置中开启 **Allow User Scripts**
+
+登录要求取决于目标网页；本 Skill 不执行登录自动化。
 
 ## 提供的 AI 工具
 

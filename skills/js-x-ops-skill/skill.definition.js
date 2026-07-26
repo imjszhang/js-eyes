@@ -1281,7 +1281,7 @@ const skillCapabilities = {
 const skillRequirements = {
   "server": true,
   "browserExtension": true,
-  "login": false,
+  "login": true,
   "platforms": [
     "x.com",
     "twitter.com"

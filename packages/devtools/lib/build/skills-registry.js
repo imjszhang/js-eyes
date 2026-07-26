@@ -1,5 +1,7 @@
 'use strict';
 
+const os = require('os');
+const { execFileSync } = require('child_process');
 const {
   PROJECT_ROOT,
   SITE_OUT_DIR,
@@ -15,6 +17,7 @@ const {
   path,
   writeShaSidecar,
 } = require('./context');
+const { loadSkillManifest } = require('@js-eyes/skill-contract');
 const { createZipArchive } = require('./zip-archive');
 
 function parseSkillFrontmatter(filePath) {
@@ -101,13 +104,6 @@ function parseYamlValue(str) {
   return val;
 }
 
-function loadSkillContract(skillDir) {
-  const contractPath = path.resolve(skillDir, 'skill.contract.js');
-  if (!fs.existsSync(contractPath)) return null;
-  delete require.cache[require.resolve(contractPath)];
-  return require(contractPath);
-}
-
 function readSubSkillPackageJson(skillDir) {
   const pkgPath = path.join(skillDir, 'package.json');
   if (!fs.existsSync(pkgPath)) return null;
@@ -148,6 +144,143 @@ function resolveSkillChangelogUrl(skillDir, dirName) {
   return `https://github.com/imjszhang/js-eyes/blob/main/skills/${dirName}/CHANGELOG.md`;
 }
 
+function registryRuntime(descriptor) {
+  const requirements = descriptor.requirements || {};
+  return {
+    requiresServer: requirements.server === true,
+    requiresBrowserExtension: requirements.browserExtension === true,
+    requiresLogin: requirements.login === true,
+    platforms: Array.isArray(requirements.platforms)
+      ? requirements.platforms.slice()
+      : [],
+  };
+}
+
+const STAGE_COPY_EXCLUDES = new Set([
+  '.git',
+  'node_modules',
+  'package-lock.json',
+  'runs',
+  'work_dir',
+]);
+
+function copyPortableTree(source, destination) {
+  ensureDir(destination);
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    if (STAGE_COPY_EXCLUDES.has(entry.name)) continue;
+    const sourcePath = path.join(source, entry.name);
+    const destinationPath = path.join(destination, entry.name);
+    if (entry.isDirectory()) copyPortableTree(sourcePath, destinationPath);
+    else if (entry.isFile()) fs.copyFileSync(sourcePath, destinationPath);
+  }
+}
+
+function copyPortablePackage(source, destination) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8'));
+  ensureDir(destination);
+  fs.copyFileSync(path.join(source, 'package.json'), path.join(destination, 'package.json'));
+
+  const entries = new Set(Array.isArray(pkg.files) ? pkg.files : []);
+  for (const entry of ['README.md', 'LICENSE', 'CHANGELOG.md']) {
+    if (fs.existsSync(path.join(source, entry))) entries.add(entry);
+  }
+  for (const entry of entries) {
+    const sourcePath = path.join(source, entry);
+    if (!fs.existsSync(sourcePath)) continue;
+    const destinationPath = path.join(destination, entry);
+    const stat = fs.statSync(sourcePath);
+    if (stat.isDirectory()) copyPortableTree(sourcePath, destinationPath);
+    else if (stat.isFile()) {
+      ensureDir(path.dirname(destinationPath));
+      fs.copyFileSync(sourcePath, destinationPath);
+    }
+  }
+}
+
+function vendorLocalDependencies(sourceDir, stageDir) {
+  const packagePath = path.join(stageDir, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  const sections = ['dependencies', 'optionalDependencies'];
+  const vendored = new Map();
+
+  function stageVendor(vendorSource) {
+    const source = fs.realpathSync(vendorSource);
+    if (vendored.has(source)) return vendored.get(source);
+    const vendorPackage = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8'));
+    const vendorName = vendorPackage.name.split('/').pop();
+    const vendorDir = path.join(stageDir, 'vendor', vendorName);
+    vendored.set(source, vendorName);
+    copyPortablePackage(source, vendorDir);
+
+    let changed = false;
+    for (const section of sections) {
+      for (const [name, specifier] of Object.entries(vendorPackage[section] || {})) {
+        if (!String(specifier).startsWith('file:')) continue;
+        const nestedSource = path.resolve(source, String(specifier).slice('file:'.length));
+        const nestedName = stageVendor(nestedSource);
+        vendorPackage[section][name] = `file:../${nestedName}`;
+        changed = true;
+      }
+    }
+    if (changed) {
+      fs.writeFileSync(
+        path.join(vendorDir, 'package.json'),
+        `${JSON.stringify(vendorPackage, null, 2)}\n`,
+        'utf8',
+      );
+    }
+    return vendorName;
+  }
+
+  let changed = false;
+  for (const section of sections) {
+    for (const [name, specifier] of Object.entries(pkg[section] || {})) {
+      if (!String(specifier).startsWith('file:')) continue;
+      const vendorSource = path.resolve(sourceDir, String(specifier).slice('file:'.length));
+      const vendorName = stageVendor(vendorSource);
+      pkg[section][name] = `file:vendor/${vendorName}`;
+      changed = true;
+    }
+  }
+  if (changed) {
+    fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+  }
+  return [...vendored.values()].sort();
+}
+
+function generatePortableLockfile(stageDir) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  execFileSync(npmCommand, [
+    'install',
+    '--package-lock-only',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--workspaces=false',
+  ], {
+    cwd: stageDir,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    windowsHide: true,
+  });
+  const lockPath = path.join(stageDir, 'package-lock.json');
+  if (!fs.existsSync(lockPath)) {
+    throw new Error(`npm did not generate ${lockPath}`);
+  }
+}
+
+function prepareSubSkillStage(skill, options = {}) {
+  const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), `js-eyes-${skill.id}-`));
+  try {
+    copyPortableTree(skill.dir, stageDir);
+    const vendored = vendorLocalDependencies(skill.dir, stageDir);
+    if (options.generateLockfile !== false) generatePortableLockfile(stageDir);
+    return { stageDir, vendored };
+  } catch (error) {
+    fs.rmSync(stageDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function discoverSubSkills() {
   if (!fs.existsSync(SKILLS_DIR)) return [];
 
@@ -161,33 +294,32 @@ function discoverSubSkills() {
     const skillMd = path.join(skillDir, 'SKILL.md');
     if (!fs.existsSync(skillMd)) continue;
 
-    const contract = loadSkillContract(skillDir);
-    if (!contract) continue;
+    const manifestPath = path.join(skillDir, 'skill.manifest.json');
+    if (!fs.existsSync(manifestPath)) continue;
+    const { descriptor } = loadSkillManifest(skillDir);
     const meta = parseSkillFrontmatter(skillMd);
     if (!meta || !meta.name) continue;
 
-    const tools = Array.isArray(contract?.openclaw?.tools)
-      ? contract.openclaw.tools.map((tool) => tool.name)
-      : [];
-    const commands = Array.isArray(contract?.cli?.commands)
-      ? contract.cli.commands.map((command) => command.name)
+    const tools = descriptor.tools.map((tool) => tool.name);
+    const commands = Array.isArray(descriptor.cli?.commands)
+      ? descriptor.cli.commands.map((command) => command.name)
       : [];
 
     const oc = (meta.metadata && meta.metadata.openclaw) || {};
     const pkg = readSubSkillPackageJson(skillDir);
     skills.push({
-      id: meta.name,
+      id: descriptor.id,
       dir: skillDir,
       dirName: entry.name,
-      name: contract?.name || meta.name,
-      description: meta.description || '',
-      version: contract?.version || meta.version || '1.0.0',
+      name: descriptor.name,
+      description: descriptor.description || meta.description || '',
+      version: descriptor.version,
       emoji: oc.emoji || '',
       homepage: oc.homepage || '',
       requires: oc.requires || {},
       tools,
       commands,
-      runtime: contract?.runtime || {},
+      runtime: registryRuntime(descriptor),
       minParentVersion: resolveMinParentVersion(pkg, parentVersion),
       changelogUrl: resolveSkillChangelogUrl(skillDir, entry.name),
     });
@@ -207,32 +339,41 @@ async function buildSubSkillZips() {
     const outputFile = path.join(outDir, zipName);
     if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
 
-    const output = fs.createWriteStream(outputFile);
-    const archive = createZipArchive({ zlib: { level: 9 } });
-
-    /** @type {Promise<void>} */
-    const archiveComplete = new Promise((resolve, reject) => {
-      output.on('close', () => resolve());
-      archive.on('error', reject);
-      archive.pipe(output);
-      archive.glob('**/*', {
-        cwd: skill.dir,
-        dot: false,
-        ignore: SUB_SKILL_EXCLUDE,
-      });
-      archive.finalize();
-    });
-    await archiveComplete;
-
-    const stats = fs.statSync(outputFile);
-    const { sha256 } = hashFile(outputFile);
+    const { sha256, size } = await buildSubSkillZip(skill, outputFile);
     writeShaSidecar(outputFile, sha256);
     skill._sha256 = sha256;
-    skill._size = stats.size;
-    console.log(`  ✓ Sub-skill bundle: skills/${skill.dirName}/${zipName} (${formatSize(stats.size)}, sha256 ${sha256.slice(0, 12)}…)`);
+    skill._size = size;
+    console.log(`  ✓ Sub-skill bundle: skills/${skill.dirName}/${zipName} (${formatSize(size)}, sha256 ${sha256.slice(0, 12)}…)`);
   }
 
   return skills;
+}
+
+async function buildSubSkillZip(skill, outputFile) {
+  ensureDir(path.dirname(outputFile));
+  const { stageDir } = prepareSubSkillStage(skill);
+  const output = fs.createWriteStream(outputFile);
+  const archive = createZipArchive({ zlib: { level: 9 } });
+
+  /** @type {Promise<void>} */
+  const archiveComplete = new Promise((resolve, reject) => {
+    output.on('close', resolve);
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.pipe(output);
+    archive.glob('**/*', {
+      cwd: stageDir,
+      dot: false,
+      ignore: SUB_SKILL_EXCLUDE,
+    });
+    archive.finalize();
+  });
+  try {
+    await archiveComplete;
+  } finally {
+    fs.rmSync(stageDir, { recursive: true, force: true });
+  }
+  return hashFile(outputFile);
 }
 
 async function buildSkillsRegistry(preBuiltSkills) {
@@ -293,4 +434,12 @@ async function buildSkillsRegistry(preBuiltSkills) {
   console.log(`  ✓ Skills registry: skills.json (${skills.length} skill(s))`);
 }
 
-module.exports = { buildSkillsRegistry, buildSubSkillZips, discoverSubSkills, parseSkillFrontmatter };
+module.exports = {
+  buildSkillsRegistry,
+  buildSubSkillZip,
+  buildSubSkillZips,
+  discoverSubSkills,
+  parseSkillFrontmatter,
+  prepareSubSkillStage,
+  registryRuntime,
+};

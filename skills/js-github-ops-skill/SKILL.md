@@ -21,9 +21,11 @@ metadata:
 
 ## 依赖
 
-- **JS Eyes Server** 已启动；扩展已连接。
-- **宿主 + 扩展**双侧 `allowRawEval`（注入 bridge），参见根目录 JS Eyes 部署说明。
+- Node.js 22+、JS Eyes 2.8.5+；**JS Eyes Server** 已启动且扩展已连接。
+- 宿主设置 `security.allowRawEval: true` 以允许 bridge 注入；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仅作为强制关闭覆盖。
+- Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**。
 - 浏览器内至少打开一个 **github.com** tab（READ 默认不切走当前 tab；无 tab 时可 `createIfMissing` 打开示例页）。
+- 公开仓库读取无需登录；`github_session_state` 只检测现有登录态，本 Skill 不执行登录自动化。
 
 ## 安全档位
 
@@ -81,7 +83,7 @@ js-eyes skills reload
 | 现象 | 处理 |
 |------|------|
 | `E_NO_TAB` | 打开任意 github.com 页面 |
-| `RAW_EVAL_DISABLED` | 打开宿主与扩展的 raw eval |
+| `RAW_EVAL_DISABLED` | 在宿主启用 `security.allowRawEval` 并重新连接扩展；若扩展曾显式保存 `false`，清除该覆盖 |
 | `fetch_failed` 403/404 | 私有库或未授权；公开库请检查 owner/repo |
 | 429 | API 速率限制；稍后重试 |
 

@@ -25,13 +25,11 @@ metadata:
 
 ## 依赖与前置
 
-- **JS Eyes Server**：已启动（`js-eyes server start`）
+- Node.js 22+、JS Eyes 2.8.5+；**JS Eyes Server** 已启动（`js-eyes server start`）
 - **浏览器扩展**：已安装并连上 server
 - **登录态**：浏览器里已经人工登录 x.com（本 skill 不做任何登录自动化）；READ 工具默认 `navigateOnReuse=false / reuseAnyXTab=true`，bridge 在任意 x.com / twitter.com tab 里 fetch 同源 GraphQL；用户当前 tab 不会被切走
-- **双侧 `allowRawEval`**：bridge 首次注入会走一次 `bot.executeScript(rawSource)`；之后每次工具调用只执行 `window.__jse_x_*__.<method>()`
-  - 宿主：`~/.js-eyes/config/config.json` 里 `security.allowRawEval: true`
-  - 扩展：js-eyes 扩展 popup 里 `Allow Raw Eval` 打开
-  - 少一侧会返回 `RAW_EVAL_DISABLED`
+- **Raw Eval**：bridge 首次注入需要宿主设置 `security.allowRawEval: true`；JS Eyes 2.5+ 会把该设置同步到扩展，扩展存储中的显式 `false` 仍可强制关闭
+- **Chrome**：要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**
 
 ## 安全红线（READ / INTERACTIVE / DESTRUCTIVE）
 
@@ -454,7 +452,7 @@ v2.x 单纯靠 DOM 解析 X 页面 HTML。v3.0 起改成 GraphQL-first，原因�
 |---|---|---|
 | `E_NO_TAB` | 浏览器没打开任何 x.com / twitter.com tab | 在浏览器里打开 `https://x.com/` 任一页面；CLI 的 INTERACTIVE 命令默认会自动开新 tab，READ 命令默认 `createIfMissing=true` 也会兜底 |
 | `connect WebSocket 401` | js-eyes server `allowAnonymous=false` 但 CLI 没拿到 token | `js-eyes server token show --reveal` 拿值，确认 `~/.js-eyes/runtime/server.token` 存在或 export `JS_EYES_TOKEN` |
-| `RAW_EVAL_DISABLED` | 一侧 `allowRawEval=false` | 宿主 `~/.js-eyes/config/config.json` 的 `security.allowRawEval` + 扩展 popup 的 `Allow Raw Eval` 都要打开 |
+| `RAW_EVAL_DISABLED` | 宿主未启用 Raw Eval，或扩展保存了显式 `false` 覆盖 | 在宿主启用 `security.allowRawEval` 并重新连接扩展；如仍失败，清除扩展侧的显式关闭覆盖 |
 | `loggedIn=false` 但浏览器明显已登录 | `/i/api/1.1/account/settings.json` 在隐私模式 / 第三方 cookie 限制下会 401 | `readLoginStateDom` 会兜底；如还不对就清 cookie 重新登录 |
 | `bridgeFallback=true` + `bridgeFallbackReason='bridge_returned_error'` | bridge 拿到 X 响应但语义失败（404 / forbidden） | 看 `bridgeFallbackMessage` 取原始 X error；search 偶发 404 已自动降级 DOM |
 | `bridgeFallbackReason='bridge_inject_failed'` | 注入失败，常因 X CSP 或扩展未连上 tab | 先跑 `node index.js doctor` |

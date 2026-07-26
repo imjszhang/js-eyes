@@ -21,6 +21,23 @@ function toolRisk(tool) {
   throw new Error(`Tool ${tool.name} is missing risk (TOOL_DEFINITIONS is SSOT)`);
 }
 
+function compatibilityFromPackage(packageJson) {
+  const minParentVersion = packageJson.jsEyes?.minParentVersion;
+  const node = packageJson.engines?.node;
+  if (typeof minParentVersion !== 'string' || !minParentVersion.trim()) {
+    throw new Error(`${packageJson.name}: package.json#jsEyes.minParentVersion is required`);
+  }
+  if (typeof node !== 'string' || !node.trim()) {
+    throw new Error(`${packageJson.name}: package.json#engines.node is required`);
+  }
+  return {
+    jsEyes: packageJson.jsEyes.compatibility || `>=${minParentVersion.trim()} <3`,
+    contractApi: '^2.0.0',
+    runtimeApi: '^2.0.0',
+    node: node.trim(),
+  };
+}
+
 /**
  * Build a V2 skill.manifest.json object from package.json + skill.definition.js exports.
  *
@@ -50,12 +67,7 @@ function buildSkillManifest(skillDir, loaded = {}) {
     publisher: contract.publisher || 'js-eyes',
     description: packageJson.description,
     entry: './skill.entry.js',
-    compatibility: {
-      jsEyes: '>=2.8.5 <3',
-      contractApi: '^2.0.0',
-      runtimeApi: '^2.0.0',
-      node: '>=22',
-    },
+    compatibility: compatibilityFromPackage(packageJson),
     requirements: {
       server: !!contract.requirements.server,
       browserExtension: !!contract.requirements.browserExtension,
@@ -108,5 +120,6 @@ function writeSkillManifest(skillDir, options = {}) {
 
 module.exports = {
   buildSkillManifest,
+  compatibilityFromPackage,
   writeSkillManifest,
 };

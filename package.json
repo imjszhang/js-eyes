@@ -47,7 +47,7 @@
     "typecheck:apps": "tsc -p jsconfig.apps.json",
     "typecheck:plugin": "tsc -p jsconfig.plugin.json",
     "typecheck:devtools": "tsc -p jsconfig.devtools.json",
-    "package:smoke": "node scripts/package-smoke.js",
+    "package:smoke": "node scripts/package-smoke.js && node scripts/skill-package-smoke.js",
     "scan:security": "node scripts/scan-clawhub-patterns.js",
     "skills:manifests": "node scripts/generate-skill-manifests.js",
     "skills:manifests:check": "node scripts/generate-skill-manifests.js --check",

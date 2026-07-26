@@ -15,6 +15,13 @@ metadata:
 
 面向即刻单条帖子详情读取的 skill。首版只做详情页结构化输出，不提供用户动态流、话题流、搜索和发布。
 
+## 浏览器兼容性与登录
+
+- 要求 Node.js 22+、JS Eyes 2.8.5+、已连接的浏览器扩展与运行中的 Server。
+- 页面 bridge 需要宿主设置 `security.allowRawEval: true`；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仍可强制关闭。
+- Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**。
+- 公开帖子通常无需登录；受限内容依赖浏览器已有会话，本 Skill 不执行登录自动化。
+
 ## 提供的 AI 工具
 
 | 工具 | 说明 |

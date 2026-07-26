@@ -15,6 +15,13 @@ metadata:
 
 面向知乎内容读取的 skill。v3.0 起按 `PAGE_PROFILES + Bridges + Session` 架构升级，支持回答、专栏、问题、搜索、用户、首页多个 profile，并保留 `JS_ZHIHU_DISABLE_BRIDGE=1` 旧脚本 fallback。
 
+## 浏览器兼容性与登录
+
+- 要求 Node.js 22+、JS Eyes 2.8.5+、已连接的浏览器扩展与运行中的 Server。
+- 页面 bridge 需要宿主设置 `security.allowRawEval: true`；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仍可强制关闭。
+- Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**。
+- 公开内容通常可匿名读取；搜索、连续分页或触发登录墙后的页面依赖浏览器已有登录态。本 Skill 不执行登录自动化。
+
 ## 安全分级
 
 - **READ**：`zhihu_get_answer`、`zhihu_get_article`、`zhihu_session_state`、`zhihu_get_question_answers`、`zhihu_search`、`zhihu_get_user`、`zhihu_get_user_answers`、`zhihu_get_user_articles`。

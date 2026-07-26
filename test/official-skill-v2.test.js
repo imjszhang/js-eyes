@@ -54,3 +54,18 @@ test('official skills do not export createOpenClawAdapter and keep TOOL_DEFINITI
     }
   }
 });
+
+test('official V2 compatibility is derived from package metadata', () => {
+  for (const skillDir of officialSkillDirs()) {
+    const pkg = require(path.join(skillDir, 'package.json'));
+    const { descriptor } = loadSkillManifest(skillDir);
+    assert.equal(pkg.engines.node, '>=22.0.0', pkg.name);
+    assert.equal(pkg.jsEyes.minParentVersion, '2.8.5', pkg.name);
+    assert.equal(descriptor.compatibility.node, pkg.engines.node, pkg.name);
+    assert.equal(
+      descriptor.compatibility.jsEyes,
+      `>=${pkg.jsEyes.minParentVersion} <3`,
+      pkg.name,
+    );
+  }
+});

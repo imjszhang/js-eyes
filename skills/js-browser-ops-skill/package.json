@@ -7,13 +7,14 @@
   "scripts": {
     "start": "node index.js",
     "read": "node index.js read",
-    "interact": "node index.js interact"
+    "interact": "node index.js interact",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "jsEyes": {
-    "minParentVersion": "2.6.1"
+    "minParentVersion": "2.8.5"
   },
   "dependencies": {
     "@js-eyes/client-sdk": "^2.8.5",

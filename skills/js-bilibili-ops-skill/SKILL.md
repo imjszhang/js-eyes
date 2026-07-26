@@ -17,8 +17,10 @@ metadata:
 
 ## 前置条件
 
+本 Skill 要求 Node.js 22+、JS Eyes 2.8.5+，直接调用本机 `yt-dlp`，不依赖 JS Eyes 浏览器扩展或 `allowRawEval`。
+
 1. 本机可用 `yt-dlp`
-2. 若视频需要登录态，浏览器中已有可用 cookies
+2. 公开视频不要求登录；会员、年龄限制或私有视频需要提供 `yt-dlp` 可读取的浏览器 cookies
 3. 若后续扩展下载能力，需要 `ffmpeg`
 
 ## 提供的 AI 工具

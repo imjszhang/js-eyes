@@ -10,12 +10,12 @@
     "jsEyes": ">=2.8.5 <3",
     "contractApi": "^2.0.0",
     "runtimeApi": "^2.0.0",
-    "node": ">=22"
+    "node": ">=22.0.0"
   },
   "requirements": {
     "server": true,
     "browserExtension": true,
-    "login": false,
+    "login": true,
     "platforms": [
       "x.com",
       "twitter.com"

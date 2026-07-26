@@ -21,6 +21,13 @@ metadata:
 - v3.0：监控子系统（accounts + searches 两类 target）。
 - v3.x：限流 / 反爬 / visual-bridge-kit / cookie sanitize 治理。
 
+## 浏览器兼容性与登录
+
+- 要求 Node.js 22+、JS Eyes 2.8.5+、已连接的浏览器扩展与运行中的 Server。
+- 页面 bridge 需要宿主设置 `security.allowRawEval: true`；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仍可强制关闭。
+- Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**。
+- 笔记公开内容可匿名读取；评论 API、部分用户页和风控后的页面要求浏览器已有登录态。本 Skill 提供 CLI 登录引导，但不向 AI 暴露登录操作。
+
 ## 安全分级
 
 - **READ**：`xhs_get_note`、`xhs_get_note_comments`、`xhs_session_state`（v2.1）。

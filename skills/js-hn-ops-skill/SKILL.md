@@ -24,9 +24,11 @@ metadata:
 
 ## 依赖与前置
 
-- **JS Eyes Server** 已启动；浏览器扩展已连接
-- **双侧 `allowRawEval`**（bridge 注入）
+- Node.js 22+、JS Eyes 2.8.5+；**JS Eyes Server** 已启动且浏览器扩展已连接
+- 宿主设置 `security.allowRawEval: true` 以允许 bridge 注入；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仅作为强制关闭覆盖
+- Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**
 - 任意 `news.ycombinator.com` tab 即可；READ 默认不切走用户当前 tab
+- 公开内容与 Algolia 搜索无需登录；本 Skill 只读取已有登录态，不执行登录自动化
 
 ## AI 工具
 

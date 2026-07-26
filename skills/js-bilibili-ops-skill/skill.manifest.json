@@ -10,7 +10,7 @@
     "jsEyes": ">=2.8.5 <3",
     "contractApi": "^2.0.0",
     "runtimeApi": "^2.0.0",
-    "node": ">=22"
+    "node": ">=22.0.0"
   },
   "requirements": {
     "server": false,

@@ -28,13 +28,14 @@
     "xhr-log": "node index.js xhr-log",
     "diff-post": "node scripts/_dev/diff-post-schema.js",
     "aggregate-subreddit": "node scripts/aggregate-subreddit.js",
-    "batch-post": "node scripts/batch-post.js"
+    "batch-post": "node scripts/batch-post.js",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "jsEyes": {
-    "minParentVersion": "2.6.1"
+    "minParentVersion": "2.8.5"
   },
   "dependencies": {
     "@js-eyes/client-sdk": "^2.8.5",

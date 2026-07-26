@@ -17,9 +17,13 @@ metadata:
 
 ## 前置条件
 
-1. JS-Eyes Server 已运行
+1. Node.js 22+、JS Eyes 2.8.5+，且 JS-Eyes Server 已运行
 2. 浏览器已安装 JS-Eyes 扩展并连接到服务器
 3. 浏览器可正常访问微信公众号文章页面
+4. 宿主设置 `security.allowRawEval: true`；JS Eyes 2.5+ 会同步到扩展，扩展侧显式 `false` 仍可强制关闭
+5. Chrome 要求 135+；Chrome 138+ 还需开启浏览器控制的 **Allow User Scripts**
+
+公开文章通常无需登录；受限或失效文章取决于浏览器已有会话，本 Skill 不执行登录自动化。
 
 ## 提供的 AI 工具
 
