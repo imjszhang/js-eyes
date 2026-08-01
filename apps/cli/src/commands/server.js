@@ -92,7 +92,7 @@ async function commandServer(positionals, flags) {
       }
 
       const logFd = fs.openSync(paths.serverLogFile, 'a');
-      const binPath = path.resolve(__dirname, '..', 'bin', 'js-eyes.js');
+      const binPath = path.resolve(__dirname, '..', '..', 'bin', 'js-eyes.js');
       const child = spawn(process.execPath, [
         binPath,
         'server',
