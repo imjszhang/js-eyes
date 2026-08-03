@@ -104,7 +104,7 @@ metadata:
 ## CLI
 
 ```bash
-cd /Volumes/home_x/github/my/js-eyes/skills/js-reddit-ops-skill
+cd /path/to/js-eyes/skills/js-reddit-ops-skill
 npm install
 
 # 通路 + 登录态 + bridge 注入 + probe + state 一站诊断
@@ -358,8 +358,8 @@ v2.x 单纯靠 cheerio 解析 reddit 帖子页 HTML。v3.0 起改成 JSON-first�
 
 ## 启用方式
 
-1. `cd /Volumes/home_x/github/my/js-eyes/skills/js-reddit-ops-skill && npm install`
-2. `js-eyes skills link /Volumes/home_x/github/my/js-eyes/skills/js-reddit-ops-skill`
+1. `cd /path/to/js-eyes/skills/js-reddit-ops-skill && npm install`
+2. `js-eyes skills link /path/to/js-eyes/skills/js-reddit-ops-skill`
    - 会追加到 `~/.js-eyes/config/config.json` 的 `extraSkillDirs`
    - 会把 `skillsEnabled["js-reddit-ops-skill"] = true`
 3. `js-eyes skills reload`（OpenClaw 插件 300ms 内热载）
@@ -367,7 +367,7 @@ v2.x 单纯靠 cheerio 解析 reddit 帖子页 HTML。v3.0 起改成 JSON-first�
 5. **浏览器里至少打开一个 reddit.com tab**（READ 默认不会切走当前 tab；INTERACTIVE 会主动切到目标 URL）
 6. `js-eyes doctor` 确认整体安全态
 
-卸载：`js-eyes skills unlink /Volumes/home_x/github/my/js-eyes/skills/js-reddit-ops-skill`
+卸载：`js-eyes skills unlink /path/to/js-eyes/skills/js-reddit-ops-skill`
 
 ## 明确不做的事
 

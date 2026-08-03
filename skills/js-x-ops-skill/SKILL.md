@@ -107,7 +107,7 @@ v3.0.5 新增：周期性拉 `x_get_profile` → 去重 → 发 webhook 通知�
 ## CLI
 
 ```bash
-cd /Volumes/home_x/github/my/js-eyes/skills/js-x-ops-skill
+cd /path/to/js-eyes/skills/js-x-ops-skill
 npm install
 
 # 通路 + 登录态 + bridge 注入 + probe + state 一站诊断
@@ -380,8 +380,8 @@ v2.x 单纯靠 DOM 解析 X 页面 HTML。v3.0 起改成 GraphQL-first，原因�
 
 ## 启用方式
 
-1. `cd /Volumes/home_x/github/my/js-eyes/skills/js-x-ops-skill && npm install`
-2. `js-eyes skills link /Volumes/home_x/github/my/js-eyes/skills/js-x-ops-skill`
+1. `cd /path/to/js-eyes/skills/js-x-ops-skill && npm install`
+2. `js-eyes skills link /path/to/js-eyes/skills/js-x-ops-skill`
    - 会追加到 `~/.js-eyes/config/config.json` 的 `extraSkillDirs`
    - 会把 `skillsEnabled["js-x-ops-skill"] = true`
 3. `js-eyes skills reload`（OpenClaw 插件 300ms 内热载）
@@ -389,7 +389,7 @@ v2.x 单纯靠 DOM 解析 X 页面 HTML。v3.0 起改成 GraphQL-first，原因�
 5. **浏览器里至少打开一个 x.com tab 并完成登录**（READ 默认不会切走当前 tab；INTERACTIVE 会主动切到目标 URL）
 6. `js-eyes doctor` 确认整体安全态
 
-卸载：`js-eyes skills unlink /Volumes/home_x/github/my/js-eyes/skills/js-x-ops-skill`
+卸载：`js-eyes skills unlink /path/to/js-eyes/skills/js-x-ops-skill`
 
 ## 明确不做的事
 
