@@ -3,6 +3,7 @@
 const { randomUUID } = require('crypto');
 const { readFileSync, statSync, openSync, readSync, closeSync } = require('fs');
 const { extname } = require('path');
+const { fetchWithTimeout } = require('./httpFetch');
 
 const MEDIA_UPLOAD_ENDPOINT = 'https://api.x.com/2/media/upload';
 const MEDIA_UPLOAD_INIT_ENDPOINT = 'https://api.x.com/2/media/upload/initialize';
@@ -48,20 +49,6 @@ function sniffMimeFromBytes(buf) {
     && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
   if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) return 'video/mp4';
   return null;
-}
-
-async function fetchWithTimeout(url, opts = {}, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      ...opts,
-      headers: { Connection: 'close', ...(opts.headers || {}) },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function getMediaData(result) {

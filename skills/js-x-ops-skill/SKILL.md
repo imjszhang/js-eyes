@@ -176,6 +176,29 @@ READ 工具默认仍走浏览器同源 GraphQL；官方 REST API 只作为 CLI /
 
 CLI 会从当前目录和 skill 目录向上查找 `.env`，并只填充尚未存在的环境变量；真实环境变量优先级高于 `.env`。
 
+### Official API 代理（Node 出站）
+
+Browser / GraphQL READ 仍走 Chrome 自身代理；**Official API** 的 Node `fetch` 默认直连。若本机需代理才能访问 `api.x.com`，配置 HTTP(S) 或 SOCKS5 代理：
+
+| 变量 | 说明 |
+|------|------|
+| `JS_X_OPS_PROXY` | 推荐；专用变量，优先级最高 |
+| `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` | 标准 fallback（`ALL_PROXY` 常用于 `socks5://`） |
+| `JS_X_OPS_PROXY=off` | 强制直连（忽略 lower-priority 代理） |
+
+- 支持 `http://` / `https://`（如 Clash mixed-port）与 `socks5://` / `socks://` / `socks5h://`
+- 不支持 `socks4://`
+- `api status` 输出含 `proxy.enabled` / `proxy.host` / `proxy.protocol`（不含密码）
+- 无代理且请求失败时，`access.hint` 会提示设置 `JS_X_OPS_PROXY`
+
+```bash
+# HTTP 代理示例
+JS_X_OPS_PROXY=http://127.0.0.1:7890 node index.js api status --pretty
+
+# SOCKS5 示例（仅 SOCKS 端口时）
+JS_X_OPS_PROXY=socks5://127.0.0.1:1080 node index.js api status --pretty
+```
+
 ```bash
 # 官方 API 状态与只读
 node index.js api status --pretty
@@ -414,7 +437,10 @@ v2.x 单纯靠 DOM 解析 X 页面 HTML。v3.0 起改成 GraphQL-first，原因�
 - **v3.0.6**：面向第三方复用的 5 个反向增强（`runCheckCore` / monitor `{ home }` / `validateConfig` / sessionState 字段 / post 批量 positional / `tests/`）
 - **v3.3.0**：monitor CLI JSON envelope + `--config`；CLI `--version`
 - **v3.4.0**：官方 X API v2 通道（`api` 子命令、`--via auto|api`）
-- **v3.8.1（当前）**：Article GraphQL `content_state` 解析（文内图片/视频 URL、`contentMarkdown`）；修复长文有 `plain_text` 时跳过媒体的问题；Article `--download-media` 支持
+- **v3.8.7（当前）**：Official API 增加 SOCKS5 代理（`socks5://` / undici `Socks5ProxyAgent`）；`proxy.protocol` 可观测
+- **v3.8.6**：Official API HTTP(S) 代理支持（`JS_X_OPS_PROXY` / `HTTPS_PROXY` + undici `ProxyAgent`）；`api status` 输出 `proxy` 摘要；无代理网络失败时 `access.hint`
+- **v3.8.5**：CLI profile 默认 `requestTimeout=1800s`；修复 execute_script 90s 超时风险
+- **v3.8.1**：Article GraphQL `content_state` 解析（文内图片/视频 URL、`contentMarkdown`）；修复长文有 `plain_text` 时跳过媒体的问题；Article `--download-media` 支持
 - **v3.8.0**：`x_get_post` 自动识别 Article（`t.co` / `/i/article/` / Announcement 推文升级）；`lib/xUrl.js`；post-bridge `dom_getArticle`
 - **v3.7.0**：Official API Articles（`article-draft` / `article-publish` / `article` CLI）、Markdown→DraftJS、`x_create_article` / `x_publish_article` DESTRUCTIVE 工具
 - **v3.6.0**：Official API `search-all` / `search-recent` CLI、`x_search_archive` AI 工具、v2→bridge 归一化输出

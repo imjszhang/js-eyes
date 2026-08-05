@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const pkg = require('../../package.json');
 const { createOfficialApiClient } = require('./index');
+const { getProxyInfo } = require('./httpFetch');
 const { buildSearchQueryOptions } = require('./buildSearchQuery');
 const { normalizeSearchResults } = require('./normalizeSearchTweet');
 
@@ -412,6 +413,7 @@ async function runApi(argv) {
           bearer: !!client.bearerToken,
           oauth1: client.isWriteConfigured,
         },
+        proxy: getProxyInfo(),
         access,
       };
       if (!result.ok) {

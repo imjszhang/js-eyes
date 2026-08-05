@@ -6,6 +6,7 @@ const { buildSearchQueryOptions } = require('./buildSearchQuery');
 const { normalizeSearchTweet, normalizeSearchResults } = require('./normalizeSearchTweet');
 const { markdownToDraftJs } = require('./draftJsBuilder');
 const { resolveArticleMedia, toArticleMediaRef } = require('./articleMedia');
+const { getProxyInfo, resolveProxyUrl, fetchWithTimeout } = require('./httpFetch');
 
 function createOfficialApiClient(opts = {}) {
   return new OfficialApiClient(opts);
@@ -26,4 +27,7 @@ module.exports = {
   markdownToDraftJs,
   resolveArticleMedia,
   toArticleMediaRef,
+  getProxyInfo,
+  resolveProxyUrl,
+  fetchWithTimeout,
 };

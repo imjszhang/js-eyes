@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { TWEET_STATUS_RE } = require('./draftJsBuilder');
+const { fetchWithTimeout } = require('./httpFetch');
 
 const REMOTE_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_REF_PREFIX = '__ARTICLE_IMAGE__:';
@@ -40,7 +41,9 @@ function scanMarkdownImages(markdown) {
 }
 
 async function fetchRemoteImage(url) {
-  const resp = await fetch(url, { headers: { 'User-Agent': 'js-x-ops-skill/3.7 article-media' } });
+  const resp = await fetchWithTimeout(url, {
+    headers: { 'User-Agent': 'js-x-ops-skill/3.7 article-media' },
+  });
   if (!resp.ok) {
     throw new Error(`remote image fetch failed HTTP ${resp.status}`);
   }

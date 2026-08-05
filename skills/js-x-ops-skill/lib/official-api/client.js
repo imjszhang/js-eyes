@@ -6,6 +6,7 @@ const path = require('path');
 const { OfficialApiMediaClient } = require('./media');
 const { markdownToDraftJs } = require('./draftJsBuilder');
 const { resolveArticleMedia } = require('./articleMedia');
+const { fetchWithTimeout, getProxyInfo } = require('./httpFetch');
 
 const X_API_BASE = 'https://api.x.com';
 const TWEETS_ENDPOINT = `${X_API_BASE}/2/tweets`;
@@ -31,18 +32,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithTimeout(url, opts = {}, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      ...opts,
-      headers: { Connection: 'close', ...(opts.headers || {}) },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+function buildFetchFailureHint(errorMessage) {
+  const proxy = getProxyInfo();
+  if (proxy.enabled) return null;
+  const msg = String(errorMessage || '');
+  if (!/fetch failed|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|network|abort/i.test(msg)) return null;
+  return 'Official API request failed without proxy. Set JS_X_OPS_PROXY (http:// or socks5://) or HTTPS_PROXY / ALL_PROXY.';
 }
 
 function normalizeBearerToken(token) {
@@ -181,7 +176,12 @@ class OfficialApiClient {
       };
     } catch (e) {
       this._readAvailable = false;
-      return { available: false, reason: String(e) };
+      const hint = buildFetchFailureHint(e);
+      return {
+        available: false,
+        reason: String(e),
+        ...(hint ? { hint } : {}),
+      };
     }
   }
 
