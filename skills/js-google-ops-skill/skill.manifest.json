@@ -1,0 +1,379 @@
+{
+  "manifestVersion": 2,
+  "id": "js-google-ops-skill",
+  "name": "JS Google Ops Skill",
+  "version": "1.0.0",
+  "publisher": "js-eyes",
+  "description": "Google Search 只读 + 浏览器导航：Web / News / Images / Scholar，PAGE_PROFILES + Bridges + Session，DOM-first，不做 DESTRUCTIVE",
+  "entry": "./skill.entry.js",
+  "compatibility": {
+    "jsEyes": ">=2.8.5 <3",
+    "contractApi": "^2.0.0",
+    "runtimeApi": "^2.0.0",
+    "node": ">=22.0.0"
+  },
+  "requirements": {
+    "server": true,
+    "browserExtension": true,
+    "login": false,
+    "platforms": [
+      "google.com",
+      "scholar.google.com"
+    ]
+  },
+  "capabilities": {
+    "browser": [
+      "tabs.read",
+      "navigation",
+      "script.execute",
+      "screenshot"
+    ],
+    "network": {
+      "direct": false,
+      "hosts": []
+    },
+    "filesystem": [
+      "skillData"
+    ],
+    "process": [],
+    "secrets": [],
+    "background": false
+  },
+  "cli": {
+    "entry": "./cli/index.js",
+    "commands": [
+      {
+        "name": "doctor",
+        "description": "连通性 + bridge + probe + state 诊断"
+      },
+      {
+        "name": "search",
+        "description": "Google 网页搜索"
+      },
+      {
+        "name": "news",
+        "description": "Google 新闻搜索"
+      },
+      {
+        "name": "images",
+        "description": "Google 图片搜索"
+      },
+      {
+        "name": "scholar",
+        "description": "Google Scholar 搜索"
+      },
+      {
+        "name": "session-state",
+        "description": "登录态"
+      },
+      {
+        "name": "navigate-search",
+        "description": "导航到搜索结果（INTERACTIVE）"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "google_search",
+      "title": "Google Ops: Search",
+      "description": "Google 网页搜索（DOM-first，临时标签页，不访问结果外链）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限，默认 10，最大 50"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大页数，默认 1，最大 5"
+          },
+          "language": {
+            "type": "string",
+            "description": "hl 语言代码，如 zh-CN / en"
+          },
+          "region": {
+            "type": "string",
+            "description": "gl 地区代码，如 us / cn"
+          },
+          "safeSearch": {
+            "type": "string",
+            "enum": [
+              "active",
+              "off"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "google_search_news",
+      "title": "Google Ops: News",
+      "description": "Google 新闻搜索",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限，默认 10，最大 50"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大页数，默认 1，最大 5"
+          },
+          "language": {
+            "type": "string",
+            "description": "hl 语言代码，如 zh-CN / en"
+          },
+          "region": {
+            "type": "string",
+            "description": "gl 地区代码，如 us / cn"
+          },
+          "safeSearch": {
+            "type": "string",
+            "enum": [
+              "active",
+              "off"
+            ]
+          },
+          "timeRange": {
+            "type": "string",
+            "enum": [
+              "h",
+              "d",
+              "w",
+              "m",
+              "y"
+            ],
+            "description": "时间范围"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "google_search_images",
+      "title": "Google Ops: Images",
+      "description": "Google 图片搜索；只返回可见缩略图与来源页，不点击卡片",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限，默认 10，最大 50"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大页数，默认 1，最大 5"
+          },
+          "language": {
+            "type": "string",
+            "description": "hl 语言代码，如 zh-CN / en"
+          },
+          "region": {
+            "type": "string",
+            "description": "gl 地区代码，如 us / cn"
+          },
+          "safeSearch": {
+            "type": "string",
+            "enum": [
+              "active",
+              "off"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "google_search_scholar",
+      "title": "Google Ops: Scholar",
+      "description": "Google Scholar 搜索",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限，默认 10，最大 50"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大页数，默认 1，最大 5"
+          },
+          "language": {
+            "type": "string",
+            "description": "hl 语言代码，如 zh-CN / en"
+          },
+          "region": {
+            "type": "string",
+            "description": "gl 地区代码，如 us / cn"
+          },
+          "safeSearch": {
+            "type": "string",
+            "enum": [
+              "active",
+              "off"
+            ]
+          },
+          "yearFrom": {
+            "type": "number"
+          },
+          "yearTo": {
+            "type": "number"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "google_session_state",
+      "title": "Google Ops: Session State",
+      "description": "读取当前 Google tab 是否已登录（不返回邮箱或 cookie）",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "google_navigate_search",
+      "title": "Google Ops: Navigate Search",
+      "description": "仅 location.assign 到 Google / Scholar 搜索页，保留标签页",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "number",
+            "description": "结果数上限，默认 10，最大 50"
+          },
+          "maxPages": {
+            "type": "number",
+            "description": "最大页数，默认 1，最大 5"
+          },
+          "language": {
+            "type": "string",
+            "description": "hl 语言代码，如 zh-CN / en"
+          },
+          "region": {
+            "type": "string",
+            "description": "gl 地区代码，如 us / cn"
+          },
+          "safeSearch": {
+            "type": "string",
+            "enum": [
+              "active",
+              "off"
+            ]
+          },
+          "vertical": {
+            "type": "string",
+            "enum": [
+              "web",
+              "news",
+              "images",
+              "scholar"
+            ]
+          },
+          "timeRange": {
+            "type": "string",
+            "enum": [
+              "h",
+              "d",
+              "w",
+              "m",
+              "y"
+            ]
+          },
+          "yearFrom": {
+            "type": "number"
+          },
+          "yearTo": {
+            "type": "number"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

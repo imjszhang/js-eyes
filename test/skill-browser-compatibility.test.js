@@ -46,7 +46,7 @@ function browserSkills() {
 
 test('official browser skills have a complete Chrome/Firefox capability matrix', () => {
   const skills = browserSkills();
-  assert.equal(skills.length, 9);
+  assert.equal(skills.length, 10);
 
   for (const platform of ['chrome', 'firefox']) {
     const manifest = require(path.join(EXTENSIONS_ROOT, platform, 'manifest.json'));

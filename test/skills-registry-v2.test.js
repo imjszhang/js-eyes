@@ -23,7 +23,7 @@ test('site registry discovers every official V2 skill from static manifests', ()
   const expected = officialV2SkillIds();
   const discovered = discoverSubSkills();
 
-  assert.equal(expected.length, 11);
+  assert.equal(expected.length, 12);
   assert.deepEqual(discovered.map((skill) => skill.id).sort(), expected);
   for (const skill of discovered) {
     assert.ok(skill.tools.length > 0, `${skill.id} must publish tools`);

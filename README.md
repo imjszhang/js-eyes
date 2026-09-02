@@ -508,6 +508,7 @@ local Skills through the same runtime used by CLI and MCP.
 | [js-browser-ops-skill](./skills/js-browser-ops-skill/) | Generic page read, DOM interact, screenshot | `browser_read_page`, `browser_screenshot` |
 | [js-x-ops-skill](./skills/js-x-ops-skill/) | X.com search, timelines, posting, official API v2 | `x_search_tweets`, `x_get_profile`, `x_get_post` |
 | [js-reddit-ops-skill](./skills/js-reddit-ops-skill/) | Reddit browse, search, comments | `reddit_search`, `reddit_get_post` |
+| [js-google-ops-skill](./skills/js-google-ops-skill/) | Google Search / News / Images / Scholar | `google_search`, `google_search_news`, `google_search_scholar` |
 | [js-github-ops-skill](./skills/js-github-ops-skill/) | GitHub repo / issue / PR operations | platform-specific tools in contract |
 | [js-hn-ops-skill](./skills/js-hn-ops-skill/) | Hacker News front page, items, search | `hn_get_front_page`, `hn_get_item`, `hn_search` |
 | [js-zhihu-ops-skill](./skills/js-zhihu-ops-skill/) | Zhihu content operations | `zhihu_search`, `zhihu_get_answer` |
