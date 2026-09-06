@@ -24,6 +24,8 @@
       "background/messaging-methods.js",
       "background/operations-methods.js",
       "background/page-interact-methods.js",
+      "background/page-extract-core.js",
+      "background/page-extract-methods.js",
       "background/routing-methods.js",
       "background/tabs-methods.js",
       "background/browser-control-methods.js",

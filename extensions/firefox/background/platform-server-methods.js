@@ -161,6 +161,10 @@ async handleMessage(data) {
           await this.handleWaitFor(payload);
           break;
 
+        case 'extract_page':
+          await this.handleExtract(payload);
+          break;
+
         case 'upload_file_to_tab':
           await this.handleUploadFileToTab(payload);
           break;

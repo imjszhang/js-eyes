@@ -61,8 +61,11 @@ function createBrowser() {
     },
     async executeScript(tabId, script) {
       this.executeScriptCalls += 1;
-      const formatMatch = script.match(/var fmt = ("(?:[^"\\]|\\.)*");/);
-      const format = formatMatch ? JSON.parse(formatMatch[1]) : 'unknown';
+      const formatMatch = String(script).match(/"format":"(markdown|html|text)"/)
+        || String(script).match(/var fmt = ("(?:[^"\\]|\\.)*");/);
+      const format = formatMatch
+        ? (formatMatch[1].startsWith('"') ? JSON.parse(formatMatch[1]) : formatMatch[1])
+        : 'unknown';
       const url = this.tabUrls.get(tabId) || `tab:${tabId}`;
       return {
         title: `${format} title`,
@@ -152,18 +155,39 @@ test('API keeps read-page extraction and routes browser actions through first-cl
   };
 
   const readResult = await readPage(browser, { tabId: 42, format: 'text' }, options);
+  assert.equal(readResult.tabId, 42);
+  assert.equal(readResult.status, 'ok');
+  assert.match(calls[0][2], /probePage/);
+  assert.match(calls[1][2], /function extractPageContent/);
+  assert.match(calls[1][2], /"format":"text"/);
+
+  const extractBrowser = {
+    ...browser,
+    async extractPage(tabId, params, callOptions) {
+      calls.push(['extractPage', tabId, params, callOptions]);
+      return { title: 'Extracted', content: LONG_BODY, status: 'ok' };
+    },
+  };
+  const extracted = await readPage(extractBrowser, { tabId: 42, format: 'markdown', maxContentChars: 4000 }, options);
+  assert.equal(extracted.status, 'ok');
+  assert.equal(calls[2][0], 'executeScript');
+  assert.match(calls[2][2], /probePage/);
+  assert.equal(calls[3][0], 'extractPage');
+  assert.equal(calls[3][1], 42);
+  assert.deepEqual(calls[3][2], {
+    format: 'markdown',
+    includeLinks: true,
+    includeImages: true,
+    maxContentChars: 4000,
+  });
+
   await clickElement(browser, { tabId: 42, selector: '#submit', text: 'Go', index: 1 }, options);
   await fillForm(browser, { tabId: 42, selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options);
   await waitFor(browser, { tabId: 42, selector: '.results', timeout: 10, visible: true }, options);
   await scrollPage(browser, { tabId: 42, target: 'bottom', selector: '.footer', pixels: 300 }, options);
   await takeScreenshot(browser, { tabId: 42, fullPage: true, format: 'jpeg', quality: 80 }, options);
 
-  assert.equal(readResult.tabId, 42);
-  assert.equal(readResult.status, 'ok');
-  assert.match(calls[0][2], /probePage/);
-  assert.match(calls[1][2], /function extractContent\(\)/);
-  assert.match(calls[1][2], /var fmt = "text";/);
-  assert.deepEqual(calls.slice(2), [
+  assert.deepEqual(calls.slice(4), [
     ['click', 42, { selector: '#submit', text: 'Go', index: 1 }, options],
     ['fill', 42, { selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options],
     ['waitFor', 42, { selector: '.results', timeout: 10, visible: true }, options],
@@ -309,8 +333,21 @@ test('readPage cache key ignores parameters that do not affect current output', 
   const baseKey = createContext({}).cacheKey;
 
   assert.equal(createContext({ tabId: 42 }).cacheKey, baseKey);
-  assert.equal(createContext({ maxContentChars: 1000 }).cacheKey, baseKey);
-  assert.equal(createContext({ includeLinks: false }).cacheKey, baseKey);
+  assert.equal(createContext({ waitTimeoutMs: 99 }).cacheKey, baseKey);
+  assert.notEqual(createContext({ maxContentChars: 1000 }).cacheKey, baseKey);
+  assert.notEqual(createContext({ includeLinks: false }).cacheKey, baseKey);
+  assert.notEqual(createContext({ includeImages: false }).cacheKey, baseKey);
+});
+
+test('readPage cache vary includes format and maxContentChars', () => {
+  const { normalizeReadPageCacheVary } = require('../lib/runContext');
+  assert.deepEqual(normalizeReadPageCacheVary({ format: 'html', maxContentChars: 2048 }), {
+    schema: 2,
+    format: 'html',
+    maxContentChars: 2048,
+    includeLinks: true,
+    includeImages: true,
+  });
 });
 
 test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) => {

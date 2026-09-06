@@ -1,0 +1,39 @@
+{
+  "name": "@js-eyes/page-extract",
+  "version": "2.10.0",
+  "description": "Declarative, Node-testable page content extraction for JS Eyes",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "index.js",
+    "extract-page-content.js"
+  ],
+  "license": "MIT",
+  "author": "imjszhang <ortle3x3@gmail.com>",
+  "homepage": "https://js-eyes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imjszhang/js-eyes.git",
+    "directory": "packages/page-extract"
+  },
+  "bugs": {
+    "url": "https://github.com/imjszhang/JS-Eyes/issues"
+  },
+  "keywords": [
+    "js-eyes",
+    "page-extract",
+    "readability",
+    "markdown"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

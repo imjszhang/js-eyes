@@ -108,6 +108,41 @@
           "allowPrivateNetwork": {
             "type": "boolean",
             "description": "二次确认后才允许访问回环/私网/链路本地地址"
+          },
+          "waitUntil": {
+            "type": "string",
+            "enum": [
+              "domcontentloaded",
+              "load",
+              "networkidle",
+              "selector",
+              "stable"
+            ],
+            "description": "导航等待策略（默认 load）"
+          },
+          "waitForSelector": {
+            "type": "string",
+            "description": "waitUntil=selector 时等待的 CSS 选择器"
+          },
+          "waitTimeoutMs": {
+            "type": "number",
+            "description": "等待超时毫秒（默认 8000）"
+          },
+          "minContentChars": {
+            "type": "number",
+            "description": "正文最短字符数，不足则重试，超时返回 content_too_short"
+          },
+          "maxContentChars": {
+            "type": "number",
+            "description": "正文最大字符数，超出则截断并标记 truncated"
+          },
+          "includeLinks": {
+            "type": "boolean",
+            "description": "是否收集并渲染链接（默认 true）"
+          },
+          "includeImages": {
+            "type": "boolean",
+            "description": "是否收集并渲染图片（默认 true）"
           }
         }
       }

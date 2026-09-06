@@ -11,7 +11,7 @@ const config = require('../extensions/shared/config');
 const sharedBrowserControl = require('../extensions/shared/browser-control-methods');
 const { stageAllExtensions } = require('../packages/devtools/lib/build/extensions');
 const { EXTENSION_SHARED_COPIES } = require('../packages/devtools/lib/build/context');
-const methodModuleNames = ['connection', 'messaging', 'operations', 'page-interact', 'routing', 'tabs'];
+const methodModuleNames = ['connection', 'messaging', 'operations', 'page-interact', 'page-extract', 'routing', 'tabs'];
 const platformModuleNames = ['connection', 'server', 'operations', 'runtime', 'tabs'];
 
 function read(relativePath) {
@@ -55,6 +55,7 @@ describe('extension shared runtime contract', () => {
       assert.match(chromeBackground, new RegExp(`import '\\.\\/${name}-methods\\.js';`));
     }
     assert.match(chromeBackground, /import '\.\/browser-control-methods\.js';/);
+    assert.match(chromeBackground, /import '\.\/page-extract-core\.js';/);
 
     const firefoxManifest = JSON.parse(read('extensions/firefox/manifest.json'));
     assert.deepEqual(firefoxManifest.background.scripts, [
@@ -64,6 +65,8 @@ describe('extension shared runtime contract', () => {
       'background/messaging-methods.js',
       'background/operations-methods.js',
       'background/page-interact-methods.js',
+      'background/page-extract-core.js',
+      'background/page-extract-methods.js',
       'background/routing-methods.js',
       'background/tabs-methods.js',
       'background/browser-control-methods.js',
@@ -95,6 +98,7 @@ describe('extension shared runtime contract', () => {
       'JSEyesMessagingMethods',
       'JSEyesBrowserOperationMethods',
       'JSEyesPageInteractMethods',
+      'JSEyesPageExtractMethods',
       'JSEyesRuntimeRoutingMethods',
       'JSEyesTabSyncMethods',
       'JSEyesSharedBrowserControl',
@@ -207,6 +211,13 @@ describe('extension shared runtime contract', () => {
     }
   });
 
+  it('keeps extension page-extract-core identical to the package implementation', () => {
+    assert.equal(
+      read('extensions/shared/page-extract-core.js'),
+      read('packages/page-extract/extract-page-content.js'),
+    );
+  });
+
   it('preserves the complete shared method surface', () => {
     assert.deepEqual(Object.keys(sharedBrowserControl.createMethods({})), [
       'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
@@ -217,6 +228,7 @@ describe('extension shared runtime contract', () => {
       'getTabCookies', 'deduplicateCookies', 'validateCookies', 'analyzeCookieDomains',
       'waitForTabLoad',
       '_runPageInteract', 'handleClick', 'handleFill', 'handleScroll', 'handleWaitFor',
+      'handleExtract',
       'handleContentScriptRequest', 'handleGetTabsRequest',
       'handleOpenUrlRequest', 'handleCloseTabRequest', 'handleGetCookiesRequest',
       'handleGetCookiesByDomainRequest', 'handleGetPageInfoRequest', 'debouncedSendTabsData',

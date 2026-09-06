@@ -770,6 +770,7 @@ describe('handleAutomationMessage', () => {
       ['inject_css', { tabId: '5', css: 'body{color:red}' }],
       ['get_cookies', { tabId: '6' }],
       ['capture_screenshot', { tabId: '7', format: 'png', fullPage: true }],
+      ['extract_page', { tabId: '8', format: 'markdown', maxContentChars: 2000 }],
     ]) {
       it(`forwards ${action} with correct fields`, () => {
         handleAutomationMessage(

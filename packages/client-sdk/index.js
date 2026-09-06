@@ -283,7 +283,9 @@ class BrowserAutomation {
           if (code && String(code).startsWith('POLICY_')) {
             pending.reject(policyErrorFromServerMessage(msg));
           } else {
-            pending.reject(new Error(msg.message || '未知错误'));
+            const err = new Error(msg.message || '未知错误');
+            if (msg.code) err.code = msg.code;
+            pending.reject(err);
           }
         } else {
           pending.resolve(msg);
@@ -442,7 +444,11 @@ class BrowserAutomation {
 
   async executeScript(tabId, code, options = {}) {
     if (typeof options === 'number') options = { timeout: options };
-    const decision = await this._evaluatePolicy('executeScript', { tabId, code });
+    const decision = await this._evaluatePolicy('executeScript', {
+      tabId,
+      code,
+      evalKind: 'arbitrary_eval',
+    });
     if (decision.decision !== 'allow') {
       this._blockFromPolicy(decision, 'executeScript');
     }
@@ -596,6 +602,26 @@ class BrowserAutomation {
       timeout: params.timeout,
       visible: params.visible,
     }, callOptions);
+    return response.result;
+  }
+
+  async extractPage(tabId, params = {}, options = {}) {
+    const decision = await this._evaluatePolicy('extractPage', {
+      tabId,
+      format: params.format,
+      evalKind: 'controlled_extract',
+    });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'extractPage');
+    }
+    const payload = { tabId: parseInt(tabId, 10) };
+    if (params.format !== undefined) payload.format = params.format;
+    if (params.includeLinks !== undefined) payload.includeLinks = params.includeLinks;
+    if (params.includeImages !== undefined) payload.includeImages = params.includeImages;
+    if (params.maxContentChars !== undefined) payload.maxContentChars = params.maxContentChars;
+    if (params.maxLinks !== undefined) payload.maxLinks = params.maxLinks;
+    if (params.maxImages !== undefined) payload.maxImages = params.maxImages;
+    const response = await this._sendRequest(browserWireAction('page.extract'), payload, options);
     return response.result;
   }
 }

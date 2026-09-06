@@ -343,6 +343,7 @@ function handleExtensionMessage(raw, clientId, state) {
     case 'fill_complete':
     case 'scroll_complete':
     case 'wait_for_complete':
+    case 'extract_page_complete':
       resolveRequest(requestId, {
         status: 'success',
         type: data.type,
@@ -468,6 +469,11 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       domain: data.domain || null,
       tabId: data.tabId ?? null,
       enforcement: state.security?.enforcement || 'off',
+      evalKind: action === 'execute_script'
+        ? 'arbitrary_eval'
+        : action === 'extract_page'
+          ? 'controlled_extract'
+          : undefined,
     });
   }
 
@@ -584,6 +590,12 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     case 'wait_for':
       forwardToExtension('wait_for', data, socket, state, ['tabId', 'selector', 'timeout', 'visible'], target, clientId);
+      break;
+    case 'extract_page':
+      forwardToExtension('extract_page', data, socket, state, [
+        'tabId', 'format', 'includeLinks', 'includeImages',
+        'maxContentChars', 'maxLinks', 'maxImages',
+      ], target, clientId);
       break;
     case 'upload_file_to_tab':
       forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);

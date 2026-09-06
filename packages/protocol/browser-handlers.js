@@ -33,6 +33,11 @@ function pickOptions(args = {}, callOptions = {}) {
   if (args.format !== undefined) options.format = args.format;
   if (args.quality !== undefined) options.quality = args.quality;
   if (args.fullPage !== undefined) options.fullPage = args.fullPage;
+  if (args.includeLinks !== undefined) options.includeLinks = args.includeLinks;
+  if (args.includeImages !== undefined) options.includeImages = args.includeImages;
+  if (args.maxContentChars !== undefined) options.maxContentChars = args.maxContentChars;
+  if (args.maxLinks !== undefined) options.maxLinks = args.maxLinks;
+  if (args.maxImages !== undefined) options.maxImages = args.maxImages;
   return { ...options, ...callOptions };
 }
 
@@ -123,6 +128,15 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
         visible: args.visible,
       }, waitOptions);
     }
+    case 'page.extract':
+      return browser.extractPage(args.tabId, {
+        format: args.format,
+        includeLinks: args.includeLinks,
+        includeImages: args.includeImages,
+        maxContentChars: args.maxContentChars,
+        maxLinks: args.maxLinks,
+        maxImages: args.maxImages,
+      }, options);
     default:
       throw new Error(`No invoke mapping for browser operation: ${operation.id}`);
   }

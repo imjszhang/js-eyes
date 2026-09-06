@@ -115,6 +115,19 @@ function defaultHandler(ws, data) {
       }));
       break;
 
+    case 'extract_page':
+      ws.send(JSON.stringify({
+        type: 'extract_page_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: {
+          status: 'ok',
+          format: data.format || 'markdown',
+          content: 'extracted body',
+          truncated: false,
+        },
+      }));
+      break;
+
     case 'capture_screenshot':
       ws.send(JSON.stringify({
         type: 'capture_screenshot_response', requestId, status: 'success',
@@ -439,6 +452,12 @@ describe('business methods', () => {
     assert.equal(cookies.length, 1);
     assert.equal(cookies[0].name, 'sid');
     assert.equal(cookies[0].value, 'abc');
+  });
+
+  it('extractPage() returns structured content', async () => {
+    const result = await bot.extractPage(3, { format: 'markdown', maxContentChars: 1000 });
+    assert.equal(result.status, 'ok');
+    assert.equal(result.content, 'extracted body');
   });
 
   it('captureScreenshot() returns fullPage metadata', async () => {

@@ -51,7 +51,8 @@ constructor() {
             'get_page_info', 'upload_file_to_tab',
             // Phase 2 (visual replay): capture active tab into PNG dataURL.
             // Background tabs return { skipped: 'tab_not_active' } instead of erroring.
-            'capture_screenshot'
+            'capture_screenshot',
+            'extract_page',
           ],
           sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
           allowRawEval: false,

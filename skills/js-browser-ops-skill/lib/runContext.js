@@ -16,10 +16,16 @@ function normalizeReadPageCacheVary(options = {}) {
   const format = options.format === 'html' || options.format === 'text'
     ? options.format
     : 'markdown';
+  const maxContentChars = Number.isFinite(Number(options.maxContentChars)) && Number(options.maxContentChars) > 0
+    ? Math.floor(Number(options.maxContentChars))
+    : 0;
 
   return {
     schema: 2,
     format,
+    maxContentChars,
+    includeLinks: options.includeLinks !== false,
+    includeImages: options.includeImages !== false,
   };
 }
 
