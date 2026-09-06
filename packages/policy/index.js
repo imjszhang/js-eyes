@@ -183,6 +183,15 @@ class PolicyContext {
       }
     }
 
+    if (toolName === 'extractPage' || toolName === 'executeScript') {
+      this._emitAudit('policy.allow', {
+        tool: toolName,
+        evalKind: toolName === 'extractPage' ? 'controlled_extract' : 'arbitrary_eval',
+        rule_decision: 'allow',
+        enforcement: this.enforcement,
+      });
+    }
+
     if (toolName === 'openUrl') {
       const url = params && params.url;
       const egressResult = this.egress.evaluateUrl(url);

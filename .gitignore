@@ -16,6 +16,10 @@ extensions/chrome/background/operations-methods.js
 extensions/firefox/background/operations-methods.js
 extensions/chrome/background/page-interact-methods.js
 extensions/firefox/background/page-interact-methods.js
+extensions/chrome/background/page-extract-core.js
+extensions/firefox/background/page-extract-core.js
+extensions/chrome/background/page-extract-methods.js
+extensions/firefox/background/page-extract-methods.js
 extensions/chrome/background/routing-methods.js
 extensions/firefox/background/routing-methods.js
 extensions/chrome/background/tabs-methods.js

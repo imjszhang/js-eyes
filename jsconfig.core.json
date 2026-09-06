@@ -24,6 +24,7 @@
     "packages/skill-contract/**/*.js",
     "packages/skill-scaffold/**/*.js",
     "packages/skill-runtime/**/*.js",
+    "packages/page-extract/**/*.js",
     "types/**/*.d.ts"
   ],
   "exclude": ["**/node_modules/**", "**/tests/**"]

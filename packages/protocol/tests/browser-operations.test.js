@@ -41,6 +41,17 @@ describe('browser operations metadata', () => {
     const fill = BROWSER_OPERATION_BY_MCP_TOOL.browser_fill;
     assert.ok(fill.inputSchema.required.includes('value'));
   });
+
+  it('registers declarative page.extract as a safe read operation', () => {
+    const extract = BROWSER_OPERATION_BY_MCP_TOOL.browser_extract_page;
+    assert.equal(extract.id, 'page.extract');
+    assert.equal(extract.wireAction, 'extract_page');
+    assert.equal(extract.sdkMethod, 'extractPage');
+    assert.equal(extract.risk, 'read');
+    assert.deepEqual(extract.profiles.slice(), ['safe', 'full']);
+    assert.equal(extract.sensitive, undefined);
+    assert.ok(extract.inputSchema.required.includes('tabId'));
+  });
 });
 
 describe('invokeBrowserOperation', () => {
@@ -89,6 +100,26 @@ describe('invokeBrowserOperation', () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0][1].timeout, 10);
     assert.equal(calls[0][2].timeout, 15);
+    assert.equal(calls[0][2].target, 'ext-1');
+  });
+
+  it('routes page.extract through extractPage', async () => {
+    const calls = [];
+    const browser = {
+      async extractPage(tabId, params, options) {
+        calls.push([tabId, params, options]);
+        return { status: 'ok', content: 'hello' };
+      },
+    };
+    const result = await invokeBrowserOperation(browser, 'page.extract', {
+      tabId: 9,
+      format: 'markdown',
+      maxContentChars: 4000,
+    }, { target: 'ext-1' });
+    assert.equal(result.status, 'ok');
+    assert.equal(calls[0][0], 9);
+    assert.equal(calls[0][1].format, 'markdown');
+    assert.equal(calls[0][1].maxContentChars, 4000);
     assert.equal(calls[0][2].target, 'ext-1');
   });
 });

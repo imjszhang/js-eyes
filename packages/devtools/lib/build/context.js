@@ -25,6 +25,8 @@ const EXTENSION_SHARED_COPIES = [
   ['messaging-methods.js', path.join('background', 'messaging-methods.js')],
   ['operations-methods.js', path.join('background', 'operations-methods.js')],
   ['page-interact-methods.js', path.join('background', 'page-interact-methods.js')],
+  ['page-extract-core.js', path.join('background', 'page-extract-core.js')],
+  ['page-extract-methods.js', path.join('background', 'page-extract-methods.js')],
   ['routing-methods.js', path.join('background', 'routing-methods.js')],
   ['tabs-methods.js', path.join('background', 'tabs-methods.js')],
   ['browser-control-methods.js', path.join('background', 'browser-control-methods.js')],
@@ -68,6 +70,7 @@ const SUB_SKILL_EXCLUDE = [
 const PLATFORM_VERSION_EXCLUDE = new Set([
   'visual-bridge-kit',
   'visual-replay-hyperframes',
+  'page-extract',
 ]);
 const PLATFORM_DEPENDENCY_EXCLUDE = new Set(
   Array.from(PLATFORM_VERSION_EXCLUDE, (name) => `@js-eyes/${name}`),

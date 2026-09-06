@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Dirty markup</title>
+</head>
+<body>
+  <article>
+    <p onclick="alert(1)">Safe text</p>
+    <a href="javascript:alert(2)">Bad link</a>
+    <a href="https://example.com/ok">Good link</a>
+    <script>window.pwned = true;</script>
+    <style>body { display: none; }</style>
+    <img src="https://example.com/a.png" alt="shot" onerror="alert(3)">
+  </article>
+</body>
+</html>

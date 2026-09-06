@@ -16,6 +16,8 @@ import './connection-methods.js';
 import './messaging-methods.js';
 import './operations-methods.js';
 import './page-interact-methods.js';
+import './page-extract-core.js';
+import './page-extract-methods.js';
 import './routing-methods.js';
 import './tabs-methods.js';
 import './browser-control-methods.js';
@@ -66,7 +68,7 @@ constructor() {
         'execute_script', 'get_cookies', 'get_cookies_by_domain', 'inject_css',
         'get_page_info', 'upload_file_to_tab',
         'subscribe_events', 'unsubscribe_events',
-        'capture_screenshot'
+        'capture_screenshot', 'extract_page'
       ],
       sensitiveActions: ['execute_script', 'get_cookies', 'get_cookies_by_domain'],
       allowRawEval: false,

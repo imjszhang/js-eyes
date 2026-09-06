@@ -228,7 +228,12 @@ async function readPage(browser, params, options = {}) {
   try {
     opened = await ensureTab(browser, url, tabId, session, options);
     if (keepOpen && opened.owned) session.markKeepOpen(opened.tabId);
-    const script = generateReadPageScript(format || 'markdown');
+    const extractOptions = {
+      format: format || 'markdown',
+      includeLinks: cacheVary.includeLinks,
+      includeImages: cacheVary.includeImages,
+      maxContentChars: cacheVary.maxContentChars || undefined,
+    };
     const result = await withVisual(
       'browser_read_page', browser, opened.tabId,
       { ...params, tabId: opened.tabId },
@@ -240,11 +245,13 @@ async function readPage(browser, params, options = {}) {
         options,
         format: format || 'markdown',
         requestedUrl: url,
-        extract: () => browser.executeScript(opened.tabId, script),
+        extract: () => runPageExtract(browser, opened.tabId, extractOptions, options),
       }),
     );
 
-    if (runContext.recording.cacheEnabled && cacheEligible && result && result.status !== 'content_too_short') {
+    if (runContext.recording.cacheEnabled && cacheEligible && result
+      && result.status !== 'content_too_short'
+      && result.status !== 'blocked') {
       writeCacheEntry(runContext, {
         response: result,
         fetchedAt: new Date().toISOString(),
@@ -281,6 +288,20 @@ async function readPage(browser, params, options = {}) {
     throw error;
   } finally {
     release();
+  }
+}
+
+async function runPageExtract(browser, tabId, extractOptions, options) {
+  if (typeof browser.extractPage === 'function') {
+    return browser.extractPage(tabId, extractOptions, options);
+  }
+  try {
+    return await browser.executeScript(tabId, generateReadPageScript(extractOptions), options);
+  } catch (error) {
+    if (error && (error.code === 'RAW_EVAL_DISABLED' || /allowRawEval/i.test(String(error.message || '')))) {
+      error.code = 'eval_denied';
+    }
+    throw error;
   }
 }
 

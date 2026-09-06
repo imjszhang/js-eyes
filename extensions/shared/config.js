@@ -70,6 +70,7 @@ const DEFAULT_CONFIG = {
       'fill',               // 一等交互：填写表单
       'scroll',             // 一等交互：滚动页面
       'wait_for',           // 一等交互：等待选择器
+      'extract_page',       // 一等读取：声明式正文提取（不依赖 allowRawEval）
       'upload_file_to_tab', // 上传文件到标签页
       'capture_screenshot', // Phase 2: 截当前激活 tab 的可见区为 PNG（用于 visual replay）
       'subscribe_events',   // 订阅事件

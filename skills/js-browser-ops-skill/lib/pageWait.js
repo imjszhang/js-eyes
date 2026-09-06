@@ -101,7 +101,7 @@ function decorateReadResult(result, {
   status,
   requestedUrl,
 }) {
-  const content = status === 'content_too_short' ? '' : (result?.content || '');
+  const content = status === 'content_too_short' || status === 'blocked' ? '' : (result?.content || '');
   const contentChars = String(content).trim().length || Number(probe?.contentChars) || 0;
   return {
     ...(result || {}),
@@ -139,6 +139,15 @@ async function readPageAfterWait({
     const ready = waitUntilSatisfied(wait, lastProbe, previousChars);
     if (ready) {
       extracted = await extract();
+      if (extracted && extracted.status === 'blocked') {
+        return decorateReadResult(extracted, {
+          wait,
+          waitedMs: Date.now() - started,
+          probe: lastProbe,
+          status: 'blocked',
+          requestedUrl,
+        });
+      }
       const chars = String(extracted?.content || '').trim().length;
       if (chars >= wait.minContentChars) {
         return decorateReadResult(extracted, {
@@ -157,6 +166,15 @@ async function readPageAfterWait({
 
   if (!extracted) {
     extracted = await extract();
+  }
+  if (extracted && extracted.status === 'blocked') {
+    return decorateReadResult(extracted, {
+      wait,
+      waitedMs: Date.now() - started,
+      probe: lastProbe,
+      status: 'blocked',
+      requestedUrl,
+    });
   }
   const chars = String(extracted?.content || '').trim().length;
   return decorateReadResult(extracted, {

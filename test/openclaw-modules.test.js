@@ -151,6 +151,7 @@ describe('OpenClaw module boundaries', () => {
       'browser/fill',
       'browser/scroll',
       'browser/wait-for',
+      'browser/extract-page',
       'skills/discover',
       'skills/plan-install',
       'skills/reload',
