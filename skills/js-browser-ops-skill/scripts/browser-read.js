@@ -22,6 +22,10 @@ function parseArgs() {
     recordingBaseDir: null,
     noCache: false,
     autoAllowDomain: true,
+    keepOpen: false,
+    closeAfter: undefined,
+    tabId: null,
+    allowExternalTab: false,
     debugRecording: false,
     runId: null,
     visual: undefined,
@@ -71,6 +75,15 @@ function parseArgs() {
       options.autoAllowDomain = true;
     } else if (arg === '--no-auto-allow-domain') {
       options.autoAllowDomain = false;
+    } else if (arg === '--keep-open') {
+      options.keepOpen = true;
+    } else if (arg === '--close-after') {
+      options.closeAfter = true;
+    } else if (arg === '--tab-id' && args[i + 1]) {
+      options.tabId = parseInt(args[i + 1], 10);
+      i += 1;
+    } else if (arg === '--allow-external-tab') {
+      options.allowExternalTab = true;
     } else if (arg === '--debug-recording') {
       options.debugRecording = true;
     } else if (!options.url) {
@@ -86,7 +99,8 @@ async function main() {
   if (!options.url || options.url === '--help' || options.url === '-h') {
     console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
-    console.log('      [--allow-new-domain|--no-auto-allow-domain]');
+    console.log('      [--allow-new-domain|--no-auto-allow-domain] [--keep-open|--close-after]');
+    console.log('      [--tab-id <id>] [--allow-external-tab]');
     console.log('视觉反馈选项:');
     VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
@@ -107,11 +121,15 @@ async function main() {
   try {
     const result = await readPage(browser, {
       url: options.url,
+      tabId: options.tabId,
       format: options.format,
     }, {
       recording: runtimeConfig.recording,
       noCache: options.noCache,
       autoAllowDomain: options.autoAllowDomain,
+      keepOpen: options.keepOpen,
+      closeAfter: options.closeAfter,
+      allowExternalTab: options.allowExternalTab === true,
       debugRecording: options.debugRecording,
       runId: options.runId,
       visual,

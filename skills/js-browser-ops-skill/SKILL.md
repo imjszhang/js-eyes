@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.5.2
+version: 2.6.0
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -33,27 +33,29 @@ metadata:
 
 | 工具 | 说明 |
 |------|------|
-| `browser_read_page` | 读取任意网页正文，返回结构化 markdown/纯文本 + 元数据（标题、作者、摘要、图片、链接）。可选 `autoAllowDomain`（默认 `true`）在打开新 URL 前自动把域名加入 `egressAllowlist` |
+| `browser_read_page` | 读取任意网页正文。自开标签默认读完关闭；`keepOpen: true` 才回传可复用 `tabId`。`url`+`tabId` 会在该标签内导航。外部标签需 `allowExternalTab` |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
 | `browser_scroll` | 页面滚动（到顶部/底部、指定元素、指定像素偏移） |
 | `browser_screenshot` | 获取页面视口信息和截图元数据 |
+| `browser_cleanup_session` | 关闭本 session 仍打开的自开标签 |
 
 ## 编程 API
 
 ```javascript
 const { BrowserAutomation } = require('./lib/js-eyes-client');
-const { readPage, clickElement, fillForm, scrollPage } = require('./lib/api');
+const { readPage, clickElement, fillForm, scrollPage, cleanupTabSession } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');
 
-// 后续需要操作该标签页，因此禁用缓存以取得 live tabId。
-// 纯读取可省略 noCache；缓存命中时 tabId 明确为 null。
+// 纯读取默认会关闭自开标签，返回 tabId: null。
+// 后续还要 click/fill 时必须 keepOpen，并禁用缓存以取得 live tabId。
 const page = await readPage(browser, {
   url: 'https://example.com/article',
   format: 'markdown',
   noCache: true,
+  keepOpen: true,
 });
 
 // 点击元素
@@ -75,13 +77,16 @@ await scrollPage(browser, {
   tabId: page.tabId,
   target: 'bottom',
 });
+
+await cleanupTabSession(browser);
 ```
 
 ## CLI 命令
 
 ```bash
-# 读取网页内容
+# 读取网页内容（默认读完关标签）
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --format markdown --pretty
+node skills/js-browser-ops-skill/index.js read "https://example.com/article" --keep-open --no-cache
 
 # 读取新域名时自动加入 egressAllowlist（默认行为；可 --no-auto-allow-domain 关闭）
 node skills/js-browser-ops-skill/index.js read "https://other-site.example/article" --allow-new-domain
@@ -205,7 +210,9 @@ skills/js-browser-ops-skill/
 缓存策略：
 - `browser_read_page` 接入缓存（URL → 结构化结果）
 - 命中与未命中均在顶层返回正文业务字段、`tabId`、`_cached` 和当前
-  `run.id`；缓存命中不创建或验证 live tab，因此明确返回 `tabId: null`
+  `run.id`；默认读完关闭自开标签，因此未命中缓存时 `tabId` 也是 `null`。
+  缓存命中不创建或验证 live tab，同样返回 `tabId: null`。需要后续交互时
+  传 `keepOpen: true`（并建议 `--no-cache` / `noCache`）
 - key 保留完整 URL（含 fragment、query 与尾斜杠），并按有效 `format` 隔离；
   URL 与 `tabId` 同时传入时不缓存，避免把运行时标签页上下文错误持久化
 - 缓存条目记录 `fetchedAt` 与 `format`；cache schema v2 使旧 key 直接失效，

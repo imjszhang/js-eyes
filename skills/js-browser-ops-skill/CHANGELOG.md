@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.6.0 — 2026-09-06
+
+### BREAKING
+
+- 自己打开的标签默认在 `readPage` 返回前关闭，未命中缓存时 `tabId` 也是 `null`。
+  后续还要交互时必须显式 `keepOpen: true`（或 `closeAfter: false`）。
+- 未声明 `allowExternalTab` 时，不能操作本 session 未打开的标签页。
+
+### Added
+
+- `url` + `tabId` 同时传入时在该标签内导航，不再静默读旧页面。
+- tab session / owner、上限排队、`cleanupTabSession` / `browser_cleanup_session`。
+- CLI：`--keep-open`、`--close-after`、`--tab-id`、`--allow-external-tab`。
+
 ## 2.5.2 — 2026-09-06
 
 ### Fixed

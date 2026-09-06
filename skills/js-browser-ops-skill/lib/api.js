@@ -21,6 +21,11 @@ const {
 const { generateReadPageScript } = require('./browserUtils');
 const { ensureDomainAllowedForUrl } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
+const {
+  cleanupTabSession,
+  resolveKeepOpen,
+  resolveTabSession,
+} = require('./tabSession');
 
 const SKILL_ID = 'js-browser-ops-skill';
 const SKILL_VERSION = require('../package.json').version;
@@ -109,10 +114,23 @@ async function withVisual(toolName, browser, tabId, params, options, runScript){
   return wrapped.result;
 }
 
-async function ensureTab(browser, url, tabId) {
-  if (tabId) return tabId;
+async function ensureTab(browser, url, tabId, session, options = {}) {
+  if (tabId && url) {
+    session.assertUsable(tabId, options);
+    const opened = await browser.openUrl(url, tabId);
+    if (opened == null || Number(opened) !== Number(tabId)) {
+      throw new Error(`无法在标签 ${tabId} 内导航到 ${url}`);
+    }
+    return { tabId: Number(opened), owned: session.owns(opened) };
+  }
+  if (tabId) {
+    session.assertUsable(tabId, options);
+    return { tabId, owned: session.owns(tabId) };
+  }
   if (!url) throw new Error('必须提供 url 或 tabId');
-  return browser.openUrl(url);
+  const opened = await browser.openUrl(url);
+  session.claim(opened);
+  return { tabId: opened, owned: true };
 }
 
 function decodeCachedReadPage(cached, expectedFormat) {
@@ -143,6 +161,7 @@ function createReadPageResponse(result, tabId, cached, runId) {
 }
 
 async function readPage(browser, params, options = {}) {
+  options = resolveTabOptions(params, options);
   const { url, tabId } = params;
   const cacheVary = normalizeReadPageCacheVary(params);
   const format = cacheVary.format;
@@ -191,42 +210,85 @@ async function readPage(browser, params, options = {}) {
     }
   }
 
-  const resolvedTabId = await ensureTab(browser, url, tabId);
-  const script = generateReadPageScript(format || 'markdown');
-  const result = await withVisual(
-    'browser_read_page', browser, resolvedTabId,
-    { ...params, tabId: resolvedTabId },
-    options,
-    () => browser.executeScript(resolvedTabId, script),
-  );
+  const session = resolveTabSession(browser, options);
+  const keepOpen = resolveKeepOpen({
+    keepOpen: options.keepOpen ?? params.keepOpen,
+    closeAfter: options.closeAfter ?? params.closeAfter,
+  });
+  const release = tabId
+    ? () => {}
+    : await session.acquire(options.signal);
+  let opened = null;
+  let cleanup = null;
+  try {
+    opened = await ensureTab(browser, url, tabId, session, options);
+    if (keepOpen && opened.owned) session.markKeepOpen(opened.tabId);
+    const script = generateReadPageScript(format || 'markdown');
+    const result = await withVisual(
+      'browser_read_page', browser, opened.tabId,
+      { ...params, tabId: opened.tabId },
+      options,
+      () => browser.executeScript(opened.tabId, script),
+    );
 
-  if (runContext.recording.cacheEnabled && cacheEligible && result) {
-    writeCacheEntry(runContext, {
-      response: result,
-      fetchedAt: new Date().toISOString(),
-      format,
-    }, 'read');
-  }
-  if (runContext.recording.historyEnabled) {
-    appendHistory(runContext, {
-      tool: 'browser_read_page',
-      input: { url, tabId, format },
-      cached: false,
-      durationMs: Date.now() - startTime,
-    });
-  }
+    if (runContext.recording.cacheEnabled && cacheEligible && result) {
+      writeCacheEntry(runContext, {
+        response: result,
+        fetchedAt: new Date().toISOString(),
+        format,
+      }, 'read');
+    }
+    if (runContext.recording.historyEnabled) {
+      appendHistory(runContext, {
+        tool: 'browser_read_page',
+        input: { url, tabId, format },
+        cached: false,
+        durationMs: Date.now() - startTime,
+      });
+    }
 
-  return createReadPageResponse(
-    result,
-    resolvedTabId,
-    false,
-    runContext.runId,
-  );
+    if (opened.owned && !keepOpen) {
+      const closed = await session.closeOwned(browser, opened.tabId);
+      cleanup = closed.cleanup || null;
+    }
+
+    const response = createReadPageResponse(
+      result,
+      keepOpen ? opened.tabId : null,
+      false,
+      runContext.runId,
+    );
+    if (cleanup) response.cleanup = cleanup;
+    return response;
+  } catch (error) {
+    if (opened?.owned && !keepOpen) {
+      const closed = await session.closeOwned(browser, opened.tabId);
+      if (closed.cleanup) error.cleanup = closed.cleanup;
+    }
+    throw error;
+  } finally {
+    release();
+  }
+}
+
+function resolveTabOptions(params = {}, options = {}) {
+  return {
+    ...options,
+    allowExternalTab: options.allowExternalTab ?? params.allowExternalTab === true,
+    keepOpen: options.keepOpen ?? params.keepOpen,
+    closeAfter: options.closeAfter ?? params.closeAfter,
+  };
+}
+
+function assertOwnedTab(browser, tabId, options = {}) {
+  resolveTabSession(browser, options).assertUsable(tabId, options);
 }
 
 async function clickElement(browser, params, options = {}) {
   const { tabId, selector, text, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  options = resolveTabOptions(params, options);
+  assertOwnedTab(browser, tabId, options);
   if (!selector && !text) throw new Error('必须提供 selector 或 text');
   if (typeof browser.click !== 'function') {
     throw new Error('Browser client does not support first-class click (upgrade JS Eyes extension/SDK)');
@@ -241,6 +303,8 @@ async function clickElement(browser, params, options = {}) {
 async function fillForm(browser, params, options = {}) {
   const { tabId, selector, value, clearFirst, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  options = resolveTabOptions(params, options);
+  assertOwnedTab(browser, tabId, options);
   if (!selector) throw new Error('必须提供 selector');
   if (typeof browser.fill !== 'function') {
     throw new Error('Browser client does not support first-class fill (upgrade JS Eyes extension/SDK)');
@@ -255,6 +319,8 @@ async function fillForm(browser, params, options = {}) {
 async function waitFor(browser, params, options = {}) {
   const { tabId, selector, timeout, visible } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  options = resolveTabOptions(params, options);
+  assertOwnedTab(browser, tabId, options);
   if (!selector) throw new Error('必须提供 selector');
   if (typeof browser.waitFor !== 'function') {
     throw new Error('Browser client does not support first-class waitFor (upgrade JS Eyes extension/SDK)');
@@ -269,6 +335,8 @@ async function waitFor(browser, params, options = {}) {
 async function scrollPage(browser, params, options = {}) {
   const { tabId, target, selector, pixels } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  options = resolveTabOptions(params, options);
+  assertOwnedTab(browser, tabId, options);
   if (typeof browser.scroll !== 'function') {
     throw new Error('Browser client does not support first-class scroll (upgrade JS Eyes extension/SDK)');
   }
@@ -282,6 +350,8 @@ async function scrollPage(browser, params, options = {}) {
 async function takeScreenshot(browser, params, options = {}) {
   const { tabId, fullPage, format, quality } = params;
   if (!tabId) throw new Error('必须提供 tabId');
+  options = resolveTabOptions(params, options);
+  assertOwnedTab(browser, tabId, options);
 
   return withVisual(
     'browser_screenshot', browser, tabId, params, options,
@@ -296,4 +366,5 @@ module.exports = {
   waitFor,
   scrollPage,
   takeScreenshot,
+  cleanupTabSession,
 };

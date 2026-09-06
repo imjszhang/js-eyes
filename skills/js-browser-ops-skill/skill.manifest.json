@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "js-browser-ops-skill",
   "name": "JS Browser Ops Skill",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "publisher": "js-eyes",
   "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、截图等能力",
   "entry": "./skill.entry.js",
@@ -70,11 +70,11 @@
         "properties": {
           "url": {
             "type": "string",
-            "description": "要读取的网页 URL（传入则打开新标签页）"
+            "description": "要读取的网页 URL；与 tabId 同时传入时在该标签页内导航"
           },
           "tabId": {
             "type": "number",
-            "description": "已打开的标签页 ID（与 url 二选一）"
+            "description": "已打开的标签页 ID。默认只能操作本 session 打开的标签；外部标签需 allowExternalTab"
           },
           "format": {
             "type": "string",
@@ -84,6 +84,18 @@
               "html"
             ],
             "description": "返回格式（默认 markdown）"
+          },
+          "keepOpen": {
+            "type": "boolean",
+            "description": "自开标签读完后是否保留。默认 false，读完关闭且 tabId 为 null"
+          },
+          "closeAfter": {
+            "type": "boolean",
+            "description": "与 keepOpen 互斥。true 表示读完关闭；false 等价于 keepOpen"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           },
           "autoAllowDomain": {
             "type": "boolean",
@@ -121,6 +133,10 @@
           "index": {
             "type": "number",
             "description": "匹配到多个元素时选择第几个（从 0 开始，默认 0）"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           }
         },
         "required": [
@@ -161,6 +177,10 @@
           "index": {
             "type": "number",
             "description": "匹配到多个元素时选择第几个（从 0 开始）"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           }
         },
         "required": [
@@ -199,6 +219,10 @@
           "visible": {
             "type": "boolean",
             "description": "是否要求元素可见（有宽高）"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           }
         },
         "required": [
@@ -240,6 +264,10 @@
           "pixels": {
             "type": "number",
             "description": "相对滚动像素数（正数向下，负数向上）"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           }
         },
         "required": [
@@ -281,11 +309,28 @@
           "quality": {
             "type": "number",
             "description": "jpeg 质量，0-100"
+          },
+          "allowExternalTab": {
+            "type": "boolean",
+            "description": "是否允许操作本 session 未打开的标签页（默认 false）"
           }
         },
         "required": [
           "tabId"
         ]
+      }
+    },
+    {
+      "name": "browser_cleanup_session",
+      "title": "Browser Ops: Cleanup Session",
+      "description": "关闭本 session 仍打开的自开标签页，并取消排队中的打开请求。",
+      "risk": "interactive",
+      "capabilities": [
+        "browser.tabs.read"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
       }
     }
   ]

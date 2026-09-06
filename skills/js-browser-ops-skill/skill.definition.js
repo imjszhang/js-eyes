@@ -11,7 +11,9 @@ const {
   waitFor,
   scrollPage,
   takeScreenshot,
+  cleanupTabSession,
 } = require('./lib/api');
+const { createTabSession } = require('./lib/tabSession');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
@@ -34,11 +36,13 @@ function createRuntime(config = {}, logger) {
     recording: resolvedConfig.recording,
   };
   const resolvedLogger = makeLogger(logger);
+  const tabSession = createTabSession();
   let bot = null;
 
   return {
     config: runtimeConfig,
     logger: resolvedLogger,
+    tabSession,
     ensureBot() {
       if (!bot) {
         bot = new BrowserAutomation(runtimeConfig.serverUrl, { logger: resolvedLogger });
@@ -51,9 +55,12 @@ function createRuntime(config = {}, logger) {
     jsonResult(value) {
       return this.textResult(JSON.stringify(value, null, 2));
     },
-    dispose() {
-      if (bot && typeof bot.disconnect === 'function') {
-        try { bot.disconnect(); } catch {}
+    async dispose() {
+      if (bot) {
+        try { await cleanupTabSession(bot, { tabSession }); } catch {}
+        if (typeof bot.disconnect === 'function') {
+          try { bot.disconnect(); } catch {}
+        }
       }
       bot = null;
     },
@@ -70,12 +77,24 @@ const TOOL_DEFINITIONS = [
     parameters: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: '要读取的网页 URL（传入则打开新标签页）' },
-        tabId: { type: 'number', description: '已打开的标签页 ID（与 url 二选一）' },
+        url: { type: 'string', description: '要读取的网页 URL；与 tabId 同时传入时在该标签页内导航' },
+        tabId: { type: 'number', description: '已打开的标签页 ID。默认只能操作本 session 打开的标签；外部标签需 allowExternalTab' },
         format: {
           type: 'string',
           enum: ['markdown', 'text', 'html'],
           description: '返回格式（默认 markdown）',
+        },
+        keepOpen: {
+          type: 'boolean',
+          description: '自开标签读完后是否保留。默认 false，读完关闭且 tabId 为 null',
+        },
+        closeAfter: {
+          type: 'boolean',
+          description: '与 keepOpen 互斥。true 表示读完关闭；false 等价于 keepOpen',
+        },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
         },
         autoAllowDomain: {
           type: 'boolean',
@@ -88,7 +107,11 @@ const TOOL_DEFINITIONS = [
       return readPage(runtime.ensureBot(), params, {
         recording: runtime.config.recording,
         runId: context.toolCallId,
+        tabSession: runtime.tabSession,
         autoAllowDomain: params.autoAllowDomain !== false,
+        keepOpen: params.keepOpen,
+        closeAfter: params.closeAfter,
+        allowExternalTab: params.allowExternalTab === true,
       });
     },
   },
@@ -105,12 +128,19 @@ const TOOL_DEFINITIONS = [
         selector: { type: 'string', description: 'CSS 选择器或 XPath' },
         text: { type: 'string', description: '按文本内容匹配元素（与 selector 配合使用）' },
         index: { type: 'number', description: '匹配到多个元素时选择第几个（从 0 开始，默认 0）' },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
+        },
       },
       required: ['tabId'],
     },
     optional: true,
     async execute(runtime, params) {
-      return clickElement(runtime.ensureBot(), params);
+      return clickElement(runtime.ensureBot(), params, {
+        tabSession: runtime.tabSession,
+        allowExternalTab: params.allowExternalTab === true,
+      });
     },
   },
   {
@@ -127,12 +157,19 @@ const TOOL_DEFINITIONS = [
         value: { type: 'string', description: '要填入的值' },
         clearFirst: { type: 'boolean', description: '填写前是否清空已有内容（默认 false）' },
         index: { type: 'number', description: '匹配到多个元素时选择第几个（从 0 开始）' },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
+        },
       },
       required: ['tabId', 'selector', 'value'],
     },
     optional: true,
     async execute(runtime, params) {
-      return fillForm(runtime.ensureBot(), params);
+      return fillForm(runtime.ensureBot(), params, {
+        tabSession: runtime.tabSession,
+        allowExternalTab: params.allowExternalTab === true,
+      });
     },
   },
   {
@@ -148,12 +185,19 @@ const TOOL_DEFINITIONS = [
         selector: { type: 'string', description: '等待出现的元素 CSS 选择器' },
         timeout: { type: 'number', description: '超时秒数（默认 10）' },
         visible: { type: 'boolean', description: '是否要求元素可见（有宽高）' },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
+        },
       },
       required: ['tabId', 'selector'],
     },
     optional: true,
     async execute(runtime, params) {
-      return waitFor(runtime.ensureBot(), params);
+      return waitFor(runtime.ensureBot(), params, {
+        tabSession: runtime.tabSession,
+        allowExternalTab: params.allowExternalTab === true,
+      });
     },
   },
   {
@@ -173,12 +217,19 @@ const TOOL_DEFINITIONS = [
         },
         selector: { type: 'string', description: '滚动到指定元素（优先于 target）' },
         pixels: { type: 'number', description: '相对滚动像素数（正数向下，负数向上）' },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
+        },
       },
       required: ['tabId'],
     },
     optional: true,
     async execute(runtime, params) {
-      return scrollPage(runtime.ensureBot(), params);
+      return scrollPage(runtime.ensureBot(), params, {
+        tabSession: runtime.tabSession,
+        allowExternalTab: params.allowExternalTab === true,
+      });
     },
   },
   {
@@ -194,12 +245,34 @@ const TOOL_DEFINITIONS = [
         fullPage: { type: 'boolean', description: '是否截取完整页面（Firefox active tab 支持）' },
         format: { type: 'string', enum: ['png', 'jpeg'], description: '图片格式，默认 png' },
         quality: { type: 'number', description: 'jpeg 质量，0-100' },
+        allowExternalTab: {
+          type: 'boolean',
+          description: '是否允许操作本 session 未打开的标签页（默认 false）',
+        },
       },
       required: ['tabId'],
     },
     optional: true,
     async execute(runtime, params) {
-      return takeScreenshot(runtime.ensureBot(), params);
+      return takeScreenshot(runtime.ensureBot(), params, {
+        tabSession: runtime.tabSession,
+        allowExternalTab: params.allowExternalTab === true,
+      });
+    },
+  },
+  {
+    name: 'browser_cleanup_session',
+    risk: 'interactive',
+    capabilities: ["browser.tabs.read"],
+    label: 'Browser Ops: Cleanup Session',
+    description: '关闭本 session 仍打开的自开标签页，并取消排队中的打开请求。',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+    optional: true,
+    async execute(runtime) {
+      return cleanupTabSession(runtime.ensureBot(), { tabSession: runtime.tabSession });
     },
   },
 ];

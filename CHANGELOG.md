@@ -9,6 +9,14 @@ All notable changes to this project will be documented in this file.
 - `js-browser-ops-skill` 的 `browser_read_page` cache v2 保留完整 URL 并按
   `format` 隔离；缓存命中返回一致业务 shape，同时以 `tabId: null` 明确表示
   没有可安全复用的 live tab context。
+- `js-browser-ops-skill` 为自己打开的标签建立 session 归属：`url`+`tabId`
+  会在该标签内导航；默认读完关闭；外部标签需显式 opt-in；会话清理可回收
+  自开标签。
+
+### Changed
+
+- `js-browser-ops-skill` 2.6.0：后续交互必须 `keepOpen: true` 才能拿到 live
+  `tabId`。
 
 ## [2.10.0] - 2026-07-25
 
