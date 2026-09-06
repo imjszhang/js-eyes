@@ -59,12 +59,18 @@ async function commandSkill(positionals, flags) {
     extras: sources.extras,
   });
   if (!skill) {
-    throw new Error(
+    const error = new Error(
       `技能未找到: ${skillId}（已在 primary 和 ${sources.extras.length} 个 extra 源中搜索）`,
     );
+    error.code = 'skill_not_found';
+    error.retryable = false;
+    throw error;
   }
   if (!isSkillEnabled(config, skillId)) {
-    throw new Error(`技能已安装但未启用: ${skillId}。请先执行 \`js-eyes skills enable ${skillId}\``);
+    const error = new Error(`技能已安装但未启用: ${skillId}。请先执行 \`js-eyes skills enable ${skillId}\``);
+    error.code = 'skill_not_found';
+    error.retryable = false;
+    throw error;
   }
   assertExecutionAllowed(skill, config, paths);
 

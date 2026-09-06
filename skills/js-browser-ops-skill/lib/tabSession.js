@@ -61,6 +61,7 @@ class TabSession {
   abortError(message = 'Aborted') {
     const error = new Error(message);
     error.name = 'AbortError';
+    error.code = 'cancelled';
     return error;
   }
 
@@ -167,7 +168,8 @@ async function cleanupTabSession(browser, options = {}) {
 
 function resolveKeepOpen(options = {}) {
   if (options.keepOpen === true && options.closeAfter === true) {
-    throw new Error('keepOpen and closeAfter cannot both be true');
+    const { toSkillError } = require('./skillError');
+    throw toSkillError('invalid_params', 'keepOpen and closeAfter cannot both be true');
   }
   if (options.keepOpen === true) return true;
   if (options.closeAfter === false) return true;

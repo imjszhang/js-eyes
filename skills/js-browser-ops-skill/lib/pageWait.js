@@ -134,7 +134,12 @@ async function readPageAfterWait({
   let extracted = null;
 
   while (true) {
-    const rawProbe = await browser.executeScript(tabId, generatePageProbeScript(wait));
+    if (options.signal?.aborted) {
+      const error = new Error('Aborted');
+      error.name = 'AbortError';
+      throw error;
+    }
+    const rawProbe = await browser.executeScript(tabId, generatePageProbeScript(wait), options);
     lastProbe = normalizeProbe(rawProbe, requestedUrl);
     const ready = waitUntilSatisfied(wait, lastProbe, previousChars);
     if (ready) {

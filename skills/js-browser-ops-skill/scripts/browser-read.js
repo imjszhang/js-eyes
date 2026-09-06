@@ -2,8 +2,10 @@
 'use strict';
 
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
-const { readPage } = require('../lib/api');
+const { classifyReadResult, readPage } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
+const { runCliCommand } = require('../lib/cliRun');
+const { hostFromUrl, toErrorEnvelope } = require('../lib/skillError');
 const {
   applyVisualArgs,
   resolveVisualOptions,
@@ -52,6 +54,7 @@ function parseArgs() {
     visualRecord: undefined,
     visualListStride: null,
     visualPrefix: null,
+    json: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -60,6 +63,8 @@ function parseArgs() {
     if (consumed > 0) { i += consumed - 1; continue; }
     if (arg === '--pretty') {
       options.pretty = true;
+    } else if (arg === '--json') {
+      options.json = true;
     } else if (arg === '--format' && args[i + 1]) {
       options.format = args[i + 1];
       i += 1;
@@ -116,10 +121,10 @@ function parseArgs() {
   return options;
 }
 
-async function main() {
+async function main(cli = {}) {
   const options = parseArgs();
   if (!options.url || options.url === '--help' || options.url === '-h') {
-    console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
+    console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--json] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
     console.log('      [--auto-allow-domain|--no-auto-allow-domain] [--persist-allow-domain] [--allow-private-network]');
     console.log('      [--keep-open|--close-after] [--tab-id <id>] [--allow-external-tab]');
@@ -163,8 +168,20 @@ async function main() {
       debugRecording: options.debugRecording,
       runId: options.runId,
       visual,
+      signal: cli.signal,
     });
-    console.log(JSON.stringify(result, null, options.pretty ? 2 : 0));
+    const classified = classifyReadResult(result, {
+      host: hostFromUrl(options.url),
+      minContentChars: options.minContentChars,
+    });
+    const json = cli.json || options.json;
+    if (classified && json) {
+      console.log(JSON.stringify(toErrorEnvelope(classified), null, options.pretty ? 2 : 0));
+      process.exitCode = 1;
+      return;
+    }
+    const payload = json ? { ok: true, data: result } : result;
+    console.log(JSON.stringify(payload, null, options.pretty ? 2 : 0));
   } finally {
     browser.disconnect();
   }
@@ -173,8 +190,5 @@ async function main() {
 module.exports = { main, parseArgs };
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error.message);
-    process.exit(1);
-  });
+  runCliCommand(main);
 }

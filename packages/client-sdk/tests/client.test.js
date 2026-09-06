@@ -710,6 +710,36 @@ describe('client-side timeout', () => {
   });
 });
 
+describe('AbortSignal cancels pending requests', () => {
+  let server;
+  let bot;
+
+  before(async () => {
+    server = await createMockServer((_ws, _data) => {});
+    bot = new BrowserAutomation(server.url, {
+      logger: silentLogger,
+      requestInterval: 0,
+      defaultTimeout: 30,
+    });
+    await bot.connect();
+  });
+
+  after(async () => {
+    bot.disconnect();
+    await closeMockServer(server.wss);
+  });
+
+  it('rejects and removes the pending WS request when aborted', async () => {
+    const controller = new AbortController();
+    const promise = bot._sendRequest('get_html', { tabId: 1 }, { signal: controller.signal });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(bot.pendingRequests.size, 1);
+    controller.abort();
+    await assert.rejects(promise, (err) => err.name === 'AbortError');
+    assert.equal(bot.pendingRequests.size, 0);
+  });
+});
+
 // ── constructor defaults ────────────────────────────────────────────
 
 describe('constructor', () => {
