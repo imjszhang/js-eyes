@@ -7,27 +7,46 @@ const {
 } = require('@js-eyes/skill-recording');
 
 function normalizeUrl(inputUrl) {
-  const url = new URL(inputUrl);
-  url.hash = '';
-  for (const key of Array.from(url.searchParams.keys())) {
-    if (key.startsWith('utm_') || key === 'ref' || key === 'ref_source') {
-      url.searchParams.delete(key);
-    }
-  }
-  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-  return url.toString();
+  const value = String(inputUrl);
+  new URL(value);
+  return value;
+}
+
+function normalizeReadPageCacheVary(options = {}) {
+  const format = options.format === 'html' || options.format === 'text'
+    ? options.format
+    : 'markdown';
+
+  return {
+    schema: 2,
+    format,
+  };
 }
 
 function createRunContext(options) {
+  const cacheVary = normalizeReadPageCacheVary(options);
   return createUrlSkillRunContext({
     ...options,
     normalizeUrl,
+    buildCacheKeyParts: ({
+      skillId,
+      scrapeType,
+      normalizedInput,
+      skillVersion,
+    }) => ({
+      skillId,
+      scrapeType,
+      url: normalizedInput,
+      version: skillVersion,
+      readPage: cacheVary,
+    }),
   });
 }
 
 module.exports = {
   createRunContext,
   createRunId,
+  normalizeReadPageCacheVary,
   normalizeUrl,
   resolveRecordingState,
 };

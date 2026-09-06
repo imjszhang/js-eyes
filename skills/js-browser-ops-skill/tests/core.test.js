@@ -2,13 +2,72 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {
+  createCacheKey,
+  getCacheFilePath,
+  writeCacheEntry,
+} = require('@js-eyes/skill-recording');
 const {
   generateClickScript,
   generateFillFormScript,
   generateReadPageScript,
 } = require('../lib/browserUtils');
+const { readPage } = require('../lib/api');
 const { hostMatches, normalizeHost } = require('../lib/egressAllowlist');
+const { createRunContext, normalizeUrl } = require('../lib/runContext');
+const pkg = require('../package.json');
 const definition = require('../skill.definition');
+
+function createRecording(t) {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-browser-cache-'));
+  t.after(() => fs.rmSync(baseDir, { recursive: true, force: true }));
+  return { mode: 'standard', baseDir };
+}
+
+function createBrowser() {
+  return {
+    serverUrl: 'ws://localhost:18080',
+    openUrlCalls: 0,
+    executeScriptCalls: 0,
+    tabUrls: new Map(),
+    async openUrl(url) {
+      this.openUrlCalls += 1;
+      const tabId = 100 + this.openUrlCalls;
+      this.tabUrls.set(tabId, url);
+      return tabId;
+    },
+    async executeScript(tabId, script) {
+      this.executeScriptCalls += 1;
+      const formatMatch = script.match(/var fmt = ("(?:[^"\\]|\\.)*");/);
+      const format = formatMatch ? JSON.parse(formatMatch[1]) : 'unknown';
+      const url = this.tabUrls.get(tabId) || `tab:${tabId}`;
+      return {
+        title: `${format} title`,
+        author: '',
+        content: `${format} content ${url}`,
+        excerpt: '',
+        siteName: '',
+        url,
+        images: [],
+        links: [],
+      };
+    },
+  };
+}
+
+function cacheFileFor(recording, params) {
+  const context = createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    ...params,
+    recording,
+  });
+  return getCacheFilePath(context, 'read');
+}
 
 test('egress host normalization and wildcard matching are boundary-safe', () => {
   assert.equal(normalizeHost('https://Docs.Example.com/a'), 'docs.example.com');
@@ -34,4 +93,203 @@ test('definition keeps interaction risks and capabilities explicit', () => {
   assert.equal(tools.get('browser_click').risk, 'interactive');
   assert.ok(tools.get('browser_click').capabilities.includes('browser.page.interact'));
   assert.ok(tools.get('browser_screenshot').capabilities.includes('browser.screenshot'));
+});
+
+test('readPage cache hits preserve the miss response shape and cache metadata', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const params = { url: 'https://example.com/page', format: 'markdown' };
+
+  const miss = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+    runId: 'cache-miss',
+  });
+  const hit = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+    runId: 'cache-hit',
+  });
+
+  assert.deepEqual(Object.keys(hit).sort(), Object.keys(miss).sort());
+  assert.deepEqual(hit, {
+    ...miss,
+    tabId: null,
+    _cached: true,
+    run: { id: 'cache-hit' },
+  });
+  assert.equal(miss._cached, false);
+  assert.equal(hit._cached, true);
+  assert.equal(hit.content, miss.content);
+  assert.equal(typeof miss.tabId, 'number');
+  assert.equal(hit.tabId, null);
+  assert.deepEqual(miss.run, { id: 'cache-miss' });
+  assert.deepEqual(hit.run, { id: 'cache-hit' });
+  assert.equal(browser.openUrlCalls, 1);
+  assert.equal(browser.executeScriptCalls, 1);
+
+  const entry = JSON.parse(fs.readFileSync(cacheFileFor(recording, params), 'utf8'));
+  assert.equal(entry.format, 'markdown');
+  assert.equal(typeof entry.fetchedAt, 'string');
+  assert.equal(Number.isNaN(Date.parse(entry.fetchedAt)), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(entry.response, 'tabId'), false);
+});
+
+test('readPage cache keys isolate output formats', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const url = 'https://example.com/formats';
+
+  const markdown = await readPage(browser, { url, format: 'markdown' }, {
+    recording,
+    autoAllowDomain: false,
+  });
+  const html = await readPage(browser, { url, format: 'html' }, {
+    recording,
+    autoAllowDomain: false,
+  });
+  const markdownHit = await readPage(browser, { url, format: 'markdown' }, {
+    recording,
+    autoAllowDomain: false,
+  });
+
+  assert.equal(markdown._cached, false);
+  assert.equal(html._cached, false);
+  assert.equal(markdownHit._cached, true);
+  assert.equal(markdownHit.content, markdown.content);
+  assert.notEqual(html.content, markdown.content);
+  assert.equal(browser.executeScriptCalls, 2);
+});
+
+test('readPage cache keys preserve URL fragments, ref queries, and trailing slashes', (t) => {
+  const recording = createRecording(t);
+  const keyFor = (url) => createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    url,
+    recording,
+    format: 'markdown',
+  }).cacheKey;
+
+  const pairs = [
+    ['https://example.com/app#/alpha', 'https://example.com/app#/beta'],
+    ['https://example.com/app?ref=alpha', 'https://example.com/app?ref=beta'],
+    ['https://example.com/path', 'https://example.com/path/'],
+  ];
+  for (const [left, right] of pairs) {
+    assert.equal(normalizeUrl(left), left);
+    assert.equal(normalizeUrl(right), right);
+    assert.notEqual(keyFor(left), keyFor(right));
+  }
+});
+
+test('readPage does not cross-hit URLs with distinct output-bearing components', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const pairs = [
+    ['https://example.com/app#/alpha', 'https://example.com/app#/beta'],
+    ['https://example.com/app?ref=alpha', 'https://example.com/app?ref=beta'],
+    ['https://example.com/path', 'https://example.com/path/'],
+  ];
+
+  for (const [left, right] of pairs) {
+    const leftResult = await readPage(browser, { url: left, format: 'markdown' }, {
+      recording,
+      autoAllowDomain: false,
+    });
+    const rightResult = await readPage(browser, { url: right, format: 'markdown' }, {
+      recording,
+      autoAllowDomain: false,
+    });
+    assert.equal(leftResult._cached, false);
+    assert.equal(rightResult._cached, false);
+    assert.notEqual(leftResult.content, rightResult.content);
+  }
+  assert.equal(browser.executeScriptCalls, 6);
+});
+
+test('readPage cache key ignores parameters that do not affect current output', (t) => {
+  const recording = createRecording(t);
+  const createContext = (params) => createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    url: 'https://example.com/current-output',
+    recording,
+    format: 'markdown',
+    ...params,
+  });
+  const baseKey = createContext({}).cacheKey;
+
+  assert.equal(createContext({ tabId: 42 }).cacheKey, baseKey);
+  assert.equal(createContext({ maxContentChars: 1000 }).cacheKey, baseKey);
+  assert.equal(createContext({ includeLinks: false }).cacheKey, baseKey);
+});
+
+test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const params = {
+    url: 'https://example.com/runtime-tab',
+    tabId: 42,
+    format: 'markdown',
+  };
+
+  const first = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+  });
+  const second = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+  });
+
+  assert.equal(first._cached, false);
+  assert.equal(second._cached, false);
+  assert.equal(browser.executeScriptCalls, 2);
+});
+
+test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const params = { url: 'https://example.com/legacy', format: 'markdown' };
+  const currentContext = createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    ...params,
+    recording,
+  });
+  const legacyCacheKey = createCacheKey({
+    skillId: pkg.name,
+    scrapeType: 'read',
+    url: params.url,
+    version: pkg.version,
+    readPage: {
+      schema: 1,
+      format: 'markdown',
+      tabId: null,
+      maxContentChars: null,
+      includeLinks: true,
+    },
+  });
+  assert.notEqual(currentContext.cacheKey, legacyCacheKey);
+  writeCacheEntry({
+    ...currentContext,
+    cacheKey: legacyCacheKey,
+  }, {
+    response: { content: 'stale schema v1 content', tabId: 999 },
+    fetchedAt: new Date().toISOString(),
+    format: 'markdown',
+  }, 'read');
+
+  const result = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+  });
+
+  assert.equal(result._cached, false);
+  assert.notEqual(result.content, 'stale schema v1 content');
+  assert.equal(browser.executeScriptCalls, 1);
 });

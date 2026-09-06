@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.5.1
+version: 2.5.2
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -48,10 +48,12 @@ const { readPage, clickElement, fillForm, scrollPage } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');
 
-// 读取网页内容
+// 后续需要操作该标签页，因此禁用缓存以取得 live tabId。
+// 纯读取可省略 noCache；缓存命中时 tabId 明确为 null。
 const page = await readPage(browser, {
   url: 'https://example.com/article',
   format: 'markdown',
+  noCache: true,
 });
 
 // 点击元素
@@ -202,6 +204,12 @@ skills/js-browser-ops-skill/
 
 缓存策略：
 - `browser_read_page` 接入缓存（URL → 结构化结果）
+- 命中与未命中均在顶层返回正文业务字段、`tabId`、`_cached` 和当前
+  `run.id`；缓存命中不创建或验证 live tab，因此明确返回 `tabId: null`
+- key 保留完整 URL（含 fragment、query 与尾斜杠），并按有效 `format` 隔离；
+  URL 与 `tabId` 同时传入时不缓存，避免把运行时标签页上下文错误持久化
+- 缓存条目记录 `fetchedAt` 与 `format`；cache schema v2 使旧 key 直接失效，
+  避免旧 `response` 包装或历史 `tabId` 被误用
 - 交互类工具（click/fill/scroll/wait/screenshot）不缓存但记录调用历史
 
 默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-browser-ops-skill/`。

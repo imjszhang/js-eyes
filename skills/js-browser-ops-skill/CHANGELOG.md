@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.2 — 2026-09-06
+
+### Fixed
+
+- `browser_read_page` 的缓存命中与未命中现在返回相同顶层结构，均包含业务字段、
+  `tabId`、`_cached` 与当前 `run.id`；命中时 `tabId` 明确为 `null`，不会泄漏
+  可能已关闭或复用的历史标签页上下文。
+- read cache key 保留完整 URL（包括 fragment、query 与尾斜杠），只按当前真实
+  输出维度 `format` 隔离；URL 与运行时 `tabId` 同时传入时绕过缓存。
+- read cache 条目新增 `fetchedAt` 与 `format`；cache schema v2 使旧 key 失效，
+  不再静默返回 `content: undefined` 或误用旧 `tabId`。
+
 ## 2.5.1 — 2026-06-26
 
 ### Added
