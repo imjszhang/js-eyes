@@ -38,7 +38,7 @@ metadata:
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
 | `browser_scroll` | 页面滚动（到顶部/底部、指定元素、指定像素偏移） |
-| `browser_screenshot` | 通过扩展截图能力获取真实截图数据及页面元数据 |
+| `browser_screenshot` | 调用 `browser.captureScreenshot` 获取截图结果 |
 
 ## 编程 API
 
@@ -149,9 +149,9 @@ node index.js interact click --tab-id 123 --selector "..." --no-visual
 
 1. 通过 js-eyes 的 `openUrl` 在浏览器中打开目标页面
 2. `browser_read_page` 使用 `executeScript` 注入提取脚本，在页面上下文中读取正文
-3. click / fill / wait / scroll 分别调用 SDK 的 `browser.click` / `browser.fill` /
-   `browser.waitFor` / `browser.scroll` first-class 方法，截图调用
-   `browser.captureScreenshot`
+3. `api.js` 将 click / fill / wait / scroll / screenshot 分别分派到 SDK 的
+   `browser.click` / `browser.fill` / `browser.waitFor` / `browser.scroll` /
+   `browser.captureScreenshot` 方法
 4. 将结果返回给调用者
 
 ### 内容提取（browser_read_page）
@@ -161,11 +161,11 @@ node index.js interact click --tab-id 123 --selector "..." --no-visual
 - 回退到基于评分的候选区域选择（正文密度、ID/class 语义分析）
 - 支持 markdown / text / html 三种输出格式
 
-### First-class 浏览器操作
+### API 分派
 
-click / fill / wait / scroll 不生成页面脚本，而是通过扩展与 SDK 的 first-class
-浏览器操作执行；`browser_screenshot` 同样直接使用扩展截图能力。只有
-`browser_read_page` 保留 `browserUtils.js` 中的正文提取脚本生成器。
+`api.js` 不再从 `browserUtils.js` 为 click / fill / wait / scroll / screenshot
+生成 raw script，而是调用对应的 SDK 方法。只有 `browser_read_page` 保留正文
+提取脚本生成器；这里仅描述 API 分派，不约束扩展端的具体实现语义。
 
 ## 目录结构
 
