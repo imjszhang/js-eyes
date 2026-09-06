@@ -70,6 +70,7 @@ const SUB_SKILL_EXCLUDE = [
 const PLATFORM_VERSION_EXCLUDE = new Set([
   'visual-bridge-kit',
   'visual-replay-hyperframes',
+  'page-extract',
 ]);
 const PLATFORM_DEPENDENCY_EXCLUDE = new Set(
   Array.from(PLATFORM_VERSION_EXCLUDE, (name) => `@js-eyes/${name}`),

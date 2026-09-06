@@ -10,6 +10,7 @@
     "index.js",
     "extract-page-content.js"
   ],
+  "private": true,
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",
   "homepage": "https://js-eyes.com",

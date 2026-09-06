@@ -283,8 +283,9 @@ class BrowserAutomation {
           if (code && String(code).startsWith('POLICY_')) {
             pending.reject(policyErrorFromServerMessage(msg));
           } else {
-            const err = new Error(msg.message || '未知错误');
-            if (msg.code) err.code = msg.code;
+            const err = Object.assign(new Error(msg.message || '未知错误'), {
+              code: msg.code,
+            });
             pending.reject(err);
           }
         } else {

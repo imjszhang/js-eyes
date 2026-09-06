@@ -94,9 +94,9 @@ function extractPageContent(documentOrOptions, maybeOptions) {
     return el ? (el.getAttribute('content') || '') : '';
   }
 
-  function firstNonEmpty() {
-    for (var i = 0; i < arguments.length; i++) {
-      var value = arguments[i];
+  function firstNonEmpty(...values) {
+    for (var i = 0; i < values.length; i++) {
+      var value = values[i];
       if (value != null && String(value).trim()) return String(value).trim();
     }
     return '';
