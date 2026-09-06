@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- 删除 `browserUtils.js` 中未使用的 click / fill / wait / scroll / screenshot
+  页面脚本生成器；这些操作均已由 SDK first-class 方法负责，避免旧 DOM 语义与
+  假截图结果被误用。
+
+### Tests
+
+- 锁定 `browser_read_page` 继续走正文提取脚本，而 click / fill / wait / scroll /
+  screenshot 分别调用 SDK 的 first-class 浏览器方法。
+
 ## 2.5.2 — 2026-09-06
 
 ### Fixed

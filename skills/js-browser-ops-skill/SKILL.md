@@ -38,7 +38,7 @@ metadata:
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
 | `browser_scroll` | 页面滚动（到顶部/底部、指定元素、指定像素偏移） |
-| `browser_screenshot` | 获取页面视口信息和截图元数据 |
+| `browser_screenshot` | 通过扩展截图能力获取真实截图数据及页面元数据 |
 
 ## 编程 API
 
@@ -97,7 +97,7 @@ node skills/js-browser-ops-skill/index.js interact scroll --tab-id 123 --target 
 
 通过 `@js-eyes/visual-bridge-kit@^0.4.0` 在每次工具调用前后注入一段 DOM overlay：
 **HUD（屏幕右上角状态条）+ flash（在锚点元素周围闪一下黄/绿框）+ jsonl trace**。
-浏览器里直接看到 agent 在点哪、填什么、等什么。业务脚本（`generate*Script`）一行不动。
+浏览器里直接看到 agent 在点哪、填什么、等什么。视觉包装不改变底层 SDK 调用路径。
 
 > **post-2.7.0 architecture pivot 提示**：browser-ops 的 in-page 视觉反馈（HUD/flash）继续工作，
 > 但**离线 HTML 模板这一轮还没接 browser-ops**（reddit 是首个；list/item/tree/global/navigation
@@ -148,8 +148,10 @@ node index.js interact click --tab-id 123 --selector "..." --no-visual
 ## 工作原理
 
 1. 通过 js-eyes 的 `openUrl` 在浏览器中打开目标页面
-2. 使用 `executeScript` 注入 JavaScript 脚本到页面中执行
-3. 脚本在页面上下文中操作 DOM，提取数据或执行交互
+2. `browser_read_page` 使用 `executeScript` 注入提取脚本，在页面上下文中读取正文
+3. click / fill / wait / scroll 分别调用 SDK 的 `browser.click` / `browser.fill` /
+   `browser.waitFor` / `browser.scroll` first-class 方法，截图调用
+   `browser.captureScreenshot`
 4. 将结果返回给调用者
 
 ### 内容提取（browser_read_page）
@@ -159,12 +161,11 @@ node index.js interact click --tab-id 123 --selector "..." --no-visual
 - 回退到基于评分的候选区域选择（正文密度、ID/class 语义分析）
 - 支持 markdown / text / html 三种输出格式
 
-### DOM 交互
+### First-class 浏览器操作
 
-所有交互操作（click / fill / wait / scroll）均通过 `executeScript` 注入到页面：
-- `browser_click` 支持 CSS selector、XPath、文本匹配三种定位策略
-- `browser_fill_form` 使用 native value setter 绕过框架拦截，正确触发 React/Vue 等框架的 change 事件
-- `browser_wait_for` 使用 MutationObserver 高效监听，避免轮询
+click / fill / wait / scroll 不生成页面脚本，而是通过扩展与 SDK 的 first-class
+浏览器操作执行；`browser_screenshot` 同样直接使用扩展截图能力。只有
+`browser_read_page` 保留 `browserUtils.js` 中的正文提取脚本生成器。
 
 ## 目录结构
 
@@ -180,7 +181,7 @@ skills/js-browser-ops-skill/
 │   └── _visual-browser.js    # 站点 anchor resolver（CSS/XPath/text/url）
 ├── lib/
 │   ├── api.js                # 业务 API（withVisual 包装）
-│   ├── browserUtils.js       # 注入脚本模板（业务零侵入）
+│   ├── browserUtils.js       # browser_read_page 正文提取脚本模板
 │   ├── visualHint.js         # 6 工具的 hint + buildSummary
 │   ├── cliVisualFlags.js     # CLI 视觉旋钮解析
 │   ├── runtimeConfig.js      # 配置合并

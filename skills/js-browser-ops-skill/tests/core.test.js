@@ -10,12 +10,16 @@ const {
   getCacheFilePath,
   writeCacheEntry,
 } = require('@js-eyes/skill-recording');
+const browserUtils = require('../lib/browserUtils');
+const { generateReadPageScript } = browserUtils;
 const {
-  generateClickScript,
-  generateFillFormScript,
-  generateReadPageScript,
-} = require('../lib/browserUtils');
-const { readPage } = require('../lib/api');
+  readPage,
+  clickElement,
+  fillForm,
+  waitFor,
+  scrollPage,
+  takeScreenshot,
+} = require('../lib/api');
 const { hostMatches, normalizeHost } = require('../lib/egressAllowlist');
 const { createRunContext, normalizeUrl } = require('../lib/runContext');
 const pkg = require('../package.json');
@@ -78,13 +82,59 @@ test('egress host normalization and wildcard matching are boundary-safe', () => 
   assert.equal(hostMatches('badexample.com', '*.example.com'), false);
 });
 
-test('generated scripts safely serialize caller-controlled values', () => {
-  const read = generateReadPageScript({ format: 'markdown' });
-  const click = generateClickScript({ selector: "button[data-x=\"'\\\\\"]" });
-  const fill = generateFillFormScript({ selector: '#q', value: '</script>\\nhello' });
+test('browserUtils exports only the read-page extraction generator', () => {
+  assert.deepEqual(Object.keys(browserUtils), ['generateReadPageScript']);
+  const read = generateReadPageScript('markdown');
   assert.doesNotThrow(() => new Function(read));
-  assert.doesNotThrow(() => new Function(click));
-  assert.doesNotThrow(() => new Function(fill));
+});
+
+test('API keeps read-page extraction and routes browser actions through first-class SDK methods', async () => {
+  const calls = [];
+  const options = { recordingMode: 'off' };
+  const browser = {
+    async executeScript(tabId, script) {
+      calls.push(['executeScript', tabId, script]);
+      return { title: 'Example', content: 'page body' };
+    },
+    async click(...args) {
+      calls.push(['click', ...args]);
+      return { success: true };
+    },
+    async fill(...args) {
+      calls.push(['fill', ...args]);
+      return { success: true };
+    },
+    async waitFor(...args) {
+      calls.push(['waitFor', ...args]);
+      return { success: true };
+    },
+    async scroll(...args) {
+      calls.push(['scroll', ...args]);
+      return { success: true };
+    },
+    async captureScreenshot(...args) {
+      calls.push(['captureScreenshot', ...args]);
+      return { dataUrl: 'data:image/jpeg;base64,AA==' };
+    },
+  };
+
+  const readResult = await readPage(browser, { tabId: 42, format: 'text' }, options);
+  await clickElement(browser, { tabId: 42, selector: '#submit', text: 'Go', index: 1 }, options);
+  await fillForm(browser, { tabId: 42, selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options);
+  await waitFor(browser, { tabId: 42, selector: '.results', timeout: 10, visible: true }, options);
+  await scrollPage(browser, { tabId: 42, target: 'bottom', selector: '.footer', pixels: 300 }, options);
+  await takeScreenshot(browser, { tabId: 42, fullPage: true, format: 'jpeg', quality: 80 }, options);
+
+  assert.equal(readResult.tabId, 42);
+  assert.match(calls[0][2], /function extractContent\(\)/);
+  assert.match(calls[0][2], /var fmt = "text";/);
+  assert.deepEqual(calls.slice(1), [
+    ['click', 42, { selector: '#submit', text: 'Go', index: 1 }, options],
+    ['fill', 42, { selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options],
+    ['waitFor', 42, { selector: '.results', timeout: 10, visible: true }, options],
+    ['scroll', 42, { scrollTarget: 'bottom', selector: '.footer', pixels: 300 }, options],
+    ['captureScreenshot', 42, { fullPage: true, format: 'jpeg', quality: 80 }],
+  ]);
 });
 
 test('definition keeps interaction risks and capabilities explicit', () => {
