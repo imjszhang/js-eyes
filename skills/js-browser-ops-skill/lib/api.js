@@ -19,7 +19,7 @@ const {
   normalizeReadPageCacheVary,
 } = require('./runContext');
 const { generateReadPageScript } = require('./browserUtils');
-const { ensureDomainAllowedForUrl } = require('./egressAllowlist');
+const { authorizeUrlForRead } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
 
 const SKILL_ID = 'js-browser-ops-skill';
@@ -181,14 +181,18 @@ async function readPage(browser, params, options = {}) {
     }
   }
 
-  if (url && options.autoAllowDomain !== false) {
-    const allowResult = await ensureDomainAllowedForUrl(url, {
+  if (url) {
+    await authorizeUrlForRead(url, {
       serverUrl: browser.serverUrl,
+      policy: browser.policy,
+      autoAllowDomain: options.autoAllowDomain,
+      persistAllowDomain: options.persistAllowDomain,
+      allowPrivateNetwork: options.allowPrivateNetwork,
+      runId: options.runId || runContext.runId,
+      loadConfig: options.loadConfig,
+      saveConfig: options.saveConfig,
+      lookup: options.lookup,
     });
-    if (allowResult.host && allowResult.changed && !allowResult.ready) {
-      const logger = browser.logger || console;
-      logger.warn?.(`[JS-Eyes] 已把 ${allowResult.host} 写入 egressAllowlist，但服务端尚未热加载，仍将继续尝试打开。`);
-    }
   }
 
   const resolvedTabId = await ensureTab(browser, url, tabId);

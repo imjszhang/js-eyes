@@ -33,7 +33,7 @@ metadata:
 
 | 工具 | 说明 |
 |------|------|
-| `browser_read_page` | 读取任意网页正文，返回结构化 markdown/纯文本 + 元数据（标题、作者、摘要、图片、链接）。可选 `autoAllowDomain`（默认 `true`）在打开新 URL 前自动把域名加入 `egressAllowlist` |
+| `browser_read_page` | 读取网页正文。未授权 host 默认 `policy_denied`。`autoAllowDomain` 只做会话临时授权；`persistAllowDomain` 才写盘。私网需 `allowPrivateNetwork`。 |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
@@ -83,8 +83,9 @@ await scrollPage(browser, {
 # 读取网页内容
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --format markdown --pretty
 
-# 读取新域名时自动加入 egressAllowlist（默认行为；可 --no-auto-allow-domain 关闭）
-node skills/js-browser-ops-skill/index.js read "https://other-site.example/article" --allow-new-domain
+# 默认 fail-closed。会话临时授权：--auto-allow-domain 或 JS_EYES_AUTO_ALLOW_DOMAIN=1
+# 持久写盘需显式 --persist-allow-domain，热加载失败不会打开页面
+node skills/js-browser-ops-skill/index.js read "https://other-site.example/article" --auto-allow-domain
 
 # DOM 交互
 node skills/js-browser-ops-skill/index.js interact click --tab-id 123 --selector "button.submit"

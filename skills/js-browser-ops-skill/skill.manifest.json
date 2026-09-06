@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "js-browser-ops-skill",
   "name": "JS Browser Ops Skill",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "publisher": "js-eyes",
   "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、截图等能力",
   "entry": "./skill.entry.js",
@@ -87,7 +87,15 @@
           },
           "autoAllowDomain": {
             "type": "boolean",
-            "description": "读取 URL 前是否自动把新域名加入 js-eyes egressAllowlist（默认 true）"
+            "description": "显式 opt-in：给当前会话临时授权该域名，不写配置（默认 false，未授权直接 policy_denied）"
+          },
+          "persistAllowDomain": {
+            "type": "boolean",
+            "description": "显式把域名写入持久 egressAllowlist，并要求服务端热加载成功后才导航"
+          },
+          "allowPrivateNetwork": {
+            "type": "boolean",
+            "description": "二次确认后才允许访问回环/私网/链路本地地址"
           }
         }
       }
