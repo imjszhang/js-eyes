@@ -4,6 +4,8 @@
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { clickElement, fillForm, waitFor, scrollPage } = require('../lib/api');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
+const { runCliCommand } = require('../lib/cliRun');
+const { toSkillError } = require('../lib/skillError');
 const {
   applyVisualArgs,
   resolveVisualOptions,
@@ -26,6 +28,7 @@ function parseArgs() {
     clearFirst: false,
     index: 0,
     pretty: false,
+    json: false,
     browserServer: null,
     visual: undefined,
     visualDetail: null,
@@ -53,6 +56,8 @@ function parseArgs() {
     if (consumed > 0) { i += consumed - 1; continue; }
     if (arg === '--pretty') {
       options.pretty = true;
+    } else if (arg === '--json') {
+      options.json = true;
     } else if (arg === '--tab-id' && args[i + 1]) {
       options.tabId = parseInt(args[i + 1], 10);
       i += 1;
@@ -92,7 +97,7 @@ function parseArgs() {
   return options;
 }
 
-async function main() {
+async function main(cli = {}) {
   const options = parseArgs();
   if (!options.action || options.action === '--help' || options.action === '-h') {
     console.log('用法: node index.js interact <action> --tab-id <id> [options]');
@@ -109,7 +114,7 @@ async function main() {
   }
 
   if (!options.tabId) {
-    throw new Error('必须提供 --tab-id');
+    throw toSkillError('invalid_params', '必须提供 --tab-id');
   }
 
   const runtimeConfig = resolveRuntimeConfig({
@@ -118,7 +123,7 @@ async function main() {
 
   const visual = resolveVisualOptions(options);
   warnDeprecatedFlagsOnce(visual.deprecatedFlags);
-  const apiOpts = { visual, allowExternalTab: true };
+  const apiOpts = { visual, allowExternalTab: true, signal: cli.signal };
 
   const browser = new BrowserAutomation(runtimeConfig.serverUrl);
   try {
@@ -158,9 +163,11 @@ async function main() {
         }, apiOpts);
         break;
       default:
-        throw new Error(`未知操作: ${options.action}`);
+        throw toSkillError('invalid_params', `未知操作: ${options.action}`);
     }
-    console.log(JSON.stringify(result, null, options.pretty ? 2 : 0));
+    const json = cli.json || options.json;
+    const payload = json ? { ok: true, data: result } : result;
+    console.log(JSON.stringify(payload, null, options.pretty ? 2 : 0));
   } finally {
     browser.disconnect();
   }
@@ -169,8 +176,5 @@ async function main() {
 module.exports = { main, parseArgs };
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error.message);
-    process.exit(1);
-  });
+  runCliCommand(main);
 }

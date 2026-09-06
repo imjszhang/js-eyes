@@ -21,7 +21,7 @@ const {
   takeScreenshot,
   cleanupTabSession,
 } = require('../lib/api');
-const { createTabSession, TabOwnershipError } = require('../lib/tabSession');
+const { createTabSession } = require('../lib/tabSession');
 const {
   hostMatches,
   normalizeHost,
@@ -454,7 +454,7 @@ test('url plus tabId throws when navigation cannot target that tab', async () =>
       tabSession: session,
       keepOpen: true,
     }),
-    /无法在标签 7 内导航/,
+    (error) => error.code === 'navigation_failed' && error.retryable === true,
   );
 });
 
@@ -486,7 +486,7 @@ test('external tabs are rejected unless explicitly opted in', async () => {
       recordingMode: 'off',
       ...allowlistedOptions(),
     }),
-    (error) => error instanceof TabOwnershipError && error.code === 'tab_not_owned',
+    (error) => error.code === 'tab_not_found' && error.retryable === false,
   );
   assert.equal(browser.openUrlCalls, 0);
 });
@@ -503,7 +503,7 @@ test('errors and session cleanup still recycle owned tabs', async () => {
       ...allowlistedOptions(),
       tabSession: session,
     }),
-    /boom/,
+    (error) => error.message === 'boom' && error.code === 'navigation_failed',
   );
   assert.deepEqual(browser.closedTabs, [101]);
 
@@ -532,7 +532,7 @@ test('keepOpen and closeAfter cannot both be true', async () => {
       keepOpen: true,
       closeAfter: true,
     }),
-    /keepOpen and closeAfter cannot both be true/,
+    (error) => error.code === 'invalid_params' && /keepOpen and closeAfter cannot both be true/.test(error.message),
   );
   assert.equal(browser.openUrlCalls, 0);
 });
@@ -565,7 +565,7 @@ test('tab pool queues extra opens and abort removes the waiter', async () => {
     signal: controller.signal,
   });
   controller.abort();
-  await assert.rejects(() => queued, (error) => error.name === 'AbortError');
+  await assert.rejects(() => queued, (error) => error.code === 'cancelled' && error.retryable === false);
   release();
   await first;
   assert.equal(browser.openUrlCalls, 1);

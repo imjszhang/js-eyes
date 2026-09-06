@@ -6,6 +6,7 @@ const pkg = require('./package.json');
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const {
   readPage,
+  readPages,
   clickElement,
   fillForm,
   waitFor,
@@ -18,6 +19,7 @@ const { resolveRuntimeConfig } = require('./lib/runtimeConfig');
 
 const CLI_COMMANDS = [
   { name: 'read', description: '读取任意网页正文内容' },
+  { name: 'read-pages', description: '批量读取网页正文（并发 / 限流 / 部分成功）' },
   { name: 'interact', description: 'DOM 交互操作（click / fill / scroll / wait）' },
 ];
 
@@ -133,6 +135,52 @@ const TOOL_DEFINITIONS = [
         keepOpen: params.keepOpen,
         closeAfter: params.closeAfter,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
+      });
+    },
+  },
+  {
+    name: 'browser_read_pages',
+    risk: 'read',
+    capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.script.execute"],
+    label: 'Browser Ops: Read Pages',
+    description: '批量读取网页正文。单条失败不影响其余条目；同 host 默认串行并遵守最小间隔。',
+    parameters: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要读取的 URL 列表',
+        },
+        format: {
+          type: 'string',
+          enum: ['markdown', 'text', 'html'],
+          description: '返回格式（默认 markdown）',
+        },
+        concurrency: { type: 'number', description: '全局并发（默认 3）' },
+        perHostMinIntervalMs: { type: 'number', description: '同 host 最小间隔毫秒（默认 1000）' },
+        perHostConcurrency: { type: 'number', description: '同 host 并发（默认 1）' },
+        timeoutMs: { type: 'number', description: '单条超时毫秒（默认 30000）' },
+        totalTimeoutMs: { type: 'number', description: '整批超时毫秒（默认 180000）' },
+        minContentChars: { type: 'number', description: '正文最短字符数' },
+        autoAllowDomain: { type: 'boolean' },
+        persistAllowDomain: { type: 'boolean' },
+        allowPrivateNetwork: { type: 'boolean' },
+      },
+      required: ['urls'],
+    },
+    optional: true,
+    async execute(runtime, params, context = {}) {
+      return readPages(runtime.ensureBot(), params, {
+        recording: runtime.config.recording,
+        runId: context.toolCallId,
+        tabSession: runtime.tabSession,
+        autoAllowDomain: params.autoAllowDomain === true,
+        persistAllowDomain: params.persistAllowDomain === true,
+        allowPrivateNetwork: params.allowPrivateNetwork === true,
+        signal: params.signal || context.signal,
+        onProgress: params.onProgress,
       });
     },
   },
@@ -157,10 +205,11 @@ const TOOL_DEFINITIONS = [
       required: ['tabId'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return clickElement(runtime.ensureBot(), params, {
         tabSession: runtime.tabSession,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
       });
     },
   },
@@ -186,10 +235,11 @@ const TOOL_DEFINITIONS = [
       required: ['tabId', 'selector', 'value'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return fillForm(runtime.ensureBot(), params, {
         tabSession: runtime.tabSession,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
       });
     },
   },
@@ -214,10 +264,11 @@ const TOOL_DEFINITIONS = [
       required: ['tabId', 'selector'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return waitFor(runtime.ensureBot(), params, {
         tabSession: runtime.tabSession,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
       });
     },
   },
@@ -246,10 +297,11 @@ const TOOL_DEFINITIONS = [
       required: ['tabId'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return scrollPage(runtime.ensureBot(), params, {
         tabSession: runtime.tabSession,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
       });
     },
   },
@@ -274,10 +326,11 @@ const TOOL_DEFINITIONS = [
       required: ['tabId'],
     },
     optional: true,
-    async execute(runtime, params) {
+    async execute(runtime, params, context = {}) {
       return takeScreenshot(runtime.ensureBot(), params, {
         tabSession: runtime.tabSession,
         allowExternalTab: params.allowExternalTab === true,
+        signal: params.signal || context.signal,
       });
     },
   },

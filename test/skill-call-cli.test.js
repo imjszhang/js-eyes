@@ -60,6 +60,33 @@ module.exports = { handlers: {
   }
 });
 
+test('CLI --json emits skill_not_found as a structured error envelope', () => {
+  const runtimeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-skill-missing-'));
+  try {
+    fs.mkdirSync(path.join(runtimeHome, 'config'), { recursive: true });
+    fs.mkdirSync(path.join(runtimeHome, 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(runtimeHome, 'config', 'config.json'), JSON.stringify({
+      skillsDir: path.join(runtimeHome, 'skills'),
+    }));
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, 'apps/cli/bin/js-eyes.js'),
+      'skill', 'run', 'js-zhihu-ops-skill', 'search', '--json',
+    ], {
+      cwd: ROOT,
+      env: { ...process.env, JS_EYES_HOME: runtimeHome },
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 1, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error.code, 'skill_not_found');
+    assert.equal(payload.error.retryable, false);
+    assert.match(payload.error.message, /js-zhihu-ops-skill/);
+  } finally {
+    fs.rmSync(runtimeHome, { recursive: true, force: true });
+  }
+});
+
 test('CLI refuses an untrusted external V2 CLI before executing its entry', () => {
   const runtimeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-skill-run-trust-'));
   try {

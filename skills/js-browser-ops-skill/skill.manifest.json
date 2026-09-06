@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "js-browser-ops-skill",
   "name": "JS Browser Ops Skill",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "publisher": "js-eyes",
   "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、截图等能力",
   "entry": "./skill.entry.js",
@@ -46,6 +46,10 @@
       {
         "name": "read",
         "description": "读取任意网页正文内容"
+      },
+      {
+        "name": "read-pages",
+        "description": "批量读取网页正文（并发 / 限流 / 部分成功）"
       },
       {
         "name": "interact",
@@ -145,6 +149,75 @@
             "description": "是否收集并渲染图片（默认 true）"
           }
         }
+      }
+    },
+    {
+      "name": "browser_read_pages",
+      "title": "Browser Ops: Read Pages",
+      "description": "批量读取网页正文。单条失败不影响其余条目；同 host 默认串行并遵守最小间隔。",
+      "risk": "read",
+      "capabilities": [
+        "browser.tabs.read",
+        "browser.page.read",
+        "browser.navigation",
+        "browser.script.execute"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "要读取的 URL 列表"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "text",
+              "html"
+            ],
+            "description": "返回格式（默认 markdown）"
+          },
+          "concurrency": {
+            "type": "number",
+            "description": "全局并发（默认 3）"
+          },
+          "perHostMinIntervalMs": {
+            "type": "number",
+            "description": "同 host 最小间隔毫秒（默认 1000）"
+          },
+          "perHostConcurrency": {
+            "type": "number",
+            "description": "同 host 并发（默认 1）"
+          },
+          "timeoutMs": {
+            "type": "number",
+            "description": "单条超时毫秒（默认 30000）"
+          },
+          "totalTimeoutMs": {
+            "type": "number",
+            "description": "整批超时毫秒（默认 180000）"
+          },
+          "minContentChars": {
+            "type": "number",
+            "description": "正文最短字符数"
+          },
+          "autoAllowDomain": {
+            "type": "boolean"
+          },
+          "persistAllowDomain": {
+            "type": "boolean"
+          },
+          "allowPrivateNetwork": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "urls"
+        ]
       }
     },
     {
