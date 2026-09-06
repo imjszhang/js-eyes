@@ -19,7 +19,9 @@ const {
   waitFor,
   scrollPage,
   takeScreenshot,
+  cleanupTabSession,
 } = require('../lib/api');
+const { createTabSession, TabOwnershipError } = require('../lib/tabSession');
 const {
   hostMatches,
   normalizeHost,
@@ -42,12 +44,18 @@ function createBrowser() {
     serverUrl: 'ws://localhost:18080',
     openUrlCalls: 0,
     executeScriptCalls: 0,
+    closedTabs: [],
+    navigations: [],
     tabUrls: new Map(),
-    async openUrl(url) {
+    async openUrl(url, tabId) {
       this.openUrlCalls += 1;
-      const tabId = 100 + this.openUrlCalls;
-      this.tabUrls.set(tabId, url);
-      return tabId;
+      this.navigations.push({ url, tabId: tabId || null });
+      const resolved = tabId || (100 + this.openUrlCalls);
+      this.tabUrls.set(resolved, url);
+      return resolved;
+    },
+    async closeTab(tabId) {
+      this.closedTabs.push(tabId);
     },
     async executeScript(tabId, script) {
       this.executeScriptCalls += 1;
@@ -107,7 +115,7 @@ test('browserUtils exports only the read-page extraction generator', () => {
 
 test('API keeps read-page extraction and routes browser actions through first-class SDK methods', async () => {
   const calls = [];
-  const options = { recordingMode: 'off' };
+  const options = { recordingMode: 'off', allowExternalTab: true };
   const browser = {
     async executeScript(tabId, script) {
       calls.push(['executeScript', tabId, script]);
@@ -188,8 +196,9 @@ test('readPage cache hits preserve the miss response shape and cache metadata', 
   assert.equal(miss._cached, false);
   assert.equal(hit._cached, true);
   assert.equal(hit.content, miss.content);
-  assert.equal(typeof miss.tabId, 'number');
+  assert.equal(miss.tabId, null);
   assert.equal(hit.tabId, null);
+  assert.deepEqual(browser.closedTabs, [101]);
   assert.deepEqual(miss.run, { id: 'cache-miss' });
   assert.deepEqual(hit.run, { id: 'cache-hit' });
   assert.equal(browser.openUrlCalls, 1);
@@ -306,10 +315,12 @@ test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) =
   const first = await readPage(browser, params, {
     recording,
     ...allowlistedOptions(),
+    allowExternalTab: true,
   });
   const second = await readPage(browser, params, {
     recording,
     ...allowlistedOptions(),
+    allowExternalTab: true,
   });
 
   assert.equal(first._cached, false);
@@ -359,6 +370,158 @@ test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
   assert.equal(result._cached, false);
   assert.notEqual(result.content, 'stale schema v1 content');
   assert.equal(browser.executeScriptCalls, 1);
+});
+
+test('url plus tabId navigates that tab instead of reading the old page', async () => {
+  const browser = createBrowser();
+  const session = createTabSession();
+  session.claim(7);
+  const result = await readPage(browser, {
+    url: 'https://example.com/next',
+    tabId: 7,
+    format: 'markdown',
+  }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+    keepOpen: true,
+  });
+  assert.deepEqual(browser.navigations, [{ url: 'https://example.com/next', tabId: 7 }]);
+  assert.equal(result.url, 'https://example.com/next');
+  assert.equal(result.tabId, 7);
+});
+
+test('url plus tabId throws when navigation cannot target that tab', async () => {
+  const browser = createBrowser();
+  const session = createTabSession();
+  session.claim(7);
+  browser.openUrl = async () => 99;
+  await assert.rejects(
+    () => readPage(browser, {
+      url: 'https://example.com/next',
+      tabId: 7,
+      format: 'markdown',
+    }, {
+      recordingMode: 'off',
+      ...allowlistedOptions(),
+      tabSession: session,
+      keepOpen: true,
+    }),
+    /无法在标签 7 内导航/,
+  );
+});
+
+test('self-opened tabs close by default and stay open only with keepOpen', async () => {
+  const browser = createBrowser();
+  const session = createTabSession();
+  const closed = await readPage(browser, { url: 'https://example.com/a', format: 'text' }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+  });
+  assert.equal(closed.tabId, null);
+  assert.deepEqual(browser.closedTabs, [101]);
+
+  const kept = await readPage(browser, { url: 'https://example.com/b', format: 'text' }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+    keepOpen: true,
+  });
+  assert.equal(kept.tabId, 102);
+  assert.equal(session.owns(102), true);
+});
+
+test('external tabs are rejected unless explicitly opted in', async () => {
+  const browser = createBrowser();
+  await assert.rejects(
+    () => readPage(browser, { url: 'https://example.com/x', tabId: 9, format: 'text' }, {
+      recordingMode: 'off',
+      ...allowlistedOptions(),
+    }),
+    (error) => error instanceof TabOwnershipError && error.code === 'tab_not_owned',
+  );
+  assert.equal(browser.openUrlCalls, 0);
+});
+
+test('errors and session cleanup still recycle owned tabs', async () => {
+  const browser = createBrowser();
+  const session = createTabSession();
+  browser.executeScript = async () => {
+    throw new Error('boom');
+  };
+  await assert.rejects(
+    () => readPage(browser, { url: 'https://example.com/err', format: 'text' }, {
+      recordingMode: 'off',
+      ...allowlistedOptions(),
+      tabSession: session,
+    }),
+    /boom/,
+  );
+  assert.deepEqual(browser.closedTabs, [101]);
+
+  browser.executeScript = async (tabId) => ({
+    title: 'ok',
+    content: 'ok',
+    url: browser.tabUrls.get(tabId),
+  });
+  const kept = await readPage(browser, { url: 'https://example.com/keep', format: 'text' }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+    keepOpen: true,
+  });
+  await cleanupTabSession(browser, { tabSession: session });
+  assert.ok(browser.closedTabs.includes(kept.tabId));
+  await cleanupTabSession(browser, { tabSession: session });
+});
+
+test('keepOpen and closeAfter cannot both be true', async () => {
+  const browser = createBrowser();
+  await assert.rejects(
+    () => readPage(browser, { url: 'https://example.com/conflict', format: 'text' }, {
+      recordingMode: 'off',
+      ...allowlistedOptions(),
+      keepOpen: true,
+      closeAfter: true,
+    }),
+    /keepOpen and closeAfter cannot both be true/,
+  );
+  assert.equal(browser.openUrlCalls, 0);
+});
+
+test('tab pool queues extra opens and abort removes the waiter', async () => {
+  const browser = createBrowser();
+  const session = createTabSession({ maxOpenTabs: 1 });
+  let release;
+  const hold = new Promise((resolve) => {
+    release = resolve;
+  });
+  browser.executeScript = async () => {
+    await hold;
+    return { title: 'held', content: 'held', url: 'https://example.com/hold' };
+  };
+  const first = readPage(browser, { url: 'https://example.com/hold', format: 'text' }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+  });
+  await new Promise((resolve) => {
+    const tick = () => (browser.openUrlCalls >= 1 ? resolve() : setImmediate(tick));
+    tick();
+  });
+  const controller = new AbortController();
+  const queued = readPage(browser, { url: 'https://example.com/queued', format: 'text' }, {
+    recordingMode: 'off',
+    ...allowlistedOptions(),
+    tabSession: session,
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(() => queued, (error) => error.name === 'AbortError');
+  release();
+  await first;
+  assert.equal(browser.openUrlCalls, 1);
 });
 
 test('unauthorized hosts fail closed without writing config', async () => {

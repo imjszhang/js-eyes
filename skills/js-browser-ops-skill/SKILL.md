@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.5.2
+version: 2.6.0
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -33,27 +33,29 @@ metadata:
 
 | 工具 | 说明 |
 |------|------|
-| `browser_read_page` | 读取网页正文。未授权 host 默认 `policy_denied`。`autoAllowDomain` 只做会话临时授权；`persistAllowDomain` 才写盘。私网需 `allowPrivateNetwork`。 |
+| `browser_read_page` | 读取网页正文。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。`url`+`tabId` 在该标签内导航。外部标签需 `allowExternalTab`。未授权 host 默认 `policy_denied`；`autoAllowDomain` 只做会话授权，`persistAllowDomain` 才写盘 |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
 | `browser_scroll` | 页面滚动（到顶部/底部、指定元素、指定像素偏移） |
 | `browser_screenshot` | 调用 `browser.captureScreenshot` 获取截图结果 |
+| `browser_cleanup_session` | 关闭本 session 仍打开的自开标签 |
 
 ## 编程 API
 
 ```javascript
 const { BrowserAutomation } = require('./lib/js-eyes-client');
-const { readPage, clickElement, fillForm, scrollPage } = require('./lib/api');
+const { readPage, clickElement, fillForm, scrollPage, cleanupTabSession } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');
 
-// 后续需要操作该标签页，因此禁用缓存以取得 live tabId。
-// 纯读取可省略 noCache；缓存命中时 tabId 明确为 null。
+// 纯读取默认会关闭自开标签，返回 tabId: null。
+// 后续还要 click/fill 时必须 keepOpen，并禁用缓存以取得 live tabId。
 const page = await readPage(browser, {
   url: 'https://example.com/article',
   format: 'markdown',
   noCache: true,
+  keepOpen: true,
 });
 
 // 点击元素
@@ -75,13 +77,16 @@ await scrollPage(browser, {
   tabId: page.tabId,
   target: 'bottom',
 });
+
+await cleanupTabSession(browser);
 ```
 
 ## CLI 命令
 
 ```bash
-# 读取网页内容
+# 读取网页内容（默认读完关标签）
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --format markdown --pretty
+node skills/js-browser-ops-skill/index.js read "https://example.com/article" --keep-open --no-cache
 
 # 默认 fail-closed。会话临时授权：--auto-allow-domain 或 JS_EYES_AUTO_ALLOW_DOMAIN=1
 # 持久写盘需显式 --persist-allow-domain，热加载失败不会打开页面
@@ -207,7 +212,9 @@ skills/js-browser-ops-skill/
 缓存策略：
 - `browser_read_page` 接入缓存（URL → 结构化结果）
 - 命中与未命中均在顶层返回正文业务字段、`tabId`、`_cached` 和当前
-  `run.id`；缓存命中不创建或验证 live tab，因此明确返回 `tabId: null`
+  `run.id`；默认读完关闭自开标签，因此未命中缓存时 `tabId` 也是 `null`。
+  缓存命中不创建或验证 live tab，同样返回 `tabId: null`。需要后续交互时
+  传 `keepOpen: true`（并建议 `--no-cache` / `noCache`）
 - key 保留完整 URL（含 fragment、query 与尾斜杠），并按有效 `format` 隔离；
   URL 与 `tabId` 同时传入时不缓存，避免把运行时标签页上下文错误持久化
 - 缓存条目记录 `fetchedAt` 与 `format`；cache schema v2 使旧 key 直接失效，

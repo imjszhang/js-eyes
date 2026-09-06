@@ -118,7 +118,7 @@ async function main() {
 
   const visual = resolveVisualOptions(options);
   warnDeprecatedFlagsOnce(visual.deprecatedFlags);
-  const apiOpts = { visual };
+  const apiOpts = { visual, allowExternalTab: true };
 
   const browser = new BrowserAutomation(runtimeConfig.serverUrl);
   try {

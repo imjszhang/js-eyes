@@ -24,6 +24,10 @@ function parseArgs() {
     autoAllowDomain: false,
     persistAllowDomain: false,
     allowPrivateNetwork: false,
+    keepOpen: false,
+    closeAfter: undefined,
+    tabId: null,
+    allowExternalTab: false,
     debugRecording: false,
     runId: null,
     visual: undefined,
@@ -77,6 +81,15 @@ function parseArgs() {
       options.persistAllowDomain = true;
     } else if (arg === '--allow-private-network') {
       options.allowPrivateNetwork = true;
+    } else if (arg === '--keep-open') {
+      options.keepOpen = true;
+    } else if (arg === '--close-after') {
+      options.closeAfter = true;
+    } else if (arg === '--tab-id' && args[i + 1]) {
+      options.tabId = parseInt(args[i + 1], 10);
+      i += 1;
+    } else if (arg === '--allow-external-tab') {
+      options.allowExternalTab = true;
     } else if (arg === '--debug-recording') {
       options.debugRecording = true;
     } else if (!options.url) {
@@ -93,6 +106,7 @@ async function main() {
     console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
     console.log('      [--auto-allow-domain|--no-auto-allow-domain] [--persist-allow-domain] [--allow-private-network]');
+    console.log('      [--keep-open|--close-after] [--tab-id <id>] [--allow-external-tab]');
     console.log('视觉反馈选项:');
     VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
@@ -113,6 +127,7 @@ async function main() {
   try {
     const result = await readPage(browser, {
       url: options.url,
+      tabId: options.tabId,
       format: options.format,
     }, {
       recording: runtimeConfig.recording,
@@ -120,6 +135,9 @@ async function main() {
       autoAllowDomain: options.autoAllowDomain,
       persistAllowDomain: options.persistAllowDomain,
       allowPrivateNetwork: options.allowPrivateNetwork,
+      keepOpen: options.keepOpen,
+      closeAfter: options.closeAfter,
+      allowExternalTab: options.allowExternalTab === true,
       debugRecording: options.debugRecording,
       runId: options.runId,
       visual,
