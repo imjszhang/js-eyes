@@ -14,6 +14,17 @@
 - tab session / owner、上限排队、`cleanupTabSession` / `browser_cleanup_session`。
 - CLI：`--keep-open`、`--close-after`、`--tab-id`、`--allow-external-tab`。
 
+### Removed
+
+- 删除 `browserUtils.js` 中未使用的 click / fill / wait / scroll / screenshot
+  页面脚本生成器；`api.js` 已将这些操作分派到 SDK first-class 方法，无需保留
+  重复 raw-script 路径，也避免假截图生成器被误用。
+
+### Tests
+
+- 锁定 `browser_read_page` 继续走正文提取脚本，而 click / fill / wait / scroll /
+  screenshot 分别分派到对应的 SDK first-class 方法。
+
 ## 2.5.2 — 2026-09-06
 
 ### Fixed

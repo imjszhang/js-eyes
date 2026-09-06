@@ -254,7 +254,7 @@ async function readPage(browser, params, options = {}) {
 
     const response = createReadPageResponse(
       result,
-      keepOpen ? opened.tabId : null,
+      keepOpen || !opened.owned ? opened.tabId : null,
       false,
       runContext.runId,
     );
@@ -287,8 +287,7 @@ function assertOwnedTab(browser, tabId, options = {}) {
 async function clickElement(browser, params, options = {}) {
   const { tabId, selector, text, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
-  options = resolveTabOptions(params, options);
-  assertOwnedTab(browser, tabId, options);
+  assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
   if (!selector && !text) throw new Error('必须提供 selector 或 text');
   if (typeof browser.click !== 'function') {
     throw new Error('Browser client does not support first-class click (upgrade JS Eyes extension/SDK)');
@@ -303,8 +302,7 @@ async function clickElement(browser, params, options = {}) {
 async function fillForm(browser, params, options = {}) {
   const { tabId, selector, value, clearFirst, index } = params;
   if (!tabId) throw new Error('必须提供 tabId');
-  options = resolveTabOptions(params, options);
-  assertOwnedTab(browser, tabId, options);
+  assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
   if (!selector) throw new Error('必须提供 selector');
   if (typeof browser.fill !== 'function') {
     throw new Error('Browser client does not support first-class fill (upgrade JS Eyes extension/SDK)');
@@ -319,8 +317,7 @@ async function fillForm(browser, params, options = {}) {
 async function waitFor(browser, params, options = {}) {
   const { tabId, selector, timeout, visible } = params;
   if (!tabId) throw new Error('必须提供 tabId');
-  options = resolveTabOptions(params, options);
-  assertOwnedTab(browser, tabId, options);
+  assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
   if (!selector) throw new Error('必须提供 selector');
   if (typeof browser.waitFor !== 'function') {
     throw new Error('Browser client does not support first-class waitFor (upgrade JS Eyes extension/SDK)');
@@ -335,8 +332,7 @@ async function waitFor(browser, params, options = {}) {
 async function scrollPage(browser, params, options = {}) {
   const { tabId, target, selector, pixels } = params;
   if (!tabId) throw new Error('必须提供 tabId');
-  options = resolveTabOptions(params, options);
-  assertOwnedTab(browser, tabId, options);
+  assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
   if (typeof browser.scroll !== 'function') {
     throw new Error('Browser client does not support first-class scroll (upgrade JS Eyes extension/SDK)');
   }
@@ -350,8 +346,7 @@ async function scrollPage(browser, params, options = {}) {
 async function takeScreenshot(browser, params, options = {}) {
   const { tabId, fullPage, format, quality } = params;
   if (!tabId) throw new Error('必须提供 tabId');
-  options = resolveTabOptions(params, options);
-  assertOwnedTab(browser, tabId, options);
+  assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
 
   return withVisual(
     'browser_screenshot', browser, tabId, params, options,
