@@ -22,7 +22,13 @@ const {
   cleanupTabSession,
 } = require('../lib/api');
 const { createTabSession, TabOwnershipError } = require('../lib/tabSession');
-const { hostMatches, normalizeHost } = require('../lib/egressAllowlist');
+const {
+  hostMatches,
+  normalizeHost,
+  PolicyDeniedError,
+  authorizeUrlForRead,
+  isPrivateLiteral,
+} = require('../lib/egressAllowlist');
 const { createRunContext, normalizeUrl } = require('../lib/runContext');
 const pkg = require('../package.json');
 const definition = require('../skill.definition');
@@ -67,6 +73,17 @@ function createBrowser() {
         links: [],
       };
     },
+  };
+}
+
+function allowlistedOptions(host = 'example.com') {
+  return {
+    autoAllowDomain: false,
+    loadConfig: () => ({ security: { egressAllowlist: [host] } }),
+    saveConfig() {
+      throw new Error('config must not be written');
+    },
+    lookup: async () => [{ address: '93.184.216.34' }],
   };
 }
 
@@ -160,12 +177,12 @@ test('readPage cache hits preserve the miss response shape and cache metadata', 
 
   const miss = await readPage(browser, params, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     runId: 'cache-miss',
   });
   const hit = await readPage(browser, params, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     runId: 'cache-hit',
   });
 
@@ -201,15 +218,15 @@ test('readPage cache keys isolate output formats', async (t) => {
 
   const markdown = await readPage(browser, { url, format: 'markdown' }, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
   });
   const html = await readPage(browser, { url, format: 'html' }, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
   });
   const markdownHit = await readPage(browser, { url, format: 'markdown' }, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
   });
 
   assert.equal(markdown._cached, false);
@@ -255,11 +272,11 @@ test('readPage does not cross-hit URLs with distinct output-bearing components',
   for (const [left, right] of pairs) {
     const leftResult = await readPage(browser, { url: left, format: 'markdown' }, {
       recording,
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
     });
     const rightResult = await readPage(browser, { url: right, format: 'markdown' }, {
       recording,
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
     });
     assert.equal(leftResult._cached, false);
     assert.equal(rightResult._cached, false);
@@ -297,12 +314,12 @@ test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) =
 
   const first = await readPage(browser, params, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     allowExternalTab: true,
   });
   const second = await readPage(browser, params, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     allowExternalTab: true,
   });
 
@@ -347,7 +364,7 @@ test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
 
   const result = await readPage(browser, params, {
     recording,
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
   });
 
   assert.equal(result._cached, false);
@@ -365,7 +382,7 @@ test('url plus tabId navigates that tab instead of reading the old page', async 
     format: 'markdown',
   }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
     keepOpen: true,
   });
@@ -386,7 +403,7 @@ test('url plus tabId throws when navigation cannot target that tab', async () =>
       format: 'markdown',
     }, {
       recordingMode: 'off',
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
       tabSession: session,
       keepOpen: true,
     }),
@@ -399,7 +416,7 @@ test('self-opened tabs close by default and stay open only with keepOpen', async
   const session = createTabSession();
   const closed = await readPage(browser, { url: 'https://example.com/a', format: 'text' }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
   });
   assert.equal(closed.tabId, null);
@@ -407,7 +424,7 @@ test('self-opened tabs close by default and stay open only with keepOpen', async
 
   const kept = await readPage(browser, { url: 'https://example.com/b', format: 'text' }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
     keepOpen: true,
   });
@@ -420,7 +437,7 @@ test('external tabs are rejected unless explicitly opted in', async () => {
   await assert.rejects(
     () => readPage(browser, { url: 'https://example.com/x', tabId: 9, format: 'text' }, {
       recordingMode: 'off',
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
     }),
     (error) => error instanceof TabOwnershipError && error.code === 'tab_not_owned',
   );
@@ -436,7 +453,7 @@ test('errors and session cleanup still recycle owned tabs', async () => {
   await assert.rejects(
     () => readPage(browser, { url: 'https://example.com/err', format: 'text' }, {
       recordingMode: 'off',
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
       tabSession: session,
     }),
     /boom/,
@@ -450,7 +467,7 @@ test('errors and session cleanup still recycle owned tabs', async () => {
   });
   const kept = await readPage(browser, { url: 'https://example.com/keep', format: 'text' }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
     keepOpen: true,
   });
@@ -464,7 +481,7 @@ test('keepOpen and closeAfter cannot both be true', async () => {
   await assert.rejects(
     () => readPage(browser, { url: 'https://example.com/conflict', format: 'text' }, {
       recordingMode: 'off',
-      autoAllowDomain: false,
+      ...allowlistedOptions(),
       keepOpen: true,
       closeAfter: true,
     }),
@@ -486,7 +503,7 @@ test('tab pool queues extra opens and abort removes the waiter', async () => {
   };
   const first = readPage(browser, { url: 'https://example.com/hold', format: 'text' }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
   });
   await new Promise((resolve) => {
@@ -496,7 +513,7 @@ test('tab pool queues extra opens and abort removes the waiter', async () => {
   const controller = new AbortController();
   const queued = readPage(browser, { url: 'https://example.com/queued', format: 'text' }, {
     recordingMode: 'off',
-    autoAllowDomain: false,
+    ...allowlistedOptions(),
     tabSession: session,
     signal: controller.signal,
   });
@@ -505,4 +522,87 @@ test('tab pool queues extra opens and abort removes the waiter', async () => {
   release();
   await first;
   assert.equal(browser.openUrlCalls, 1);
+});
+
+test('unauthorized hosts fail closed without writing config', async () => {
+  let saved = false;
+  await assert.rejects(
+    () => authorizeUrlForRead('https://evil.example/path', {
+      loadConfig: () => ({ security: { egressAllowlist: [] } }),
+      saveConfig() { saved = true; },
+      lookup: async () => [{ address: '93.184.216.34' }],
+    }),
+    (error) => error instanceof PolicyDeniedError
+      && error.code === 'policy_denied'
+      && error.retryable === false
+      && error.details.reason === 'not_allowlisted',
+  );
+  assert.equal(saved, false);
+});
+
+test('session opt-in grants a host without persisting config', async () => {
+  const granted = [];
+  let saved = false;
+  const result = await authorizeUrlForRead('https://docs.example.com/a', {
+    autoAllowDomain: true,
+    loadConfig: () => ({ security: { egressAllowlist: [] } }),
+    saveConfig() { saved = true; },
+    lookup: async () => [{ address: '93.184.216.34' }],
+    policy: { egress: { allowSession(url) { granted.push(url); } } },
+  });
+  assert.equal(result.mode, 'session');
+  assert.equal(saved, false);
+  assert.deepEqual(granted, ['https://docs.example.com/a']);
+});
+
+test('explicit persist writes config and audits the host', async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-egress-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const previous = process.env.JS_EYES_HOME;
+  process.env.JS_EYES_HOME = home;
+  t.after(() => {
+    if (previous === undefined) delete process.env.JS_EYES_HOME;
+    else process.env.JS_EYES_HOME = previous;
+  });
+
+  const writes = [];
+  await assert.rejects(
+    () => authorizeUrlForRead('https://docs.example.com/a', {
+      persistAllowDomain: true,
+      runId: 'run-1',
+      actor: 'test',
+      loadConfig: () => ({ security: { egressAllowlist: [] } }),
+      saveConfig(next) { writes.push(next.security.egressAllowlist); },
+      lookup: async () => [{ address: '93.184.216.34' }],
+      timeoutMs: 10,
+      intervalMs: 5,
+    }),
+    (error) => error.code === 'policy_denied' && error.details.reason === 'allowlist_not_hot_reloaded',
+  );
+  assert.deepEqual(writes, [['docs.example.com']]);
+  const audit = fs.readFileSync(path.join(home, 'logs', 'egress-allowlist-audit.jsonl'), 'utf8');
+  assert.match(audit, /docs\.example\.com/);
+  assert.match(audit, /run-1/);
+});
+
+test('private and confused addresses are denied without a second confirmation', async () => {
+  for (const url of [
+    'http://127.0.0.1/',
+    'http://localhost/',
+    'http://192.168.1.8/',
+    'http://10.0.0.1/',
+    'http://169.254.1.1/',
+    'http://2130706433/',
+  ]) {
+    await assert.rejects(
+      () => authorizeUrlForRead(url, {
+        autoAllowDomain: true,
+        loadConfig: () => ({ security: { egressAllowlist: ['127.0.0.1', 'localhost'] } }),
+        saveConfig() { throw new Error('must not write'); },
+      }),
+      (error) => error.details.reason === 'private_network',
+    );
+  }
+  assert.equal(isPrivateLiteral('127.0.0.1'), true);
+  assert.equal(isPrivateLiteral('::1'), true);
 });

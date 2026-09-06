@@ -33,7 +33,7 @@ metadata:
 
 | 工具 | 说明 |
 |------|------|
-| `browser_read_page` | 读取任意网页正文。自开标签默认读完关闭；`keepOpen: true` 才回传可复用 `tabId`。`url`+`tabId` 会在该标签内导航。外部标签需 `allowExternalTab` |
+| `browser_read_page` | 读取网页正文。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。`url`+`tabId` 在该标签内导航。外部标签需 `allowExternalTab`。未授权 host 默认 `policy_denied`；`autoAllowDomain` 只做会话授权，`persistAllowDomain` 才写盘 |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
@@ -88,8 +88,9 @@ await cleanupTabSession(browser);
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --format markdown --pretty
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --keep-open --no-cache
 
-# 读取新域名时自动加入 egressAllowlist（默认行为；可 --no-auto-allow-domain 关闭）
-node skills/js-browser-ops-skill/index.js read "https://other-site.example/article" --allow-new-domain
+# 默认 fail-closed。会话临时授权：--auto-allow-domain 或 JS_EYES_AUTO_ALLOW_DOMAIN=1
+# 持久写盘需显式 --persist-allow-domain，热加载失败不会打开页面
+node skills/js-browser-ops-skill/index.js read "https://other-site.example/article" --auto-allow-domain
 
 # DOM 交互
 node skills/js-browser-ops-skill/index.js interact click --tab-id 123 --selector "button.submit"

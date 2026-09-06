@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking
+
+- `js-browser-ops-skill` 默认不再把任意 URL 永久写入 egress allowlist。未授权
+  host 返回 `policy_denied`；会话授权与持久写盘必须显式 opt-in。
+
 ### Fixed
 
 - `js-browser-ops-skill` 的 `browser_read_page` cache v2 保留完整 URL 并按

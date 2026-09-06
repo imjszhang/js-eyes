@@ -98,7 +98,15 @@ const TOOL_DEFINITIONS = [
         },
         autoAllowDomain: {
           type: 'boolean',
-          description: '读取 URL 前是否自动把新域名加入 js-eyes egressAllowlist（默认 true）',
+          description: '显式 opt-in：给当前会话临时授权该域名，不写配置（默认 false，未授权直接 policy_denied）',
+        },
+        persistAllowDomain: {
+          type: 'boolean',
+          description: '显式把域名写入持久 egressAllowlist，并要求服务端热加载成功后才导航',
+        },
+        allowPrivateNetwork: {
+          type: 'boolean',
+          description: '二次确认后才允许访问回环/私网/链路本地地址',
         },
       },
     },
@@ -108,7 +116,9 @@ const TOOL_DEFINITIONS = [
         recording: runtime.config.recording,
         runId: context.toolCallId,
         tabSession: runtime.tabSession,
-        autoAllowDomain: params.autoAllowDomain !== false,
+        autoAllowDomain: params.autoAllowDomain === true,
+        persistAllowDomain: params.persistAllowDomain === true,
+        allowPrivateNetwork: params.allowPrivateNetwork === true,
         keepOpen: params.keepOpen,
         closeAfter: params.closeAfter,
         allowExternalTab: params.allowExternalTab === true,

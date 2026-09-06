@@ -14,6 +14,14 @@
 - tab session / owner、上限排队、`cleanupTabSession` / `browser_cleanup_session`。
 - CLI：`--keep-open`、`--close-after`、`--tab-id`、`--allow-external-tab`。
 
+### Breaking
+
+- `browser_read_page` 默认 fail-closed：未授权 host 返回 `policy_denied`，不再静默写入
+  `egressAllowlist`，热加载失败也不会继续打开页面。
+- `autoAllowDomain` / `--auto-allow-domain` / `JS_EYES_AUTO_ALLOW_DOMAIN=1` 只授予
+  会话级临时授权。持久写盘必须显式 `persistAllowDomain` / `--persist-allow-domain`。
+- 回环、私网、链路本地和混淆 IP 默认拒绝；需要 `allowPrivateNetwork` 二次确认。
+
 ### Removed
 
 - 删除 `browserUtils.js` 中未使用的 click / fill / wait / scroll / screenshot
