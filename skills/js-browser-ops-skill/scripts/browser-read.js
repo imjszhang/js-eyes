@@ -21,7 +21,9 @@ function parseArgs() {
     recordingMode: null,
     recordingBaseDir: null,
     noCache: false,
-    autoAllowDomain: true,
+    autoAllowDomain: false,
+    persistAllowDomain: false,
+    allowPrivateNetwork: false,
     debugRecording: false,
     runId: null,
     visual: undefined,
@@ -71,6 +73,10 @@ function parseArgs() {
       options.autoAllowDomain = true;
     } else if (arg === '--no-auto-allow-domain') {
       options.autoAllowDomain = false;
+    } else if (arg === '--persist-allow-domain') {
+      options.persistAllowDomain = true;
+    } else if (arg === '--allow-private-network') {
+      options.allowPrivateNetwork = true;
     } else if (arg === '--debug-recording') {
       options.debugRecording = true;
     } else if (!options.url) {
@@ -86,7 +92,7 @@ async function main() {
   if (!options.url || options.url === '--help' || options.url === '-h') {
     console.log('用法: node index.js read <url> [--format markdown|text|html] [--pretty] [--browser-server ws://...]');
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
-    console.log('      [--allow-new-domain|--no-auto-allow-domain]');
+    console.log('      [--auto-allow-domain|--no-auto-allow-domain] [--persist-allow-domain] [--allow-private-network]');
     console.log('视觉反馈选项:');
     VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
@@ -112,6 +118,8 @@ async function main() {
       recording: runtimeConfig.recording,
       noCache: options.noCache,
       autoAllowDomain: options.autoAllowDomain,
+      persistAllowDomain: options.persistAllowDomain,
+      allowPrivateNetwork: options.allowPrivateNetwork,
       debugRecording: options.debugRecording,
       runId: options.runId,
       visual,
