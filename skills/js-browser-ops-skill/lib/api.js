@@ -19,6 +19,7 @@ const {
   normalizeReadPageCacheVary,
 } = require('./runContext');
 const { generateReadPageScript } = require('./browserUtils');
+const { readPageAfterWait } = require('./pageWait');
 const { authorizeUrlForRead } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
 const {
@@ -232,10 +233,18 @@ async function readPage(browser, params, options = {}) {
       'browser_read_page', browser, opened.tabId,
       { ...params, tabId: opened.tabId },
       options,
-      () => browser.executeScript(opened.tabId, script),
+      () => readPageAfterWait({
+        browser,
+        tabId: opened.tabId,
+        params,
+        options,
+        format: format || 'markdown',
+        requestedUrl: url,
+        extract: () => browser.executeScript(opened.tabId, script),
+      }),
     );
 
-    if (runContext.recording.cacheEnabled && cacheEligible && result) {
+    if (runContext.recording.cacheEnabled && cacheEligible && result && result.status !== 'content_too_short') {
       writeCacheEntry(runContext, {
         response: result,
         fetchedAt: new Date().toISOString(),

@@ -33,6 +33,8 @@ const { createRunContext, normalizeUrl } = require('../lib/runContext');
 const pkg = require('../package.json');
 const definition = require('../skill.definition');
 
+const LONG_BODY = 'Readable article body with enough characters to pass the default eighty-character minimum.';
+
 function createRecording(t) {
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-browser-cache-'));
   t.after(() => fs.rmSync(baseDir, { recursive: true, force: true }));
@@ -65,7 +67,7 @@ function createBrowser() {
       return {
         title: `${format} title`,
         author: '',
-        content: `${format} content ${url}`,
+        content: `${LONG_BODY} ${format} ${url}`,
         excerpt: '',
         siteName: '',
         url,
@@ -119,7 +121,13 @@ test('API keeps read-page extraction and routes browser actions through first-cl
   const browser = {
     async executeScript(tabId, script) {
       calls.push(['executeScript', tabId, script]);
-      return { title: 'Example', content: 'page body' };
+      return {
+        title: 'Example',
+        content: LONG_BODY,
+        readyState: 'complete',
+        contentChars: 80,
+        href: 'https://example.com/page',
+      };
     },
     async click(...args) {
       calls.push(['click', ...args]);
@@ -151,9 +159,11 @@ test('API keeps read-page extraction and routes browser actions through first-cl
   await takeScreenshot(browser, { tabId: 42, fullPage: true, format: 'jpeg', quality: 80 }, options);
 
   assert.equal(readResult.tabId, 42);
-  assert.match(calls[0][2], /function extractContent\(\)/);
-  assert.match(calls[0][2], /var fmt = "text";/);
-  assert.deepEqual(calls.slice(1), [
+  assert.equal(readResult.status, 'ok');
+  assert.match(calls[0][2], /probePage/);
+  assert.match(calls[1][2], /function extractContent\(\)/);
+  assert.match(calls[1][2], /var fmt = "text";/);
+  assert.deepEqual(calls.slice(2), [
     ['click', 42, { selector: '#submit', text: 'Go', index: 1 }, options],
     ['fill', 42, { selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options],
     ['waitFor', 42, { selector: '.results', timeout: 10, visible: true }, options],
@@ -202,7 +212,7 @@ test('readPage cache hits preserve the miss response shape and cache metadata', 
   assert.deepEqual(miss.run, { id: 'cache-miss' });
   assert.deepEqual(hit.run, { id: 'cache-hit' });
   assert.equal(browser.openUrlCalls, 1);
-  assert.equal(browser.executeScriptCalls, 1);
+  assert.equal(browser.executeScriptCalls, 2);
 
   const entry = JSON.parse(fs.readFileSync(cacheFileFor(recording, params), 'utf8'));
   assert.equal(entry.format, 'markdown');
@@ -234,7 +244,7 @@ test('readPage cache keys isolate output formats', async (t) => {
   assert.equal(markdownHit._cached, true);
   assert.equal(markdownHit.content, markdown.content);
   assert.notEqual(html.content, markdown.content);
-  assert.equal(browser.executeScriptCalls, 2);
+  assert.equal(browser.executeScriptCalls, 4);
 });
 
 test('readPage cache keys preserve URL fragments, ref queries, and trailing slashes', (t) => {
@@ -282,7 +292,7 @@ test('readPage does not cross-hit URLs with distinct output-bearing components',
     assert.equal(rightResult._cached, false);
     assert.notEqual(leftResult.content, rightResult.content);
   }
-  assert.equal(browser.executeScriptCalls, 6);
+  assert.equal(browser.executeScriptCalls, 12);
 });
 
 test('readPage cache key ignores parameters that do not affect current output', (t) => {
@@ -325,7 +335,7 @@ test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) =
 
   assert.equal(first._cached, false);
   assert.equal(second._cached, false);
-  assert.equal(browser.executeScriptCalls, 2);
+  assert.equal(browser.executeScriptCalls, 4);
 });
 
 test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
@@ -369,7 +379,7 @@ test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
 
   assert.equal(result._cached, false);
   assert.notEqual(result.content, 'stale schema v1 content');
-  assert.equal(browser.executeScriptCalls, 1);
+  assert.equal(browser.executeScriptCalls, 2);
 });
 
 test('url plus tabId navigates that tab instead of reading the old page', async () => {
@@ -462,7 +472,7 @@ test('errors and session cleanup still recycle owned tabs', async () => {
 
   browser.executeScript = async (tabId) => ({
     title: 'ok',
-    content: 'ok',
+    content: LONG_BODY,
     url: browser.tabUrls.get(tabId),
   });
   const kept = await readPage(browser, { url: 'https://example.com/keep', format: 'text' }, {
@@ -499,7 +509,7 @@ test('tab pool queues extra opens and abort removes the waiter', async () => {
   });
   browser.executeScript = async () => {
     await hold;
-    return { title: 'held', content: 'held', url: 'https://example.com/hold' };
+    return { title: 'held', content: LONG_BODY, url: 'https://example.com/hold' };
   };
   const first = readPage(browser, { url: 'https://example.com/hold', format: 'text' }, {
     recordingMode: 'off',
@@ -605,4 +615,83 @@ test('private and confused addresses are denied without a second confirmation', 
   }
   assert.equal(isPrivateLiteral('127.0.0.1'), true);
   assert.equal(isPrivateLiteral('::1'), true);
+});
+
+test('readPage waits for delayed article text instead of the first empty shell', async () => {
+  const started = Date.now();
+  const browser = createBrowser();
+  browser.executeScript = async (tabId, script) => {
+    const elapsed = Date.now() - started;
+    const ready = elapsed >= 500;
+    const url = browser.tabUrls.get(tabId) || 'https://example.com/spa';
+    if (String(script).includes('probePage')) {
+      return {
+        probePage: true,
+        readyState: 'complete',
+        contentChars: ready ? 240 : 12,
+        href: 'https://example.com/spa/final',
+        navigations: 2,
+        hasSelector: true,
+        networkQuietMs: 800,
+      };
+    }
+    return {
+      title: 'SPA',
+      content: ready
+        ? 'Delayed article body that appears after the client render completes and is long enough.'
+        : 'Home About',
+      url,
+    };
+  };
+
+  const result = await readPage(browser, {
+    url: 'https://example.com/spa',
+    format: 'text',
+    waitTimeoutMs: 2000,
+    pollIntervalMs: 100,
+    minContentChars: 80,
+  }, { ...allowlistedOptions(), recordingMode: 'off' });
+
+  assert.equal(result.status, 'ok');
+  assert.match(result.content, /Delayed article body/);
+  assert.equal(result.finalUrl, 'https://example.com/spa/final');
+  assert.equal(result.navigations, 2);
+  assert.ok(result.waitedMs >= 400);
+  assert.notEqual(result.finalUrl, 'https://example.com/spa');
+});
+
+test('readPage returns content_too_short instead of navbar text', async () => {
+  const browser = createBrowser();
+  browser.executeScript = async (tabId, script) => {
+    if (String(script).includes('probePage')) {
+      return {
+        probePage: true,
+        readyState: 'complete',
+        contentChars: 18,
+        href: 'https://example.com/empty',
+        navigations: 1,
+        hasSelector: true,
+        networkQuietMs: 800,
+      };
+    }
+    return {
+      title: 'Empty',
+      content: 'Home About Contact',
+      url: browser.tabUrls.get(tabId),
+    };
+  };
+
+  const result = await readPage(browser, {
+    url: 'https://example.com/empty',
+    format: 'text',
+    waitTimeoutMs: 250,
+    pollIntervalMs: 50,
+    minContentChars: 80,
+  }, { ...allowlistedOptions(), recordingMode: 'off' });
+
+  assert.equal(result.status, 'content_too_short');
+  assert.equal(result.content, '');
+  assert.doesNotMatch(result.content, /Home About Contact/);
+  assert.equal(result.finalUrl, 'https://example.com/empty');
+  assert.ok(result.contentChars < 80);
 });

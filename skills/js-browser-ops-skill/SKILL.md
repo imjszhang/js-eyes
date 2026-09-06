@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.6.0
+version: 2.7.0
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -33,7 +33,7 @@ metadata:
 
 | 工具 | 说明 |
 |------|------|
-| `browser_read_page` | 读取网页正文。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。`url`+`tabId` 在该标签内导航。外部标签需 `allowExternalTab`。未授权 host 默认 `policy_denied`；`autoAllowDomain` 只做会话授权，`persistAllowDomain` 才写盘 |
+| `browser_read_page` | 读取网页正文。打开后先按 `waitUntil` / `minContentChars` 等待，短空壳返回 `content_too_short` 而不是导航栏。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。 |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |

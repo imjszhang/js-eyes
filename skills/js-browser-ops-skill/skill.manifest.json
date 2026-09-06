@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "js-browser-ops-skill",
   "name": "JS Browser Ops Skill",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "publisher": "js-eyes",
   "description": "通用浏览器操作技能，提供网页内容读取、DOM 交互、截图等能力",
   "entry": "./skill.entry.js",
