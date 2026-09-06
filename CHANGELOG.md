@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `js-browser-ops-skill` 的 `browser_read_page` cache v2 保留完整 URL 并按
+  `format` 隔离；缓存命中返回一致业务 shape，同时以 `tabId: null` 明确表示
+  没有可安全复用的 live tab context。
+
 ## [2.10.0] - 2026-07-25
 
 > **Architecture cleanup on the 2.x line.** Package-boundary cleanup and V1

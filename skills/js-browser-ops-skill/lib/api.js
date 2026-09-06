@@ -127,8 +127,7 @@ function decodeCachedReadPage(cached, expectedFormat) {
   if (!response || typeof response !== 'object' || Array.isArray(response)) {
     return null;
   }
-  if (typeof response.content !== 'string'
-      || !Object.prototype.hasOwnProperty.call(response, 'tabId')) {
+  if (typeof response.content !== 'string') {
     return null;
   }
   return response;
@@ -147,6 +146,7 @@ async function readPage(browser, params, options = {}) {
   const { url, tabId } = params;
   const cacheVary = normalizeReadPageCacheVary(params);
   const format = cacheVary.format;
+  const cacheEligible = Boolean(url) && !tabId;
   const startTime = Date.now();
 
   const runContext = createRunContext({
@@ -154,10 +154,7 @@ async function readPage(browser, params, options = {}) {
     skillVersion: SKILL_VERSION,
     scrapeType: 'read',
     url: url || `tab:${tabId}`,
-    tabId: cacheVary.tabId,
     format,
-    maxContentChars: cacheVary.maxContentChars,
-    includeLinks: cacheVary.includeLinks,
     recording: options.recording,
     recordingMode: options.recordingMode,
     debugRecording: options.debugRecording,
@@ -165,7 +162,7 @@ async function readPage(browser, params, options = {}) {
     runId: options.runId,
   });
 
-  if (runContext.recording.cacheEnabled && url) {
+  if (runContext.recording.cacheEnabled && cacheEligible) {
     const cached = readCacheEntry(runContext, 'read');
     const cachedResponse = decodeCachedReadPage(cached, format);
     if (cachedResponse) {
@@ -177,7 +174,7 @@ async function readPage(browser, params, options = {}) {
       });
       return createReadPageResponse(
         cachedResponse,
-        cachedResponse.tabId,
+        null,
         true,
         runContext.runId,
       );
@@ -203,9 +200,9 @@ async function readPage(browser, params, options = {}) {
     () => browser.executeScript(resolvedTabId, script),
   );
 
-  if (runContext.recording.cacheEnabled && url && result) {
+  if (runContext.recording.cacheEnabled && cacheEligible && result) {
     writeCacheEntry(runContext, {
-      response: { ...result, tabId: resolvedTabId },
+      response: result,
       fetchedAt: new Date().toISOString(),
       format,
     }, 'read');

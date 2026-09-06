@@ -7,31 +7,19 @@ const {
 } = require('@js-eyes/skill-recording');
 
 function normalizeUrl(inputUrl) {
-  const url = new URL(inputUrl);
-  url.hash = '';
-  for (const key of Array.from(url.searchParams.keys())) {
-    if (key.startsWith('utm_') || key === 'ref' || key === 'ref_source') {
-      url.searchParams.delete(key);
-    }
-  }
-  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-  return url.toString();
+  const value = String(inputUrl);
+  new URL(value);
+  return value;
 }
 
 function normalizeReadPageCacheVary(options = {}) {
   const format = options.format === 'html' || options.format === 'text'
     ? options.format
     : 'markdown';
-  const maxContentChars = Number.isFinite(options.maxContentChars)
-    ? Math.max(0, Math.trunc(options.maxContentChars))
-    : null;
 
   return {
-    schema: 1,
+    schema: 2,
     format,
-    tabId: Number.isInteger(options.tabId) ? options.tabId : null,
-    maxContentChars,
-    includeLinks: options.includeLinks !== false,
   };
 }
 

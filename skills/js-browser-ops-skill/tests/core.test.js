@@ -5,7 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { getCacheFilePath } = require('@js-eyes/skill-recording');
+const {
+  createCacheKey,
+  getCacheFilePath,
+  writeCacheEntry,
+} = require('@js-eyes/skill-recording');
 const {
   generateClickScript,
   generateFillFormScript,
@@ -13,7 +17,7 @@ const {
 } = require('../lib/browserUtils');
 const { readPage } = require('../lib/api');
 const { hostMatches, normalizeHost } = require('../lib/egressAllowlist');
-const { createRunContext } = require('../lib/runContext');
+const { createRunContext, normalizeUrl } = require('../lib/runContext');
 const pkg = require('../package.json');
 const definition = require('../skill.definition');
 
@@ -28,21 +32,25 @@ function createBrowser() {
     serverUrl: 'ws://localhost:18080',
     openUrlCalls: 0,
     executeScriptCalls: 0,
-    async openUrl() {
+    tabUrls: new Map(),
+    async openUrl(url) {
       this.openUrlCalls += 1;
-      return 100 + this.openUrlCalls;
+      const tabId = 100 + this.openUrlCalls;
+      this.tabUrls.set(tabId, url);
+      return tabId;
     },
     async executeScript(tabId, script) {
       this.executeScriptCalls += 1;
       const formatMatch = script.match(/var fmt = ("(?:[^"\\]|\\.)*");/);
       const format = formatMatch ? JSON.parse(formatMatch[1]) : 'unknown';
+      const url = this.tabUrls.get(tabId) || `tab:${tabId}`;
       return {
         title: `${format} title`,
         author: '',
-        content: `${format} content ${this.executeScriptCalls}`,
+        content: `${format} content ${url}`,
         excerpt: '',
         siteName: '',
-        url: `https://example.com/page#tab-${tabId}`,
+        url,
         images: [],
         links: [],
       };
@@ -106,13 +114,15 @@ test('readPage cache hits preserve the miss response shape and cache metadata', 
   assert.deepEqual(Object.keys(hit).sort(), Object.keys(miss).sort());
   assert.deepEqual(hit, {
     ...miss,
+    tabId: null,
     _cached: true,
     run: { id: 'cache-hit' },
   });
   assert.equal(miss._cached, false);
   assert.equal(hit._cached, true);
   assert.equal(hit.content, miss.content);
-  assert.equal(hit.tabId, miss.tabId);
+  assert.equal(typeof miss.tabId, 'number');
+  assert.equal(hit.tabId, null);
   assert.deepEqual(miss.run, { id: 'cache-miss' });
   assert.deepEqual(hit.run, { id: 'cache-hit' });
   assert.equal(browser.openUrlCalls, 1);
@@ -122,7 +132,7 @@ test('readPage cache hits preserve the miss response shape and cache metadata', 
   assert.equal(entry.format, 'markdown');
   assert.equal(typeof entry.fetchedAt, 'string');
   assert.equal(Number.isNaN(Date.parse(entry.fetchedAt)), false);
-  assert.equal(entry.response.tabId, miss.tabId);
+  assert.equal(Object.prototype.hasOwnProperty.call(entry.response, 'tabId'), false);
 });
 
 test('readPage cache keys isolate output formats', async (t) => {
@@ -151,56 +161,135 @@ test('readPage cache keys isolate output formats', async (t) => {
   assert.equal(browser.executeScriptCalls, 2);
 });
 
-test('readPage cache keys reserve stable output-option dimensions', (t) => {
+test('readPage cache keys preserve URL fragments, ref queries, and trailing slashes', (t) => {
   const recording = createRecording(t);
-  const url = 'https://example.com/vary';
-  const keyFor = (params) => createRunContext({
+  const keyFor = (url) => createRunContext({
     skillId: pkg.name,
     skillVersion: pkg.version,
     scrapeType: 'read',
     url,
     recording,
-    ...params,
+    format: 'markdown',
   }).cacheKey;
-  const baseKey = keyFor({ format: 'markdown' });
 
-  assert.equal(keyFor({}), baseKey);
-  assert.notEqual(keyFor({ format: 'html' }), baseKey);
-  assert.notEqual(keyFor({ tabId: 42 }), baseKey);
-  assert.notEqual(keyFor({ maxContentChars: 1000 }), baseKey);
-  assert.notEqual(keyFor({ includeLinks: false }), baseKey);
+  const pairs = [
+    ['https://example.com/app#/alpha', 'https://example.com/app#/beta'],
+    ['https://example.com/app?ref=alpha', 'https://example.com/app?ref=beta'],
+    ['https://example.com/path', 'https://example.com/path/'],
+  ];
+  for (const [left, right] of pairs) {
+    assert.equal(normalizeUrl(left), left);
+    assert.equal(normalizeUrl(right), right);
+    assert.notEqual(keyFor(left), keyFor(right));
+  }
 });
 
-test('readPage explicitly refreshes legacy cache entries without format metadata', async (t) => {
+test('readPage does not cross-hit URLs with distinct output-bearing components', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const pairs = [
+    ['https://example.com/app#/alpha', 'https://example.com/app#/beta'],
+    ['https://example.com/app?ref=alpha', 'https://example.com/app?ref=beta'],
+    ['https://example.com/path', 'https://example.com/path/'],
+  ];
+
+  for (const [left, right] of pairs) {
+    const leftResult = await readPage(browser, { url: left, format: 'markdown' }, {
+      recording,
+      autoAllowDomain: false,
+    });
+    const rightResult = await readPage(browser, { url: right, format: 'markdown' }, {
+      recording,
+      autoAllowDomain: false,
+    });
+    assert.equal(leftResult._cached, false);
+    assert.equal(rightResult._cached, false);
+    assert.notEqual(leftResult.content, rightResult.content);
+  }
+  assert.equal(browser.executeScriptCalls, 6);
+});
+
+test('readPage cache key ignores parameters that do not affect current output', (t) => {
+  const recording = createRecording(t);
+  const createContext = (params) => createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    url: 'https://example.com/current-output',
+    recording,
+    format: 'markdown',
+    ...params,
+  });
+  const baseKey = createContext({}).cacheKey;
+
+  assert.equal(createContext({ tabId: 42 }).cacheKey, baseKey);
+  assert.equal(createContext({ maxContentChars: 1000 }).cacheKey, baseKey);
+  assert.equal(createContext({ includeLinks: false }).cacheKey, baseKey);
+});
+
+test('readPage bypasses URL cache when a runtime tabId is supplied', async (t) => {
+  const recording = createRecording(t);
+  const browser = createBrowser();
+  const params = {
+    url: 'https://example.com/runtime-tab',
+    tabId: 42,
+    format: 'markdown',
+  };
+
+  const first = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+  });
+  const second = await readPage(browser, params, {
+    recording,
+    autoAllowDomain: false,
+  });
+
+  assert.equal(first._cached, false);
+  assert.equal(second._cached, false);
+  assert.equal(browser.executeScriptCalls, 2);
+});
+
+test('readPage cache schema v2 cannot hit schema v1 entries', async (t) => {
   const recording = createRecording(t);
   const browser = createBrowser();
   const params = { url: 'https://example.com/legacy', format: 'markdown' };
+  const currentContext = createRunContext({
+    skillId: pkg.name,
+    skillVersion: pkg.version,
+    scrapeType: 'read',
+    ...params,
+    recording,
+  });
+  const legacyCacheKey = createCacheKey({
+    skillId: pkg.name,
+    scrapeType: 'read',
+    url: params.url,
+    version: pkg.version,
+    readPage: {
+      schema: 1,
+      format: 'markdown',
+      tabId: null,
+      maxContentChars: null,
+      includeLinks: true,
+    },
+  });
+  assert.notEqual(currentContext.cacheKey, legacyCacheKey);
+  writeCacheEntry({
+    ...currentContext,
+    cacheKey: legacyCacheKey,
+  }, {
+    response: { content: 'stale schema v1 content', tabId: 999 },
+    fetchedAt: new Date().toISOString(),
+    format: 'markdown',
+  }, 'read');
 
-  const seed = await readPage(browser, params, {
+  const result = await readPage(browser, params, {
     recording,
     autoAllowDomain: false,
   });
-  const cacheFile = cacheFileFor(recording, params);
-  const legacyEntry = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-  delete legacyEntry.format;
-  delete legacyEntry.fetchedAt;
-  delete legacyEntry.response.tabId;
-  fs.writeFileSync(cacheFile, JSON.stringify(legacyEntry), 'utf8');
 
-  const refreshed = await readPage(browser, params, {
-    recording,
-    autoAllowDomain: false,
-  });
-  const hit = await readPage(browser, params, {
-    recording,
-    autoAllowDomain: false,
-  });
-
-  assert.equal(seed._cached, false);
-  assert.equal(refreshed._cached, false);
-  assert.equal(typeof refreshed.content, 'string');
-  assert.notEqual(refreshed.content, seed.content);
-  assert.equal(hit._cached, true);
-  assert.equal(hit.content, refreshed.content);
-  assert.equal(browser.executeScriptCalls, 2);
+  assert.equal(result._cached, false);
+  assert.notEqual(result.content, 'stale schema v1 content');
+  assert.equal(browser.executeScriptCalls, 1);
 });

@@ -203,11 +203,11 @@ skills/js-browser-ops-skill/
 缓存策略：
 - `browser_read_page` 接入缓存（URL → 结构化结果）
 - 命中与未命中均在顶层返回正文业务字段、`tabId`、`_cached` 和当前
-  `run.id`；缓存命中的 `tabId` 是原始抓取所用标签页，不会为命中另开标签页
-- key 按规范化 URL、有效 `format`、显式 `tabId` 隔离，并为
-  `maxContentChars` / `includeLinks` 等输出选项保留稳定维度
-- 缓存条目记录 `fetchedAt` 与 `format`；缺少这些字段的旧条目视为 miss 并刷新，
-  避免旧 `response` 包装导致顶层 `content` 缺失
+  `run.id`；缓存命中不创建或验证 live tab，因此明确返回 `tabId: null`
+- key 保留完整 URL（含 fragment、query 与尾斜杠），并按有效 `format` 隔离；
+  URL 与 `tabId` 同时传入时不缓存，避免把运行时标签页上下文错误持久化
+- 缓存条目记录 `fetchedAt` 与 `format`；cache schema v2 使旧 key 直接失效，
+  避免旧 `response` 包装或历史 `tabId` 被误用
 - 交互类工具（click/fill/scroll/wait/screenshot）不缓存但记录调用历史
 
 默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-browser-ops-skill/`。
