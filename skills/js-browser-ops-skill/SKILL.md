@@ -48,10 +48,12 @@ const { readPage, clickElement, fillForm, scrollPage } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');
 
-// 读取网页内容
+// 后续需要操作该标签页，因此禁用缓存以取得 live tabId。
+// 纯读取可省略 noCache；缓存命中时 tabId 明确为 null。
 const page = await readPage(browser, {
   url: 'https://example.com/article',
   format: 'markdown',
+  noCache: true,
 });
 
 // 点击元素
