@@ -14,7 +14,10 @@ const {
   appendVisualSession,
 } = require('@js-eyes/visual-bridge-kit');
 
-const { createRunContext } = require('./runContext');
+const {
+  createRunContext,
+  normalizeReadPageCacheVary,
+} = require('./runContext');
 const { generateReadPageScript } = require('./browserUtils');
 const { ensureDomainAllowedForUrl } = require('./egressAllowlist');
 const { getVisualHint, buildSummary } = require('./visualHint');
@@ -112,8 +115,38 @@ async function ensureTab(browser, url, tabId) {
   return browser.openUrl(url);
 }
 
+function decodeCachedReadPage(cached, expectedFormat) {
+  if (!cached || cached.format !== expectedFormat) {
+    return null;
+  }
+  if (typeof cached.fetchedAt !== 'string' || Number.isNaN(Date.parse(cached.fetchedAt))) {
+    return null;
+  }
+
+  const response = cached.response;
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    return null;
+  }
+  if (typeof response.content !== 'string'
+      || !Object.prototype.hasOwnProperty.call(response, 'tabId')) {
+    return null;
+  }
+  return response;
+}
+
+function createReadPageResponse(result, tabId, cached, runId) {
+  return {
+    ...result,
+    tabId,
+    _cached: cached,
+    run: { id: runId },
+  };
+}
+
 async function readPage(browser, params, options = {}) {
-  const { url, tabId, format } = params;
+  const { url, tabId } = params;
+  const cacheVary = normalizeReadPageCacheVary(params);
+  const format = cacheVary.format;
   const startTime = Date.now();
 
   const runContext = createRunContext({
@@ -121,6 +154,10 @@ async function readPage(browser, params, options = {}) {
     skillVersion: SKILL_VERSION,
     scrapeType: 'read',
     url: url || `tab:${tabId}`,
+    tabId: cacheVary.tabId,
+    format,
+    maxContentChars: cacheVary.maxContentChars,
+    includeLinks: cacheVary.includeLinks,
     recording: options.recording,
     recordingMode: options.recordingMode,
     debugRecording: options.debugRecording,
@@ -130,14 +167,20 @@ async function readPage(browser, params, options = {}) {
 
   if (runContext.recording.cacheEnabled && url) {
     const cached = readCacheEntry(runContext, 'read');
-    if (cached) {
+    const cachedResponse = decodeCachedReadPage(cached, format);
+    if (cachedResponse) {
       appendHistory(runContext, {
         tool: 'browser_read_page',
-        input: { url, format },
+        input: { url, tabId, format },
         cached: true,
         durationMs: Date.now() - startTime,
       });
-      return { ...cached, _cached: true, run: { id: runContext.runId } };
+      return createReadPageResponse(
+        cachedResponse,
+        cachedResponse.tabId,
+        true,
+        runContext.runId,
+      );
     }
   }
 
@@ -161,7 +204,11 @@ async function readPage(browser, params, options = {}) {
   );
 
   if (runContext.recording.cacheEnabled && url && result) {
-    writeCacheEntry(runContext, { response: result }, 'read');
+    writeCacheEntry(runContext, {
+      response: { ...result, tabId: resolvedTabId },
+      fetchedAt: new Date().toISOString(),
+      format,
+    }, 'read');
   }
   if (runContext.recording.historyEnabled) {
     appendHistory(runContext, {
@@ -172,7 +219,12 @@ async function readPage(browser, params, options = {}) {
     });
   }
 
-  return { ...result, tabId: resolvedTabId, run: { id: runContext.runId } };
+  return createReadPageResponse(
+    result,
+    resolvedTabId,
+    false,
+    runContext.runId,
+  );
 }
 
 async function clickElement(browser, params, options = {}) {

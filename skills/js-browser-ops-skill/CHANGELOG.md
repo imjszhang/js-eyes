@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.2 — 2026-09-06
+
+### Fixed
+
+- `browser_read_page` 的缓存命中与未命中现在返回相同顶层结构，均包含业务字段、
+  `tabId`、`_cached` 与当前 `run.id`。
+- read cache key 现在隔离有效 `format`、显式 `tabId`，并预留稳定的
+  `maxContentChars` / `includeLinks` 输出选项维度。
+- read cache 条目新增 `fetchedAt` 与 `format`；缺少格式元数据或有效正文的旧条目
+  会明确按 miss 刷新，不再静默返回 `content: undefined`。
+
 ## 2.5.1 — 2026-06-26
 
 ### Added

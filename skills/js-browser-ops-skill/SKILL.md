@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.5.1
+version: 2.5.2
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -202,6 +202,12 @@ skills/js-browser-ops-skill/
 
 缓存策略：
 - `browser_read_page` 接入缓存（URL → 结构化结果）
+- 命中与未命中均在顶层返回正文业务字段、`tabId`、`_cached` 和当前
+  `run.id`；缓存命中的 `tabId` 是原始抓取所用标签页，不会为命中另开标签页
+- key 按规范化 URL、有效 `format`、显式 `tabId` 隔离，并为
+  `maxContentChars` / `includeLinks` 等输出选项保留稳定维度
+- 缓存条目记录 `fetchedAt` 与 `format`；缺少这些字段的旧条目视为 miss 并刷新，
+  避免旧 `response` 包装导致顶层 `content` 缺失
 - 交互类工具（click/fill/scroll/wait/screenshot）不缓存但记录调用历史
 
 默认按技能分目录落盘到 `~/.js-eyes/skill-records/js-browser-ops-skill/`。

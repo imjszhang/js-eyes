@@ -18,16 +18,47 @@ function normalizeUrl(inputUrl) {
   return url.toString();
 }
 
+function normalizeReadPageCacheVary(options = {}) {
+  const format = options.format === 'html' || options.format === 'text'
+    ? options.format
+    : 'markdown';
+  const maxContentChars = Number.isFinite(options.maxContentChars)
+    ? Math.max(0, Math.trunc(options.maxContentChars))
+    : null;
+
+  return {
+    schema: 1,
+    format,
+    tabId: Number.isInteger(options.tabId) ? options.tabId : null,
+    maxContentChars,
+    includeLinks: options.includeLinks !== false,
+  };
+}
+
 function createRunContext(options) {
+  const cacheVary = normalizeReadPageCacheVary(options);
   return createUrlSkillRunContext({
     ...options,
     normalizeUrl,
+    buildCacheKeyParts: ({
+      skillId,
+      scrapeType,
+      normalizedInput,
+      skillVersion,
+    }) => ({
+      skillId,
+      scrapeType,
+      url: normalizedInput,
+      version: skillVersion,
+      readPage: cacheVary,
+    }),
   });
 }
 
 module.exports = {
   createRunContext,
   createRunId,
+  normalizeReadPageCacheVary,
   normalizeUrl,
   resolveRecordingState,
 };
