@@ -28,6 +28,10 @@ function parseArgs() {
     closeAfter: undefined,
     tabId: null,
     allowExternalTab: false,
+    waitUntil: undefined,
+    waitForSelector: null,
+    waitTimeoutMs: undefined,
+    minContentChars: undefined,
     debugRecording: false,
     runId: null,
     visual: undefined,
@@ -90,6 +94,18 @@ function parseArgs() {
       i += 1;
     } else if (arg === '--allow-external-tab') {
       options.allowExternalTab = true;
+    } else if (arg === '--wait-until' && args[i + 1]) {
+      options.waitUntil = args[i + 1];
+      i += 1;
+    } else if (arg === '--wait-for-selector' && args[i + 1]) {
+      options.waitForSelector = args[i + 1];
+      i += 1;
+    } else if (arg === '--wait-timeout-ms' && args[i + 1]) {
+      options.waitTimeoutMs = Number(args[i + 1]);
+      i += 1;
+    } else if (arg === '--min-content-chars' && args[i + 1]) {
+      options.minContentChars = Number(args[i + 1]);
+      i += 1;
     } else if (arg === '--debug-recording') {
       options.debugRecording = true;
     } else if (!options.url) {
@@ -107,6 +123,8 @@ async function main() {
     console.log('      [--recording-mode standard] [--debug-recording] [--no-cache]');
     console.log('      [--auto-allow-domain|--no-auto-allow-domain] [--persist-allow-domain] [--allow-private-network]');
     console.log('      [--keep-open|--close-after] [--tab-id <id>] [--allow-external-tab]');
+    console.log('      [--wait-until load|domcontentloaded|networkidle|selector|stable] [--wait-for-selector <css>]');
+    console.log('      [--wait-timeout-ms 8000] [--min-content-chars 80]');
     console.log('视觉反馈选项:');
     VISUAL_HELP_LINES.forEach((l) => console.log(l));
     return;
@@ -129,6 +147,10 @@ async function main() {
       url: options.url,
       tabId: options.tabId,
       format: options.format,
+      waitUntil: options.waitUntil,
+      waitForSelector: options.waitForSelector,
+      waitTimeoutMs: options.waitTimeoutMs,
+      minContentChars: options.minContentChars,
     }, {
       recording: runtimeConfig.recording,
       noCache: options.noCache,

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.7.0 — 2026-09-06
+
+### Breaking
+
+- `readPage` 不再把 `document.body` 或导航栏短文本当成正文。超时后仍短于
+  `minContentChars` 时返回 `status: content_too_short`，`content` 为空。
+
+### Added
+
+- `waitUntil`: `domcontentloaded` | `load` | `networkidle` | `selector` | `stable`
+- `waitForSelector`、`waitTimeoutMs`、`minContentChars`
+- 诊断字段：`readyState`、`waitedMs`、`contentChars`、`navigations`、`finalUrl`
+
 ## 2.6.0 — 2026-09-06
 
 ### BREAKING

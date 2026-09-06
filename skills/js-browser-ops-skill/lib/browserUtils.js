@@ -39,9 +39,9 @@ function generateReadPageScript(format) {
         var s = scoreNode(node) + Math.min(Math.floor(text.length / 100), 3);
         if (s > bestScore) { bestScore = s; best = node; }
       }
-      article = best || document.body;
+      article = best;
     }
-    return article;
+    return article || null;
   }
 
   function htmlToMarkdown(el) {
@@ -121,6 +121,20 @@ function generateReadPageScript(format) {
   }
 
   var contentEl = extractContent();
+  if (!contentEl) {
+    return {
+      title: document.title || '',
+      author: getMetaContent('author') || getMetaContent('article:author') || '',
+      content: '',
+      excerpt: getMetaContent('description') || getMetaContent('og:description') || '',
+      siteName: getMetaContent('og:site_name') || '',
+      url: location.href,
+      images: [],
+      links: [],
+      readyState: document.readyState,
+      contentChars: 0,
+    };
+  }
 
   var images = [];
   var imgs = contentEl.querySelectorAll('img[src]');
