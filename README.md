@@ -672,6 +672,45 @@ Use this checklist after a fresh ClawHub install:
 | Tools not appearing in OpenClaw | Ensure `plugins.load.paths` points to the main `openclaw-plugin` subdirectory and the target child skill is not disabled in the JS Eyes host config |
 | Plugin path not found (Windows) | Use forward slashes in JSON, e.g. `C:/Users/you/skills/js-eyes/openclaw-plugin` |
 | Agent returns `pending-egress` / policy-blocked text | The server policy engine blocked the URL or operation before it reached the browser. Run `js-eyes security show` to inspect `egressAllowlist` and `taskOrigin`; then use `js-eyes egress list`, `js-eyes egress approve <id>`, or `js-eyes egress allow <domain>` as appropriate. This is different from extension disconnects and consent gating. |
+| Windows browser cannot reach OpenClaw/js-eyes on another LAN host | Default bind is loopback only. See [Remote browser on the LAN](#remote-browser-on-the-lan). |
+| Headless Linux / no desktop | The extension must load in a real browser. See [Headless and no-display hosts](#headless-and-no-display-hosts). |
+
+### Remote browser on the LAN
+
+JS Eyes is local-first. The server listens on `localhost:18080` and refuses a non-loopback bind unless you opt in. Native Messaging can only read `server.token` on the same machine.
+
+To drive a browser on one LAN host (for example Windows `192.168.10.66`) from OpenClaw + JS Eyes on another (for example a VM/Docker host `192.168.10.40`):
+
+1. On the **server** host, allow a LAN bind and listen on all interfaces. `serverHost` and `allowRemoteBind` are not hot-reloadable; restart the server / OpenClaw afterwards.
+
+   `~/.js-eyes/config/config.json` (or the OpenClaw `plugins.entries["js-eyes"].config` block):
+
+   ```json
+   {
+     "serverHost": "0.0.0.0",
+     "serverPort": 18080,
+     "security": {
+       "allowRemoteBind": true
+     }
+   }
+   ```
+
+   Equivalent: `JS_EYES_ALLOW_REMOTE_BIND=1`. If the server runs in Docker, publish `18080` and set the same values **inside** the container.
+
+2. Confirm `js-eyes doctor` reports `host loopback: NO`. From the Windows machine, `http://192.168.10.40:18080` should be reachable (HTTP 401 without a token is expected).
+
+3. In the Windows extension popup, connect to `http://192.168.10.40:18080` (the server LAN IP, not `localhost`). Paste the token from the server host file `~/.js-eyes/runtime/server.token`. Native Messaging will not copy it across machines.
+
+4. Keep this on a trusted LAN. Do not bind the server to the public internet, and do not turn on `security.allowAnonymous` to “make it work”.
+
+### Headless and no-display hosts
+
+JS Eyes is not a CDP / Playwright driver. Automation goes through the browser extension, so the host must run Chrome, Edge, or Firefox in a session that can install and keep that extension loaded.
+
+A Linux server that only has `google-chrome --headless` (no desktop, VNC, or X display) is not a supported install path. Use one of:
+
+- A graphical or virtual display on the same machine (desktop, VNC, Xvfb + a normal Chrome/Firefox profile), then connect the extension to `http://localhost:18080`
+- A browser on another machine, with the server opened as in [Remote browser on the LAN](#remote-browser-on-the-lan)
 
 ## Related Projects
 
