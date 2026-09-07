@@ -82,11 +82,11 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@types/node": "^22.20.1",
     "@types/ws": "^8.18.1",
-    "eslint": "^9.39.5",
+    "eslint": "^10.10.0",
     "globals": "^17.7.0",
     "typescript": "^7.0.2",
     "web-ext": "^10.5.0"
