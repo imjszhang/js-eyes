@@ -318,10 +318,31 @@ class BrowserAutomation {
   }
 
   async _sendRequest(action, payload = {}, options = {}) {
+    const signal = options.signal;
+    if (signal?.aborted) {
+      const error = new Error('Aborted');
+      error.name = 'AbortError';
+      throw error;
+    }
+
     const now = Date.now();
     const wait = this.requestInterval - (now - this._lastRequestTime);
     if (wait > 0) {
-      await new Promise((resolve) => setTimeout(resolve, wait));
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, wait);
+        if (!signal) return;
+        const onAbort = () => {
+          clearTimeout(timer);
+          const error = new Error('Aborted');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
     }
     this._lastRequestTime = Date.now();
 
@@ -338,18 +359,49 @@ class BrowserAutomation {
     };
 
     return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        if (signal) signal.removeEventListener('abort', onAbort);
+      };
+      const onAbort = () => {
+        clearTimeout(timeoutId);
+        this.pendingRequests.delete(requestId);
+        cleanup();
+        const error = new Error('Aborted');
+        error.name = 'AbortError';
+        reject(error);
+      };
       const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(requestId);
+        cleanup();
         reject(new Error(`请求超时: action=${action}, requestId=${requestId}, timeout=${timeoutSec}s`));
       }, timeoutSec * 1000);
 
-      this.pendingRequests.set(requestId, { resolve, reject, timeoutId });
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      this.pendingRequests.set(requestId, {
+        resolve: (value) => {
+          cleanup();
+          resolve(value);
+        },
+        reject: (err) => {
+          cleanup();
+          reject(err);
+        },
+        timeoutId,
+      });
 
       try {
         this.ws.send(JSON.stringify(message));
       } catch (err) {
         clearTimeout(timeoutId);
         this.pendingRequests.delete(requestId);
+        cleanup();
         reject(new Error(`WebSocket 发送失败: ${err.message}`));
       }
     });

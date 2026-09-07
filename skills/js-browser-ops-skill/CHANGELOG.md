@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.8.0 — 2026-09-06
+
+### Added
+
+- 统一结构化错误契约：`SkillError` / `toSkillError`，字段为
+  `code` / `message` / `retryable` / `retryAfterMs` / `host` / `details`。
+  CLI `--json` 输出 `{ ok: false, error }`。
+- 所有 API 接受 `AbortSignal`。取消会中止未完成的 WS 请求、停止等待，
+  并回收本次自开标签，返回 `code: cancelled`。CLI 的 SIGINT / SIGTERM
+  走同一路径。
+- `readPages` / `browser_read_pages` / CLI `read-pages`：部分成功、
+  并发上限、同 host 串行与最小间隔、缓存命中不占并发/标签、可选进度回调。
+
+### Tests
+
+- 每个错误 code 的产生条件、`rate_limited.retryAfterMs`、取消回收标签。
+- `readPages` 并发、同 host 间隔、单条失败隔离、标签上限与取消。
+
 ## 2.7.0 — 2026-09-06
 
 ### Breaking

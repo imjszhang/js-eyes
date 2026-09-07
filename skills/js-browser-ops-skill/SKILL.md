@@ -1,7 +1,7 @@
 ---
 name: js-browser-ops-skill
 description: 通用浏览器操作技能，提供网页内容读取、DOM 交互、页面截图等能力。
-version: 2.7.0
+version: 2.8.0
 metadata:
   openclaw:
     emoji: "\U0001F310"
@@ -34,6 +34,7 @@ metadata:
 | 工具 | 说明 |
 |------|------|
 | `browser_read_page` | 读取网页正文。打开后先按 `waitUntil` / `minContentChars` 等待，短空壳返回 `content_too_short` 而不是导航栏。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。 |
+| `browser_read_pages` | 批量读取。返回每条 `{ url, ok, data?, error? }`，单条失败不影响其余；同 host 默认串行并遵守最小间隔。 |
 | `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
 | `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
@@ -45,7 +46,7 @@ metadata:
 
 ```javascript
 const { BrowserAutomation } = require('./lib/js-eyes-client');
-const { readPage, clickElement, fillForm, scrollPage, cleanupTabSession } = require('./lib/api');
+const { readPage, readPages, clickElement, fillForm, scrollPage, cleanupTabSession } = require('./lib/api');
 
 const browser = new BrowserAutomation('ws://localhost:18080');
 
@@ -79,14 +80,65 @@ await scrollPage(browser, {
 });
 
 await cleanupTabSession(browser);
+
+const pages = await readPages(browser, {
+  urls: ['https://a.example/1', 'https://b.example/2'],
+  format: 'markdown',
+  concurrency: 3,
+  perHostMinIntervalMs: 1000,
+  perHostConcurrency: 1,
+  timeoutMs: 30000,
+  totalTimeoutMs: 180000,
+  signal,
+});
 ```
+
+## 结构化错误契约
+
+失败时 API 抛出 `SkillError`，CLI `--json` 输出同一信封。语义判断只看 `code` / `retryable` / `retryAfterMs`，不要解析 `message`。
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "blocked_by_site",
+    "message": "...",
+    "retryable": true,
+    "retryAfterMs": 30000,
+    "host": "example.com",
+    "details": {}
+  }
+}
+```
+
+| code | 语义 | retryable |
+|---|---|---|
+| `invalid_params` | 参数缺失/冲突 | false |
+| `policy_denied` | egress / eval 策略拒绝 | false |
+| `skill_not_found` | 技能未安装或未启用 | false |
+| `client_not_connected` | 扩展未连接 | false |
+| `tab_not_found` | tabId 无效或不属于本 session | false |
+| `navigation_failed` | 导航失败 | true |
+| `timeout` | 等待/执行超时 | true |
+| `blocked_by_site` | WAF / challenge / 403 页 | true |
+| `rate_limited` | 站点限流（必带 `retryAfterMs`） | true |
+| `csp_blocked` | 注入被 CSP 拒绝 | false |
+| `eval_denied` | Raw Eval 被拒 | false |
+| `content_too_short` | 正文未达阈值 | true |
+| `cancelled` | AbortSignal / SIGINT / SIGTERM | false |
+
+取消时：中止未完成的 WS 请求、停止等待循环、回收本次自开标签，并返回 `cancelled`。`rate_limited` 未给出站点等待时间时默认 `retryAfterMs: 30000`。
 
 ## CLI 命令
 
 ```bash
 # 读取网页内容（默认读完关标签）
 node skills/js-browser-ops-skill/index.js read "https://example.com/article" --format markdown --pretty
-node skills/js-browser-ops-skill/index.js read "https://example.com/article" --keep-open --no-cache
+node skills/js-browser-ops-skill/index.js read "https://example.com/article" --keep-open --no-cache --json
+
+# 批量读取（文件或 stdin，一行一个 URL）
+node skills/js-browser-ops-skill/index.js read-pages --file urls.txt --json --concurrency 3
+cat urls.txt | node skills/js-browser-ops-skill/index.js read-pages --stdin --json
 
 # 默认 fail-closed。会话临时授权：--auto-allow-domain 或 JS_EYES_AUTO_ALLOW_DOMAIN=1
 # 持久写盘需显式 --persist-allow-domain，热加载失败不会打开页面
@@ -187,6 +239,8 @@ skills/js-browser-ops-skill/
 │   └── _visual-browser.js    # 站点 anchor resolver（CSS/XPath/text/url）
 ├── lib/
 │   ├── api.js                # 业务 API（withVisual 包装）
+│   ├── skillError.js         # 结构化错误契约 toSkillError
+│   ├── batchRead.js          # readPages 并发 / 限流调度
 │   ├── browserUtils.js       # browser_read_page 正文提取脚本模板
 │   ├── visualHint.js         # 6 工具的 hint + buildSummary
 │   ├── cliVisualFlags.js     # CLI 视觉旋钮解析
@@ -194,6 +248,7 @@ skills/js-browser-ops-skill/
 │   └── runContext.js          # Recording 上下文
 └── scripts/
     ├── browser-read.js       # 读取命令
+    ├── browser-read-pages.js # 批量读取
     └── browser-interact.js   # 交互命令
 ```
 
