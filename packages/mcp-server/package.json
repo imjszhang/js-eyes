@@ -41,6 +41,6 @@
     "@js-eyes/runtime-paths": "2.10.0",
     "@js-eyes/skill-contract": "2.10.0",
     "@js-eyes/skill-runtime": "2.10.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   }
 }
