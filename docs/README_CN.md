@@ -586,6 +586,45 @@ npm run bump -- 2.9.1
 | 工具未出现在 OpenClaw 中 | 确认 `plugins.load.paths` 指向主插件 `openclaw-plugin` 子目录，并确认目标子技能未在 `js-eyes` 宿主配置中被禁用 |
 | Windows 路径找不到 | JSON 中使用正斜杠，如 `C:/Users/you/skills/js-eyes/openclaw-plugin` |
 | Agent 返回 pending-egress / 出站策略 / 策略拦截 | 服务端策略未放行该 URL 或操作（扩展可能未执行导航）。执行 `js-eyes security show` 查看 `egressAllowlist` 与 `taskOrigin`；`js-eyes egress list` / `egress approve` / `egress allow <域名>`。详见仓库根目录 [SECURITY.md](../SECURITY.md) 中 Policy Engine。与扩展断连、consent 审批是不同问题。 |
+| Windows 浏览器连不上另一台局域网机器上的 OpenClaw / js-eyes | 默认只监听本机回环。见[局域网远程浏览器](#局域网远程浏览器)。 |
+| 无图形 / 无头 Linux | 必须能加载浏览器扩展。见[无头与无显示主机](#无头与无显示主机)。 |
+
+### 局域网远程浏览器
+
+JS Eyes 默认本机优先：服务器听 `localhost:18080`，未显式打开时拒绝绑定非回环地址。Native Messaging 也只能在**同一台机器**上读取 `server.token`。
+
+若浏览器在一台局域网电脑上（例如 Windows `192.168.10.66`），OpenClaw + JS Eyes 在另一台（例如 PVE/Docker `192.168.10.40`）：
+
+1. 在**服务器**上允许局域网绑定，并监听所有网卡。`serverHost` 与 `allowRemoteBind` **不能热加载**，改完后必须重启 JS Eyes / OpenClaw。
+
+   `~/.js-eyes/config/config.json`（或 OpenClaw 的 `plugins.entries["js-eyes"].config`）：
+
+   ```json
+   {
+     "serverHost": "0.0.0.0",
+     "serverPort": 18080,
+     "security": {
+       "allowRemoteBind": true
+     }
+   }
+   ```
+
+   等价环境变量：`JS_EYES_ALLOW_REMOTE_BIND=1`。若服务器在 Docker 里，需要发布 `18080`，并在**容器内**设置上述值。
+
+2. 用 `js-eyes doctor` 确认 `host loopback: NO`。在 Windows 上访问 `http://192.168.10.40:18080` 应能连通（不带 Token 出现 HTTP 401 是正常的）。
+
+3. Windows 扩展弹窗里填写 `http://192.168.10.40:18080`（服务器的局域网 IP，不是 `localhost`），并粘贴服务器上的 `~/.js-eyes/runtime/server.token`。跨机器时 Native Messaging 不会自动同步 Token。
+
+4. 只在可信局域网使用。不要把服务绑到公网，也不要用 `security.allowAnonymous=true` 来“先连上再说”。
+
+### 无头与无显示主机
+
+JS Eyes 不是 CDP / Playwright 驱动，自动化走浏览器扩展。主机必须运行能安装并保持该扩展加载的 Chrome、Edge 或 Firefox。
+
+只有 `google-chrome --headless`、没有桌面 / VNC / 显示的 Linux 服务器，不是受支持的安装路径。可选：
+
+- 同一台机器上提供图形或虚拟显示（桌面、VNC、Xvfb + 普通 Chrome/Firefox 配置），扩展连接 `http://localhost:18080`
+- 浏览器装在另一台机器上，服务器按[局域网远程浏览器](#局域网远程浏览器)开放
 
 ## 相关项目
 
