@@ -38,6 +38,9 @@ module.exports = [
       'no-unused-vars': 'off',
       // Empty catch blocks are used for best-effort cleanup and compatibility.
       'no-empty': 'off',
+      // ESLint 10 recommended adds these; adopt them in a dedicated cleanup.
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
     },
   },
   {
