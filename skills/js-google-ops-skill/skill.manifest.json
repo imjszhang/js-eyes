@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "js-google-ops-skill",
   "name": "JS Google Ops Skill",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "js-eyes",
   "description": "Google Search 只读 + 浏览器导航：Web / News / Images / Scholar，PAGE_PROFILES + Bridges + Session，DOM-first，不做 DESTRUCTIVE",
   "entry": "./skill.entry.js",

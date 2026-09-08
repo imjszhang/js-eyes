@@ -200,26 +200,45 @@ function closestAnchor(el) {
   return null;
 }
 
-function nearbyText(el, maxLen) {
-  let cur = el;
-  for (let i = 0; i < 5 && cur; i++) {
-    const text = clampText(cur.textContent, maxLen + 80);
-    if (text && text.length > 20) return clampText(text, maxLen);
-    cur = cur.parentElement || null;
+// Stop at a single result card. Never climb into a group containing another title.
+function resultCard(heading) {
+  let current = closestAnchor(heading);
+  current = current ? current.parentElement : heading.parentElement;
+  let fallback = null;
+  for (let depth = 0; depth < 7 && current; depth++) {
+    const id = current.getAttribute && current.getAttribute('id');
+    if (['search', 'rso', 'center_col'].includes(id) || ['BODY', 'HTML'].includes(current.tagName)) break;
+    const titles = current.querySelectorAll ? current.querySelectorAll('h3') : [];
+    if (titles.length !== 1) break;
+    if (current.querySelector && current.querySelector('.VwiC3b, .IsZvec, .aCOpRe, .GI74Re, .st, [data-sncf]')) return current;
+    fallback = fallback || current;
+    const classes = current.getAttribute && current.getAttribute('class') || '';
+    if (current.tagName === 'ARTICLE' || /(?:^|\s)(?:g|MjjYud|SoaBEf)(?:\s|$)/.test(classes)) return current;
+    const description = cardSnippet(current, heading.textContent);
+    if (description) return current;
+    current = current.parentElement;
   }
-  return '';
+  return fallback;
 }
 
-function findInAncestors(el, sel) {
-  let cur = el;
-  for (let i = 0; i < 6 && cur; i++) {
-    if (cur.querySelector) {
-      const hit = cur.querySelector(sel);
-      if (hit) return hit;
-    }
-    cur = cur.parentElement || null;
+function cardSnippet(card, title) {
+  if (!card || !card.querySelectorAll) return '';
+  const normalizedTitle = clampText(title, MAX_TITLE);
+  const candidates = card.querySelectorAll('.VwiC3b, .IsZvec, .aCOpRe, .GI74Re, .st, [data-sncf]');
+  for (const candidate of candidates) {
+    if (candidate.querySelector && candidate.querySelector('h3')) continue;
+    const text = clampText(candidate.textContent, MAX_SNIPPET);
+    if (text && text !== normalizedTitle) return text;
   }
-  return null;
+  // Plain layouts use an unlinked description sibling. Exclude title, URL,
+  // publisher/time and navigation subtrees instead of recycling parent text.
+  for (const candidate of card.querySelectorAll('div, p')) {
+    if (candidate.querySelector && candidate.querySelector('h3, a, cite, time, [data-source], [role="navigation"]')) continue;
+    if (candidate.closest && candidate.closest('a, h3, cite, time, [data-source], [role="navigation"]')) continue;
+    const text = clampText(candidate.textContent, MAX_SNIPPET);
+    if (text && text !== normalizedTitle) return text;
+  }
+  return '';
 }
 
 function dedupeItems(items) {
@@ -244,6 +263,7 @@ function parseHeadingResults(page, options, kind) {
     ? page.querySelectorAll('#search h3, #rso h3, #center_col h3, [role="heading"] h3, h3')
     : [];
   const items = [];
+  const seen = new Set();
   for (let i = 0; i < headings.length && items.length < limit; i++) {
     const h3 = headings[i];
     const title = clampText(h3 && h3.textContent, MAX_TITLE);
@@ -251,12 +271,14 @@ function parseHeadingResults(page, options, kind) {
     const link = closestAnchor(h3);
     const rawHref = (link && (link.href || (link.getAttribute && link.getAttribute('href')))) || '';
     const url = normalizeResultUrl(unpackGoogleHref(rawHref, page.locationHref));
-    if (!isUsableResultUrl(url)) continue;
-    const snippet = clampText(nearbyText(h3.parentElement || h3, MAX_SNIPPET), MAX_SNIPPET);
+    if (!isUsableResultUrl(url) || seen.has(url)) continue;
+    seen.add(url);
+    const card = resultCard(h3);
+    const snippet = cardSnippet(card, title);
     const item = { title, url, snippet };
     if (kind === 'news') {
-      const timeEl = findInAncestors(h3, 'time');
-      const sourceEl = findInAncestors(h3, '[data-source]');
+      const timeEl = card && card.querySelector('time');
+      const sourceEl = card && card.querySelector('[data-source]');
       item.source = clampText(sourceEl && sourceEl.textContent, 80) || undefined;
       item.publishedAt = (timeEl && timeEl.getAttribute && timeEl.getAttribute('datetime'))
         || clampText(timeEl && timeEl.textContent, 80)

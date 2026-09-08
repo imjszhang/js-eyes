@@ -1,7 +1,7 @@
 ---
 name: js-google-ops-skill
 description: Google Search 只读 + 浏览器导航 skill：网页 / 新闻 / 图片 / Scholar 走 DOM-first，READ 使用临时标签页，INTERACTIVE 仅 location.assign。
-version: 1.0.0
+version: 1.0.1
 metadata:
   openclaw:
     emoji: "\U0001F50D"
@@ -86,3 +86,7 @@ Web / News / Images 共用 `search` profile，用 `tbm` / `udm` 区分 vertical�
 - 不自动登录、不点同意、不处理 CAPTCHA
 - 不点击图片卡片追原图，不打开结果外链
 - 不写入任何 Google 业务数据
+
+## 1.0.1 摘要解析
+
+网页和新闻描述仅从单个结果卡片提取；标题、来源、时间和相邻卡片不充当摘要。没有描述时 `snippet` 为空。重复链接不占用结果数量额度。

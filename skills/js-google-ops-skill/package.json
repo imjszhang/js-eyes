@@ -1,6 +1,6 @@
 {
   "name": "js-google-ops-skill",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Google Search 只读 + 浏览器导航：Web / News / Images / Scholar，PAGE_PROFILES + Bridges + Session，DOM-first，不做 DESTRUCTIVE",
   "private": true,
   "main": "index.js",
