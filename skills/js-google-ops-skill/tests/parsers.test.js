@@ -81,3 +81,28 @@ describe('parse fixtures', () => {
     assert.equal(items.length, 2);
   });
 });
+
+
+describe('card-scoped descriptions', () => {
+  it('does not use long titles as snippets or leak a neighboring card', () => {
+    const page = cheerioPage(`<div id="rso">
+      <div class="g"><a href="https://example.com/long"><h3>This title is deliberately much longer than twenty characters</h3></a><div class="VwiC3b">Actual description of the first result.</div></div>
+      <div class="g"><a href="https://example.com/empty"><h3>Another very long title with no description</h3></a></div>
+      <div class="g"><a href="https://example.com/next"><h3>Third title</h3></a><p>Only the third result describes this content.</p></div>
+    </div>`, 'https://www.google.com/search?q=fixture');
+    assert.deepEqual(parsers.parseWebResults(page, {}).items.map((item) => item.snippet), [
+      'Actual description of the first result.', '', 'Only the third result describes this content.',
+    ]);
+  });
+  it('does not consume the result limit on duplicate links', () => {
+    const page = cheerioPage(`<div id="search"><div><a href="https://example.com/a"><h3>A</h3></a><div>First description.</div></div><div><a href="https://example.com/a"><h3>Duplicate</h3></a></div><div><a href="https://example.com/b"><h3>B</h3></a><div>Second description.</div></div></div>`, 'https://www.google.com/search');
+    assert.equal(parsers.parseWebResults(page, { limit: 2 }).items.length, 2);
+  });
+  it('keeps plain description and news metadata separate', () => {
+    assert.equal(parsers.parseWebResults(load('web.html', 'https://www.google.com/search'), {}).items[0].snippet, 'Node.js is an open-source, cross-platform JavaScript runtime environment.');
+    const items = parsers.parseNewsResults(load('news.html', 'https://www.google.com/search?tbm=nws'), {}).items;
+    assert.equal(items[0].snippet, 'A cleaned fixture snippet about OpenAI.');
+    assert.equal(items[1].snippet, '');
+    assert.equal(items[1].source, 'BBC');
+  });
+});
