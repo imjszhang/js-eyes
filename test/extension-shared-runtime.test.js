@@ -55,6 +55,7 @@ describe('extension shared runtime contract', () => {
       assert.match(chromeBackground, new RegExp(`import '\\.\\/${name}-methods\\.js';`));
     }
     assert.match(chromeBackground, /import '\.\/browser-control-methods\.js';/);
+    assert.match(chromeBackground, /import '\.\/page-interact-core\.js';/);
     assert.match(chromeBackground, /import '\.\/page-extract-core\.js';/);
 
     const firefoxManifest = JSON.parse(read('extensions/firefox/manifest.json'));
@@ -64,6 +65,7 @@ describe('extension shared runtime contract', () => {
       'background/connection-methods.js',
       'background/messaging-methods.js',
       'background/operations-methods.js',
+      'background/page-interact-core.js',
       'background/page-interact-methods.js',
       'background/page-extract-core.js',
       'background/page-extract-methods.js',
@@ -215,6 +217,13 @@ describe('extension shared runtime contract', () => {
     assert.equal(
       read('extensions/shared/page-extract-core.js'),
       read('packages/page-extract/extract-page-content.js'),
+    );
+  });
+
+  it('keeps extension page-interact-core identical to the protocol implementation', () => {
+    assert.equal(
+      read('extensions/shared/page-interact-core.js'),
+      read('packages/protocol/page-interact-core.js'),
     );
   });
 

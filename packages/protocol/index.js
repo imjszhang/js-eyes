@@ -18,6 +18,15 @@ const {
   invokeBrowserOperation,
   resolveOperation,
 } = require('./browser-handlers');
+const {
+  ALL_OPERATION_IDS,
+  CONNECTOR_CAPABILITY_MATRIX,
+  CONNECTOR_KINDS,
+  isConnectorKind,
+  isOperationSupportedByConnector,
+  listOperationIdsForConnector,
+} = require('./browser-capabilities');
+const pageInteractCore = require('./page-interact-core');
 
 const DEFAULT_SERVER_HOST = 'localhost';
 const DEFAULT_SERVER_PORT = 18080;
@@ -268,6 +277,13 @@ module.exports = {
   SENSITIVE_BROWSER_ACTIONS,
   SENSITIVE_BROWSER_TOOL_NAMES,
   SENSITIVE_TOOL_NAMES,
+  ALL_OPERATION_IDS,
+  CONNECTOR_CAPABILITY_MATRIX,
+  CONNECTOR_KINDS,
+  isConnectorKind,
+  isOperationSupportedByConnector,
+  listOperationIdsForConnector,
+  pageInteractCore,
   assertBrowserOperationsComplete,
   invokeBrowserOperation,
   listBrowserOperationsForProfile,

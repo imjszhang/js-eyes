@@ -28,6 +28,30 @@ const DEFAULT_EXTERNAL_SKILLS_CONFIG = Object.freeze({
   defaultExecution: 'worker',
 });
 
+const DEFAULT_BROWSER_CONFIG = Object.freeze({
+  defaultTransport: 'extension',
+  transports: Object.freeze({
+    extension: Object.freeze({ enabled: true }),
+    cdp: Object.freeze({
+      enabled: false,
+      mode: 'attach',
+      channel: 'chrome',
+      endpoint: 'http://127.0.0.1:9222',
+      loopbackOnly: true,
+      launch: Object.freeze({
+        enabled: false,
+        headless: true,
+        userDataDir: '',
+      }),
+    }),
+    bidi: Object.freeze({
+      enabled: false,
+      endpoint: 'ws://127.0.0.1:9222/session',
+      loopbackOnly: true,
+    }),
+  }),
+});
+
 const DEFAULT_CONFIG = {
   serverHost: DEFAULT_SERVER_HOST,
   serverPort: DEFAULT_SERVER_PORT,
@@ -41,10 +65,79 @@ const DEFAULT_CONFIG = {
   extensionsBaseUrl: RELEASE_BASE_URL,
   recording: DEFAULT_RECORDING_CONFIG,
   security: DEFAULT_SECURITY_CONFIG,
+  browser: DEFAULT_BROWSER_CONFIG,
 };
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function mergeBrowserConfig(...configs) {
+  const merged = configs.reduce((current, config) => {
+    if (!config || typeof config !== 'object') return current;
+    const next = {
+      ...current,
+      ...config,
+      transports: {
+        ...current.transports,
+        ...(config.transports || {}),
+      },
+    };
+    if (config.transports && config.transports.cdp && typeof config.transports.cdp === 'object') {
+      next.transports.cdp = {
+        ...current.transports.cdp,
+        ...config.transports.cdp,
+        launch: {
+          ...current.transports.cdp.launch,
+          ...(config.transports.cdp.launch || {}),
+        },
+      };
+    }
+    if (config.transports && config.transports.bidi && typeof config.transports.bidi === 'object') {
+      next.transports.bidi = {
+        ...current.transports.bidi,
+        ...config.transports.bidi,
+      };
+    }
+    if (config.transports && config.transports.extension && typeof config.transports.extension === 'object') {
+      next.transports.extension = {
+        ...current.transports.extension,
+        ...config.transports.extension,
+      };
+    }
+    return next;
+  }, clone(DEFAULT_BROWSER_CONFIG));
+
+  if (!['extension', 'cdp', 'bidi'].includes(merged.defaultTransport)) {
+    merged.defaultTransport = DEFAULT_BROWSER_CONFIG.defaultTransport;
+  }
+  if (!['attach', 'endpoint', 'launch'].includes(merged.transports.cdp.mode)) {
+    merged.transports.cdp.mode = DEFAULT_BROWSER_CONFIG.transports.cdp.mode;
+  }
+  merged.transports.extension.enabled = merged.transports.extension.enabled !== false;
+  merged.transports.cdp.enabled = Boolean(merged.transports.cdp.enabled);
+  merged.transports.bidi.enabled = Boolean(merged.transports.bidi.enabled);
+  merged.transports.cdp.loopbackOnly = merged.transports.cdp.loopbackOnly !== false;
+  merged.transports.bidi.loopbackOnly = merged.transports.bidi.loopbackOnly !== false;
+  merged.transports.cdp.launch.enabled = Boolean(merged.transports.cdp.launch.enabled);
+  merged.transports.cdp.launch.headless = merged.transports.cdp.launch.headless !== false;
+  merged.transports.cdp.endpoint = String(merged.transports.cdp.endpoint || DEFAULT_BROWSER_CONFIG.transports.cdp.endpoint);
+  merged.transports.bidi.endpoint = String(merged.transports.bidi.endpoint || DEFAULT_BROWSER_CONFIG.transports.bidi.endpoint);
+  merged.transports.cdp.channel = String(merged.transports.cdp.channel || 'chrome');
+  merged.transports.cdp.launch.userDataDir = String(merged.transports.cdp.launch.userDataDir || '');
+
+  if (process.env.JS_EYES_CDP_ENABLED === '1') merged.transports.cdp.enabled = true;
+  if (process.env.JS_EYES_CDP_ENABLED === '0') merged.transports.cdp.enabled = false;
+  if (process.env.JS_EYES_CDP_MODE && ['attach', 'endpoint', 'launch'].includes(process.env.JS_EYES_CDP_MODE)) {
+    merged.transports.cdp.mode = process.env.JS_EYES_CDP_MODE;
+  }
+  if (process.env.JS_EYES_CDP_ENDPOINT) merged.transports.cdp.endpoint = process.env.JS_EYES_CDP_ENDPOINT;
+  if (process.env.JS_EYES_CDP_CHANNEL) merged.transports.cdp.channel = process.env.JS_EYES_CDP_CHANNEL;
+  if (process.env.JS_EYES_BIDI_ENABLED === '1') merged.transports.bidi.enabled = true;
+  if (process.env.JS_EYES_BIDI_ENABLED === '0') merged.transports.bidi.enabled = false;
+  if (process.env.JS_EYES_BIDI_ENDPOINT) merged.transports.bidi.endpoint = process.env.JS_EYES_BIDI_ENDPOINT;
+
+  return merged;
 }
 
 function mergeRecordingConfig(...configs) {
@@ -163,6 +256,7 @@ function normalizeConfig(config = {}) {
     ...clone(DEFAULT_CONFIG),
     ...(config || {}),
     recording: mergeRecordingConfig(config.recording),
+    browser: mergeBrowserConfig(config.browser),
     security: mergeSecurityConfig(config.security),
     extraSkillDirs: normalizeExtraSkillDirs(config ? config.extraSkillDirs : undefined),
     externalSkills: {
@@ -329,12 +423,14 @@ function resolveHotReloadableSecurity(nextSecurity, prevSecurity) {
 }
 
 module.exports = {
+  DEFAULT_BROWSER_CONFIG,
   DEFAULT_CONFIG,
   DEFAULT_EXTERNAL_SKILLS_CONFIG,
   DEFAULT_RECORDING_CONFIG,
   HOT_RELOADABLE_SECURITY_KEYS,
   getConfigValue,
   loadConfig,
+  mergeBrowserConfig,
   mergeRecordingConfig,
   mergeSecurityConfig,
   normalizeConfig,

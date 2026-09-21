@@ -41,7 +41,7 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
 Preserve these dependency directions:
 
 ```text
-browser extension
+browser connectors (extension | cdp | bidi)
         |
   server-core
         |

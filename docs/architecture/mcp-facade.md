@@ -9,7 +9,7 @@ Accepted for the first native MCP release.
 `@js-eyes/mcp-server` exposes the existing JS Eyes browser automation runtime to
 standard Model Context Protocol clients. It is an adapter over
 `@js-eyes/client-sdk`; it does not replace the JS Eyes WebSocket protocol, the
-server core, or the browser extensions.
+server core, or browser connectors.
 
 ```text
 MCP client
@@ -17,7 +17,8 @@ MCP client
   -> @js-eyes/mcp-server
   -> @js-eyes/client-sdk
   -> JS Eyes server
-  -> browser extension
+  -> browser connector
+  -> extension | cdp | bidi
 ```
 
 The package is host-neutral and must not import `openclaw-plugin`. OpenClaw and

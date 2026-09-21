@@ -10,7 +10,8 @@
     "index.js",
     "ws-handler.js",
     "audit.js",
-    "auth.js"
+    "auth.js",
+    "connectors/"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

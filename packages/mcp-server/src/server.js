@@ -10,7 +10,7 @@ const { McpSkillService } = require('./skill-service');
 
 const INSTRUCTIONS = [
   'Use browser_list_clients or browser_list_tabs before a browser-scoped operation.',
-  'When multiple browser extensions are connected, pass an explicit target clientId.',
+  'When multiple browser clients are connected, pass an explicit target clientId.',
   'JS Eyes server policy may require approval before opening a new destination.',
 ].join(' ');
 

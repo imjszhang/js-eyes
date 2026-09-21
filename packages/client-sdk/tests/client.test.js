@@ -66,8 +66,8 @@ function defaultHandler(ws, data) {
         type: 'list_clients_response', requestId, status: 'success',
         data: {
           clients: [
-            { clientId: 'ext-1', browserName: 'firefox', tabCount: 2 },
-            { clientId: 'ext-2', browserName: 'chrome', tabCount: 1 },
+            { clientId: 'ext-1', browserName: 'firefox', kind: 'extension', tabCount: 2 },
+            { clientId: 'ext-2', browserName: 'chrome', kind: 'extension', tabCount: 1 },
           ],
         },
       }));
@@ -416,6 +416,7 @@ describe('business methods', () => {
     const clients = await bot.listClients();
     assert.equal(clients.length, 2);
     assert.equal(clients[0].browserName, 'firefox');
+    assert.equal(clients[0].kind, 'extension');
     assert.equal(clients[1].browserName, 'chrome');
   });
 

@@ -47,6 +47,15 @@ describe('MCP error adapters', () => {
     assert.equal(normalized.details.host, 'example.com');
   });
 
+  it('maps extension-unavailable messages to the browser-unavailable code', () => {
+    const normalized = normalizeError(new Error('No browser extension connected'));
+    assert.equal(normalized.code, 'JS_EYES_BROWSER_UNAVAILABLE');
+    const alias = normalizeError(Object.assign(new Error('gone'), { code: 'JS_EYES_EXTENSION_UNAVAILABLE' }));
+    assert.equal(alias.code, 'JS_EYES_BROWSER_UNAVAILABLE');
+    const capability = normalizeError(Object.assign(new Error('nope'), { code: 'CAPABILITY_UNSUPPORTED' }));
+    assert.equal(capability.code, 'JS_EYES_CAPABILITY_UNSUPPORTED');
+  });
+
   it('returns tool-level errors without leaking the original secret message', () => {
     const result = errorResult(new Error('upstream failed with token super-secret-token'));
     assert.equal(result.isError, true);

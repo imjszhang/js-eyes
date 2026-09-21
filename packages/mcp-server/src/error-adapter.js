@@ -40,8 +40,29 @@ function normalizeError(error) {
   if (/4401|unauthori[sz]ed|auth(?:entication)? (?:failed|required)|鉴权|认证/.test(message)) {
     return new FacadeError('JS_EYES_AUTH_FAILED', 'JS Eyes server authentication failed.');
   }
-  if (/no connected extension|target browser not found|没有.*扩展|未连接.*扩展|no extension/i.test(message)) {
-    return new FacadeError('JS_EYES_EXTENSION_UNAVAILABLE', 'No matching JS Eyes browser extension is connected.');
+  if (
+    error?.code === 'JS_EYES_EXTENSION_UNAVAILABLE'
+    || error?.code === 'JS_EYES_BROWSER_UNAVAILABLE'
+    || error?.code === 'BROWSER_UNAVAILABLE'
+  ) {
+    return new FacadeError(
+      'JS_EYES_BROWSER_UNAVAILABLE',
+      error.message || 'No matching JS Eyes browser client is connected.',
+      error.details || {},
+    );
+  }
+  if (error?.code === 'JS_EYES_CAPABILITY_UNSUPPORTED' || error?.code === 'CAPABILITY_UNSUPPORTED') {
+    return new FacadeError(
+      'JS_EYES_CAPABILITY_UNSUPPORTED',
+      error.message || 'The selected browser connector does not support this operation.',
+      error.details || {},
+    );
+  }
+  if (/no connected extension|no browser (client|extension)|target browser not found|没有.*扩展|未连接.*扩展|no extension|no browser client/i.test(message)) {
+    return new FacadeError('JS_EYES_BROWSER_UNAVAILABLE', 'No matching JS Eyes browser client is connected.');
+  }
+  if (/capability unsupported|does not support/i.test(message)) {
+    return new FacadeError('JS_EYES_CAPABILITY_UNSUPPORTED', 'The selected browser connector does not support this operation.');
   }
   if (/timed? out|timeout|超时/i.test(message)) {
     return new FacadeError('JS_EYES_REQUEST_TIMEOUT', 'The JS Eyes request timed out.');

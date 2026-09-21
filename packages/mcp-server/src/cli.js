@@ -10,7 +10,7 @@ Usage: js-eyes-mcp [options]
 
 Options:
   --server-url <url>       Existing JS Eyes WebSocket server
-  --target <id|name>       Default extension clientId or browser name
+  --target <id|name>       Default browser clientId or unique browser name
   --tool-profile <profile> safe (default) or full
   --connect-timeout <sec>  Connection/status timeout
   --request-timeout <sec>  Browser operation timeout

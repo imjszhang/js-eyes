@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createServer } = require('@js-eyes/server-core');
-const { loadConfig, getConfigValue, parseConfigValue, setConfigValue } = require('@js-eyes/config');
+const { loadConfig, getConfigValue, mergeBrowserConfig, parseConfigValue, setConfigValue } = require('@js-eyes/config');
 const {
   chmodBestEffort,
   ensureRuntimePaths,
@@ -138,6 +138,7 @@ module.exports = {
   isProcessAlive,
   isSkillEnabled,
   loadConfig,
+  mergeBrowserConfig,
   parseConfigValue,
   path,
   pkg,

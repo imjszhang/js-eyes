@@ -106,7 +106,7 @@ Start diagnosis with:
 2. `browser_list_clients`
 3. `browser_list_tabs`
 
-When several extensions are connected, pass the exact `clientId` returned by
+When several browser clients are connected, pass the exact `clientId` returned by
 `browser_list_clients`; do not select an ambiguous browser automatically.
 
 ## OpenClaw setup
@@ -277,15 +277,19 @@ js-eyes doctor
 Start the server if necessary and confirm that the configured port is not
 already owned by an unrelated process.
 
-### Extension unavailable
+### Browser unavailable
 
 Confirm:
 
-- the correct extension is enabled;
+- a browser client is connected (extension by default, or an opted-in CDP/BiDi connector);
 - the server URL uses the configured local host and port;
 - the extension and server share the same token;
 - the browser was restarted after Native Messaging installation;
-- at least one extension client appears in status output.
+- at least one browser client appears in `js-eyes status` / `js-eyes browser list`.
+
+Optional CDP and BiDi transports stay off until you enable them in
+`browser.transports` and restart the server. Firefox BiDi sessions typically
+expose `navigator.webdriver=true`; they are not as stealthy as the extension.
 
 ### Authentication failed
 

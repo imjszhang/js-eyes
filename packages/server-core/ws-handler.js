@@ -4,9 +4,18 @@ const crypto = require('crypto');
 const { URL } = require('url');
 const {
   ACTION_POLICY_TOOL_MAP,
+  BROWSER_OPERATION_BY_WIRE_ACTION,
   REQUEST_TIMEOUT_MS,
   SENSITIVE_BROWSER_ACTIONS,
+  isOperationSupportedByConnector,
 } = require('@js-eyes/protocol');
+const {
+  createExtensionClientsView,
+  getBrowserSummaries,
+  getClientId,
+  isClientOpen,
+  pickBrowserClient,
+} = require('./connectors/registry');
 
 let PolicyContextCtor = null;
 function loadPolicyContext() {
@@ -27,7 +36,8 @@ const ACTION_TOOL_MAP = {
 function lookupTabUrlInState(state, tabId) {
   if (tabId == null) return null;
   const numeric = Number(tabId);
-  for (const conn of state.extensionClients.values()) {
+  const clients = state.browserClients || state.extensionClients;
+  for (const conn of clients.values()) {
     if (!Array.isArray(conn.tabs)) continue;
     for (const tab of conn.tabs) {
       if (!tab) continue;
@@ -110,24 +120,12 @@ function parseBrowserName(userAgent) {
 }
 
 function getExtensionSummaries(state) {
-  const summaries = [];
-  for (const [clientId, conn] of state.extensionClients) {
-    if (conn.socket.readyState !== 1) continue;
-    summaries.push({
-      clientId,
-      browserName: conn.browserName,
-      tabs: conn.tabs,
-      activeTabId: conn.activeTabId,
-      tabCount: conn.tabs.length,
-      connectedAt: new Date(conn.createdAt).toISOString(),
-    });
-  }
-  return summaries;
+  return getBrowserSummaries(state);
 }
 
 function prewarmPolicyFromTargetExtension(policy, state, target) {
   if (!policy || typeof policy.recordTabs !== 'function') return;
-  const ext = pickExtension(state, target || null);
+  const ext = pickBrowserClient(state, target || null);
   if (!ext || !Array.isArray(ext.tabs) || ext.tabs.length === 0) return;
   try {
     policy.recordTabs(ext.tabs, ext.activeTabId);
@@ -528,7 +526,12 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
 
   switch (action) {
     case 'get_tabs': {
-      const browsers = getExtensionSummaries(state);
+      let browsers = getBrowserSummaries(state);
+      if (target) {
+        const picked = pickBrowserClient(state, target);
+        const pickedId = getClientId(state, picked);
+        browsers = pickedId ? browsers.filter((browser) => browser.clientId === pickedId) : [];
+      }
       const allTabs = browsers.flatMap((browser) => browser.tabs);
       const lastBrowser = browsers[browsers.length - 1];
       const responseData = {
@@ -546,7 +549,7 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     }
     case 'list_clients': {
-      const browsers = getExtensionSummaries(state);
+      const browsers = getBrowserSummaries(state);
       send(socket, {
         type: 'list_clients_response',
         requestId,
@@ -556,52 +559,52 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     }
     case 'open_url':
-      forwardToExtension('open_url', data, socket, state, ['url', 'tabId', 'windowId'], target, clientId);
+      dispatchToBrowser('open_url', data, socket, state, ['url', 'tabId', 'windowId'], target, clientId);
       break;
     case 'close_tab':
-      forwardToExtension('close_tab', data, socket, state, ['tabId'], target, clientId);
+      dispatchToBrowser('close_tab', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'get_html':
-      forwardToExtension('get_html', data, socket, state, ['tabId'], target, clientId);
+      dispatchToBrowser('get_html', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'execute_script':
-      forwardToExtension('execute_script', data, socket, state, ['tabId', 'code'], target, clientId);
+      dispatchToBrowser('execute_script', data, socket, state, ['tabId', 'code'], target, clientId);
       break;
     case 'inject_css':
-      forwardToExtension('inject_css', data, socket, state, ['tabId', 'css'], target, clientId);
+      dispatchToBrowser('inject_css', data, socket, state, ['tabId', 'css'], target, clientId);
       break;
     case 'get_cookies':
-      forwardToExtension('get_cookies', data, socket, state, ['tabId'], target, clientId);
+      dispatchToBrowser('get_cookies', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'get_cookies_by_domain':
-      forwardToExtension('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target, clientId);
+      dispatchToBrowser('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target, clientId);
       break;
     case 'get_page_info':
-      forwardToExtension('get_page_info', data, socket, state, ['tabId'], target, clientId);
+      dispatchToBrowser('get_page_info', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'click':
-      forwardToExtension('click', data, socket, state, ['tabId', 'selector', 'text', 'index'], target, clientId);
+      dispatchToBrowser('click', data, socket, state, ['tabId', 'selector', 'text', 'index'], target, clientId);
       break;
     case 'fill':
-      forwardToExtension('fill', data, socket, state, ['tabId', 'selector', 'value', 'clearFirst', 'index'], target, clientId);
+      dispatchToBrowser('fill', data, socket, state, ['tabId', 'selector', 'value', 'clearFirst', 'index'], target, clientId);
       break;
     case 'scroll':
-      forwardToExtension('scroll', data, socket, state, ['tabId', 'target', 'selector', 'pixels'], target, clientId);
+      dispatchToBrowser('scroll', data, socket, state, ['tabId', 'target', 'selector', 'pixels'], target, clientId);
       break;
     case 'wait_for':
-      forwardToExtension('wait_for', data, socket, state, ['tabId', 'selector', 'timeout', 'visible'], target, clientId);
+      dispatchToBrowser('wait_for', data, socket, state, ['tabId', 'selector', 'timeout', 'visible'], target, clientId);
       break;
     case 'extract_page':
-      forwardToExtension('extract_page', data, socket, state, [
+      dispatchToBrowser('extract_page', data, socket, state, [
         'tabId', 'format', 'includeLinks', 'includeImages',
         'maxContentChars', 'maxLinks', 'maxImages',
       ], target, clientId);
       break;
     case 'upload_file_to_tab':
-      forwardToExtension('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);
+      dispatchToBrowser('upload_file_to_tab', data, socket, state, ['tabId', 'files', 'targetSelector'], target, clientId);
       break;
     case 'capture_screenshot':
-      forwardToExtension('capture_screenshot', data, socket, state, ['tabId', 'format', 'quality', 'fullPage'], target, clientId);
+      dispatchToBrowser('capture_screenshot', data, socket, state, ['tabId', 'format', 'quality', 'fullPage'], target, clientId);
       break;
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });
@@ -609,19 +612,31 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
   }
 }
 
-function forwardToExtension(type, data, automationSocket, state, fields, target, clientId = null) {
+function dispatchToBrowser(type, data, automationSocket, state, fields, target, clientId = null) {
   const requestId = data.requestId || generateId();
-
-  const ext = pickExtension(state, target);
+  const ext = pickBrowserClient(state, target);
   if (!ext) {
     const detail = target
-      ? `No browser extension matching target "${target}"`
-      : 'No browser extension connected';
+      ? `No browser client matching target "${target}"`
+      : 'No browser client connected';
     send(automationSocket, {
       type: `${type}_response`,
       requestId,
       status: 'error',
+      code: 'BROWSER_UNAVAILABLE',
       message: detail,
+    });
+    return;
+  }
+
+  const operation = BROWSER_OPERATION_BY_WIRE_ACTION[type];
+  if (operation && !isOperationSupportedByConnector(operation.id, ext.kind || 'extension')) {
+    send(automationSocket, {
+      type: `${type}_response`,
+      requestId,
+      status: 'error',
+      code: 'CAPABILITY_UNSUPPORTED',
+      message: `Connector ${ext.kind} does not support ${operation.id}`,
     });
     return;
   }
@@ -631,26 +646,37 @@ function forwardToExtension(type, data, automationSocket, state, fields, target,
     if (data[field] !== undefined) msg[field] = data[field];
   }
 
-  send(ext.socket, msg);
   registerPending(requestId, automationSocket, type, state, clientId);
+  try {
+    const result = ext.dispatch(msg, state);
+    if (result && typeof result.then === 'function') {
+      result.catch((err) => {
+        resolveRequest(requestId, {
+          status: 'error',
+          type: 'error',
+          message: err.message,
+          code: err.code || 'CONNECTOR_ERROR',
+          requestId,
+        }, state);
+      });
+    }
+  } catch (err) {
+    resolveRequest(requestId, {
+      status: 'error',
+      type: 'error',
+      message: err.message,
+      code: err.code || 'CONNECTOR_ERROR',
+      requestId,
+    }, state);
+  }
+}
+
+function forwardToExtension(type, data, automationSocket, state, fields, target, clientId = null) {
+  return dispatchToBrowser(type, data, automationSocket, state, fields, target, clientId);
 }
 
 function pickExtension(state, target) {
-  if (!target) {
-    for (const [, conn] of state.extensionClients) {
-      if (conn.socket.readyState === 1) return conn;
-    }
-    return null;
-  }
-
-  const byId = state.extensionClients.get(target);
-  if (byId && byId.socket.readyState === 1) return byId;
-
-  const lower = target.toLowerCase();
-  for (const [, conn] of state.extensionClients) {
-    if (conn.socket.readyState === 1 && conn.browserName === lower) return conn;
-  }
-  return null;
+  return pickBrowserClient(state, target);
 }
 
 function registerPending(requestId, automationSocket, operationType, state, clientId = null) {
@@ -717,8 +743,12 @@ function startCleanup(state) {
       if (timestamp < cutoff) state.callbackResponses.delete(id);
     }
 
-    for (const [id, conn] of state.extensionClients) {
-      if (conn.socket.readyState !== 1) state.extensionClients.delete(id);
+    const clients = state.browserClients || state.extensionClients;
+    for (const [id, conn] of [...clients.entries()]) {
+      if (!isClientOpen(conn)) {
+        if (state.browserClients) state.browserClients.delete(id);
+        if (conn.kind === 'extension' || conn.socket) state.extensionClients.delete(id);
+      }
     }
     for (const [id, conn] of state.automationClients) {
       if (conn.socket.readyState !== 1) state.automationClients.delete(id);
@@ -727,8 +757,10 @@ function startCleanup(state) {
 }
 
 function createState() {
+  const browserClients = new Map();
   return {
-    extensionClients: new Map(),
+    browserClients,
+    extensionClients: createExtensionClientsView(browserClients),
     automationClients: new Map(),
     pendingResponses: new Map(),
     callbackResponses: new Map(),
@@ -738,6 +770,8 @@ function createState() {
     pendingEgressDir: null,
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
     policyGeneration: 1,
+    browserConfig: null,
+    connectorSupervisor: null,
   };
 }
 
@@ -746,13 +780,16 @@ module.exports = {
   createState,
   startCleanup,
   getExtensionSummaries,
+  getBrowserSummaries,
   REQUEST_TIMEOUT_MS,
   _internal: {
     parseBrowserName,
     pickExtension,
+    pickBrowserClient,
     send,
     generateId,
     forwardToExtension,
+    dispatchToBrowser,
     handleExtensionMessage,
     handleAutomationMessage,
     setupExtensionClient,

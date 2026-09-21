@@ -114,6 +114,7 @@ describe('parseBrowserName', () => {
 describe('createState', () => {
   it('returns object with required Maps', () => {
     const state = createState();
+    assert.ok(state.browserClients instanceof Map);
     assert.ok(state.extensionClients instanceof Map);
     assert.ok(state.automationClients instanceof Map);
     assert.ok(state.pendingResponses instanceof Map);
@@ -190,6 +191,9 @@ describe('getExtensionSummaries', () => {
     assert.equal(summaries[0].tabCount, 1);
     assert.ok(summaries[0].clientId);
     assert.ok(summaries[0].connectedAt);
+    assert.equal(summaries[0].kind, 'extension');
+    assert.equal(summaries[0].transport, 'extension');
+    assert.ok(Array.isArray(summaries[0].capabilities));
   });
 
   it('skips disconnected extensions (readyState !== 1)', () => {
@@ -612,6 +616,19 @@ describe('handleAutomationMessage', () => {
       assert.equal(resp.data.browsers.length, 2);
       assert.equal(resp.data.tabs.length, 3);
     });
+
+    it('filters tabs when target is provided', () => {
+      addExtension(state, { clientId: 'ff', browserName: 'firefox', tabs: [{ id: 1 }] });
+      addExtension(state, { clientId: 'ch', browserName: 'chrome', tabs: [{ id: 2 }, { id: 3 }] });
+      handleAutomationMessage(
+        JSON.stringify({ action: 'get_tabs', target: 'chrome', requestId: 'r-target' }),
+        'auto-1', autoSocket, state,
+      );
+      const resp = autoSocket._messages[0];
+      assert.equal(resp.data.browsers.length, 1);
+      assert.equal(resp.data.browsers[0].browserName, 'chrome');
+      assert.equal(resp.data.tabs.length, 2);
+    });
   });
 
   describe('list_clients', () => {
@@ -627,6 +644,25 @@ describe('handleAutomationMessage', () => {
       const resp = autoSocket._messages[0];
       assert.equal(resp.type, 'list_clients_response');
       assert.equal(resp.data.clients.length, 2);
+      assert.ok(resp.data.clients.every((client) => client.kind === 'extension'));
+    });
+
+    it('hard-fails when the selected connector cannot perform the operation', () => {
+      state.browserClients.set('ghost', {
+        kind: 'unknown',
+        browserName: 'ghost',
+        capabilities: [],
+        isOpen: () => true,
+        dispatch() {
+          throw new Error('should not dispatch unsupported operations');
+        },
+      });
+      handleAutomationMessage(
+        JSON.stringify({ action: 'open_url', url: 'https://example.com', requestId: 'cap-1' }),
+        'auto-1', autoSocket, state,
+      );
+      assert.equal(autoSocket._messages[0].status, 'error');
+      assert.equal(autoSocket._messages[0].code, 'CAPABILITY_UNSUPPORTED');
     });
   });
 
@@ -751,7 +787,8 @@ describe('handleAutomationMessage', () => {
       );
 
       assert.equal(autoSocket._messages[0].status, 'error');
-      assert.ok(autoSocket._messages[0].message.includes('No browser extension'));
+      assert.equal(autoSocket._messages[0].code, 'BROWSER_UNAVAILABLE');
+      assert.ok(autoSocket._messages[0].message.includes('No browser client'));
     });
   });
 

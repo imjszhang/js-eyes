@@ -285,6 +285,25 @@ describe('readSkillByIdFromSources', () => {
   });
 });
 
+describe('config.browser normalization', () => {
+  it('defaults optional transports to off', () => {
+    const cfg = normalizeConfig({});
+    assert.equal(cfg.browser.defaultTransport, 'extension');
+    assert.equal(cfg.browser.transports.cdp.enabled, false);
+    assert.equal(cfg.browser.transports.bidi.enabled, false);
+    assert.equal(cfg.browser.transports.extension.enabled, true);
+  });
+
+  it('merges cdp launch settings', () => {
+    const cfg = normalizeConfig({
+      browser: { transports: { cdp: { enabled: true, mode: 'endpoint', launch: { enabled: true } } } },
+    });
+    assert.equal(cfg.browser.transports.cdp.enabled, true);
+    assert.equal(cfg.browser.transports.cdp.mode, 'endpoint');
+    assert.equal(cfg.browser.transports.cdp.launch.enabled, true);
+  });
+});
+
 describe('config.extraSkillDirs normalization', () => {
   it('treats string as single-item array', () => {
     const cfg = normalizeConfig({ extraSkillDirs: '/a/b' });

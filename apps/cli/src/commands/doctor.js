@@ -15,6 +15,7 @@ const {
   isProcessAlive,
   isSkillEnabled,
   loadConfig,
+  mergeBrowserConfig,
   path,
   pkg,
   print,
@@ -91,6 +92,7 @@ async function commandStatus(flags) {
     print(`Server version: ${data.serverVersion || 'unknown'}`);
     print(`Uptime: ${data.uptime || 0}s`);
     print(`Extensions: ${data.connections?.extensions?.length || 0}`);
+    print(`Connectors: ${(data.connections?.clients || []).map((client) => client.kind || 'extension').join(', ') || 'none'}`);
     print(`Automation clients: ${data.connections?.automationClients || 0}`);
     print(`Tabs: ${data.tabs || 0}`);
   } catch (error) {
@@ -220,6 +222,7 @@ function buildDoctorPosture(flags) {
     skills: skillsSummary,
     extras: extrasSummary,
     registryUrl: config.skillsRegistryUrl,
+    browser: mergeBrowserConfig(config.browser),
   };
 }
 
@@ -287,6 +290,40 @@ async function commandDoctor(flags) {
   print(`Stored PID: ${pid || 'none'}`);
   print(`PID alive: ${pid ? (isProcessAlive(pid) ? 'yes' : 'no') : 'n/a'}`);
   print(`Recording mode: ${config.recording?.mode || 'standard'}`);
+
+  const browser = mergeBrowserConfig(config.browser);
+  print('');
+  print('Browser transports:');
+  print(`  default: ${browser.defaultTransport}`);
+  print(`  extension: ${browser.transports.extension.enabled ? 'enabled' : 'disabled'}`);
+  print(`  cdp: ${browser.transports.cdp.enabled ? `enabled (${browser.transports.cdp.mode})` : 'disabled'}`);
+  print(`  bidi: ${browser.transports.bidi.enabled ? 'enabled' : 'disabled'}`);
+  if (browser.transports.bidi.enabled) {
+    print('  bidi note: navigator.webdriver is typically true; this is not as stealthy as the extension');
+  }
+  try {
+    const endpoint = String(browser.transports.cdp.endpoint || '');
+    const host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(endpoint) ? endpoint : `http://${endpoint}`).hostname;
+    print(`  cdp endpoint host: ${host} (${isLoopbackHost(host) ? 'loopback' : 'NOT loopback'})`);
+    if (!isLoopbackHost(host) && !security.allowRemoteBind) {
+      print('  next: non-loopback CDP endpoint requires security.allowRemoteBind=true');
+    }
+  } catch (error) {
+    print(`  cdp endpoint host: unavailable (${error.message})`);
+  }
+  try {
+    const { channelUserDataDirs, readDevToolsActivePort } = require('@js-eyes/server-core/connectors/cdp');
+    const dirs = channelUserDataDirs(browser.transports.cdp.channel);
+    const active = dirs.map((dir) => readDevToolsActivePort(dir)).find(Boolean);
+    print(`  DevToolsActivePort: ${active ? `127.0.0.1:${active.port}` : 'not found'}`);
+    if (browser.transports.cdp.enabled && !active && browser.transports.cdp.mode === 'attach') {
+      print('  next: enable chrome://inspect/#remote-debugging and click Allow, then restart the server');
+    } else if (browser.transports.cdp.enabled && browser.transports.cdp.mode === 'endpoint' && !active) {
+      print('  next: confirm the CDP endpoint is listening on loopback, then restart the server');
+    }
+  } catch (error) {
+    print(`  DevToolsActivePort: unavailable (${error.message})`);
+  }
 
   print('');
   print('Security checks:');

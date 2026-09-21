@@ -41,10 +41,29 @@ describe('BrowserSession target resolution', () => {
     assert.equal(await session.resolveTarget('chrome'), 'ext-c');
   });
 
+  it('reports browser-unavailable when no client is connected', async () => {
+    const session = sessionWith([]);
+    await assert.rejects(
+      () => session.resolveTarget(),
+      (error) => error.code === 'JS_EYES_BROWSER_UNAVAILABLE',
+    );
+  });
+
   it('requires a target when several extensions are connected', async () => {
     const session = sessionWith([
       { clientId: 'ext-1', browserName: 'chrome' },
       { clientId: 'ext-2', browserName: 'firefox' },
+    ]);
+    await assert.rejects(
+      () => session.resolveTarget(),
+      (error) => error.code === 'JS_EYES_TARGET_REQUIRED',
+    );
+  });
+
+  it('requires a target when an extension and a CDP client are both online', async () => {
+    const session = sessionWith([
+      { clientId: 'ext-1', browserName: 'chrome', kind: 'extension' },
+      { clientId: 'cdp-1', browserName: 'chrome', kind: 'cdp' },
     ]);
     await assert.rejects(
       () => session.resolveTarget(),

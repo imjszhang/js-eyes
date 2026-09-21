@@ -11,7 +11,7 @@ const TARGET_PROP = Object.freeze({
   type: 'string',
   minLength: 1,
   maxLength: 200,
-  description: 'Extension clientId or unique browser name.',
+  description: 'Browser clientId or unique browser name.',
 });
 
 const TAB_ID_PROP = Object.freeze({
@@ -58,7 +58,7 @@ const BROWSER_OPERATIONS = Object.freeze([
     profiles: Object.freeze(['safe', 'full']),
     title: 'JS Eyes: List Tabs',
     label: 'JS Eyes: Get Tabs',
-    description: 'List open browser tabs. Without target, tabs from all connected extensions are returned.',
+    description: 'List open browser tabs. Without target, tabs from all connected browser clients are returned.',
     openclawDescription: '获取浏览器中所有已打开的标签页列表，包含每个标签页的 ID、URL、标题等信息。',
     inputSchema: objectSchema({
       target: { ...TARGET_PROP, description: '目标浏览器的 clientId 或名称（如 firefox、chrome）。省略则返回所有浏览器的标签页。' },
@@ -78,8 +78,8 @@ const BROWSER_OPERATIONS = Object.freeze([
     profiles: Object.freeze(['safe', 'full']),
     title: 'JS Eyes: List Browser Clients',
     label: 'JS Eyes: List Clients',
-    description: 'List browser extensions connected to the local JS Eyes server.',
-    openclawDescription: '获取当前已连接到 JS-Eyes 服务器的浏览器扩展客户端列表。',
+    description: 'List browser clients connected to the local JS Eyes server.',
+    openclawDescription: '获取当前已连接到 JS-Eyes 服务器的浏览器客户端列表。',
     inputSchema: objectSchema({}),
     annotations: Object.freeze({ readOnly: true, idempotent: true }),
   },
@@ -489,6 +489,8 @@ const BROWSER_OPERATION_BY_MCP_TOOL = Object.freeze(Object.fromEntries(
     .map((operation) => [operation.mcpTool, operation]),
 ));
 
+// routing: 'extension' means "send to a browser connector" for this cycle
+// (extension, CDP, or BiDi). Do not add a silent `browser` routing alias.
 const FORWARDABLE_ACTIONS = Object.freeze(BROWSER_OPERATIONS
   .filter((operation) => operation.routing === 'extension')
   .map((operation) => operation.wireAction));

@@ -22,7 +22,8 @@ const { ensureToken } = require('@js-eyes/runtime-paths/token');
 const { getPaths } = require('@js-eyes/runtime-paths');
 const { checkAccess, isTokenSubprotocol } = require('./auth');
 const { createAuditLogger, NOOP_AUDIT } = require('./audit');
-const { loadConfig, resolveHotReloadableSecurity } = tryLoadConfigModule();
+const { loadConfig, mergeBrowserConfig, resolveHotReloadableSecurity } = tryLoadConfigModule();
+const { startConnectors } = require('./connectors/supervisor');
 const pkg = require('./package.json');
 
 function tryLoadConfigModule() {
@@ -31,6 +32,7 @@ function tryLoadConfigModule() {
   } catch {
     return {
       loadConfig: () => ({}),
+      mergeBrowserConfig: (value) => value || {},
       resolveHotReloadableSecurity: () => ({ applied: {}, ignored: {}, egressDiff: { added: [], removed: [] } }),
     };
   }
@@ -119,10 +121,15 @@ function createServer(options = {}) {
     : DEFAULT_REQUEST_TIMEOUT_SECONDS;
   const requestTimeoutMs = Math.round(resolvedRequestTimeoutSeconds * 1000);
 
+  const browserConfig = typeof mergeBrowserConfig === 'function'
+    ? mergeBrowserConfig(config.browser)
+    : (config.browser || {});
+
   const state = createState();
   state.serverToken = serverToken;
   state.security = security;
   state.audit = audit;
+  state.browserConfig = browserConfig;
   state.pendingEgressDir = options.pendingEgressDir || null;
   state.requestTimeoutMs = requestTimeoutMs;
   // Bumped by `reloadSecurity()` so that `getOrCreatePolicyForClient` can
@@ -264,10 +271,26 @@ function createServer(options = {}) {
             authRequired: Boolean(serverToken) && !security.allowAnonymous,
             allowAnonymous: Boolean(security.allowAnonymous),
             connections: {
-              extensions: browsers.map(({ clientId, browserName, connectedAt, tabCount }) => (
-                { clientId, browserName, connectedAt, tabCount }
+              extensions: browsers
+                .filter((browser) => (browser.kind || 'extension') === 'extension')
+                .map(({ clientId, browserName, connectedAt, tabCount }) => (
+                  { clientId, browserName, connectedAt, tabCount }
+                )),
+              clients: browsers.map(({ clientId, browserName, kind, transport, connectedAt, tabCount }) => (
+                { clientId, browserName, kind, transport, connectedAt, tabCount }
               )),
               automationClients: state.automationClients.size,
+            },
+            browser: {
+              defaultTransport: browserConfig.defaultTransport || 'extension',
+              transports: {
+                extension: { enabled: browserConfig.transports?.extension?.enabled !== false },
+                cdp: {
+                  enabled: Boolean(browserConfig.transports?.cdp?.enabled),
+                  mode: browserConfig.transports?.cdp?.mode || 'attach',
+                },
+                bidi: { enabled: Boolean(browserConfig.transports?.bidi?.enabled) },
+              },
             },
             tabs: totalTabs,
             pendingRequests: state.pendingResponses.size,
@@ -540,7 +563,14 @@ function createServer(options = {}) {
           allowAnonymous: Boolean(security.allowAnonymous),
         });
         startConfigWatcher();
-        resolve(undefined);
+        startConnectors(state, { browserConfig, security, audit, logger })
+          .then((supervisor) => {
+            state.connectorSupervisor = supervisor;
+          })
+          .catch((error) => {
+            logger.warn?.(`[js-eyes-server] browser connectors failed to start: ${error.message}`);
+          })
+          .finally(() => resolve(undefined));
       });
     });
   }
@@ -565,8 +595,16 @@ function createServer(options = {}) {
         configWatcher = null;
       }
 
+      const supervisor = state.connectorSupervisor;
+      state.connectorSupervisor = null;
+      if (supervisor && typeof supervisor.stop === 'function') {
+        try { supervisor.stop(); } catch {}
+      }
+      for (const [, conn] of state.browserClients || []) {
+        try { conn.dispose?.(); } catch {}
+      }
       for (const [, conn] of state.extensionClients) {
-        try { conn.socket.close(1000, 'Server shutting down'); } catch {}
+        try { conn.socket?.close(1000, 'Server shutting down'); } catch {}
       }
       for (const [, conn] of state.automationClients) {
         try { conn.socket.close(1000, 'Server shutting down'); } catch {}

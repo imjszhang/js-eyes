@@ -81,6 +81,16 @@ module.exports = [
   },
   {
     files: [
+      'packages/protocol/page-interact-core.js',
+    ],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
+    files: [
       'extensions/**/*.js',
       'src/**/*.js',
       'skills/*/bridges/**/*.js',

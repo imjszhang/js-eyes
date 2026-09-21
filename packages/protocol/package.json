@@ -9,7 +9,9 @@
   "files": [
     "index.js",
     "browser-operations.js",
-    "browser-handlers.js"
+    "browser-handlers.js",
+    "browser-capabilities.js",
+    "page-interact-core.js"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

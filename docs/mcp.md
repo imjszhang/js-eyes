@@ -84,10 +84,11 @@ all four risk classes and should be enabled only for a trusted MCP host.
 
 ## Browser selection
 
-When only one extension is connected, browser-scoped tools select it
-automatically. When several extensions are connected, pass `target` using the
-client ID returned by `browser_list_clients`. A unique browser name such as
-`chrome` or `firefox` is also accepted.
+When only one browser client is connected, browser-scoped tools select it
+automatically. When several clients are connected (for example an extension and
+a CDP session), pass `target` using the client ID returned by
+`browser_list_clients`. A unique browser name such as `chrome` or `firefox` is
+also accepted.
 
 Set a process-wide default with:
 
@@ -96,7 +97,7 @@ Set a process-wide default with:
 ```
 
 JS Eyes refuses ambiguous browser-scoped operations instead of choosing an
-arbitrary extension.
+arbitrary client.
 
 ## Options
 
@@ -140,11 +141,15 @@ it.
 `JS_EYES_SERVER_UNAVAILABLE` means the local server could not be reached. Start
 it with `js-eyes server start` and verify it with `js-eyes doctor`.
 
-`JS_EYES_EXTENSION_UNAVAILABLE` means the server is running but no matching
-browser extension is connected.
+`JS_EYES_BROWSER_UNAVAILABLE` means the server is running but no matching
+browser client is connected. `JS_EYES_EXTENSION_UNAVAILABLE` is a documented
+alias for this cycle and will be removed in the next coordinated version.
 
-`JS_EYES_TARGET_REQUIRED` means more than one extension is connected. Call
+`JS_EYES_TARGET_REQUIRED` means more than one browser client is connected. Call
 `browser_list_clients` and pass a client ID as `target`.
+
+`JS_EYES_CAPABILITY_UNSUPPORTED` means the selected connector cannot perform
+that operation. The facade does not silently fall back to another transport.
 
 `JS_EYES_AUTH_FAILED` means the MCP process and browser/server configuration do
 not share the same JS Eyes token.

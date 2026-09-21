@@ -13,6 +13,8 @@ function printHelp() {
   print('  js-eyes server token [show|init|rotate] [--reveal]');
   print('  js-eyes status');
   print('  js-eyes doctor');
+  print('  js-eyes browser list');
+  print('  js-eyes browser attach --cdp [--mode attach|endpoint|launch] [--endpoint url]');
   print('  js-eyes audit tail [--lines 100] [--since <iso>]');
   print('  js-eyes consent list|approve <id>|deny <id>');
   print('  js-eyes egress list|approve <id>|allow <domain>|clear');

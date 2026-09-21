@@ -413,7 +413,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 | Action | Description |
 |--------|-------------|
 | `browser/get-tabs` | List all open browser tabs with ID, URL, title |
-| `browser/list-clients` | List connected browser extension clients |
+| `browser/list-clients` | List connected browser clients |
 | `browser/open-url` | Open a URL in a new or existing tab |
 | `browser/close-tab` | Close a tab by ID |
 | `browser/get-html` | Get full HTML content of a tab |
@@ -583,6 +583,7 @@ The fastest path for an external custom skill is **zero-restart**: `js-eyes skil
 See:
 
 - [Skill Runtime V2 architecture](./docs/architecture/skill-runtime-v2.md) — host contract, trust, Worker isolation, and shared host surfaces.
+- [Browser connectors](./docs/architecture/browser-connectors.md) — extension / CDP / BiDi transports over the same protocol.
 - [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring and deployment guides. V1 contracts remain supported during migration.
 - [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).
 
@@ -673,7 +674,7 @@ Use this checklist after a fresh ClawHub install:
 | Plugin path not found (Windows) | Use forward slashes in JSON, e.g. `C:/Users/you/skills/js-eyes/openclaw-plugin` |
 | Agent returns `pending-egress` / policy-blocked text | The server policy engine blocked the URL or operation before it reached the browser. Run `js-eyes security show` to inspect `egressAllowlist` and `taskOrigin`; then use `js-eyes egress list`, `js-eyes egress approve <id>`, or `js-eyes egress allow <domain>` as appropriate. This is different from extension disconnects and consent gating. |
 | Windows browser cannot reach OpenClaw/js-eyes on another LAN host | Default bind is loopback only. See [Remote browser on the LAN](#remote-browser-on-the-lan). |
-| Headless Linux / no desktop | The extension must load in a real browser. See [Headless and no-display hosts](#headless-and-no-display-hosts). |
+| Headless Linux / no desktop | Use the optional CDP `launch` transport, or a display + extension. See [Headless and no-display hosts](#headless-and-no-display-hosts). |
 
 ### Remote browser on the LAN
 
@@ -705,12 +706,22 @@ To drive a browser on one LAN host (for example Windows `192.168.10.66`) from Op
 
 ### Headless and no-display hosts
 
-JS Eyes is not a CDP / Playwright driver. Automation goes through the browser extension, so the host must run Chrome, Edge, or Firefox in a session that can install and keep that extension loaded.
+The default path is still the browser extension on a daily logged-in Chrome,
+Edge, or Firefox session. JS Eyes is not a raw CDP / Playwright product: agents
+keep using first-class operations, and policy still runs before any connector
+dispatch.
 
-A Linux server that only has `google-chrome --headless` (no desktop, VNC, or X display) is not a supported install path. Use one of:
+Optional CDP and BiDi transports can attach to a debug port or launch a
+dedicated headless profile. Enable them in `browser.transports` (or
+`js-eyes browser attach --cdp`) and restart the server. Defaults stay off and
+loopback-only.
 
-- A graphical or virtual display on the same machine (desktop, VNC, Xvfb + a normal Chrome/Firefox profile), then connect the extension to `http://localhost:18080`
-- A browser on another machine, with the server opened as in [Remote browser on the LAN](#remote-browser-on-the-lan)
+For a machine with no desktop:
+
+- Set `browser.transports.cdp.enabled=true` with `launch.enabled=true` (or
+  `mode=endpoint` against an already-debuggable Chromium)
+- Or keep using a graphical / VNC / Xvfb session and the extension
+- Or drive a browser on another machine as in [Remote browser on the LAN](#remote-browser-on-the-lan)
 
 ## Related Projects
 

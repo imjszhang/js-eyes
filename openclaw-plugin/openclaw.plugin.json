@@ -103,6 +103,31 @@
         "default": true,
         "description": "开发模式：监听已发现技能目录的文件变更（默认 ~300ms 防抖），改完 Skill 源文件自动 reload。仅推荐在本地开发用；生产可关闭以减少 fs 监听负载。"
       },
+      "browser": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "浏览器连接器配置。行为由 server-core 解释，改传输需重启服务器。",
+        "default": {
+          "defaultTransport": "extension",
+          "transports": {
+            "extension": { "enabled": true },
+            "cdp": { "enabled": false, "mode": "attach" },
+            "bidi": { "enabled": false }
+          }
+        },
+        "properties": {
+          "defaultTransport": {
+            "type": "string",
+            "enum": ["extension", "cdp", "bidi"],
+            "default": "extension"
+          },
+          "transports": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "extension / cdp / bidi 传输开关与 endpoint。"
+          }
+        }
+      },
       "nativeHost": {
         "type": "object",
         "additionalProperties": false,
@@ -203,6 +228,11 @@
     "devWatchSkills": {
       "label": "监听技能目录（开发模式）",
       "help": "默认开启。监听已发现技能目录里的文件变更，改完 Skill 源文件自动 reload。生产环境可关闭。",
+      "advanced": true
+    },
+    "browser": {
+      "label": "浏览器传输",
+      "help": "默认走扩展。CDP/BiDi 需显式启用，并由 server-core 在重启后连接。不要把原始 DevTools 协议暴露给 agent。",
       "advanced": true
     },
     "nativeHost": {

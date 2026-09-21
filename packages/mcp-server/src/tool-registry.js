@@ -108,7 +108,7 @@ async function runBrowserOperation(session, config, operation, args) {
     case 'tabs.list':
       return dataResult(`Open tabs: ${(raw.tabs || []).length}`, raw, { maxChars });
     case 'clients.list':
-      return dataResult(`Connected browser extensions: ${raw.length}`, raw, {
+      return dataResult(`Connected browser clients: ${raw.length}`, raw, {
         maxChars,
         structured: { clients: raw },
       });
@@ -192,7 +192,7 @@ function createToolDefinitions(session, config, skillService = null) {
   const statusTool = {
     name: 'browser_status',
     title: 'JS Eyes: Browser Status',
-    description: 'Check JS Eyes server reachability and list connected browser extensions.',
+    description: 'Check JS Eyes server reachability and list connected browser clients.',
     inputSchema: z.object({}),
     annotations: annotations({ readOnly: true, idempotent: true }),
     async execute() {

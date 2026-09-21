@@ -36,6 +36,7 @@ describe('CLI module boundaries', () => {
 
     const exported = Object.keys(require('../apps/cli/src/cli')).sort();
     assert.deepEqual(exported, [
+      'commandBrowser',
       'commandDoctor',
       'commandEgress',
       'commandExtension',
@@ -82,6 +83,7 @@ describe('CLI module boundaries', () => {
     const output = await captureStdout(() => main(['help']));
     assert.match(output, /^JS Eyes CLI/m);
     assert.match(output, /js-eyes skills update/);
+    assert.match(output, /js-eyes browser list/);
     assert.match(output, /js-eyes native-host install/);
     await assert.rejects(() => main(['not-a-command']), /未知命令: not-a-command/);
   });

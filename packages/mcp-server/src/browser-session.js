@@ -45,8 +45,8 @@ class BrowserSession {
     const clients = await this.listClients();
     if (clients.length === 0) {
       throw new FacadeError(
-        'JS_EYES_EXTENSION_UNAVAILABLE',
-        'No JS Eyes browser extension is connected.',
+        'JS_EYES_BROWSER_UNAVAILABLE',
+        'No JS Eyes browser client is connected.',
       );
     }
     if (requested) {
@@ -60,19 +60,19 @@ class BrowserSession {
       if (named.length > 1) {
         throw new FacadeError(
           'JS_EYES_TARGET_REQUIRED',
-          `Browser target "${requested}" matches multiple connected extensions; use a clientId.`,
+          `Browser target "${requested}" matches multiple connected clients; use a clientId.`,
           { candidates: named.map((client) => client.clientId) },
         );
       }
       throw new FacadeError(
-        'JS_EYES_EXTENSION_UNAVAILABLE',
+        'JS_EYES_BROWSER_UNAVAILABLE',
         `Browser target "${requested}" is not connected.`,
       );
     }
     if (clients.length === 1) return clients[0].clientId;
     throw new FacadeError(
       'JS_EYES_TARGET_REQUIRED',
-      'Multiple browser extensions are connected; specify target using a clientId or unique browser name.',
+      'Multiple browser clients are connected; specify target using a clientId or unique browser name.',
       { candidates: clients.map((client) => ({ clientId: client.clientId, browserName: client.browserName })) },
     );
   }
@@ -98,8 +98,8 @@ class BrowserSession {
         clients,
         ...(!ready ? {
           error: {
-            code: 'JS_EYES_EXTENSION_UNAVAILABLE',
-            message: 'The JS Eyes server is running, but no browser extension is connected.',
+            code: 'JS_EYES_BROWSER_UNAVAILABLE',
+            message: 'The JS Eyes server is running, but no browser client is connected.',
           },
         } : {}),
       };

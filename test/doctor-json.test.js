@@ -63,6 +63,7 @@ describe('js-eyes doctor --json', () => {
       'skills',
       'extras',
       'registryUrl',
+      'browser',
     ];
     for (const key of expectedTopLevelKeys) {
       assert.ok(
