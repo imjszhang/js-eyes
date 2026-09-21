@@ -15,6 +15,7 @@ import './utils.js';
 import './connection-methods.js';
 import './messaging-methods.js';
 import './operations-methods.js';
+import './cookie-write-methods.js';
 import './page-interact-core.js';
 import './page-interact-methods.js';
 import './page-extract-core.js';

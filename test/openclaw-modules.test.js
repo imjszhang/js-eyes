@@ -145,6 +145,7 @@ describe('OpenClaw module boundaries', () => {
       'browser/inject-css',
       'browser/get-cookies',
       'browser/get-cookies-by-domain',
+      'browser/sync-cookies',
       'browser/get-page-info',
       'browser/upload-file',
       'browser/click',

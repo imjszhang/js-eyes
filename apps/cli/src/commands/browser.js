@@ -1,5 +1,6 @@
 'use strict';
 
+const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const {
   fetchJson,
   getServerOptions,
@@ -25,9 +26,12 @@ async function commandBrowser(positionals, flags = {}) {
       return commandBrowserList(flags);
     case 'attach':
       return commandBrowserAttach(flags);
+    case 'cookies':
+      if (positionals[2] === 'sync') return commandBrowserCookiesSync(flags);
+      throw new Error('支持的命令: `js-eyes browser cookies sync --domain <host> --from <id|name> --to <id|name>`');
     default:
-      throw new Error('支持的命令: `js-eyes browser list` / `js-eyes browser attach --cdp|--bidi`');
-  }
+      throw new Error('支持的命令: `js-eyes browser list` / `js-eyes browser attach --cdp|--bidi` / `js-eyes browser cookies sync`');
+    }
 }
 
 async function commandBrowserList(flags) {
@@ -71,9 +75,41 @@ function commandBrowserAttach(flags) {
   print('已写入 browser.transports.bidi。重启 js-eyes server 后生效。');
 }
 
+async function commandBrowserCookiesSync(flags) {
+  const domain = flags.domain;
+  const source = flags.from;
+  const destination = flags.to;
+  if (!domain || !source || !destination) {
+    throw new Error('用法: js-eyes browser cookies sync --domain x.com --from <id|name> --to <id|name> [--replace]');
+  }
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const token = readServerToken();
+  const browser = new BrowserAutomation(`ws://${host}:${port}`, {
+    token,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    const result = await browser.syncCookies({
+      domain,
+      source,
+      destination,
+      includeSubdomains: flags['include-subdomains'] !== false,
+      overwrite: flags.replace ? 'replace' : 'merge',
+    });
+    print(`copied ${result.copied}  skipped ${result.skipped}`);
+    for (const reason of result.reasons || []) {
+      print(`  ${reason.name || '-'}: ${reason.reason}`);
+    }
+  } finally {
+    browser.disconnect();
+  }
+}
+
 module.exports = {
   commandBrowser,
   commandBrowserAttach,
+  commandBrowserCookiesSync,
   commandBrowserList,
   loadBrowserConfig,
 };

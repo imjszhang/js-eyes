@@ -16,6 +16,8 @@ const {
   isClientOpen,
   pickBrowserClient,
 } = require('./connectors/registry');
+const { publicCookieWriteResult } = require('./connectors/cookie-record');
+const { syncCookiesBetweenClients } = require('./cookie-sync');
 
 let PolicyContextCtor = null;
 function loadPolicyContext() {
@@ -387,6 +389,14 @@ function handleExtensionMessage(raw, clientId, state) {
         requestId,
       }, state);
       break;
+    case 'set_cookies_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: 'set_cookies_complete',
+        ...publicCookieWriteResult(data),
+        requestId,
+      }, state);
+      break;
     case 'get_page_info_complete':
       resolveRequest(requestId, {
         status: 'success',
@@ -464,7 +474,10 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       anonymous: Boolean(conn?.anonymous),
       hasCode: Boolean(data.code),
       hasCss: Boolean(data.css),
+      hasCookies: Array.isArray(data.cookies) && data.cookies.length > 0,
       domain: data.domain || null,
+      source: data.source || null,
+      destination: data.destination || null,
       tabId: data.tabId ?? null,
       enforcement: state.security?.enforcement || 'off',
       evalKind: action === 'execute_script'
@@ -487,6 +500,9 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       if (data.css !== undefined) params.css = data.css;
       if (data.domain !== undefined) params.domain = data.domain;
       if (data.files !== undefined) params.files = data.files;
+      if (data.cookies !== undefined) params.cookies = data.cookies;
+      if (data.source !== undefined) params.source = data.source;
+      if (data.destination !== undefined) params.destination = data.destination;
       try {
         const decision = await policy.evaluate(toolName, params);
         if (decision.decision === 'soft-block' || decision.decision === 'deny') {
@@ -578,6 +594,12 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     case 'get_cookies_by_domain':
       dispatchToBrowser('get_cookies_by_domain', data, socket, state, ['domain', 'includeSubdomains'], target, clientId);
+      break;
+    case 'set_cookies':
+      dispatchToBrowser('set_cookies', data, socket, state, ['cookies', 'overwrite', 'domain'], target, clientId);
+      break;
+    case 'sync_cookies':
+      await handleSyncCookies(data, socket, state, clientId);
       break;
     case 'get_page_info':
       dispatchToBrowser('get_page_info', data, socket, state, ['tabId'], target, clientId);
@@ -677,6 +699,90 @@ function forwardToExtension(type, data, automationSocket, state, fields, target,
 
 function pickExtension(state, target) {
   return pickBrowserClient(state, target);
+}
+
+function requestFromClient(state, client, type, payload = {}) {
+  const requestId = generateId();
+  return new Promise((resolve, reject) => {
+    const fakeSocket = {
+      readyState: 1,
+      send(raw) {
+        try {
+          const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (msg.status === 'error') {
+            const error = /** @type {Error & { code?: string }} */ (new Error(msg.message || 'connector error'));
+            error.code = msg.code || 'CONNECTOR_ERROR';
+            reject(error);
+            return;
+          }
+          resolve(msg);
+        } catch (error) {
+          reject(error);
+        }
+      },
+    };
+    registerPending(requestId, fakeSocket, type, state, null);
+    try {
+      const result = client.dispatch({ type, requestId, ...payload }, state);
+      if (result && typeof result.then === 'function') {
+        result.catch((err) => {
+          resolveRequest(requestId, {
+            status: 'error',
+            type: 'error',
+            message: err.message,
+            code: err.code || 'CONNECTOR_ERROR',
+            requestId,
+          }, state);
+        });
+      }
+    } catch (err) {
+      resolveRequest(requestId, {
+        status: 'error',
+        type: 'error',
+        message: err.message,
+        code: err.code || 'CONNECTOR_ERROR',
+        requestId,
+      }, state);
+    }
+  }).finally(() => {
+    state.callbackResponses.delete(requestId);
+  });
+}
+
+async function handleSyncCookies(data, socket, state, clientId) {
+  const requestId = data.requestId || generateId();
+  try {
+    const result = await syncCookiesBetweenClients(state, {
+      domain: data.domain,
+      includeSubdomains: data.includeSubdomains,
+      source: data.source,
+      destination: data.destination,
+      overwrite: data.overwrite,
+    }, (client, type, payload) => requestFromClient(state, client, type, payload));
+    state.audit?.write?.('automation.cookies-sync', {
+      clientId,
+      domain: result.domain,
+      source: result.source,
+      destination: result.destination,
+      copied: result.copied,
+      skipped: result.skipped,
+      reasons: result.reasons,
+    });
+    send(socket, {
+      type: 'sync_cookies_response',
+      requestId,
+      status: 'success',
+      ...result,
+    });
+  } catch (error) {
+    send(socket, {
+      type: 'sync_cookies_response',
+      requestId,
+      status: 'error',
+      code: error.code || 'CONNECTOR_ERROR',
+      message: error.message,
+    });
+  }
 }
 
 function registerPending(requestId, automationSocket, operationType, state, clientId = null) {
@@ -792,6 +898,7 @@ module.exports = {
     dispatchToBrowser,
     handleExtensionMessage,
     handleAutomationMessage,
+    requestFromClient,
     setupExtensionClient,
     setupAutomationClient,
     registerPending,

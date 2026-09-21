@@ -12,6 +12,14 @@ const {
 const { JsonRpcSocket, waitForOpen } = require('./json-rpc-socket');
 const { TabAliasMap } = require('./tab-alias');
 const { assertLoopbackEndpoint, redactEndpoint } = require('./loopback');
+const {
+  classifyCookies,
+  cookieIdentity,
+  cookieMatchesDomain,
+  publicCookieWriteResult,
+  toBidiSetCookie,
+  toCanonicalCookie,
+} = require('./cookie-record');
 const { registerBrowserClient, unregisterBrowserClient } = require('./registry');
 
 function loadExtractPageContent() {
@@ -317,6 +325,13 @@ class BidiConnector {
           }
           break;
         }
+        case 'set_cookies': {
+          complete({
+            type: 'set_cookies_complete',
+            ...await this._setCookies(message),
+          });
+          break;
+        }
         case 'get_page_info': {
           const data = await this._evaluate(this._requireContext(message.tabId), getPageInfoInPage, []);
           complete({ type: 'get_page_info_complete', tabId: message.tabId, data: data || {} });
@@ -404,6 +419,44 @@ class BidiConnector {
     } catch (error) {
       fail(error);
     }
+  }
+
+  async _setCookies(message) {
+    const classified = classifyCookies(message.cookies || []);
+    const domain = String(message.domain || classified.cookies[0]?.domain || '').replace(/^\./, '');
+    if (message.overwrite === 'replace' && domain) {
+      const existing = await this.rpc.send('storage.getCookies', {
+        filter: { domain },
+      });
+      const incoming = new Set(classified.cookies.map(cookieIdentity));
+      for (const raw of existing.cookies || []) {
+        const cookie = toCanonicalCookie(raw);
+        if (!cookieMatchesDomain(cookie, domain, true)) continue;
+        if (incoming.has(cookieIdentity(cookie))) continue;
+        try {
+          await this.rpc.send('storage.deleteCookies', {
+            filter: {
+              name: cookie.name,
+              domain: String(cookie.domain || '').replace(/^\./, ''),
+              path: cookie.path || '/',
+            },
+          });
+        } catch { /* skip deletes that the browser rejects */ }
+      }
+    }
+    let set = 0;
+    const reasons = classified.reasons.slice();
+    let skipped = classified.skipped;
+    for (const cookie of classified.cookies) {
+      try {
+        await this.rpc.send('storage.setCookie', toBidiSetCookie(cookie));
+        set += 1;
+      } catch {
+        skipped += 1;
+        reasons.push({ name: cookie.name, reason: 'set-failed' });
+      }
+    }
+    return publicCookieWriteResult({ set, skipped, reasons });
   }
 }
 

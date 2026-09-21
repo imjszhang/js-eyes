@@ -12,6 +12,14 @@ const {
 const { JsonRpcSocket, waitForOpen } = require('./json-rpc-socket');
 const { TabAliasMap } = require('./tab-alias');
 const { assertLoopbackEndpoint, redactEndpoint } = require('./loopback');
+const {
+  classifyCookies,
+  cookieIdentity,
+  cookieMatchesDomain,
+  publicCookieWriteResult,
+  toCdpSetCookie,
+  toCanonicalCookie,
+} = require('./cookie-record');
 const { registerBrowserClient, unregisterBrowserClient } = require('./registry');
 
 function loadExtractPageContent() {
@@ -148,12 +156,14 @@ class CdpConnector {
     this.stopped = false;
     this.reconnectDelay = 1000;
     this.wsUrl = null;
+    this._cookieSessionIdCached = null;
   }
 
   async start() {
     this.stopped = false;
     const mode = this.config.launch?.enabled ? 'launch' : (this.config.mode || 'attach');
     this.wsUrl = await this._resolveWsUrl(mode);
+    this._cookieSessionIdCached = null;
     await this._connect(this.wsUrl);
     this.reconnectDelay = 1000;
   }
@@ -461,6 +471,13 @@ class CdpConnector {
           });
           break;
         }
+        case 'set_cookies': {
+          complete({
+            type: 'set_cookies_complete',
+            ...await this._setCookies(message),
+          });
+          break;
+        }
         case 'get_page_info': {
           const targetId = this._requireTarget(message.tabId);
           const data = await this._evaluate(targetId, getPageInfoInPage, []);
@@ -567,17 +584,119 @@ class CdpConnector {
     }
   }
 
+  async _setCookies(message) {
+    const classified = classifyCookies(message.cookies || []);
+    const domain = String(message.domain || classified.cookies[0]?.domain || '').replace(/^\./, '');
+    if (message.overwrite === 'replace' && domain) {
+      const existing = await this._getCookies();
+      const incoming = new Set(classified.cookies.map(cookieIdentity));
+      for (const raw of existing) {
+        const cookie = toCanonicalCookie(raw);
+        if (!cookieMatchesDomain(cookie, domain, true)) continue;
+        if (incoming.has(cookieIdentity(cookie))) continue;
+        try {
+          await this._sendCookieCommand('Network.deleteCookies', {
+            name: cookie.name,
+            domain: cookie.domain,
+            path: cookie.path || '/',
+          });
+        } catch { /* skip deletes that the browser rejects */ }
+      }
+    }
+    const reasons = classified.reasons.slice();
+    let skipped = classified.skipped;
+    if (classified.cookies.length === 0) {
+      return publicCookieWriteResult({ set: 0, skipped, reasons });
+    }
+    try {
+      await this.rpc.send('Storage.setCookies', {
+        cookies: classified.cookies.map(toCdpSetCookie),
+      });
+      return publicCookieWriteResult({ set: classified.cookies.length, skipped, reasons });
+    } catch {
+      // Chrome 144+ browser targets expose Storage but not Network; older
+      // endpoints and page sessions still use Network.setCookie.
+    }
+    let set = 0;
+    for (const cookie of classified.cookies) {
+      try {
+        const result = await this._sendCookieCommand('Network.setCookie', toCdpSetCookie(cookie));
+        if (result && result.success === false) {
+          skipped += 1;
+          reasons.push({ name: cookie.name, reason: 'set-failed' });
+          continue;
+        }
+        set += 1;
+      } catch {
+        skipped += 1;
+        reasons.push({ name: cookie.name, reason: 'set-failed' });
+      }
+    }
+    return publicCookieWriteResult({ set, skipped, reasons });
+  }
+
   async _getCookies(url) {
     try {
-      if (url) {
-        const result = await this.rpc.send('Network.getCookies', { urls: [url] });
-        return result.cookies || [];
-      }
-      const result = await this.rpc.send('Network.getAllCookies');
-      return result.cookies || [];
+      const stored = await this.rpc.send('Storage.getCookies', {});
+      return this._filterCookiesByUrl(stored.cookies || [], url);
     } catch {
-      return [];
+      try {
+        if (url) {
+          const result = await this._sendCookieCommand('Network.getCookies', { urls: [url] });
+          return result.cookies || [];
+        }
+        const result = await this._sendCookieCommand('Network.getAllCookies', {});
+        return result.cookies || [];
+      } catch {
+        return [];
+      }
     }
+  }
+
+  _filterCookiesByUrl(cookies, url) {
+    if (!url || !Array.isArray(cookies)) return cookies || [];
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      return cookies.filter((cookie) => {
+        const domain = String(cookie.domain || '').replace(/^\./, '').toLowerCase();
+        return domain === host || host.endsWith(`.${domain}`) || domain.endsWith(`.${host}`);
+      });
+    } catch {
+      return cookies;
+    }
+  }
+
+  async _sendCookieCommand(method, params) {
+    try {
+      return await this.rpc.send(method, params);
+    } catch (error) {
+      if (!String(error.message || '').includes("wasn't found")) throw error;
+      const sessionId = await this._cookieSessionId();
+      return this.rpc.send(method, params, sessionId ? { sessionId } : {});
+    }
+  }
+
+  async _cookieSessionId() {
+    if (this._cookieSessionIdCached) return this._cookieSessionIdCached;
+    let targetId = null;
+    for (const [id, info] of this.targets) {
+      if (info && (info.type === 'page' || info.type === 'tab' || !info.type)) {
+        targetId = id;
+        break;
+      }
+    }
+    if (!targetId) {
+      const created = await this.rpc.send('Target.createTarget', { url: 'about:blank' });
+      targetId = created.targetId;
+      this.aliases.allocate(targetId);
+      this.targets.set(targetId, { targetId, type: 'page', url: 'about:blank', title: '' });
+    }
+    const sessionId = await this._sessionFor(targetId);
+    try {
+      await this.rpc.send('Network.enable', {}, sessionId ? { sessionId } : {});
+    } catch { /* older sessions */ }
+    this._cookieSessionIdCached = sessionId;
+    return sessionId;
   }
 
   async _materializeUploads(files) {

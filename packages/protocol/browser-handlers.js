@@ -29,6 +29,10 @@ function pickOptions(args = {}, callOptions = {}) {
   if (args.target !== undefined) options.target = args.target;
   if (args.timeout !== undefined) options.timeout = args.timeout;
   if (args.includeSubdomains !== undefined) options.includeSubdomains = args.includeSubdomains;
+  if (args.source !== undefined) options.source = args.source;
+  if (args.destination !== undefined) options.destination = args.destination;
+  if (args.overwrite !== undefined) options.overwrite = args.overwrite;
+  if (args.domain !== undefined) options.domain = args.domain;
   if (args.targetSelector !== undefined) options.targetSelector = args.targetSelector;
   if (args.format !== undefined) options.format = args.format;
   if (args.quality !== undefined) options.quality = args.quality;
@@ -87,6 +91,20 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
       return browser.getCookies(args.tabId, options);
     case 'cookies.readDomain':
       return browser.getCookiesByDomain(args.domain, options);
+    case 'cookies.write':
+      return browser.setCookies(args.cookies, {
+        ...options,
+        overwrite: args.overwrite ?? options.overwrite,
+        domain: args.domain ?? options.domain,
+      });
+    case 'cookies.sync':
+      return browser.syncCookies({
+        domain: args.domain,
+        source: options.source ?? args.source,
+        destination: options.destination ?? args.destination,
+        includeSubdomains: options.includeSubdomains ?? args.includeSubdomains,
+        overwrite: options.overwrite ?? args.overwrite,
+      }, options);
     case 'page.info':
       return browser.getPageInfo(args.tabId, options);
     case 'file.upload':

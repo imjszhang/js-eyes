@@ -122,6 +122,10 @@ async handleMessage(data) {
           await this.handleGetCookiesByDomain(payload);
           break;
 
+        case 'set_cookies':
+          await this.handleSetCookies(payload);
+          break;
+
         case 'get_page_info':
           await this.handleGetPageInfo(payload);
           break;

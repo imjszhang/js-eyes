@@ -25,6 +25,8 @@ const BROWSER_METHOD_CAPABILITIES = Object.freeze({
   injectCss: 'browser.css.inject',
   getCookies: 'browser.cookies.read',
   getCookiesByDomain: 'browser.cookies.read',
+  setCookies: 'browser.cookies.write',
+  syncCookies: Object.freeze(['browser.cookies.read', 'browser.cookies.write']),
   uploadFileToTab: 'browser.files.upload',
   click: 'browser.page.interact',
   fill: 'browser.page.interact',
@@ -143,8 +145,9 @@ function createSkillRuntime(options = {}) {
         if (property === 'disconnect') return () => {};
         const capability = BROWSER_METHOD_CAPABILITIES[property];
         if (!capability) return undefined;
+        const required = Array.isArray(capability) ? capability : [capability];
         return (...args) => {
-          requireGranted(capability);
+          for (const item of required) requireGranted(item);
           const client = getBrowser();
           if (typeof client[property] !== 'function') {
             throw new TypeError(`Browser method is unavailable: ${property}`);

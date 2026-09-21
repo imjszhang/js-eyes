@@ -62,6 +62,7 @@ The explicit `full` profile additionally registers:
 - `browser_inject_css`
 - `browser_get_cookies`
 - `browser_get_cookies_by_domain`
+- `browser_sync_cookies`
 - `browser_upload_file`
 
 Sensitive tools are absent from `tools/list` in the safe profile. Runtime

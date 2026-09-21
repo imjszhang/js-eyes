@@ -22,7 +22,8 @@ function validateBrowserOperationCatalog() {
   const allowed = new Set(config.SECURITY?.allowedActions || []);
   const sensitive = new Set(config.SECURITY?.sensitiveActions || []);
   const missingAllowed = FORWARDABLE_ACTIONS.filter((action) => !allowed.has(action));
-  const missingSensitive = SENSITIVE_BROWSER_ACTIONS.filter((action) => !sensitive.has(action));
+  const connectorSensitive = SENSITIVE_BROWSER_ACTIONS.filter((action) => allowed.has(action) || FORWARDABLE_ACTIONS.includes(action));
+  const missingSensitive = connectorSensitive.filter((action) => !sensitive.has(action));
   const unexpectedSensitive = [...sensitive]
     .filter((action) => !SENSITIVE_BROWSER_ACTIONS.includes(action));
   if (missingAllowed.length || missingSensitive.length || unexpectedSensitive.length) {

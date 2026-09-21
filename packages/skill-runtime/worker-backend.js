@@ -17,6 +17,8 @@ const BROWSER_CAPABILITIES = Object.freeze({
   injectCss: 'browser.css.inject',
   getCookies: 'browser.cookies.read',
   getCookiesByDomain: 'browser.cookies.read',
+  setCookies: 'browser.cookies.write',
+  syncCookies: Object.freeze(['browser.cookies.read', 'browser.cookies.write']),
   uploadFileToTab: 'browser.files.upload',
   click: 'browser.page.interact',
   fill: 'browser.page.interact',
@@ -107,7 +109,8 @@ function createSkillWorkerBackend(options = {}) {
       }
       const capability = BROWSER_CAPABILITIES[method];
       if (!capability) throw new Error(`Unsupported browser capability method: ${method}`);
-      invocation.capabilities.require(capability);
+      const required = Array.isArray(capability) ? capability : [capability];
+      for (const item of required) invocation.capabilities.require(item);
       const browser = runtime.getBrowser();
       if (typeof browser[method] !== 'function') throw new Error(`Browser method unavailable: ${method}`);
       const result = await browser[method](...args);

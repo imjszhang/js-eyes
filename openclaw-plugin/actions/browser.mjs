@@ -65,6 +65,8 @@ function formatOpenclawResult(operation, raw, params) {
     case "cookies.readDomain":
       if (!raw.length) return `域名 ${params.domain} 没有 Cookie。`;
       return JSON.stringify(raw, null, 2);
+    case "cookies.sync":
+      return `copied ${Number(raw && raw.copied) || 0}`;
     case "style.inject":
       return `已向标签页 ${params.tabId} 注入 CSS 样式`;
     case "page.info":

@@ -42,6 +42,26 @@ describe('browser operations metadata', () => {
     assert.ok(fill.inputSchema.required.includes('value'));
   });
 
+  it('registers cookie write as connector-only and sync as a full-profile server op', () => {
+    const write = BROWSER_OPERATIONS.find((operation) => operation.id === 'cookies.write');
+    const sync = BROWSER_OPERATION_BY_MCP_TOOL.browser_sync_cookies;
+    assert.equal(write.wireAction, 'set_cookies');
+    assert.equal(write.sdkMethod, 'setCookies');
+    assert.equal(write.mcpTool, undefined);
+    assert.equal(write.openclawAction, undefined);
+    assert.equal(write.routing, 'extension');
+    assert.equal(write.sensitive, true);
+    assert.deepEqual(write.profiles.slice(), ['full']);
+
+    assert.equal(sync.id, 'cookies.sync');
+    assert.equal(sync.wireAction, 'sync_cookies');
+    assert.equal(sync.routing, 'server');
+    assert.equal(sync.openclawAction, 'browser/sync-cookies');
+    assert.deepEqual(sync.capabilities.slice(), ['browser.cookies.read', 'browser.cookies.write']);
+    assert.deepEqual(sync.inputSchema.required.slice(), ['domain', 'source', 'destination']);
+    assert.equal(listBrowserOperationsForProfile('safe').some((op) => op.id === 'cookies.sync'), false);
+  });
+
   it('registers declarative page.extract as a safe read operation', () => {
     const extract = BROWSER_OPERATION_BY_MCP_TOOL.browser_extract_page;
     assert.equal(extract.id, 'page.extract');
@@ -101,6 +121,24 @@ describe('invokeBrowserOperation', () => {
     assert.equal(calls[0][1].timeout, 10);
     assert.equal(calls[0][2].timeout, 15);
     assert.equal(calls[0][2].target, 'ext-1');
+  });
+
+  it('routes cookies.sync through resolved source and destination', async () => {
+    const calls = [];
+    const browser = {
+      async syncCookies(params, options) {
+        calls.push([params, options]);
+        return { domain: params.domain, copied: 1, skipped: 0, reasons: [] };
+      },
+    };
+    const result = await invokeBrowserOperation(browser, 'cookies.sync', {
+      domain: 'x.com',
+      source: 'chrome',
+      destination: 'cdp',
+    }, { source: 'src-1', destination: 'dst-1' });
+    assert.equal(result.copied, 1);
+    assert.equal(calls[0][0].source, 'src-1');
+    assert.equal(calls[0][0].destination, 'dst-1');
   });
 
   it('routes page.extract through extractPage', async () => {

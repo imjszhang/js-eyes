@@ -11,7 +11,8 @@
     "ws-handler.js",
     "audit.js",
     "auth.js",
-    "connectors/"
+    "connectors/",
+    "cookie-sync.js"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

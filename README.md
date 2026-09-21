@@ -419,6 +419,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 | `browser/get-html` | Get full HTML content of a tab |
 | `browser/execute-script` | Run JavaScript in a tab and return the result |
 | `browser/get-cookies` | Get all cookies for a tab's domain |
+| `browser/sync-cookies` | Copy one domain's cookies between two connected browsers (counts only) |
 | `skills/discover` | Query the skill registry for available extension skills |
 | `skills/plan-install` | Download, verify, and stage an extension-skill install plan |
 

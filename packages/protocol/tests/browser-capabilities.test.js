@@ -28,6 +28,7 @@ describe('connector capability matrix', () => {
       'tabs.list', 'clients.list', 'url.open', 'tab.close', 'page.html',
       'page.info', 'page.click', 'page.fill', 'page.scroll', 'page.waitFor',
       'page.extract', 'screenshot.capture', 'cookies.read', 'cookies.readDomain',
+      'cookies.write', 'cookies.sync',
       'file.upload', 'script.execute',
     ]) {
       assert.equal(isOperationSupportedByConnector(id, 'bidi'), true, id);

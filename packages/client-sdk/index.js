@@ -553,6 +553,53 @@ class BrowserAutomation {
     return cookies;
   }
 
+  async setCookies(cookies, options = {}) {
+    const payload = { cookies };
+    if (options.overwrite !== undefined) payload.overwrite = options.overwrite;
+    if (options.domain !== undefined) payload.domain = options.domain;
+    const decision = await this._evaluatePolicy('setCookies', {
+      cookies,
+      domain: options.domain,
+      target: options.target,
+    });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'setCookies');
+    }
+    const response = await this._sendRequest(browserWireAction('cookies.write'), payload, options);
+    return {
+      set: Number(response.set) || 0,
+      skipped: Number(response.skipped) || 0,
+      reasons: Array.isArray(response.reasons) ? response.reasons : [],
+    };
+  }
+
+  async syncCookies(params = {}, options = {}) {
+    const payload = {
+      domain: params.domain,
+      source: params.source,
+      destination: params.destination,
+    };
+    if (params.includeSubdomains !== undefined) payload.includeSubdomains = params.includeSubdomains;
+    if (params.overwrite !== undefined) payload.overwrite = params.overwrite;
+    const decision = await this._evaluatePolicy('syncCookies', {
+      domain: params.domain,
+      source: params.source,
+      destination: params.destination,
+    });
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'syncCookies');
+    }
+    const response = await this._sendRequest(browserWireAction('cookies.sync'), payload, options);
+    return {
+      domain: response.domain || params.domain,
+      copied: Number(response.copied) || 0,
+      skipped: Number(response.skipped) || 0,
+      reasons: Array.isArray(response.reasons) ? response.reasons : [],
+      source: response.source || params.source,
+      destination: response.destination || params.destination,
+    };
+  }
+
   async getPageInfo(tabId, options = {}) {
     const response = await this._sendRequest(browserWireAction('page.info'), { tabId: parseInt(tabId, 10) }, options);
     return response.data || {};

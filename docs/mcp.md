@@ -62,7 +62,10 @@ three generic Skill Runtime tools below.
 - `skill_call`
 
 The `full` profile additionally registers JavaScript execution, CSS injection,
-cookie access, and file upload. Enable it only for an MCP host you trust:
+cookie read, domain-scoped cookie sync, and file upload. `browser_sync_cookies`
+requires `source` and `destination` and returns `copied N` without cookie
+values. `cookies.write` is not exposed over MCP. Enable full only for an MCP
+host you trust:
 
 ```json
 {
@@ -156,6 +159,12 @@ not share the same JS Eyes token.
 
 `JS_EYES_EGRESS_PENDING` includes a `pendingId`. Review it with the normal JS
 Eyes security commands before retrying the URL.
+
+Cookie sync copies session cookies in server memory only. After
+`browser_sync_cookies`, reload the destination page if it is already open; the
+same navigation race as `browser_open_url` can leave a stale document until
+reload. `security.sensitiveCookieDomains` (for example `google.com`) is
+enforced and will soft-block or deny the call.
 
 ## Security notes
 

@@ -91,6 +91,8 @@ const DEFAULT_SECURITY_CONFIG = Object.freeze({
     'browser/execute-script': 'confirm',
     'browser/get-cookies': 'confirm',
     'browser/get-cookies-by-domain': 'confirm',
+    'browser/set-cookies': 'confirm',
+    'browser/sync-cookies': 'confirm',
     'browser/inject-css': 'confirm',
     'browser/upload-file': 'confirm',
     'skills/plan-install': 'confirm',

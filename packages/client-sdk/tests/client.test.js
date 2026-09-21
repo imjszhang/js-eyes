@@ -115,6 +115,28 @@ function defaultHandler(ws, data) {
       }));
       break;
 
+    case 'set_cookies':
+      ws.send(JSON.stringify({
+        type: 'set_cookies_response', requestId, status: 'success',
+        set: Array.isArray(data.cookies) ? data.cookies.length : 0,
+        skipped: 0,
+        reasons: [],
+      }));
+      break;
+
+    case 'sync_cookies':
+      ws.send(JSON.stringify({
+        type: 'sync_cookies_response', requestId, status: 'success',
+        domain: data.domain,
+        copied: 3,
+        skipped: 1,
+        reasons: [{ name: 'x', reason: 'expired' }],
+        source: data.source,
+        destination: data.destination,
+        cookies: [{ name: 'sid', value: 'should-not-leak' }],
+      }));
+      break;
+
     case 'extract_page':
       ws.send(JSON.stringify({
         type: 'extract_page_response', requestId, status: 'success',
@@ -453,6 +475,24 @@ describe('business methods', () => {
     assert.equal(cookies.length, 1);
     assert.equal(cookies[0].name, 'sid');
     assert.equal(cookies[0].value, 'abc');
+  });
+
+  it('setCookies() returns write counts', async () => {
+    const result = await bot.setCookies([{ name: 'sid', value: '1', domain: 'example.com' }]);
+    assert.equal(result.set, 1);
+    assert.equal(result.skipped, 0);
+  });
+
+  it('syncCookies() returns counts and drops cookie values', async () => {
+    const result = await bot.syncCookies({
+      domain: 'x.com',
+      source: 'src-1',
+      destination: 'dst-1',
+    });
+    assert.equal(result.copied, 3);
+    assert.equal(result.skipped, 1);
+    assert.equal(result.cookies, undefined);
+    assert.equal(JSON.stringify(result).includes('should-not-leak'), false);
   });
 
   it('extractPage() returns structured content', async () => {

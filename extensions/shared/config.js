@@ -64,6 +64,7 @@ const DEFAULT_CONFIG = {
       'execute_script',     // 执行脚本（高风险）
       'get_cookies',        // 获取 Cookies（高风险）
       'get_cookies_by_domain', // 按域名获取 Cookies（高风险）
+      'set_cookies',        // 写入 Cookies（高风险，仅服务端/SDK）
       'inject_css',         // 注入 CSS（高风险）
       'get_page_info',      // 获取页面信息
       'click',              // 一等交互：点击元素（不依赖 allowRawEval）
@@ -83,6 +84,7 @@ const DEFAULT_CONFIG = {
       'execute_script',     // 可执行任意代码
       'get_cookies',        // 可获取敏感的认证信息
       'get_cookies_by_domain', // 可获取敏感的认证信息
+      'set_cookies',        // 可写入会话 Cookie
       'inject_css',         // 可改变页面呈现和交互
       'upload_file_to_tab'  // 可将本地提供的数据写入页面
     ],

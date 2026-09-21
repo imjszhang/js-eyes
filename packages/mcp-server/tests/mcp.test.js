@@ -57,6 +57,10 @@ function fakeSession() {
     async injectCss() {},
     async getCookies() { return [{ name: 'sid', value: 'secret' }]; },
     async getCookiesByDomain() { return []; },
+    async syncCookies(params, options) {
+      calls.push(['syncCookies', params, options]);
+      return { domain: params.domain, copied: 2, skipped: 1, reasons: [{ name: 'x', reason: 'expired' }] };
+    },
     async uploadFileToTab() { return ['a.txt']; },
   };
   return {
@@ -124,8 +128,23 @@ describe('native MCP protocol', () => {
   it('exposes sensitive tools only in the full profile', async () => {
     const { client } = await connect('full');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 21);
+    assert.equal(listed.tools.length, 22);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_get_cookies'), true);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_sync_cookies'), true);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_set_cookies'), false);
+  });
+
+  it('formats cookie sync as counts without cookie values', async () => {
+    const { client } = await connect('full');
+    const result = await client.callTool({
+      name: 'browser_sync_cookies',
+      arguments: { domain: 'x.com', source: 'src-1', destination: 'dst-1' },
+    });
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0].text, /copied 2/);
+    assert.equal(result.structuredContent.copied, 2);
+    assert.equal(result.structuredContent.skipped, 1);
+    assert.equal(JSON.stringify(result).includes('secret'), false);
   });
 
   it('calls browser tools and returns structured content', async () => {

@@ -83,9 +83,11 @@ describe('CDP connector', () => {
   let fake;
   let state;
   let connector;
+  const cdpCalls = [];
 
   before(async () => {
     fake = await listenFakeServer((msg) => {
+      cdpCalls.push(msg);
       switch (msg.method) {
         case 'Target.getTargets':
           return {
@@ -109,7 +111,12 @@ describe('CDP connector', () => {
           return { data: 'AAAA' };
         case 'Network.getAllCookies':
         case 'Network.getCookies':
+        case 'Storage.getCookies':
           return { cookies: [{ name: 'sid', value: '1', domain: 'example.com' }] };
+        case 'Network.setCookie':
+        case 'Network.deleteCookies':
+        case 'Storage.setCookies':
+          return { success: true };
         case 'DOM.getDocument':
           return { root: { nodeId: 1 } };
         case 'DOM.querySelector':
@@ -176,6 +183,7 @@ describe('CDP connector', () => {
       inject_css: { tabId: 1, css: 'body{}' },
       get_cookies: { tabId: 1 },
       get_cookies_by_domain: { domain: 'example.com' },
+      set_cookies: { cookies: [{ name: 'sid', value: '1', domain: 'example.com', path: '/' }] },
       get_page_info: { tabId: 1 },
       click: { tabId: 1, selector: 'a' },
       fill: { tabId: 1, selector: 'input', value: 'x' },
@@ -219,15 +227,42 @@ describe('CDP connector', () => {
     assert.equal(response.code, 'RAW_EVAL_DISABLED');
     state.security.allowRawEval = true;
   });
+
+  it('writes cookies through Network.setCookie and omits values from the response', async () => {
+    const set = cdpCalls.find((msg) => msg.method === 'Storage.setCookies')
+      || cdpCalls.find((msg) => msg.method === 'Network.setCookie');
+    assert.ok(set);
+    const cookie = set.method === 'Storage.setCookies' ? set.params.cookies[0] : set.params;
+    assert.equal(cookie.name, 'sid');
+    assert.equal(cookie.value, '1');
+    const auto = createMockSocket();
+    state.automationClients.set('auto-set', { socket: auto, anonymous: false });
+    await handleAutomationMessage(
+      JSON.stringify({
+        action: 'set_cookies',
+        requestId: 'set-1',
+        cookies: [{ name: 'sid', value: 'secret-value', domain: 'example.com', path: '/' }],
+      }),
+      'auto-set',
+      auto,
+      state,
+    );
+    const response = await waitForMessage(auto, 'set-1');
+    assert.equal(response.status, 'success');
+    assert.equal(JSON.stringify(response).includes('secret-value'), false);
+    assert.ok(response.set >= 1);
+  });
 });
 
 describe('BiDi connector', () => {
   let fake;
   let state;
   let connector;
+  const bidiCalls = [];
 
   before(async () => {
     fake = await listenFakeServer((msg) => {
+      bidiCalls.push(msg);
       switch (msg.method) {
         case 'session.new':
         case 'session.subscribe':
@@ -244,6 +279,9 @@ describe('BiDi connector', () => {
           return { data: 'BBBB' };
         case 'storage.getCookies':
           return { cookies: [{ name: 'a', domain: 'example.com' }] };
+        case 'storage.setCookie':
+        case 'storage.deleteCookies':
+          return {};
         case 'script.evaluate':
           return {
             result: {
@@ -292,5 +330,26 @@ describe('BiDi connector', () => {
     const response = await waitForMessage(auto, 'open-1');
     assert.equal(response.status, 'success');
     assert.ok(response.tabId >= 1);
+  });
+
+  it('writes cookies through storage.setCookie', async () => {
+    const auto = createMockSocket();
+    state.automationClients.set('auto-bidi-set', { socket: auto, anonymous: false });
+    await handleAutomationMessage(
+      JSON.stringify({
+        action: 'set_cookies',
+        requestId: 'bidi-set-1',
+        cookies: [{ name: 'sid', value: 'secret-bidi', domain: 'example.com', path: '/' }],
+      }),
+      'auto-bidi-set',
+      auto,
+      state,
+    );
+    const response = await waitForMessage(auto, 'bidi-set-1');
+    assert.equal(response.status, 'success');
+    assert.equal(JSON.stringify(response).includes('secret-bidi'), false);
+    const set = bidiCalls.find((msg) => msg.method === 'storage.setCookie');
+    assert.ok(set);
+    assert.equal(set.params.cookie.name, 'sid');
   });
 });

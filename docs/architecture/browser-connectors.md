@@ -61,3 +61,19 @@ Policy, taint, and egress still run in `handleAutomationMessage` before
 `dispatch`. CDP `Runtime.evaluate` for `execute_script` remains gated by
 `security.allowRawEval`. Connector connect/disconnect events are audited
 without tokens, cookies, or script bodies.
+
+## Cookie sync
+
+`cookies.write` (`set_cookies`) is a connector primitive. `cookies.sync`
+(`sync_cookies`) is a server-core orchestration: it reads one domain from a
+source connector, holds the records in memory, and writes them to a
+destination connector. The automation response is `{ domain, copied, skipped,
+reasons[] }` and never includes cookie values.
+
+Requirements: an explicit `domain` plus unique `source` and `destination`
+(clientId or unique browser name). There is no “sync all sites” path and no
+automatic sync on connect. Misaligned attributes (CHIPS / `__Host-` / expired
+/ unknown store) are skipped and counted. Values are not persisted to disk.
+
+After a successful sync, reload the destination tab if the page already has a
+document; the same navigation race as `open_url` applies.

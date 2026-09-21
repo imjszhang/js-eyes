@@ -24,6 +24,7 @@ const EXTENSION_SHARED_COPIES = [
   ['connection-methods.js', path.join('background', 'connection-methods.js')],
   ['messaging-methods.js', path.join('background', 'messaging-methods.js')],
   ['operations-methods.js', path.join('background', 'operations-methods.js')],
+  ['cookie-write-methods.js', path.join('background', 'cookie-write-methods.js')],
   ['page-interact-core.js', path.join('background', 'page-interact-core.js')],
   ['page-interact-methods.js', path.join('background', 'page-interact-methods.js')],
   ['page-extract-core.js', path.join('background', 'page-extract-core.js')],

@@ -101,14 +101,39 @@ function pickBrowserClient(state, target) {
     return null;
   }
 
+  const unique = pickUniqueBrowserClient(state, target);
+  return unique.client || null;
+}
+
+function pickUniqueBrowserClient(state, target) {
+  const clients = state.browserClients || state.extensionClients;
+  if (!target) {
+    return { client: null, error: 'TARGET_REQUIRED', message: 'Browser clientId or unique browser name is required' };
+  }
+
   const byId = clients.get(target);
-  if (byId && isClientOpen(byId)) return byId;
+  if (byId && isClientOpen(byId)) return { client: byId };
 
   const lower = String(target).toLowerCase();
+  const named = [];
   for (const [, conn] of clients) {
-    if (isClientOpen(conn) && String(conn.browserName || '').toLowerCase() === lower) return conn;
+    if (isClientOpen(conn) && String(conn.browserName || '').toLowerCase() === lower) {
+      named.push(conn);
+    }
   }
-  return null;
+  if (named.length === 1) return { client: named[0] };
+  if (named.length > 1) {
+    return {
+      client: null,
+      error: 'TARGET_REQUIRED',
+      message: `Browser target "${target}" matches multiple connected clients; use a clientId.`,
+    };
+  }
+  return {
+    client: null,
+    error: 'BROWSER_UNAVAILABLE',
+    message: `No browser client matching target "${target}"`,
+  };
 }
 
 function registerBrowserClient(state, clientId, record) {
@@ -139,6 +164,7 @@ module.exports = {
   hydrateExtensionRecord,
   isClientOpen,
   pickBrowserClient,
+  pickUniqueBrowserClient,
   registerBrowserClient,
   unregisterBrowserClient,
 };

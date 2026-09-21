@@ -94,7 +94,7 @@ The MCP facade connects lazily to an existing JS Eyes server:
 
 The default `safe` profile exposes browser status, tab, navigation, page-read,
 screenshot, and read-only Skill Runtime tools. Raw JavaScript, CSS injection,
-cookie access, file upload, and non-read Skill calls are not discoverable.
+cookie access (including domain-scoped cookie sync), file upload, and non-read Skill calls are not discoverable.
 
 Use `--tool-profile full` only for a trusted MCP host when the requested task
 actually requires those capabilities. Server policy remains authoritative in
@@ -317,6 +317,18 @@ silently switching it to legacy.
 
 Read the schema returned by `skill_describe` or `skills inspect`. Correct the
 arguments instead of modifying the Skill to skip validation.
+
+### Cookie sync left the destination logged out
+
+`browser_sync_cookies` / `js-eyes browser cookies sync` copies cookies in
+server memory between two connected browsers. Reload the destination tab after
+a successful sync if that page is already open. The same navigation race as
+`open_url` applies: the document may still reflect the pre-sync session until
+reload.
+
+Sensitive hosts from `security.sensitiveCookieDomains` (for example
+`google.com`) are blocked. The CLI and MCP result is a count (`copied N`);
+cookie values never appear in that output.
 
 ### Raw execution refused
 

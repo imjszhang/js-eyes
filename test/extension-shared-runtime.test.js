@@ -11,7 +11,7 @@ const config = require('../extensions/shared/config');
 const sharedBrowserControl = require('../extensions/shared/browser-control-methods');
 const { stageAllExtensions } = require('../packages/devtools/lib/build/extensions');
 const { EXTENSION_SHARED_COPIES } = require('../packages/devtools/lib/build/context');
-const methodModuleNames = ['connection', 'messaging', 'operations', 'page-interact', 'page-extract', 'routing', 'tabs'];
+const methodModuleNames = ['connection', 'messaging', 'operations', 'cookie-write', 'page-interact', 'page-extract', 'routing', 'tabs'];
 const platformModuleNames = ['connection', 'server', 'operations', 'runtime', 'tabs'];
 
 function read(relativePath) {
@@ -65,6 +65,7 @@ describe('extension shared runtime contract', () => {
       'background/connection-methods.js',
       'background/messaging-methods.js',
       'background/operations-methods.js',
+      'background/cookie-write-methods.js',
       'background/page-interact-core.js',
       'background/page-interact-methods.js',
       'background/page-extract-core.js',
@@ -236,6 +237,7 @@ describe('extension shared runtime contract', () => {
       'handleGetCookies', 'handleGetCookiesByDomain', 'handleGetPageInfo', 'getCookiesByDomain',
       'getTabCookies', 'deduplicateCookies', 'validateCookies', 'analyzeCookieDomains',
       'waitForTabLoad',
+      'handleSetCookies', 'cookieIdentity', 'buildCookieUrl', 'skipSetCookieReason', 'toExtensionSetCookie',
       '_runPageInteract', 'handleClick', 'handleFill', 'handleScroll', 'handleWaitFor',
       'handleExtract',
       'handleContentScriptRequest', 'handleGetTabsRequest',

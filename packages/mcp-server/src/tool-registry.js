@@ -77,7 +77,7 @@ async function runBrowserOperation(session, config, operation, args) {
     }
   }
 
-  let callOptions = {};
+  let callOptions = /** @type {Record<string, any>} */ ({});
   if (operation.id === 'tabs.list') {
     const requested = args.target || config.target || undefined;
     if (requested) {
@@ -86,6 +86,14 @@ async function runBrowserOperation(session, config, operation, args) {
     callOptions.timeout = args.timeout || config.requestTimeout;
   } else if (operation.id === 'clients.list') {
     callOptions.timeout = config.connectTimeout || config.requestTimeout;
+  } else if (operation.id === 'cookies.sync') {
+    callOptions = {
+      timeout: args.timeout || config.requestTimeout,
+      source: await session.resolveTarget(args.source),
+      destination: await session.resolveTarget(args.destination),
+      includeSubdomains: args.includeSubdomains,
+      overwrite: args.overwrite,
+    };
   } else if (needsResolvedTarget(operation)) {
     // page.waitFor's timeout is wait duration; give the transport a buffer.
     let transportTimeout = args.timeout;
@@ -164,6 +172,17 @@ async function runBrowserOperation(session, config, operation, args) {
         maxChars,
         structured: { domain: args.domain, target: callOptions.target, cookies: raw },
       });
+    case 'cookies.sync': {
+      const copied = Number(raw && raw.copied) || 0;
+      return dataResult(`copied ${copied}`, {
+        domain: args.domain,
+        copied,
+        skipped: Number(raw && raw.skipped) || 0,
+        reasons: Array.isArray(raw && raw.reasons) ? raw.reasons : [],
+        source: callOptions.source || args.source,
+        destination: callOptions.destination || args.destination,
+      }, { maxChars });
+    }
     case 'file.upload':
       return dataResult(`Uploaded files: ${raw.length}`, raw, {
         maxChars,

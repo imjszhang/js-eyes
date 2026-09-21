@@ -3,12 +3,16 @@
 const { TaskOriginTracker } = require('./task-origin');
 const { TaintRegistry } = require('./taint');
 const { EgressGate } = require('./egress');
-const { parseOriginFromUrl, normalizeHost } = require('./origin-utils');
+const { parseOriginFromUrl, normalizeHost, hostMatches } = require('./origin-utils');
 
 const DEFAULT_ENFORCEMENT = 'soft';
 
 const TAB_SINK_TOOLS = new Set([
   'executeScript', 'injectCss', 'uploadFileToTab', 'getCookies',
+]);
+
+const DOMAIN_COOKIE_TOOLS = new Set([
+  'getCookiesByDomain', 'setCookies', 'syncCookies',
 ]);
 
 class PolicyContext {
@@ -41,6 +45,9 @@ class PolicyContext {
     this._tabCache = new Map();
     this._tabCacheAt = 0;
     this._tabLookup = typeof options.tabLookup === 'function' ? options.tabLookup : null;
+    this.sensitiveCookieDomains = Array.isArray(security.sensitiveCookieDomains)
+      ? security.sensitiveCookieDomains.slice()
+      : [];
 
     if (Array.isArray(options.userMessages)) this.taskOrigin.addUserMessages(options.userMessages);
     if (Array.isArray(options.platforms)) this.taskOrigin.addPlatforms(options.platforms);
@@ -131,6 +138,39 @@ class PolicyContext {
     return { decision, softened: false };
   }
 
+  _isSensitiveCookieHost(host) {
+    const normalized = normalizeHost(host);
+    if (!normalized) return false;
+    for (const pattern of this.sensitiveCookieDomains) {
+      if (hostMatches(normalized, pattern)) return true;
+    }
+    return false;
+  }
+
+  _collectCookieHosts(toolName, params = {}) {
+    const hosts = [];
+    if (params.domain) hosts.push(params.domain);
+    if (toolName === 'setCookies' && Array.isArray(params.cookies)) {
+      for (const cookie of params.cookies) {
+        if (cookie && cookie.domain) hosts.push(cookie.domain);
+      }
+    }
+    return [...new Set(hosts.map((host) => normalizeHost(host)).filter(Boolean))];
+  }
+
+  _denyDomain(toolName, host, rule, reasons, transformedParams) {
+    reasons.push({ rule, host });
+    const payload = {
+      tool: toolName,
+      rule_decision: 'soft-block',
+      task_origin: host,
+      reasons,
+      enforcement: this.enforcement,
+    };
+    const applied = this._applyEnforcement('deny', payload);
+    return { decision: applied.decision, reasons, transformedParams, rule };
+  }
+
   async evaluate(toolName, params = {}) {
     const reasons = [];
     let transformedParams = params;
@@ -156,29 +196,23 @@ class PolicyContext {
         const origin = await this.resolveTabOrigin(tabId);
         if (origin) {
           if (!this.taskOrigin.isInScope(origin)) {
-            reasons.push({ rule: 'L4a-task-origin', host: origin });
-            const payload = {
-              tool: toolName, rule_decision: 'soft-block', task_origin: origin,
-              reasons, enforcement: this.enforcement,
-            };
-            const applied = this._applyEnforcement('deny', payload);
-            return { decision: applied.decision, reasons, transformedParams, rule: 'L4a-task-origin' };
+            return this._denyDomain(toolName, origin, 'L4a-task-origin', reasons, transformedParams);
+          }
+          if (toolName === 'getCookies' && this._isSensitiveCookieHost(origin)) {
+            return this._denyDomain(toolName, origin, 'L4c-sensitive-cookie-domain', reasons, transformedParams);
           }
         }
       }
     }
 
-    if (this.taskOriginEnabled && toolName === 'getCookiesByDomain') {
-      const domain = params && params.domain;
-      if (domain) {
-        if (!this.taskOrigin.isInScope(domain)) {
-          reasons.push({ rule: 'L4a-task-origin', host: domain });
-          const payload = {
-            tool: toolName, rule_decision: 'soft-block', task_origin: domain,
-            reasons, enforcement: this.enforcement,
-          };
-          const applied = this._applyEnforcement('deny', payload);
-          return { decision: applied.decision, reasons, transformedParams, rule: 'L4a-task-origin' };
+    if (DOMAIN_COOKIE_TOOLS.has(toolName)) {
+      const hosts = this._collectCookieHosts(toolName, params);
+      for (const host of hosts) {
+        if (this.taskOriginEnabled && !this.taskOrigin.isInScope(host)) {
+          return this._denyDomain(toolName, host, 'L4a-task-origin', reasons, transformedParams);
+        }
+        if (this._isSensitiveCookieHost(host)) {
+          return this._denyDomain(toolName, host, 'L4c-sensitive-cookie-domain', reasons, transformedParams);
         }
       }
     }

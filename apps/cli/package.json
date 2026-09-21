@@ -17,6 +17,7 @@
     "directory": "apps/cli"
   },
   "dependencies": {
+    "@js-eyes/client-sdk": "2.10.0",
     "@js-eyes/config": "2.10.0",
     "@js-eyes/native-host": "2.10.0",
     "@js-eyes/protocol": "2.10.0",

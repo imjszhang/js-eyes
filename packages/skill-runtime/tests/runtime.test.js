@@ -134,6 +134,20 @@ describe('skill runtime', () => {
     await runtime.dispose();
   });
 
+  it('requires read and write grants for syncCookies', async () => {
+    const runtime = makeRuntime({
+      grantedCapabilities: ['browser.cookies.read'],
+      browserFactory: () => ({
+        async syncCookies() { return { copied: 1 }; },
+        disconnect() {},
+      }),
+    });
+    const invocation = runtime.createInvocation({ toolName: 'sync', input: {} });
+    assert.throws(() => invocation.browser.syncCookies({ domain: 'x.com' }), SkillCapabilityError);
+    invocation.finish();
+    await runtime.dispose();
+  });
+
   it('intersects skill grants with per-tool declared capabilities', async () => {
     const runtime = makeRuntime({
       grantedCapabilities: ['browser.tabs.read', 'browser.cookies.read'],
