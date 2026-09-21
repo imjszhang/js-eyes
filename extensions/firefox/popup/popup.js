@@ -109,6 +109,12 @@ class JSEyesPopup {
     document.getElementById('reconnect-btn').addEventListener('click', () => {
       this.reconnect();
     });
+    const resumeBtn = document.getElementById('resume-user-btn');
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', () => {
+        browser.runtime.sendMessage({ type: 'resume_user' }).catch(() => {});
+      });
+    }
     
     // 发送数据按钮
     document.getElementById('send-data-btn').addEventListener('click', () => {
@@ -408,6 +414,8 @@ class JSEyesPopup {
         : 'status-badge connected px-3 py-1 text-xs font-bold';
     }
     
+    this.updatePendingUser(status.pendingUser);
+
     // 更新熔断状态
     const circuitBreakerElement = document.getElementById('circuit-breaker-status');
     if (circuitBreakerElement && status.healthCheck) {
@@ -418,6 +426,18 @@ class JSEyesPopup {
       circuitBreakerElement.className = isOpen
         ? 'status-badge disconnected px-3 py-1 text-xs font-bold'
         : 'status-badge connected px-3 py-1 text-xs font-bold';
+    }
+  }
+
+  updatePendingUser(pendingUser) {
+    const card = document.getElementById('pending-user-card');
+    const reason = document.getElementById('pending-user-reason');
+    if (!card) return;
+    if (pendingUser && pendingUser.pendingId) {
+      card.classList.remove('hidden');
+      if (reason) reason.textContent = pendingUser.reason || pendingUser.pendingId;
+    } else {
+      card.classList.add('hidden');
     }
   }
 

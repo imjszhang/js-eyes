@@ -27,7 +27,9 @@ describe('connector capability matrix', () => {
     for (const id of [
       'tabs.list', 'clients.list', 'url.open', 'tab.close', 'page.html',
       'page.info', 'page.click', 'page.fill', 'page.scroll', 'page.waitFor',
-      'page.extract', 'screenshot.capture', 'cookies.read', 'cookies.readDomain',
+      'page.extract', 'page.state', 'page.keys', 'page.history', 'page.select',
+      'page.dialog', 'page.waitForUser', 'downloads.list', 'downloads.wait',
+      'screenshot.capture', 'cookies.read', 'cookies.readDomain',
       'cookies.write', 'cookies.sync',
       'file.upload', 'script.execute',
     ]) {

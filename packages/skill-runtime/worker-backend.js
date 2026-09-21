@@ -12,6 +12,8 @@ const BROWSER_CAPABILITIES = Object.freeze({
   closeTab: 'browser.navigation',
   getTabHtml: 'browser.page.read',
   getPageInfo: 'browser.page.read',
+  extractPage: 'browser.page.read',
+  getPageState: 'browser.page.read',
   captureScreenshot: 'browser.screenshot',
   executeScript: 'browser.script.execute',
   injectCss: 'browser.css.inject',
@@ -20,10 +22,17 @@ const BROWSER_CAPABILITIES = Object.freeze({
   setCookies: 'browser.cookies.write',
   syncCookies: Object.freeze(['browser.cookies.read', 'browser.cookies.write']),
   uploadFileToTab: 'browser.files.upload',
+  listDownloads: 'browser.files.download',
+  waitDownload: 'browser.files.download',
   click: 'browser.page.interact',
   fill: 'browser.page.interact',
   scroll: 'browser.page.interact',
   waitFor: 'browser.page.interact',
+  sendKeys: 'browser.page.interact',
+  selectOption: 'browser.page.interact',
+  handleDialog: 'browser.page.interact',
+  waitForUser: 'browser.page.interact',
+  navigateHistory: 'browser.navigation',
 });
 
 function safeWorkerEnv(extra = {}) {

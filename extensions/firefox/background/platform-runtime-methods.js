@@ -78,6 +78,18 @@ setupMessageListeners() {
         sendResponse({ success: true });
         return true;
       }
+      if (message.type === 'resume_user') {
+        const pendingId = message.pendingId || this.pendingUser?.pendingId;
+        if (!pendingId) {
+          sendResponse({ success: false, error: 'No pending user wait' });
+          return true;
+        }
+        this.sendMessage({ type: 'resume_user', pendingId });
+        this.pendingUser = null;
+        this.broadcastStatusUpdate();
+        sendResponse({ success: true, pendingId });
+        return true;
+      }
       if (message.type === 'reconnect') {
         this.reconnectWithNewSettings();
         sendResponse({ success: true });

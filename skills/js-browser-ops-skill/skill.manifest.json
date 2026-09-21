@@ -223,7 +223,7 @@
     {
       "name": "browser_click",
       "title": "Browser Ops: Click",
-      "description": "点击页面元素。支持 CSS 选择器、XPath 或文本内容匹配。",
+      "description": "点击页面元素。支持 CSS 选择器、XPath、文本内容匹配或 page.state ref。",
       "risk": "interactive",
       "capabilities": [
         "browser.tabs.read",
@@ -245,6 +245,10 @@
           "text": {
             "type": "string",
             "description": "按文本内容匹配元素（与 selector 配合使用）"
+          },
+          "ref": {
+            "type": "string",
+            "description": "page.state 返回的短生命周期元素 ref"
           },
           "index": {
             "type": "number",
@@ -282,9 +286,17 @@
             "type": "string",
             "description": "目标元素的 CSS 选择器"
           },
+          "ref": {
+            "type": "string",
+            "description": "page.state 返回的短生命周期元素 ref"
+          },
           "value": {
             "type": "string",
             "description": "要填入的值"
+          },
+          "secretRef": {
+            "type": "string",
+            "description": "本机 secrets 名称，与 value 互斥"
           },
           "clearFirst": {
             "type": "boolean",

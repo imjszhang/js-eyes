@@ -102,11 +102,24 @@ describe('CDP connector', () => {
         case 'Target.closeTarget':
           return { success: true };
         case 'Page.navigate':
+        case 'Page.enable':
+        case 'Page.handleJavaScriptDialog':
+        case 'Page.navigateToHistoryEntry':
+        case 'Network.enable':
+        case 'Browser.setDownloadBehavior':
         case 'Target.setDiscoverTargets':
         case 'Target.setAutoAttach':
         case 'Runtime.runIfWaitingForDebugger':
         case 'DOM.setFileInputFiles':
           return {};
+        case 'Page.getNavigationHistory':
+          return {
+            currentIndex: 1,
+            entries: [
+              { id: 1, url: 'https://example.com/a' },
+              { id: 2, url: 'https://example.com' },
+            ],
+          };
         case 'Page.captureScreenshot':
           return { data: 'AAAA' };
         case 'Network.getAllCookies':
@@ -189,6 +202,13 @@ describe('CDP connector', () => {
       fill: { tabId: 1, selector: 'input', value: 'x' },
       scroll: { tabId: 1 },
       wait_for: { tabId: 1, selector: 'body' },
+      get_page_state: { tabId: 1 },
+      send_keys: { tabId: 1, keys: 'Enter' },
+      navigate_history: { tabId: 1, direction: 'back' },
+      select_option: { tabId: 1, selector: 'select', value: 'a' },
+      handle_dialog: { tabId: 1, action: 'accept' },
+      list_downloads: {},
+      wait_download: { id: 'd1', timeout: 0.05 },
       extract_page: { tabId: 1, format: 'text' },
       upload_file_to_tab: {
         tabId: 1,
@@ -196,13 +216,21 @@ describe('CDP connector', () => {
       },
       capture_screenshot: { tabId: 1 },
     };
+    connector.pendingDialogs.set('t1', { type: 'alert' });
+    connector.downloads.set('d1', {
+      id: 'd1',
+      basename: 'a.pdf',
+      state: 'complete',
+      bytes: 12,
+      url: 'https://cdn.example.com/a.pdf',
+    });
     for (const action of FORWARDABLE_ACTIONS) {
       assert.ok(payloads[action], `missing fixture for ${action}`);
       const auto = createMockSocket();
       const requestId = `all-${action}`;
       state.automationClients.set(`auto-${action}`, { socket: auto, anonymous: false });
       await handleAutomationMessage(
-        JSON.stringify({ action, requestId, ...payloads[action] }),
+        JSON.stringify({ ...payloads[action], action, requestId }),
         `auto-${action}`,
         auto,
         state,

@@ -27,7 +27,7 @@ metadata:
 4. JS Eyes 2.5+ 会把宿主的 Raw Eval 设置同步到扩展；扩展存储中的显式 `false` 仍可强制关闭
 5. Chrome 脚本能力要求 Chrome 135+；Chrome 138+ 还需在浏览器扩展设置中开启 **Allow User Scripts**
 
-登录要求取决于目标网页；本 Skill 不执行登录自动化。
+登录要求取决于目标网页；本 Skill 不执行登录自动化。需要人完成登录或 2FA 时，使用宿主的 `browser_wait_for_user`（扩展 popup 继续，或 `js-eyes browser resume`）。
 
 ## 提供的 AI 工具
 
@@ -35,8 +35,8 @@ metadata:
 |------|------|
 | `browser_read_page` | 读取网页正文。打开后先按 `waitUntil` / `minContentChars` 等待，短空壳返回 `content_too_short` 而不是导航栏。自开标签默认读完关闭；`keepOpen` 才回传可复用 `tabId`。 |
 | `browser_read_pages` | 批量读取。返回每条 `{ url, ok, data?, error? }`，单条失败不影响其余；同 host 默认串行并遵守最小间隔。 |
-| `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配 |
-| `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable） |
+| `browser_click` | 点击页面元素，支持 CSS 选择器、XPath、文本内容匹配，或 `page.state` 的 `ref` |
+| `browser_fill_form` | 填写表单字段（input/textarea/select/contenteditable）；可用 `ref` 或 `secretRef` |
 | `browser_wait_for` | 等待元素出现或条件满足（基于 MutationObserver） |
 | `browser_scroll` | 页面滚动（到顶部/底部、指定元素、指定像素偏移） |
 | `browser_screenshot` | 调用 `browser.captureScreenshot` 获取截图结果 |

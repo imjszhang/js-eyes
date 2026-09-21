@@ -5,7 +5,8 @@
   "main": "index.js",
   "files": [
     "index.js",
-    "token.js"
+    "token.js",
+    "secrets.js"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

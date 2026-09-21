@@ -166,7 +166,8 @@ getExtendedStatus() {
 
       healthCheck: this.healthChecker ? this.healthChecker.getStatus() : null,
       queueStatus: this.queueManager ? this.queueManager.getStatus() : null,
-      rateLimitStatus: this.rateLimiter ? this.rateLimiter.getStatus() : null
+      rateLimitStatus: this.rateLimiter ? this.rateLimiter.getStatus() : null,
+      pendingUser: this.pendingUser || null,
     };
   },
 

@@ -14,7 +14,8 @@ Native stdio Model Context Protocol facade for JS Eyes browser automation.
 ```
 
 The existing JS Eyes server and browser extension must be running. The default
-safe profile excludes raw JavaScript, cookies, CSS injection, and file upload.
+safe profile excludes raw JavaScript, cookies, CSS injection, file upload, and
+download listing. Prefer `browser_page_state` then click/fill by `ref`.
 Use `--tool-profile full` only with a trusted MCP host.
 
 Full documentation: <https://github.com/imjszhang/js-eyes/blob/main/docs/mcp.md>

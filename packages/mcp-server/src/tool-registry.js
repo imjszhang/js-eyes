@@ -94,10 +94,15 @@ async function runBrowserOperation(session, config, operation, args) {
       includeSubdomains: args.includeSubdomains,
       overwrite: args.overwrite,
     };
+  } else if (operation.id === 'page.waitForUser' || operation.id === 'downloads.wait') {
+    const waitSeconds = args.timeout != null ? Number(args.timeout) : (operation.id === 'page.waitForUser' ? 300 : undefined);
+    callOptions = {
+      timeout: waitSeconds != null ? Number(waitSeconds) + 5 : config.requestTimeout,
+    };
   } else if (needsResolvedTarget(operation)) {
     // page.waitFor's timeout is wait duration; give the transport a buffer.
     let transportTimeout = args.timeout;
-    if (operation.id === 'page.waitFor' && args.timeout != null) {
+    if ((operation.id === 'page.waitFor' || operation.id === 'downloads.wait') && args.timeout != null) {
       transportTimeout = Number(args.timeout) + 5;
     }
     callOptions = await session.operationOptions(args.target, {
@@ -188,6 +193,28 @@ async function runBrowserOperation(session, config, operation, args) {
         maxChars,
         structured: { tabId: args.tabId, target: callOptions.target, uploadedFiles: raw },
       });
+    case 'page.fill':
+      return dataResult(`Filled field in tab ${args.tabId}`, {
+        tabId: args.tabId,
+        target: callOptions.target,
+        selector: args.selector || null,
+        ref: args.ref || null,
+        secretRef: args.secretRef || null,
+        result: raw,
+      }, { maxChars });
+    case 'downloads.list':
+      return dataResult(`Downloads: ${((raw && raw.downloads) || []).length}`, {
+        downloads: (raw && raw.downloads) || [],
+      }, { maxChars });
+    case 'downloads.wait':
+      return dataResult(`Download ${raw && raw.state ? raw.state : 'unknown'}`, {
+        id: raw && raw.id,
+        basename: raw && raw.basename,
+        state: raw && raw.state,
+        bytes: raw && raw.bytes,
+        mime: raw && raw.mime,
+        urlHost: raw && raw.urlHost,
+      }, { maxChars });
     default:
       return dataResult(operation.title || operation.id, raw, { maxChars });
   }

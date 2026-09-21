@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- First-class generic browse ops: `page.state` refs, `page.keys`, `page.history`,
+  `page.select`, `page.dialog` (CDP/BiDi; extension returns
+  `CAPABILITY_UNSUPPORTED`), `downloads.list` / `downloads.wait` (full profile,
+  metadata only), `page.waitForUser`, and `fill` `secretRef`.
+- Chrome extension requests the store-facing `downloads` permission.
+- CLI: `js-eyes secrets`, `js-eyes browser state|resume|downloads`.
+- MCP safe 22 / full 30 tools. `browser_set_cookies` remains absent.
+
 ### Breaking
 
 - `js-browser-ops-skill` 默认不再把任意 URL 永久写入 egress allowlist。未授权

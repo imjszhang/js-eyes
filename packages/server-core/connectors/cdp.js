@@ -21,6 +21,8 @@ const {
   toCanonicalCookie,
 } = require('./cookie-record');
 const { registerBrowserClient, unregisterBrowserClient } = require('./registry');
+const { publicDownload, publicDownloadList } = require('./download-record');
+const { getPaths } = require('@js-eyes/runtime-paths');
 
 function loadExtractPageContent() {
   try { return require('@js-eyes/page-extract').extractPageContent; } catch { /* optional */ }
@@ -39,6 +41,10 @@ const {
   fillInPage,
   scrollInPage,
   waitForInPage,
+  collectPageState,
+  sendKeysInPage,
+  selectOptionInPage,
+  navigateHistoryInPage,
   injectCssInPage,
   getOuterHtmlInPage,
   getPageInfoInPage,
@@ -151,6 +157,10 @@ class CdpConnector {
     this.aliases = new TabAliasMap();
     this.targets = new Map();
     this.sessions = new Map();
+    this.sessionTargets = new Map();
+    this.downloads = new Map();
+    this.pendingDialogs = new Map();
+    this.networkInflight = new Map();
     this.child = null;
     this.userDataDir = null;
     this.stopped = false;
@@ -241,6 +251,7 @@ class CdpConnector {
       });
       this._scheduleReconnect();
     });
+    await this._configureDownloads();
     await this.rpc.send('Target.setDiscoverTargets', { discover: true });
     try {
       await this.rpc.send('Target.setAutoAttach', {
@@ -290,9 +301,24 @@ class CdpConnector {
     }, delay);
   }
 
+  async _configureDownloads() {
+    try {
+      const dir = getPaths().downloadsDir;
+      fs.mkdirSync(dir, { recursive: true });
+      await this.rpc.send('Browser.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: dir,
+        eventsEnabled: true,
+      });
+    } catch {
+      /* attach-mode Chrome may reject Browser.setDownloadBehavior */
+    }
+  }
+
   _onEvent(event) {
     const method = event.method;
     const params = event.params || {};
+    const sessionId = event.sessionId;
     if (method === 'Target.targetCreated' && params.targetInfo) {
       this._rememberTarget(params.targetInfo);
       this._refreshTabs().catch(() => {});
@@ -300,13 +326,50 @@ class CdpConnector {
     if (method === 'Target.targetDestroyed' && params.targetId) {
       this.aliases.release(params.targetId);
       this.targets.delete(params.targetId);
+      const session = this.sessions.get(params.targetId);
       this.sessions.delete(params.targetId);
+      if (session) this.sessionTargets.delete(session);
+      this.pendingDialogs.delete(params.targetId);
       this._refreshTabs().catch(() => {});
     }
     if (method === 'Target.targetInfoChanged' && params.targetInfo) {
       this._rememberTarget(params.targetInfo);
       this._refreshTabs().catch(() => {});
     }
+    if (method === 'Page.javascriptDialogOpening') {
+      const targetId = this.sessionTargets.get(sessionId) || params.targetId;
+      if (targetId) this.pendingDialogs.set(targetId, params);
+    }
+    if (method === 'Browser.downloadWillBegin') {
+      this.downloads.set(params.guid, {
+        id: params.guid,
+        url: params.url,
+        basename: params.suggestedFilename,
+        state: 'in_progress',
+        bytes: 0,
+        mime: '',
+      });
+    }
+    if (method === 'Browser.downloadProgress') {
+      const rec = this.downloads.get(params.guid) || { id: params.guid };
+      rec.state = params.state === 'completed' ? 'complete'
+        : params.state === 'canceled' ? 'interrupted'
+          : 'in_progress';
+      rec.bytes = Number(params.receivedBytes || rec.bytes || 0);
+      this.downloads.set(params.guid, rec);
+    }
+    if (method === 'Network.requestWillBeSent') {
+      this._networkBump(sessionId, 1);
+    }
+    if (method === 'Network.loadingFinished' || method === 'Network.loadingFailed') {
+      this._networkBump(sessionId, -1);
+    }
+  }
+
+  _networkBump(sessionId, delta) {
+    const key = sessionId || 'browser';
+    const next = Math.max(0, (this.networkInflight.get(key) || 0) + delta);
+    this.networkInflight.set(key, next);
   }
 
   _rememberTarget(info) {
@@ -353,7 +416,10 @@ class CdpConnector {
     });
     const sessionId = attached && attached.sessionId;
     this.sessions.set(targetId, sessionId);
+    if (sessionId) this.sessionTargets.set(sessionId, targetId);
     try { await this.rpc.send('Runtime.runIfWaitingForDebugger', {}, sessionId ? { sessionId } : {}); } catch { /* ignore */ }
+    try { await this.rpc.send('Page.enable', {}, sessionId ? { sessionId } : {}); } catch { /* ignore */ }
+    try { await this.rpc.send('Network.enable', {}, sessionId ? { sessionId } : {}); } catch { /* ignore */ }
     return sessionId;
   }
 
@@ -490,6 +556,7 @@ class CdpConnector {
             message.selector || '*',
             message.text || '',
             message.index || 0,
+            message.ref || '',
           ]);
           complete({ type: 'click_complete', tabId: message.tabId, result });
           break;
@@ -501,6 +568,7 @@ class CdpConnector {
             message.value || '',
             !!message.clearFirst,
             message.index || 0,
+            message.ref || '',
           ]);
           complete({ type: 'fill_complete', tabId: message.tabId, result });
           break;
@@ -511,6 +579,7 @@ class CdpConnector {
             message.target || 'bottom',
             message.selector || '',
             message.pixels || 0,
+            message.ref || '',
           ]);
           complete({ type: 'scroll_complete', tabId: message.tabId, result });
           break;
@@ -522,8 +591,69 @@ class CdpConnector {
             message.selector,
             timeoutSec * 1000,
             !!message.visible,
+            message.condition || 'selector',
+            message.match || '',
+            message.ref || '',
           ]);
+          if (message.networkIdle && result && result.success) {
+            const idle = await this._waitNetworkIdle(targetId, Math.min(timeoutSec * 1000, 10000));
+            if (idle) result.settledBy = 'networkIdle';
+          }
           complete({ type: 'wait_for_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'get_page_state': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._evaluate(targetId, collectPageState, [
+            message.maxElements || 300,
+            message.interactiveOnly !== false,
+          ]);
+          complete({ type: 'get_page_state_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'send_keys': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._evaluate(targetId, sendKeysInPage, [
+            message.keys,
+            message.ref || '',
+          ]);
+          complete({ type: 'send_keys_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'navigate_history': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._navigateHistory(targetId, message.direction);
+          complete({ type: 'navigate_history_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'select_option': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._evaluate(targetId, selectOptionInPage, [
+            message.selector || '',
+            message.value || '',
+            message.label || '',
+            message.index || 0,
+            message.ref || '',
+          ]);
+          complete({ type: 'select_option_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'handle_dialog': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._handleDialog(targetId, message);
+          complete({ type: 'handle_dialog_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'list_downloads':
+          complete({
+            type: 'list_downloads_complete',
+            tabId: message.tabId,
+            result: publicDownloadList([...this.downloads.values()]),
+          });
+          break;
+        case 'wait_download': {
+          const result = await this._waitDownload(message);
+          complete({ type: 'wait_download_complete', tabId: message.tabId, result });
           break;
         }
         case 'extract_page': {
@@ -582,6 +712,71 @@ class CdpConnector {
         requestId,
       }, this.state);
     }
+  }
+
+  async _navigateHistory(targetId, direction) {
+    try {
+      const hist = await this._sendPage(targetId, 'Page.getNavigationHistory', {});
+      const current = Number(hist.currentIndex);
+      const next = direction === 'forward' ? current + 1 : current - 1;
+      const entry = Array.isArray(hist.entries) ? hist.entries[next] : null;
+      if (!entry) {
+        return this._evaluate(targetId, navigateHistoryInPage, [direction]);
+      }
+      await this._sendPage(targetId, 'Page.navigateToHistoryEntry', { entryId: entry.id });
+      return { success: true, direction, url: entry.url || '' };
+    } catch {
+      return this._evaluate(targetId, navigateHistoryInPage, [direction]);
+    }
+  }
+
+  async _handleDialog(targetId, message) {
+    const pending = this.pendingDialogs.get(targetId);
+    if (!pending) {
+      const err = /** @type {Error & { code?: string }} */ (new Error('No JavaScript dialog is open'));
+      err.code = 'NO_DIALOG';
+      throw err;
+    }
+    await this._sendPage(targetId, 'Page.handleJavaScriptDialog', {
+      accept: message.action === 'accept',
+      promptText: message.promptText || '',
+    });
+    this.pendingDialogs.delete(targetId);
+    return { success: true, action: message.action, type: pending.type || '' };
+  }
+
+  async _waitNetworkIdle(targetId, timeoutMs) {
+    const sessionId = await this._sessionFor(targetId);
+    const key = sessionId || 'browser';
+    const deadline = Date.now() + Math.max(200, timeoutMs || 2000);
+    let idleSince = this.networkInflight.get(key) ? 0 : Date.now();
+    while (Date.now() < deadline) {
+      if ((this.networkInflight.get(key) || 0) === 0) {
+        if (!idleSince) idleSince = Date.now();
+        if (Date.now() - idleSince >= 500) return true;
+      } else {
+        idleSince = 0;
+      }
+      await sleep(50);
+    }
+    return false;
+  }
+
+  async _waitDownload(message) {
+    const timeoutSec = Number.isFinite(message.timeout) ? message.timeout : 30;
+    const deadline = Date.now() + timeoutSec * 1000;
+    while (Date.now() < deadline) {
+      const match = [...this.downloads.values()].find((item) => {
+        if (message.id && item.id !== message.id) return false;
+        if (message.basename && item.basename !== message.basename) return false;
+        return item.state === 'complete';
+      });
+      if (match) return publicDownload(match);
+      await sleep(150);
+    }
+    const err = /** @type {Error & { code?: string }} */ (new Error('Download wait timed out'));
+    err.code = 'DOWNLOAD_TIMEOUT';
+    throw err;
   }
 
   async _setCookies(message) {

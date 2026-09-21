@@ -46,8 +46,9 @@ other clients that support local stdio MCP servers.
 
 ## Safe and full profiles
 
-The default `safe` profile registers eleven tools: eight browser tools plus the
-three generic Skill Runtime tools below.
+The default `safe` profile registers 22 tools: browser status and navigation,
+first-class page interaction (including `browser_page_state` refs), extract,
+wait-for-user, plus the three generic Skill Runtime tools.
 
 - `browser_status`
 - `browser_list_clients`
@@ -57,15 +58,34 @@ three generic Skill Runtime tools below.
 - `browser_get_html`
 - `browser_get_page_info`
 - `browser_take_screenshot`
+- `browser_extract_page`
+- `browser_page_state`
+- `browser_click`
+- `browser_fill`
+- `browser_scroll`
+- `browser_wait_for`
+- `browser_send_keys`
+- `browser_history`
+- `browser_select`
+- `browser_handle_dialog`
+- `browser_wait_for_user`
 - `skill_list`
 - `skill_describe`
 - `skill_call`
 
-The `full` profile additionally registers JavaScript execution, CSS injection,
-cookie read, domain-scoped cookie sync, and file upload. `browser_sync_cookies`
-requires `source` and `destination` and returns `copied N` without cookie
-values. `cookies.write` is not exposed over MCP. Enable full only for an MCP
-host you trust:
+Prefer `browser_page_state` then `browser_click` / `browser_fill` by `ref`.
+`browser_fill` may take `secretRef` (a local secret name) instead of `value`;
+the plaintext is resolved on the JS Eyes server and is not returned. For login
+or 2FA, call `browser_wait_for_user` and resume from the extension popup or
+`js-eyes browser resume <id>`.
+
+The `full` profile adds JavaScript execution, CSS injection, cookie read,
+domain-scoped cookie sync, file upload, and download metadata
+(`browser_list_downloads` / `browser_wait_download`) — 30 tools total.
+`browser_sync_cookies` requires `source` and `destination` and returns
+`copied N` without cookie values. Download tools return basename/state/bytes
+only (no file body or full path). `cookies.write` / `browser_set_cookies` is
+not exposed over MCP. Enable full only for an MCP host you trust:
 
 ```json
 {

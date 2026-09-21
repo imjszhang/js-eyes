@@ -31,15 +31,40 @@ describe('browser operations metadata', () => {
     assert.equal(safe.some((op) => op.id === 'script.execute'), false);
   });
 
-  it('requires selector or text for click, and value for fill', () => {
+  it('requires selector, text, or ref for click, and value or secretRef for fill', () => {
     const click = BROWSER_OPERATION_BY_MCP_TOOL.browser_click;
     assert.deepEqual(click.inputSchema.required, ['tabId']);
     assert.ok(Array.isArray(click.inputSchema.anyOf));
     assert.ok(click.inputSchema.anyOf.some((item) => item.required?.includes('selector')));
     assert.ok(click.inputSchema.anyOf.some((item) => item.required?.includes('text')));
+    assert.ok(click.inputSchema.anyOf.some((item) => item.required?.includes('ref')));
 
     const fill = BROWSER_OPERATION_BY_MCP_TOOL.browser_fill;
-    assert.ok(fill.inputSchema.required.includes('value'));
+    assert.ok(fill.inputSchema.anyOf.some((item) => item.required?.includes('value')));
+    assert.ok(fill.inputSchema.anyOf.some((item) => item.required?.includes('secretRef')));
+    assert.ok(fill.inputSchema.properties.ref);
+  });
+
+  it('registers page.state, keys, history, select, dialog, downloads, and waitForUser', () => {
+    const state = BROWSER_OPERATION_BY_MCP_TOOL.browser_page_state;
+    assert.equal(state.id, 'page.state');
+    assert.equal(state.wireAction, 'get_page_state');
+    assert.equal(state.capability, 'browser.page.read');
+    assert.deepEqual(state.profiles.slice(), ['safe', 'full']);
+
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_send_keys.id, 'page.keys');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_history.id, 'page.history');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_select.id, 'page.select');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_handle_dialog.id, 'page.dialog');
+
+    const list = BROWSER_OPERATION_BY_MCP_TOOL.browser_list_downloads;
+    assert.equal(list.sensitive, true);
+    assert.deepEqual(list.profiles.slice(), ['full']);
+    assert.equal(list.capability, 'browser.files.download');
+
+    const waitUser = BROWSER_OPERATION_BY_MCP_TOOL.browser_wait_for_user;
+    assert.equal(waitUser.routing, 'server');
+    assert.deepEqual(waitUser.profiles.slice(), ['safe', 'full']);
   });
 
   it('registers cookie write as connector-only and sync as a full-profile server op', () => {
@@ -159,5 +184,34 @@ describe('invokeBrowserOperation', () => {
     assert.equal(calls[0][1].format, 'markdown');
     assert.equal(calls[0][1].maxContentChars, 4000);
     assert.equal(calls[0][2].target, 'ext-1');
+  });
+
+  it('routes page.state and waitForUser', async () => {
+    const calls = [];
+    const browser = {
+      async getPageState(tabId, params, options) {
+        calls.push(['state', tabId, params, options]);
+        return { generation: 1, elements: [] };
+      },
+      async waitForUser(params, options) {
+        calls.push(['waitUser', params, options]);
+        return { status: 'resumed', pendingId: 'u1' };
+      },
+    };
+    const state = await invokeBrowserOperation(browser, 'page.state', {
+      tabId: 3,
+      maxElements: 20,
+    }, { target: 'ext-1' });
+    assert.equal(state.generation, 1);
+    assert.equal(calls[0][1], 3);
+    assert.equal(calls[0][2].maxElements, 20);
+
+    const waited = await invokeBrowserOperation(browser, 'page.waitForUser', {
+      reason: 'login',
+      timeout: 30,
+    });
+    assert.equal(waited.status, 'resumed');
+    assert.equal(calls[1][1].reason, 'login');
+    assert.equal(calls[1][2].timeout, 35);
   });
 });

@@ -181,15 +181,15 @@ test('API keeps read-page extraction and routes browser actions through first-cl
     maxContentChars: 4000,
   });
 
-  await clickElement(browser, { tabId: 42, selector: '#submit', text: 'Go', index: 1 }, options);
-  await fillForm(browser, { tabId: 42, selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options);
+  await clickElement(browser, { tabId: 42, selector: '#submit', text: 'Go', index: 1, ref: 'e1' }, options);
+  await fillForm(browser, { tabId: 42, selector: '#query', value: 'hello', clearFirst: true, index: 2, ref: 'e2' }, options);
   await waitFor(browser, { tabId: 42, selector: '.results', timeout: 10, visible: true }, options);
   await scrollPage(browser, { tabId: 42, target: 'bottom', selector: '.footer', pixels: 300 }, options);
   await takeScreenshot(browser, { tabId: 42, fullPage: true, format: 'jpeg', quality: 80 }, options);
 
   assert.deepEqual(calls.slice(4), [
-    ['click', 42, { selector: '#submit', text: 'Go', index: 1 }, options],
-    ['fill', 42, { selector: '#query', value: 'hello', clearFirst: true, index: 2 }, options],
+    ['click', 42, { selector: '#submit', text: 'Go', index: 1, ref: 'e1' }, options],
+    ['fill', 42, { selector: '#query', value: 'hello', clearFirst: true, index: 2, ref: 'e2', secretRef: undefined }, options],
     ['waitFor', 42, { selector: '.results', timeout: 10, visible: true }, options],
     ['scroll', 42, { scrollTarget: 'bottom', selector: '.footer', pixels: 300 }, options],
     ['captureScreenshot', 42, { fullPage: true, format: 'jpeg', quality: 80 }],

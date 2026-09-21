@@ -21,6 +21,7 @@ const {
   toCanonicalCookie,
 } = require('./cookie-record');
 const { registerBrowserClient, unregisterBrowserClient } = require('./registry');
+const { publicDownload, publicDownloadList } = require('./download-record');
 
 function loadExtractPageContent() {
   try { return require('@js-eyes/page-extract').extractPageContent; } catch { /* optional */ }
@@ -39,6 +40,10 @@ const {
   fillInPage,
   scrollInPage,
   waitForInPage,
+  collectPageState,
+  sendKeysInPage,
+  selectOptionInPage,
+  navigateHistoryInPage,
   injectCssInPage,
   getOuterHtmlInPage,
   getPageInfoInPage,
@@ -81,6 +86,8 @@ class BidiConnector {
     this.rpc = null;
     this.aliases = new TabAliasMap();
     this.contexts = new Map();
+    this.downloads = new Map();
+    this.pendingDialogs = new Map();
     this.stopped = false;
     this.reconnectDelay = 1000;
   }
@@ -111,8 +118,16 @@ class BidiConnector {
       events: [
         'browsingContext.contextCreated',
         'browsingContext.contextDestroyed',
+        'browsingContext.userPromptOpened',
+        'browsingContext.downloadWillBegin',
+        'browsingContext.downloadEnd',
       ],
-    });
+    }).catch(() => this.rpc.send('session.subscribe', {
+      events: [
+        'browsingContext.contextCreated',
+        'browsingContext.contextDestroyed',
+      ],
+    }));
     const tree = await this.rpc.send('browsingContext.getTree', {});
     for (const item of tree.contexts || []) this._rememberContext(item);
     await this._refreshTabs();
@@ -173,7 +188,30 @@ class BidiConnector {
     if (method === 'browsingContext.contextDestroyed' && params.context) {
       this.aliases.release(params.context);
       this.contexts.delete(params.context);
+      this.pendingDialogs.delete(params.context);
       this._refreshTabs();
+    }
+    if (method === 'browsingContext.userPromptOpened' && params.context) {
+      this.pendingDialogs.set(params.context, params);
+    }
+    if (method === 'browsingContext.downloadWillBegin') {
+      const id = params.downloadId || params.context || crypto.randomUUID();
+      this.downloads.set(id, {
+        id,
+        url: params.url,
+        basename: params.suggestedFilename || params.filename,
+        state: 'in_progress',
+        bytes: 0,
+        mime: '',
+      });
+    }
+    if (method === 'browsingContext.downloadEnd') {
+      const id = params.downloadId || params.context;
+      const rec = this.downloads.get(id) || { id };
+      rec.state = params.status === 'canceled' ? 'interrupted' : 'complete';
+      rec.bytes = Number(params.bytes || rec.bytes || 0);
+      rec.basename = rec.basename || params.filepath || params.filename;
+      this.downloads.set(id, rec);
     }
   }
 
@@ -339,21 +377,21 @@ class BidiConnector {
         }
         case 'click': {
           const result = await this._evaluate(this._requireContext(message.tabId), clickInPage, [
-            message.selector || '*', message.text || '', message.index || 0,
+            message.selector || '*', message.text || '', message.index || 0, message.ref || '',
           ]);
           complete({ type: 'click_complete', tabId: message.tabId, result });
           break;
         }
         case 'fill': {
           const result = await this._evaluate(this._requireContext(message.tabId), fillInPage, [
-            message.selector, message.value || '', !!message.clearFirst, message.index || 0,
+            message.selector, message.value || '', !!message.clearFirst, message.index || 0, message.ref || '',
           ]);
           complete({ type: 'fill_complete', tabId: message.tabId, result });
           break;
         }
         case 'scroll': {
           const result = await this._evaluate(this._requireContext(message.tabId), scrollInPage, [
-            message.target || 'bottom', message.selector || '', message.pixels || 0,
+            message.target || 'bottom', message.selector || '', message.pixels || 0, message.ref || '',
           ]);
           complete({ type: 'scroll_complete', tabId: message.tabId, result });
           break;
@@ -362,8 +400,104 @@ class BidiConnector {
           const timeoutSec = Number.isFinite(message.timeout) ? message.timeout : 10;
           const result = await this._evaluate(this._requireContext(message.tabId), waitForInPage, [
             message.selector, timeoutSec * 1000, !!message.visible,
+            message.condition || 'selector', message.match || '', message.ref || '',
           ]);
+          if (result && message.networkIdle && result.success && result.settledBy === 'load') {
+            result.settledBy = 'load';
+          }
           complete({ type: 'wait_for_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'get_page_state': {
+          const result = await this._evaluate(this._requireContext(message.tabId), collectPageState, [
+            message.maxElements || 300,
+            message.interactiveOnly !== false,
+          ]);
+          complete({ type: 'get_page_state_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'send_keys': {
+          const result = await this._evaluate(this._requireContext(message.tabId), sendKeysInPage, [
+            message.keys, message.ref || '',
+          ]);
+          complete({ type: 'send_keys_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'navigate_history': {
+          const context = this._requireContext(message.tabId);
+          let result;
+          try {
+            await this.rpc.send('browsingContext.traverseHistory', {
+              context,
+              delta: message.direction === 'forward' ? 1 : -1,
+            });
+            result = { success: true, direction: message.direction };
+          } catch {
+            result = await this._evaluate(context, navigateHistoryInPage, [message.direction]);
+          }
+          complete({ type: 'navigate_history_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'select_option': {
+          const result = await this._evaluate(this._requireContext(message.tabId), selectOptionInPage, [
+            message.selector || '', message.value || '', message.label || '', message.index || 0, message.ref || '',
+          ]);
+          complete({ type: 'select_option_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'handle_dialog': {
+          const context = this._requireContext(message.tabId);
+          const pending = this.pendingDialogs.get(context);
+          if (!pending) {
+            const err = /** @type {Error & { code?: string }} */ (new Error('No JavaScript dialog is open'));
+            err.code = 'NO_DIALOG';
+            throw err;
+          }
+          try {
+            await this.rpc.send('browsingContext.handleUserPrompt', {
+              context,
+              accept: message.action === 'accept',
+              userText: message.promptText || '',
+            });
+          } catch (error) {
+            const err = /** @type {Error & { code?: string }} */ (new Error(error.message));
+            err.code = 'CAPABILITY_UNSUPPORTED';
+            throw err;
+          }
+          this.pendingDialogs.delete(context);
+          complete({
+            type: 'handle_dialog_complete',
+            tabId: message.tabId,
+            result: { success: true, action: message.action },
+          });
+          break;
+        }
+        case 'list_downloads':
+          complete({
+            type: 'list_downloads_complete',
+            tabId: message.tabId,
+            result: publicDownloadList([...this.downloads.values()]),
+          });
+          break;
+        case 'wait_download': {
+          const timeoutSec = Number.isFinite(message.timeout) ? message.timeout : 30;
+          const deadline = Date.now() + timeoutSec * 1000;
+          let match = null;
+          while (Date.now() < deadline) {
+            match = [...this.downloads.values()].find((item) => {
+              if (message.id && item.id !== message.id) return false;
+              if (message.basename && item.basename !== message.basename) return false;
+              return item.state === 'complete';
+            });
+            if (match) break;
+            await new Promise((resolve) => setTimeout(resolve, 150));
+          }
+          if (!match) {
+            const err = /** @type {Error & { code?: string }} */ (new Error('Download wait timed out'));
+            err.code = 'DOWNLOAD_TIMEOUT';
+            throw err;
+          }
+          complete({ type: 'wait_download_complete', tabId: message.tabId, result: publicDownload(match) });
           break;
         }
         case 'extract_page': {

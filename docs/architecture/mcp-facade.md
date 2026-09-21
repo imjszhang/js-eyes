@@ -41,20 +41,10 @@ MCP remain peer facades over the same lower-level packages.
 
 ## Tool profiles
 
-The default `safe` profile registers:
-
-- `browser_status`
-- `browser_list_clients`
-- `browser_list_tabs`
-- `browser_open_url`
-- `browser_close_tab`
-- `browser_get_html`
-- `browser_get_page_info`
-- `browser_take_screenshot`
-- `browser_click`
-- `browser_fill`
-- `browser_scroll`
-- `browser_wait_for`
+The default `safe` profile registers status, tab/navigation, page-read,
+screenshot, extract, first-class interact (`browser_page_state` + click/fill/
+scroll/wait/keys/history/select/dialog), `browser_wait_for_user`, and the three
+Skill Runtime tools (22 total).
 
 The explicit `full` profile additionally registers:
 
@@ -64,6 +54,10 @@ The explicit `full` profile additionally registers:
 - `browser_get_cookies_by_domain`
 - `browser_sync_cookies`
 - `browser_upload_file`
+- `browser_list_downloads`
+- `browser_wait_download`
+
+`browser_set_cookies` remains absent from MCP. Download tools are metadata-only.
 
 Sensitive tools are absent from `tools/list` in the safe profile. Runtime
 policy checks still apply in the full profile.

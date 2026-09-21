@@ -648,23 +648,42 @@ class BrowserAutomation {
   }
 
   async click(tabId, params = {}, options = {}) {
-    const response = await this._sendRequest(browserWireAction('page.click'), {
+    const payload = {
       tabId: parseInt(tabId, 10),
       selector: params.selector,
       text: params.text,
       index: params.index,
-    }, options);
+    };
+    if (params.ref != null) payload.ref = params.ref;
+    const response = await this._sendRequest(browserWireAction('page.click'), payload, options);
     return response.result;
   }
 
   async fill(tabId, params = {}, options = {}) {
-    const response = await this._sendRequest(browserWireAction('page.fill'), {
+    if (params.value != null && params.value !== '' && params.secretRef) {
+      throw new Error('value and secretRef cannot both be set');
+    }
+    const policyParams = {
+      tabId,
+      selector: params.selector,
+      ref: params.ref,
+      secretRef: params.secretRef,
+    };
+    if (!params.secretRef) policyParams.value = params.value;
+    const decision = await this._evaluatePolicy('fill', policyParams);
+    if (decision.decision !== 'allow') {
+      this._blockFromPolicy(decision, 'fill');
+    }
+    const payload = {
       tabId: parseInt(tabId, 10),
       selector: params.selector,
-      value: params.value,
       clearFirst: params.clearFirst,
       index: params.index,
-    }, options);
+    };
+    if (params.ref != null) payload.ref = params.ref;
+    if (params.secretRef) payload.secretRef = params.secretRef;
+    else payload.value = params.value;
+    const response = await this._sendRequest(browserWireAction('page.fill'), payload, options);
     return response.result;
   }
 
@@ -674,6 +693,7 @@ class BrowserAutomation {
       selector: params.selector,
       pixels: params.pixels,
     };
+    if (params.ref != null) payload.ref = params.ref;
     // Wire field is `target` (top|bottom); keep scrollTarget alias for callers.
     if (params.scrollTarget != null) payload.target = params.scrollTarget;
     else if (params.target === 'top' || params.target === 'bottom') payload.target = params.target;
@@ -696,12 +716,113 @@ class BrowserAutomation {
       }
     }
     const resolvedTabId = Number(tabId);
-    const response = await this._sendRequest(browserWireAction('page.waitFor'), {
+    const payload = {
       tabId: resolvedTabId,
       selector: params.selector,
       timeout: params.timeout,
       visible: params.visible,
-    }, callOptions);
+    };
+    if (params.condition != null) payload.condition = params.condition;
+    if (params.match != null) payload.match = params.match;
+    if (params.ref != null) payload.ref = params.ref;
+    if (params.networkIdle != null) payload.networkIdle = params.networkIdle;
+    const response = await this._sendRequest(browserWireAction('page.waitFor'), payload, callOptions);
+    return response.result;
+  }
+
+  async getPageState(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(tabId, 10) };
+    if (params.maxElements != null) payload.maxElements = params.maxElements;
+    if (params.interactiveOnly != null) payload.interactiveOnly = params.interactiveOnly;
+    const response = await this._sendRequest(browserWireAction('page.state'), payload, options);
+    return response.result;
+  }
+
+  async sendKeys(tabId, params = {}, options = {}) {
+    const payload = {
+      tabId: parseInt(tabId, 10),
+      keys: params.keys,
+    };
+    if (params.ref != null) payload.ref = params.ref;
+    const response = await this._sendRequest(browserWireAction('page.keys'), payload, options);
+    return response.result;
+  }
+
+  async navigateHistory(tabId, directionOrParams, options = {}) {
+    const direction = typeof directionOrParams === 'string'
+      ? directionOrParams
+      : (directionOrParams && directionOrParams.direction);
+    const response = await this._sendRequest(browserWireAction('page.history'), {
+      tabId: parseInt(tabId, 10),
+      direction,
+    }, options);
+    return response.result;
+  }
+
+  async selectOption(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(tabId, 10) };
+    if (params.selector != null) payload.selector = params.selector;
+    if (params.ref != null) payload.ref = params.ref;
+    if (params.value != null) payload.value = params.value;
+    if (params.label != null) payload.label = params.label;
+    if (params.index != null) payload.index = params.index;
+    const response = await this._sendRequest(browserWireAction('page.select'), payload, options);
+    return response.result;
+  }
+
+  async handleDialog(tabId, params = {}, options = {}) {
+    const payload = {
+      tabId: parseInt(tabId, 10),
+      action: params.action,
+    };
+    if (params.promptText != null) payload.promptText = params.promptText;
+    const response = await this._sendRequest(browserWireAction('page.dialog'), payload, options);
+    return response.result;
+  }
+
+  async listDownloads(options = {}) {
+    const payload = {};
+    if (options.tabId != null) payload.tabId = parseInt(options.tabId, 10);
+    const response = await this._sendRequest(browserWireAction('downloads.list'), payload, options);
+    return response.result || { downloads: [] };
+  }
+
+  /**
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async waitDownload(params = {}, options = {}) {
+    const callOptions = { ...options };
+    if (params.timeout != null) {
+      const minTransport = Number(params.timeout) + 5;
+      if (callOptions.timeout == null || Number(callOptions.timeout) < minTransport) {
+        callOptions.timeout = minTransport;
+      }
+    }
+    const payload = {};
+    if (params.tabId != null) payload.tabId = parseInt(params.tabId, 10);
+    if (params.id != null) payload.id = params.id;
+    if (params.basename != null) payload.basename = params.basename;
+    if (params.timeout != null) payload.timeout = params.timeout;
+    const response = await this._sendRequest(browserWireAction('downloads.wait'), payload, callOptions);
+    return response.result;
+  }
+
+  /**
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async waitForUser(params = {}, options = {}) {
+    const callOptions = { ...options };
+    const timeoutSec = params.timeout != null ? Number(params.timeout) : 300;
+    const minTransport = timeoutSec + 5;
+    if (callOptions.timeout == null || Number(callOptions.timeout) < minTransport) {
+      callOptions.timeout = minTransport;
+    }
+    const payload = { reason: params.reason };
+    if (params.tabId != null) payload.tabId = parseInt(params.tabId, 10);
+    if (params.timeout != null) payload.timeout = params.timeout;
+    const response = await this._sendRequest(browserWireAction('page.waitForUser'), payload, callOptions);
     return response.result;
   }
 

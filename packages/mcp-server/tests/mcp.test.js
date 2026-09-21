@@ -53,6 +53,15 @@ function fakeSession() {
       };
     },
     async extractPage() { return { status: 'ok', content: 'extracted' }; },
+    async getPageState() { return { url: 'https://example.com', title: 'Example', generation: 1, elements: [] }; },
+    async sendKeys() { return { success: true }; },
+    async navigateHistory() { return { success: true }; },
+    async selectOption() { return { success: true }; },
+    async handleDialog() { return { success: true }; },
+    async waitForUser() { return { status: 'resumed', pendingId: 'p1' }; },
+    async fill() { return { success: true, value: '[redacted]' }; },
+    async listDownloads() { return { downloads: [{ id: 'd1', basename: 'a.pdf', state: 'complete', bytes: 12, mime: 'application/pdf', urlHost: 'cdn.example.com' }] }; },
+    async waitDownload() { return { id: 'd1', basename: 'a.pdf', state: 'complete', bytes: 12, mime: 'application/pdf', urlHost: 'cdn.example.com' }; },
     async executeScript() { return 42; },
     async injectCss() {},
     async getCookies() { return [{ name: 'sid', value: 'secret' }]; },
@@ -117,7 +126,7 @@ describe('native MCP protocol', () => {
   it('exposes only safe tools by default with annotations', async () => {
     const { client } = await connect('safe');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 16);
+    assert.equal(listed.tools.length, 22);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_execute_script'), false);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_click'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_extract_page'), true);
@@ -128,10 +137,12 @@ describe('native MCP protocol', () => {
   it('exposes sensitive tools only in the full profile', async () => {
     const { client } = await connect('full');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 22);
+    assert.equal(listed.tools.length, 30);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_get_cookies'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_sync_cookies'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_set_cookies'), false);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_list_downloads'), true);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_page_state'), true);
   });
 
   it('formats cookie sync as counts without cookie values', async () => {
@@ -145,6 +156,29 @@ describe('native MCP protocol', () => {
     assert.equal(result.structuredContent.copied, 2);
     assert.equal(result.structuredContent.skipped, 1);
     assert.equal(JSON.stringify(result).includes('secret'), false);
+  });
+
+  it('formats fill with secretRef without echoing secret values', async () => {
+    const { client } = await connect('safe');
+    const result = await client.callTool({
+      name: 'browser_fill',
+      arguments: { tabId: 7, selector: '#pw', secretRef: 'login-password' },
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent.secretRef, 'login-password');
+    assert.equal(JSON.stringify(result).includes('super-secret'), false);
+  });
+
+  it('returns download metadata without paths', async () => {
+    const { client } = await connect('full');
+    const result = await client.callTool({
+      name: 'browser_list_downloads',
+      arguments: {},
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent.downloads[0].basename, 'a.pdf');
+    assert.equal(JSON.stringify(result).includes('/Users'), false);
+    assert.equal(JSON.stringify(result).includes('base64'), false);
   });
 
   it('calls browser tools and returns structured content', async () => {

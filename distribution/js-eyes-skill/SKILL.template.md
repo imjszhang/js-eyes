@@ -93,18 +93,34 @@ The MCP facade connects lazily to an existing JS Eyes server:
 ```
 
 The default `safe` profile exposes browser status, tab, navigation, page-read,
-screenshot, and read-only Skill Runtime tools. Raw JavaScript, CSS injection,
-cookie access (including domain-scoped cookie sync), file upload, and non-read Skill calls are not discoverable.
+screenshot, extract, first-class page interaction (`browser_page_state` then
+`browser_click` / `browser_fill` by `ref`), keys/history/select, wait-for-user,
+and read-only Skill Runtime tools. Raw JavaScript, CSS injection, cookie access
+(including domain-scoped cookie sync), file upload, download listing, and
+non-read Skill calls are not discoverable.
 
 Use `--tool-profile full` only for a trusted MCP host when the requested task
 actually requires those capabilities. Server policy remains authoritative in
 both profiles.
+
+## Short install prompt (paste into Claude Code / OpenClaw)
+
+```text
+Install JS Eyes locally: Node 22+, `npm i -g js-eyes`, `js-eyes server token init`,
+`js-eyes native-host install --browser all`, `js-eyes server start`, load the
+browser extension, then add MCP `@js-eyes/mcp-server` (safe profile).
+Before clicking, call browser_page_state and reuse refs. For login/2FA call
+browser_wait_for_user; the operator continues in the extension popup or
+`js-eyes browser resume <id>`. Do not ask for cookies, raw eval, or file upload
+unless the user enables the full MCP profile.
+```
 
 Start diagnosis with:
 
 1. `browser_status`
 2. `browser_list_clients`
 3. `browser_list_tabs`
+4. `browser_page_state` on the target tab, then `browser_click` / `browser_fill` by `ref`
 
 When several browser clients are connected, pass the exact `clientId` returned by
 `browser_list_clients`; do not select an ambiguous browser automatically.
@@ -156,6 +172,8 @@ actions such as:
 - `browser/list-clients`
 - `browser/open-url`
 - `browser/get-html`
+- `browser/page-state`
+- `browser/wait-for-user`
 - `skills/discover`
 - `skills/plan-install`
 - `skills/reload`

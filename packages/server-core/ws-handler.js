@@ -17,7 +17,10 @@ const {
   pickBrowserClient,
 } = require('./connectors/registry');
 const { publicCookieWriteResult } = require('./connectors/cookie-record');
+const { publicDownload, publicDownloadList } = require('./connectors/download-record');
 const { syncCookiesBetweenClients } = require('./cookie-sync');
+const { resumeUserWait, waitForUser } = require('./user-wait');
+const { readSecret } = require('@js-eyes/runtime-paths/secrets');
 
 let PolicyContextCtor = null;
 function loadPolicyContext() {
@@ -295,6 +298,9 @@ function handleExtensionMessage(raw, clientId, state) {
     case 'error':
       handleExtensionError(data, state);
       return;
+    case 'resume_user':
+      resumeUserWait(state, data.pendingId);
+      return;
     default:
       break;
   }
@@ -344,11 +350,34 @@ function handleExtensionMessage(raw, clientId, state) {
     case 'scroll_complete':
     case 'wait_for_complete':
     case 'extract_page_complete':
+    case 'get_page_state_complete':
+    case 'send_keys_complete':
+    case 'navigate_history_complete':
+    case 'select_option_complete':
+    case 'handle_dialog_complete':
       resolveRequest(requestId, {
         status: 'success',
         type: data.type,
         tabId: data.tabId,
         result: data.result,
+        requestId,
+      }, state);
+      break;
+    case 'list_downloads_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: data.type,
+        tabId: data.tabId,
+        result: publicDownloadList(data.result?.downloads || data.downloads),
+        requestId,
+      }, state);
+      break;
+    case 'wait_download_complete':
+      resolveRequest(requestId, {
+        status: 'success',
+        type: data.type,
+        tabId: data.tabId,
+        result: publicDownload(data.result || data),
         requestId,
       }, state);
       break;
@@ -479,6 +508,8 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       source: data.source || null,
       destination: data.destination || null,
       tabId: data.tabId ?? null,
+      secretRef: data.secretRef || null,
+      hasFillValue: data.value != null && data.value !== '',
       enforcement: state.security?.enforcement || 'off',
       evalKind: action === 'execute_script'
         ? 'arbitrary_eval'
@@ -605,16 +636,90 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       dispatchToBrowser('get_page_info', data, socket, state, ['tabId'], target, clientId);
       break;
     case 'click':
-      dispatchToBrowser('click', data, socket, state, ['tabId', 'selector', 'text', 'index'], target, clientId);
+      dispatchToBrowser('click', data, socket, state, ['tabId', 'selector', 'text', 'index', 'ref'], target, clientId);
       break;
-    case 'fill':
-      dispatchToBrowser('fill', data, socket, state, ['tabId', 'selector', 'value', 'clearFirst', 'index'], target, clientId);
+    case 'fill': {
+      if (data.secretRef && data.value != null && data.value !== '') {
+        send(socket, {
+          type: 'fill_response', requestId, status: 'error',
+          code: 'INVALID_ARGUMENT', message: 'value and secretRef cannot both be set',
+        });
+        break;
+      }
+      let fillData = data;
+      if (data.secretRef) {
+        try {
+          fillData = { ...data, value: readSecret(data.secretRef), secretRef: undefined };
+        } catch (error) {
+          send(socket, {
+            type: 'fill_response', requestId, status: 'error',
+            code: error.code || 'SECRET_NOT_FOUND', message: error.message,
+          });
+          break;
+        }
+      }
+      if (toolName && state.security && state.security.enforcement !== 'off') {
+        const policy = getOrCreatePolicyForClient(state, clientId);
+        if (policy) {
+          try {
+            const decision = await policy.evaluate('fill', {
+              tabId: fillData.tabId,
+              value: fillData.value,
+            });
+            if (decision.decision === 'soft-block' || decision.decision === 'deny') {
+              send(socket, {
+                type: 'fill_response', requestId, status: 'error',
+                code: 'POLICY_SOFT_BLOCK', message: '规则引擎拒绝此操作（soft-block）',
+                rule: decision.rule, reasons: decision.reasons,
+              });
+              break;
+            }
+          } catch { /* ignore secondary scan errors */ }
+        }
+      }
+      dispatchToBrowser('fill', fillData, socket, state, ['tabId', 'selector', 'value', 'clearFirst', 'index', 'ref'], target, clientId);
       break;
+    }
     case 'scroll':
-      dispatchToBrowser('scroll', data, socket, state, ['tabId', 'target', 'selector', 'pixels'], target, clientId);
+      dispatchToBrowser('scroll', data, socket, state, ['tabId', 'target', 'selector', 'pixels', 'ref'], target, clientId);
       break;
     case 'wait_for':
-      dispatchToBrowser('wait_for', data, socket, state, ['tabId', 'selector', 'timeout', 'visible'], target, clientId);
+      dispatchToBrowser('wait_for', data, socket, state, [
+        'tabId', 'selector', 'timeout', 'visible', 'condition', 'match', 'ref', 'networkIdle',
+      ], target, clientId);
+      break;
+    case 'get_page_state':
+      dispatchToBrowser('get_page_state', data, socket, state, ['tabId', 'maxElements', 'interactiveOnly'], target, clientId);
+      break;
+    case 'send_keys':
+      dispatchToBrowser('send_keys', data, socket, state, ['tabId', 'keys', 'ref'], target, clientId);
+      break;
+    case 'navigate_history':
+      dispatchToBrowser('navigate_history', data, socket, state, ['tabId', 'direction'], target, clientId);
+      break;
+    case 'select_option':
+      dispatchToBrowser('select_option', data, socket, state, ['tabId', 'selector', 'ref', 'value', 'label', 'index'], target, clientId);
+      break;
+    case 'handle_dialog':
+      dispatchToBrowser('handle_dialog', data, socket, state, ['tabId', 'action', 'promptText'], target, clientId);
+      break;
+    case 'list_downloads':
+      dispatchToBrowser('list_downloads', data, socket, state, ['tabId'], target, clientId);
+      break;
+    case 'wait_download':
+      dispatchToBrowser('wait_download', data, socket, state, ['tabId', 'id', 'basename', 'timeout'], target, clientId);
+      break;
+    case 'wait_for_user':
+      await handleWaitForUser(data, socket, state);
+      break;
+    case 'resume_user':
+      resumeUserWait(state, data.pendingId);
+      send(socket, {
+        type: 'resume_user_response',
+        requestId,
+        status: 'success',
+        pendingId: data.pendingId,
+      });
       break;
     case 'extract_page':
       dispatchToBrowser('extract_page', data, socket, state, [
@@ -631,6 +736,31 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });
       break;
+  }
+}
+
+async function handleWaitForUser(data, socket, state) {
+  const requestId = data.requestId;
+  try {
+    const result = await waitForUser(state, {
+      reason: data.reason,
+      tabId: data.tabId,
+      timeout: data.timeout,
+    });
+    send(socket, {
+      type: 'wait_for_user_response',
+      requestId,
+      status: 'success',
+      result,
+    });
+  } catch (error) {
+    send(socket, {
+      type: 'wait_for_user_response',
+      requestId,
+      status: 'error',
+      code: error.code || 'WAIT_FOR_USER_ERROR',
+      message: error.message,
+    });
   }
 }
 
@@ -874,6 +1004,8 @@ function createState() {
     serverToken: null,
     security: null,
     pendingEgressDir: null,
+    pendingUserDir: null,
+    pendingUsers: new Map(),
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
     policyGeneration: 1,
     browserConfig: null,

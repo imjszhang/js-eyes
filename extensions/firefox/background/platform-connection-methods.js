@@ -212,7 +212,8 @@ getExtendedStatus() {
       queueStatus: this.queueManager ? this.queueManager.getStatus() : null,
 
       // 限流状态
-      rateLimitStatus: this.rateLimiter ? this.rateLimiter.getStatus() : null
+      rateLimitStatus: this.rateLimiter ? this.rateLimiter.getStatus() : null,
+      pendingUser: this.pendingUser || null,
     };
   },
 

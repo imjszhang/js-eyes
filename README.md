@@ -112,7 +112,8 @@ the client to spawn the stdio facade:
 ```
 
 The default `safe` profile excludes JavaScript execution, cookies, CSS
-injection, and file upload. See [docs/mcp.md](./docs/mcp.md) for tool profiles,
+injection, file upload, and download listing. Use `browser_page_state` then
+click/fill by `ref`. See [docs/mcp.md](./docs/mcp.md) for tool profiles,
 target selection, environment variables, and troubleshooting.
 
 ## Features

@@ -12,7 +12,8 @@
     "audit.js",
     "auth.js",
     "connectors/",
-    "cookie-sync.js"
+    "cookie-sync.js",
+    "user-wait.js"
   ],
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",

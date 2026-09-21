@@ -85,7 +85,13 @@ async function fetchJson(url, options = {}) {
       headers.Origin = origin;
     }
   }
-  const response = await fetch(url, { headers });
+  const init = { headers };
+  if (options.method) init.method = options.method;
+  if (options.body != null) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} ${response.statusText}`);

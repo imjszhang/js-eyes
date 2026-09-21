@@ -406,32 +406,32 @@ async function wrapAction(name, fn, extras = {}) {
 }
 
 async function clickElement(browser, params, options = {}) {
-  const { tabId, selector, text, index } = params;
+  const { tabId, selector, text, index, ref } = params;
   if (!tabId) throw toSkillError('invalid_params', '必须提供 tabId');
   assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
-  if (!selector && !text) throw toSkillError('invalid_params', '必须提供 selector 或 text');
+  if (!selector && !text && !ref) throw toSkillError('invalid_params', '必须提供 selector、text 或 ref');
   if (typeof browser.click !== 'function') {
     throw toSkillError('invalid_params', 'Browser client does not support first-class click (upgrade JS Eyes extension/SDK)');
   }
 
   return wrapAction('browser_click', () => withVisual(
     'browser_click', browser, tabId, params, options,
-    () => browser.click(tabId, { selector, text, index }, options),
+    () => browser.click(tabId, { selector, text, index, ref }, options),
   ), { signal: options.signal, fallbackCode: 'timeout' });
 }
 
 async function fillForm(browser, params, options = {}) {
-  const { tabId, selector, value, clearFirst, index } = params;
+  const { tabId, selector, value, clearFirst, index, ref, secretRef } = params;
   if (!tabId) throw toSkillError('invalid_params', '必须提供 tabId');
   assertOwnedTab(browser, tabId, resolveTabOptions(params, options));
-  if (!selector) throw toSkillError('invalid_params', '必须提供 selector');
+  if (!selector && !ref) throw toSkillError('invalid_params', '必须提供 selector 或 ref');
   if (typeof browser.fill !== 'function') {
     throw toSkillError('invalid_params', 'Browser client does not support first-class fill (upgrade JS Eyes extension/SDK)');
   }
 
   return wrapAction('browser_fill_form', () => withVisual(
     'browser_fill_form', browser, tabId, params, options,
-    () => browser.fill(tabId, { selector, value: value || '', clearFirst, index }, options),
+    () => browser.fill(tabId, { selector, value: value || '', clearFirst, index, ref, secretRef }, options),
   ), { signal: options.signal, fallbackCode: 'timeout' });
 }
 

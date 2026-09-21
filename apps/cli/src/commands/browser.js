@@ -29,8 +29,14 @@ async function commandBrowser(positionals, flags = {}) {
     case 'cookies':
       if (positionals[2] === 'sync') return commandBrowserCookiesSync(flags);
       throw new Error('支持的命令: `js-eyes browser cookies sync --domain <host> --from <id|name> --to <id|name>`');
+    case 'state':
+      return commandBrowserState(flags);
+    case 'resume':
+      return commandBrowserResume(positionals[2] || flags.id, flags);
+    case 'downloads':
+      return commandBrowserDownloads(flags);
     default:
-      throw new Error('支持的命令: `js-eyes browser list` / `js-eyes browser attach --cdp|--bidi` / `js-eyes browser cookies sync`');
+      throw new Error('支持的命令: `js-eyes browser list|attach|state|resume|downloads|cookies sync`');
     }
 }
 
@@ -106,10 +112,78 @@ async function commandBrowserCookiesSync(flags) {
   }
 }
 
+function createBrowserClient(flags) {
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const token = readServerToken();
+  return new BrowserAutomation(`ws://${host}:${port}`, {
+    token,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+}
+
+async function commandBrowserState(flags) {
+  const tabId = flags['tab-id'] || flags.tabId;
+  if (!tabId) throw new Error('用法: js-eyes browser state --tab-id <id>');
+  const browser = createBrowserClient(flags);
+  try {
+    const result = await browser.getPageState(tabId, {
+      maxElements: flags['max-elements'] ? Number(flags['max-elements']) : undefined,
+      interactiveOnly: flags['interactive-only'] !== false,
+    });
+    print(JSON.stringify({
+      url: result && result.url,
+      title: result && result.title,
+      generation: result && result.generation,
+      elements: ((result && result.elements) || []).map((el) => ({
+        ref: el.ref,
+        tag: el.tag,
+        role: el.role,
+        name: el.name,
+        nth: el.nth,
+      })),
+    }, null, 2));
+  } finally {
+    browser.disconnect();
+  }
+}
+
+async function commandBrowserResume(pendingId, flags = {}) {
+  if (!pendingId) throw new Error('用法: js-eyes browser resume <pendingId>');
+  const config = loadConfig();
+  const { host, port } = getServerOptions(flags, config);
+  const token = readServerToken();
+  const payload = await fetchJson(
+    `http://${host}:${port}/api/browser/pending-user/${encodeURIComponent(pendingId)}/resume`,
+    { token, host, method: 'POST', body: {} },
+  );
+  print(payload.resumed ? `resumed ${pendingId}` : `pending user not found: ${pendingId}`);
+}
+
+async function commandBrowserDownloads(flags) {
+  const browser = createBrowserClient(flags);
+  try {
+    const result = await browser.listDownloads();
+    const items = (result && result.downloads) || [];
+    if (items.length === 0) {
+      print('No downloads.');
+      return;
+    }
+    for (const item of items) {
+      print([item.id, item.state, item.basename, item.bytes, item.urlHost].join('  '));
+    }
+  } finally {
+    browser.disconnect();
+  }
+}
+
 module.exports = {
   commandBrowser,
   commandBrowserAttach,
   commandBrowserCookiesSync,
+  commandBrowserDownloads,
   commandBrowserList,
+  commandBrowserResume,
+  commandBrowserState,
   loadBrowserConfig,
 };

@@ -189,13 +189,14 @@ const TOOL_DEFINITIONS = [
     risk: 'interactive',
     capabilities: ["browser.tabs.read","browser.page.read","browser.navigation","browser.page.interact"],
     label: 'Browser Ops: Click',
-    description: '点击页面元素。支持 CSS 选择器、XPath 或文本内容匹配。',
+    description: '点击页面元素。支持 CSS 选择器、XPath、文本内容匹配或 page.state ref。',
     parameters: {
       type: 'object',
       properties: {
         tabId: { type: 'number', description: '标签页 ID' },
         selector: { type: 'string', description: 'CSS 选择器或 XPath' },
         text: { type: 'string', description: '按文本内容匹配元素（与 selector 配合使用）' },
+        ref: { type: 'string', description: 'page.state 返回的短生命周期元素 ref' },
         index: { type: 'number', description: '匹配到多个元素时选择第几个（从 0 开始，默认 0）' },
         allowExternalTab: {
           type: 'boolean',
@@ -224,7 +225,9 @@ const TOOL_DEFINITIONS = [
       properties: {
         tabId: { type: 'number', description: '标签页 ID' },
         selector: { type: 'string', description: '目标元素的 CSS 选择器' },
+        ref: { type: 'string', description: 'page.state 返回的短生命周期元素 ref' },
         value: { type: 'string', description: '要填入的值' },
+        secretRef: { type: 'string', description: '本机 secrets 名称，与 value 互斥' },
         clearFirst: { type: 'boolean', description: '填写前是否清空已有内容（默认 false）' },
         index: { type: 'number', description: '匹配到多个元素时选择第几个（从 0 开始）' },
         allowExternalTab: {

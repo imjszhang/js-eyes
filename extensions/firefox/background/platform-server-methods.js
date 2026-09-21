@@ -44,6 +44,22 @@ async handleMessage(data) {
           this.lastPongTime = Date.now();
           return;
 
+        case 'pending_user':
+          this.pendingUser = {
+            pendingId: message.pendingId,
+            reason: message.reason,
+            tabId: message.tabId || null,
+          };
+          this.broadcastStatusUpdate();
+          return;
+
+        case 'pending_user_cleared':
+          if (!message.pendingId || this.pendingUser?.pendingId === message.pendingId) {
+            this.pendingUser = null;
+          }
+          this.broadcastStatusUpdate();
+          return;
+
         case 'error':
           // 处理服务端错误消息
           console.warn('[ServerError]', message.code, message.message);
@@ -163,6 +179,34 @@ async handleMessage(data) {
 
         case 'wait_for':
           await this.handleWaitFor(payload);
+          break;
+
+        case 'get_page_state':
+          await this.handleGetPageState(payload);
+          break;
+
+        case 'send_keys':
+          await this.handleSendKeys(payload);
+          break;
+
+        case 'navigate_history':
+          await this.handleNavigateHistory(payload);
+          break;
+
+        case 'select_option':
+          await this.handleSelectOption(payload);
+          break;
+
+        case 'handle_dialog':
+          await this.handleHandleDialog(payload);
+          break;
+
+        case 'list_downloads':
+          await this.handleListDownloads(payload);
+          break;
+
+        case 'wait_download':
+          await this.handleWaitDownload(payload);
           break;
 
         case 'extract_page':

@@ -62,6 +62,16 @@ describe('cookie domain policy', () => {
     assert.equal(result.rule, 'L4b-taint');
   });
 
+  it('scans resolved fill values but not secretRef names', async () => {
+    const policy = makePolicy();
+    const tagged = policy.tagCookiesReturn([{ name: 'sid', value: 'abc123secret' }], { source: 'getCookies' });
+    const byName = await policy.evaluate('fill', { tabId: 1, secretRef: 'login-password' });
+    assert.equal(byName.decision, 'allow');
+    const byValue = await policy.evaluate('fill', { tabId: 1, value: tagged[0].value });
+    assert.equal(byValue.decision, 'soft-block');
+    assert.equal(byValue.rule, 'L4b-taint');
+  });
+
   it('allows in-scope non-sensitive syncCookies', async () => {
     const policy = makePolicy();
     const result = await policy.evaluate('syncCookies', {

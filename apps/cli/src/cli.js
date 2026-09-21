@@ -12,6 +12,7 @@ const { commandEgress } = require('./commands/egress');
 const { commandExtension, resolveExtensionAsset } = require('./commands/extension');
 const { printHelp } = require('./commands/help');
 const { commandBrowser } = require('./commands/browser');
+const { commandSecrets } = require('./commands/secrets');
 const { commandNativeHost } = require('./commands/native-host');
 const { commandSecurity } = require('./commands/security');
 const { commandServer } = require('./commands/server');
@@ -61,6 +62,9 @@ async function main(argv = process.argv.slice(2)) {
       return;
     case 'browser':
       await commandBrowser(positionals, flags);
+      return;
+    case 'secrets':
+      await commandSecrets(positionals, flags);
       return;
     case 'native-host':
       await commandNativeHost(positionals, flags);

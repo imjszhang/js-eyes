@@ -42,6 +42,9 @@ function pickOptions(args = {}, callOptions = {}) {
   if (args.maxContentChars !== undefined) options.maxContentChars = args.maxContentChars;
   if (args.maxLinks !== undefined) options.maxLinks = args.maxLinks;
   if (args.maxImages !== undefined) options.maxImages = args.maxImages;
+  if (args.maxElements !== undefined) options.maxElements = args.maxElements;
+  if (args.interactiveOnly !== undefined) options.interactiveOnly = args.interactiveOnly;
+  if (args.secretRef !== undefined) options.secretRef = args.secretRef;
   return { ...options, ...callOptions };
 }
 
@@ -115,12 +118,15 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
       return browser.click(args.tabId, {
         selector: args.selector,
         text: args.text,
+        ref: args.ref,
         index: args.index,
       }, options);
     case 'page.fill':
       return browser.fill(args.tabId, {
         selector: args.selector,
+        ref: args.ref,
         value: args.value,
+        secretRef: args.secretRef,
         clearFirst: args.clearFirst,
         index: args.index,
       }, options);
@@ -128,6 +134,7 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
       return browser.scroll(args.tabId, {
         scrollTarget: args.scrollTarget,
         selector: args.selector,
+        ref: args.ref,
         pixels: args.pixels,
       }, options);
     case 'page.waitFor': {
@@ -142,8 +149,70 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
       }
       return browser.waitFor(args.tabId, {
         selector: args.selector,
+        ref: args.ref,
+        condition: args.condition,
+        match: args.match,
         timeout: waitSeconds,
         visible: args.visible,
+        networkIdle: args.networkIdle,
+      }, waitOptions);
+    }
+    case 'page.state':
+      return browser.getPageState(args.tabId, {
+        maxElements: args.maxElements,
+        interactiveOnly: args.interactiveOnly,
+      }, options);
+    case 'page.keys':
+      return browser.sendKeys(args.tabId, {
+        keys: args.keys,
+        ref: args.ref,
+      }, options);
+    case 'page.history':
+      return browser.navigateHistory(args.tabId, {
+        direction: args.direction,
+      }, options);
+    case 'page.select':
+      return browser.selectOption(args.tabId, {
+        selector: args.selector,
+        ref: args.ref,
+        value: args.value,
+        label: args.label,
+        index: args.index,
+      }, options);
+    case 'page.dialog':
+      return browser.handleDialog(args.tabId, {
+        action: args.action,
+        promptText: args.promptText,
+      }, options);
+    case 'downloads.list':
+      return browser.listDownloads(options);
+    case 'downloads.wait': {
+      const waitSeconds = args.timeout != null ? Number(args.timeout) : undefined;
+      const waitOptions = pickOptions({ target: args.target }, callOptions);
+      if (waitSeconds != null && Number.isFinite(waitSeconds)) {
+        const minTransport = waitSeconds + 5;
+        if (waitOptions.timeout == null || Number(waitOptions.timeout) < minTransport) {
+          waitOptions.timeout = minTransport;
+        }
+      }
+      return browser.waitDownload({
+        id: args.id,
+        basename: args.basename,
+        tabId: args.tabId,
+        timeout: waitSeconds,
+      }, waitOptions);
+    }
+    case 'page.waitForUser': {
+      const waitSeconds = args.timeout != null ? Number(args.timeout) : 300;
+      const waitOptions = pickOptions({ target: args.target }, callOptions);
+      const minTransport = Number(waitSeconds) + 5;
+      if (waitOptions.timeout == null || Number(waitOptions.timeout) < minTransport) {
+        waitOptions.timeout = minTransport;
+      }
+      return browser.waitForUser({
+        reason: args.reason,
+        tabId: args.tabId,
+        timeout: waitSeconds,
       }, waitOptions);
     }
     case 'page.extract':

@@ -131,6 +131,8 @@ function createServer(options = {}) {
   state.audit = audit;
   state.browserConfig = browserConfig;
   state.pendingEgressDir = options.pendingEgressDir || null;
+  const runtimePaths = getPaths(baseDirOption ? { baseDir: baseDirOption } : {});
+  state.pendingUserDir = options.pendingUserDir || runtimePaths.pendingUserDir;
   state.requestTimeoutMs = requestTimeoutMs;
   // Bumped by `reloadSecurity()` so that `getOrCreatePolicyForClient` can
   // detect stale per-connection `conn.policy` objects and rebuild them from
@@ -165,7 +167,7 @@ function createServer(options = {}) {
     if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
       baseHeaders['Access-Control-Allow-Origin'] = origin;
       baseHeaders['Vary'] = 'Origin';
-      baseHeaders['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+      baseHeaders['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
       baseHeaders['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
     }
     res.writeHead(statusCode, baseHeaders);
@@ -180,7 +182,7 @@ function createServer(options = {}) {
       if (origin && isOriginAllowed(origin, security.allowedOrigins)) {
         headers['Access-Control-Allow-Origin'] = origin;
         headers['Vary'] = 'Origin';
-        headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+        headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
         headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
       }
       res.writeHead(204, headers);
@@ -188,13 +190,14 @@ function createServer(options = {}) {
       return;
     }
 
-    if (req.method !== 'GET') {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || DEFAULT_SERVER_HOST}`);
+    const pathname = parsedUrl.pathname.replace(/\/+$/, '') || '/';
+    const pendingUserMatch = pathname.match(/^\/api\/browser\/pending-user\/([^/]+)\/resume$/);
+
+    if (req.method !== 'GET' && !(req.method === 'POST' && pendingUserMatch)) {
       jsonResponse(res, 405, { status: 'error', message: 'Method not allowed' }, req);
       return;
     }
-
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || DEFAULT_SERVER_HOST}`);
-    const pathname = parsedUrl.pathname.replace(/\/+$/, '') || '/';
 
     if (pathname === '/api/browser/health') {
       jsonResponse(res, 200, {
@@ -339,9 +342,33 @@ function createServer(options = {}) {
           },
         }, req);
         break;
-      default:
+      case '/api/browser/pending-user': {
+        const { listPendingUsers } = require('./user-wait');
+        jsonResponse(res, 200, {
+          status: 'success',
+          pending: listPendingUsers(state).map((item) => ({
+            id: item.id,
+            reason: item.reason,
+            tabId: item.tabId,
+            createdAt: item.createdAt,
+          })),
+        }, req);
+        break;
+      }
+      default: {
+        if (req.method === 'POST' && pendingUserMatch) {
+          const { resumeUserWait } = require('./user-wait');
+          const resumed = resumeUserWait(state, decodeURIComponent(pendingUserMatch[1]));
+          jsonResponse(res, resumed ? 200 : 404, {
+            status: resumed ? 'success' : 'error',
+            pendingId: pendingUserMatch[1],
+            resumed,
+          }, req);
+          break;
+        }
         jsonResponse(res, 404, { status: 'error', message: 'Not found' }, req);
         break;
+      }
     }
   }
 

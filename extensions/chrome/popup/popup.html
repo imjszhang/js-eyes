@@ -146,6 +146,15 @@
       </div>
     </div>
 
+    <!-- Pending user (login / 2FA) -->
+    <div id="pending-user-card" class="px-5 py-3 border-b-3 border-black hidden">
+      <div class="brutal-card p-3 bg-white">
+        <div class="text-sm font-bold uppercase mb-2">Waiting for you</div>
+        <div id="pending-user-reason" class="text-xs font-mono mb-3 break-all"></div>
+        <button id="resume-user-btn" class="brutal-btn-primary w-full px-4 py-2 text-sm font-bold uppercase">Continue</button>
+      </div>
+    </div>
+
     <!-- Action Buttons -->
     <div class="px-5 py-4 border-b-3 border-black text-center flex gap-3">
       <button id="reconnect-btn" class="brutal-btn flex-1 px-6 py-3 text-sm font-bold uppercase" data-i18n="btnReconnect">Reconnect</button>

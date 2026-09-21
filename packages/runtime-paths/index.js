@@ -50,6 +50,8 @@ function getPaths(options = {}) {
     auditLogFile: path.join(baseDir, 'logs', 'audit.log'),
     cacheDir: path.join(baseDir, 'cache'),
     downloadsDir: path.join(baseDir, 'downloads'),
+    secretsDir: path.join(baseDir, 'secrets'),
+    pendingUserDir: path.join(baseDir, 'runtime', 'pending-user'),
   };
 }
 
@@ -203,6 +205,8 @@ function ensureRuntimePaths(options = {}) {
   ensureDir(paths.logsDir);
   ensureDir(paths.cacheDir);
   ensureDir(paths.downloadsDir);
+  ensureDir(paths.secretsDir);
+  ensureDir(paths.pendingUserDir);
   return paths;
 }
 

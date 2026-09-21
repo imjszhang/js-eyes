@@ -67,15 +67,22 @@ const DEFAULT_CONFIG = {
       'set_cookies',        // 写入 Cookies（高风险，仅服务端/SDK）
       'inject_css',         // 注入 CSS（高风险）
       'get_page_info',      // 获取页面信息
-      'click',              // 一等交互：点击元素（不依赖 allowRawEval）
-      'fill',               // 一等交互：填写表单
-      'scroll',             // 一等交互：滚动页面
-      'wait_for',           // 一等交互：等待选择器
-      'extract_page',       // 一等读取：声明式正文提取（不依赖 allowRawEval）
-      'upload_file_to_tab', // 上传文件到标签页
-      'capture_screenshot', // Phase 2: 截当前激活 tab 的可见区为 PNG（用于 visual replay）
-      'subscribe_events',   // 订阅事件
-      'unsubscribe_events'  // 取消订阅事件
+      'click',
+      'fill',
+      'scroll',
+      'wait_for',
+      'get_page_state',
+      'send_keys',
+      'navigate_history',
+      'select_option',
+      'handle_dialog',
+      'list_downloads',
+      'wait_download',
+      'extract_page',
+      'upload_file_to_tab',
+      'capture_screenshot',
+      'subscribe_events',
+      'unsubscribe_events'
     ],
 
     // 高风险操作列表（需要额外验证）
@@ -86,7 +93,9 @@ const DEFAULT_CONFIG = {
       'get_cookies_by_domain', // 可获取敏感的认证信息
       'set_cookies',        // 可写入会话 Cookie
       'inject_css',         // 可改变页面呈现和交互
-      'upload_file_to_tab'  // 可将本地提供的数据写入页面
+      'upload_file_to_tab',
+      'list_downloads',
+      'wait_download'
     ],
 
     // 频率限制配置
