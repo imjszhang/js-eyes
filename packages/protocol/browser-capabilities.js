@@ -17,10 +17,10 @@ const BIDI_UNSUPPORTED = Object.freeze([]);
 
 const CONNECTOR_CAPABILITY_MATRIX = Object.freeze({
   extension: Object.freeze(Object.fromEntries(ALL_OPERATION_IDS.map((id) => [id, true]))),
-  cdp: Object.freeze(Object.fromEntries(ALL_OPERATION_IDS.map((id) => [id, true]))),
+  cdp: Object.freeze(Object.fromEntries(ALL_OPERATION_IDS.map((id) => [id, !id.startsWith('capture.')]))),
   bidi: Object.freeze(Object.fromEntries(ALL_OPERATION_IDS.map((id) => [
     id,
-    !BIDI_UNSUPPORTED.includes(id),
+    !id.startsWith('capture.') && !BIDI_UNSUPPORTED.includes(id),
   ]))),
 });
 

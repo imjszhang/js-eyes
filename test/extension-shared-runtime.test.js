@@ -11,7 +11,7 @@ const config = require('../extensions/shared/config');
 const sharedBrowserControl = require('../extensions/shared/browser-control-methods');
 const { stageAllExtensions } = require('../packages/devtools/lib/build/extensions');
 const { EXTENSION_SHARED_COPIES } = require('../packages/devtools/lib/build/context');
-const methodModuleNames = ['connection', 'messaging', 'operations', 'cookie-write', 'page-interact', 'page-extract', 'routing', 'tabs'];
+const methodModuleNames = ['network-capture', 'connection', 'messaging', 'operations', 'cookie-write', 'page-interact', 'page-extract', 'routing', 'tabs'];
 const platformModuleNames = ['connection', 'server', 'operations', 'runtime', 'tabs'];
 
 function read(relativePath) {
@@ -72,6 +72,7 @@ describe('extension shared runtime contract', () => {
       'background/page-extract-methods.js',
       'background/routing-methods.js',
       'background/tabs-methods.js',
+      'background/network-capture-methods.js',
       'background/browser-control-methods.js',
       'background/platform-connection-methods.js',
       'background/platform-server-methods.js',
@@ -230,7 +231,7 @@ describe('extension shared runtime contract', () => {
 
   it('preserves the complete shared method surface', () => {
     assert.deepEqual(Object.keys(sharedBrowserControl.createMethods({})), [
-      'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
+      'handleNetworkCapture', 'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
       '_cleanupSocket', 'startHeartbeat', 'stopHeartbeat', 'attemptReconnect',
       'resetReconnectCounter', 'stopAutoReconnect', 'sendRawMessage', 'sendMessage',
       'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',

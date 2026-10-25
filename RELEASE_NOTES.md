@@ -1,5 +1,63 @@
 # Release Notes
 
+## v2.11.0
+
+Browser connectors, first-class interaction, and scoped Firefox network capture.
+This is the coordinated platform release; site skills retain their independent
+versions.
+
+### Highlights
+
+- **Firefox network capture**: SDK start/status/read/ACK/stop operations capture
+  selected HTTPS responses and bounded page properties. Explicit browser and
+  owner selection, private-tab rejection, buffer limits, TTL, and policy-reload
+  revocation constrain access. Raw evaluation remains unnecessary. Chrome, CDP,
+  and BiDi do not advertise this capability; safe MCP does not expose it.
+- **Session recovery fix**: a stopped or expired capture cannot resume while
+  another owner captures the same tab. It returns `CAPTURE_LIMIT`, preserves
+  buffered events, and can resume once the competing capture stops or expires.
+- **Optional browser connectors**: CDP and BiDi share the existing protocol and
+  policy path. CDP supports dedicated headless profiles; transports default off.
+- **Page operations**: element refs, keys, history, selection, local secret refs,
+  download metadata, and wait-for-user support. Dialog handling requires CDP or
+  BiDi. MCP safe/full profiles provide 22/30 tools respectively.
+- **Reading and skills**: declarative page extraction, batch reading, structured
+  errors, Google Search skill, and X Official API HTTP/SOCKS5 proxy support.
+- **Reliability and dependencies**: X API test mocks isolate proxy settings
+  throughout asynchronous work; compatible dependency security updates include
+  the MCP SDK, Zod, and Firefox build tooling.
+
+### Upgrade Notes
+
+1. Upgrade the coordinated CLI, runtime packages, OpenClaw adapter, and browser
+   extensions together to **2.11.0**, then restart the server/host and reload the
+   extensions. Updating source manifests alone does not update an installed
+   extension.
+2. For local development, build Chrome and unsigned Firefox with
+   `npm run build:chrome` and `npm run build:firefox:dev`. Load Chrome from
+   `dist/extensions-stage/chrome`; load Firefox's staged manifest through
+   `about:debugging`. Unsigned Firefox builds are temporary development installs;
+   store publication and signing are separate release steps.
+3. Configure optional connectors explicitly and restart the server. Cookie sync
+   requires a domain and source/destination clients; reload the destination page.
+4. Browser-ops now denies unauthorized domains by default. Domain authorization
+   and persistence require explicit opt-in. Reads close owned tabs by default;
+   use `keepOpen: true` and `noCache: true` when subsequent interaction needs a
+   live tab. Cached results return `tabId: null`.
+5. Skills using capture must declare `browser.network.capture`, use an explicitly
+   advertising Firefox client, and keep their owner token private. See
+   [network capture](docs/architecture/network-capture.md) for recovery and limits.
+
+### Known Limitations
+
+- Production dependency audit is clean at verification time. Development-only
+  `web-ext → @devicefarmer/adbkit → node-forge` still reports three high-severity
+  entries for GHSA-86w9-cpqp-85rv; upstream has no published patched version.
+  See [dependency guidance](CONTRIBUTING.md#dependency-changes).
+- Capture is bounded observation, not a guarantee of complete media downloads
+  or advertisement attribution. Firefox remains the only supported capture
+  transport.
+
 ## v2.10.0
 
 > **Architecture cleanup release.** Completes the package-boundary split and

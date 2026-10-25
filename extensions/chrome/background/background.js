@@ -22,6 +22,7 @@ import './page-extract-core.js';
 import './page-extract-methods.js';
 import './routing-methods.js';
 import './tabs-methods.js';
+import './network-capture-methods.js';
 import './browser-control-methods.js';
 import './user-script-executor.js';
 import './platform-connection-methods.js';

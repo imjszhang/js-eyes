@@ -9,7 +9,7 @@ sendRawMessage(message) {
       this.ws.send(JSON.stringify(message));
       return true;
     } else {
-      console.warn('WebSocket未连接，无法发送消息:', message);
+      console.warn('WebSocket未连接，无法发送消息:', message?.type);
       return false;
     }
   },

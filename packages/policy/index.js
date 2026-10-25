@@ -8,7 +8,7 @@ const { parseOriginFromUrl, normalizeHost, hostMatches } = require('./origin-uti
 const DEFAULT_ENFORCEMENT = 'soft';
 
 const TAB_SINK_TOOLS = new Set([
-  'executeScript', 'injectCss', 'uploadFileToTab', 'getCookies',
+  'executeScript', 'injectCss', 'uploadFileToTab', 'getCookies', 'startCapture',
 ]);
 
 const DOMAIN_COOKIE_TOOLS = new Set([

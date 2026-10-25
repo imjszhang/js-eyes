@@ -498,6 +498,10 @@ function createServer(options = {}) {
       security = merged;
       state.security = merged;
       state.policyGeneration += 1;
+      state.captureGrants?.clear();
+      for (const conn of state.extensionClients.values()) {
+        if (conn.socket?.readyState === 1) conn.socket.send(JSON.stringify({type:'capture_revoke'}));
+      }
       logger.info?.(
         `[js-eyes-server] security reloaded (source=${source}, applied=[${appliedKeys.join(',')}], generation=${state.policyGeneration}, egress=+${egressDiff.added.length}/-${egressDiff.removed.length})`,
       );

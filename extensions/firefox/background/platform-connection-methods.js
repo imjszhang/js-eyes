@@ -135,8 +135,11 @@ _applyFallbackDiscovery() {
         this.httpBaseUrl = this.serverUrl.replace(/^ws(s?):\/\//, 'http$1://');
       }
     } else {
-      // 从默认 URL 推导
-      this.serverUrl = this.defaultServerUrls[0] || this.defaultServerUrl.replace(/^http(s?):\/\//, 'ws$1://');
+      // Keep an explicitly configured HTTP endpoint when discovery requires auth.
+      const configured = this.serverUrl || this.defaultServerUrl;
+      this.serverUrl = /^https?:/.test(configured)
+        ? configured.replace(/^http(s?):\/\//, 'ws$1://')
+        : this.defaultServerUrls[0];
       if (!this.httpBaseUrl) {
         this.httpBaseUrl = this.defaultServerUrl;
       }
@@ -422,6 +425,7 @@ connect() {
           return;
         }
 
+        this.captureEngine?.reset();
         const duration = this.connectStartTime ? Date.now() - this.connectStartTime : 0;
         console.log(`[Connect#${connectionId}] WebSocket连接已关闭: code=${event.code}, reason=${event.reason}, authState=${this.authState}, duration=${duration}ms`);
         this.isConnected = false;
@@ -467,6 +471,7 @@ connect() {
           return;
         }
 
+        this.captureEngine?.reset();
         const duration = this.connectStartTime ? Date.now() - this.connectStartTime : 0;
         console.error(`[Connect#${connectionId}] WebSocket错误: authState=${this.authState}, duration=${duration}ms`, error);
         this.isConnected = false;
@@ -510,7 +515,8 @@ handleAuthResult(message) {
       this.sendRawMessage({
         type: 'init',
         timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent
+        userAgent: navigator.userAgent,
+        capabilities: typeof browser.webRequest?.filterResponseData === 'function' ? ['browser.network.capture'] : []
       });
 
       // 立即发送一次标签页数据

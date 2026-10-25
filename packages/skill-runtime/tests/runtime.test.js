@@ -134,6 +134,21 @@ describe('skill runtime', () => {
     await runtime.dispose();
   });
 
+  it('brokers capture methods only for tools granted network capture', async () => {
+    const calls = [];
+    const methods = ['startCapture','getCaptureStatus','readCaptureEvents','ackCaptureEvents','stopCapture'];
+    const runtime = makeRuntime({
+      grantedCapabilities: ['browser.network.capture','browser.tabs.read'],
+      browserFactory: () => ({...Object.fromEntries(methods.map(method => [method,async () => {calls.push(method);return {ok:true};}])),disconnect() {}}),
+    });
+    await runtime.invoke({name:'capture',risk:'read',capabilities:['browser.network.capture'],async execute(ctx) {
+      for (const method of methods) await ctx.browser[method](1);
+    }}, {});
+    await assert.rejects(() => runtime.invoke({name:'tabs_only',risk:'read',capabilities:['browser.tabs.read'],execute(ctx) {return ctx.browser.startCapture(1);}}, {}), SkillCapabilityError);
+    assert.deepEqual(calls,methods);
+    await runtime.dispose();
+  });
+
   it('requires read and write grants for syncCookies', async () => {
     const runtime = makeRuntime({
       grantedCapabilities: ['browser.cookies.read'],

@@ -14,7 +14,7 @@ function hydrateExtensionRecord(clientId, conn) {
   conn.kind = conn.kind || 'extension';
   conn.transport = conn.transport || 'extension';
   if (!Array.isArray(conn.capabilities)) {
-    conn.capabilities = listOperationIdsForConnector('extension');
+    conn.capabilities = listOperationIdsForConnector('extension').filter(id => !id.startsWith('capture.'));
   }
   if (typeof conn.isOpen !== 'function') {
     conn.isOpen = () => !!(conn.socket && conn.socket.readyState === 1);

@@ -20,6 +20,7 @@ const FIREFOX_MANIFEST = path.join(FIREFOX_DIR, 'manifest.json');
 /** Shared runtime files injected into extension staging at build time. */
 const EXTENSION_SHARED_COPIES = [
   ['config.js', 'config.js'],
+  ['network-capture-methods.js', path.join('background', 'network-capture-methods.js')],
   ['utils.js', path.join('background', 'utils.js')],
   ['connection-methods.js', path.join('background', 'connection-methods.js')],
   ['messaging-methods.js', path.join('background', 'messaging-methods.js')],

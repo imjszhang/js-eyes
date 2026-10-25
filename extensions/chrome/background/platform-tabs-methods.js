@@ -12,6 +12,7 @@ async sendTabsData() {
       const tabsData = tabs.map(tab => ({
         id: tab.id.toString(),
         url: tab.url || '',
+        incognito: tab.incognito,
         title: tab.title || '',
         is_active: activeTab.length > 0 && activeTab[0].id === tab.id,
         window_id: tab.windowId.toString(),

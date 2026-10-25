@@ -4,6 +4,7 @@
 function resolveMethodModules() {
   if (typeof module !== 'undefined' && module.exports) {
     return [
+    require('./network-capture-methods'),
     require('./connection-methods'),
     require('./messaging-methods'),
     require('./operations-methods'),
@@ -15,6 +16,7 @@ function resolveMethodModules() {
     ];
   }
   return [
+    globalThis.JSEyesNetworkCaptureMethods,
     globalThis.JSEyesConnectionMethods,
     globalThis.JSEyesMessagingMethods,
     globalThis.JSEyesBrowserOperationMethods,
