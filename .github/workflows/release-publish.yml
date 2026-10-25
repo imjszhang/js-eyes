@@ -91,7 +91,8 @@ jobs:
           npm run test:coverage
           npm run scan:security
           npm audit --omit=dev
-          npm audit
+          # Match CI: production must be clean; report all development advisories.
+          npm audit --audit-level=critical
           npm run package:smoke
 
       - name: Build unsigned release assets
@@ -100,8 +101,8 @@ jobs:
           npm run build:skill
           npm run build:chrome
           npm run build:firefox:dev
-          npx web-ext lint --source-dir extensions/firefox
-          npx web-ext build --source-dir extensions/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
+          npx web-ext lint --source-dir dist/extensions-stage/firefox
+          npx web-ext build --source-dir dist/extensions-stage/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
           npm run release:prepare-packages
 
       - name: Write artifact checksums

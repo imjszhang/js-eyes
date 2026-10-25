@@ -94,6 +94,8 @@ minimal external template and `AGENTS.md` for Skill policy rules.
   for this one dependency chain. Production-only audit must remain clean;
   full audit still reports this finding. Do not apply npm's suggested downgrade
   to `web-ext@5.1.0` or suppress the advisory. Recheck when upstream ships a fix.
+  CI and the release workflows require a clean production audit and block on
+  critical findings in the full dependency audit; other findings remain visible.
 
 Official X API tests must use `tests/helpers/official-api-env.js` for mocked
 requests and proxy environment changes. The helper isolates inherited proxy
