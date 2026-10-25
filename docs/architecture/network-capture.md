@@ -37,6 +37,19 @@ request ID, status, four permitted response headers (content-type,
 content-length, content-range, accept-ranges), and a base64 body with a
 `truncated` flag. URLs and response bodies may contain sensitive data and
 must not be logged. A consumer should redact query strings from diagnostics.
+For subresources, `pageUrl` comes from the current browser tab URL. Firefox's
+request `documentUrl` can remain the original document URL after history
+navigation (for example a site root); it is checked for matching origin but
+cannot change navigation identity. The blocking request listener resolves the
+live tab before attaching its response filter. A real top-level navigation,
+including a same-URL reload outside the response URL patterns, starts a new
+navigation identity. In-flight responses retain their original identity, and
+late page samples cannot roll it back.
+Asynchronous lookups and page samples are also bound to the capture session's
+active generation: stopping or resetting capture invalidates pending work even
+if the same session is resumed before that work completes. Out-of-order tab
+lookups cannot overwrite a newer observed navigation.
+
 Page reads run in the isolated content world, not the page's JavaScript world.
 Starting a session does not wait for a loading page. Samples have a two-second
 deadline and at most one outstanding injection per session. Response EOF can

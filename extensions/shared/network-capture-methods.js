@@ -83,7 +83,7 @@ class CaptureEngine {
   }
   active(s) { if (s.active && s.expiresAt <= this.now()) this.stop(s); return s.active; }
   status(s) { return {sessionId:s.id, active:this.active(s), seq:s.seq, ackedSeq:s.ackedSeq, dropped:s.dropped, bufferedBytes:s.bytes, expiresAt:s.expiresAt, diagnostics:{...s.diagnostics,inFlight:[...this.requests.values()].filter(r => r.session === s).map(r => ({bytes:r.bytes,statusCode:r.statusCode,filterStatus:r.filter?.status || null}))}}; }
-  stop(s) { s.active = false; for (const [id,r] of this.requests) if (r.session === s) { try { r.filter?.disconnect(); } catch {} this.finish(id,true); } }
+  stop(s) { s.generation = (s.generation || 0) + 1; s.active = false; for (const [id,r] of this.requests) if (r.session === s) { try { r.filter?.disconnect(); } catch {} this.finish(id,true); } }
   push(s,event) {
     event = {...event, sessionId:s.id, tabId:s.tabId, sequence:++s.seq, timestamp:new Date(this.now()).toISOString()};
     const size = bytesOf(event);
@@ -93,8 +93,11 @@ class CaptureEngine {
   }
   async sample(s) {
     if (!this.active(s) || s.samplePending) return;
+    const navigationId = s.navigationId;
+    const generation = s.generation || 0;
     let tab;
     try { tab = await this.api.tabs.get(s.tabId); } catch { this.stop(s); return; }
+    if (!this.active(s) || (s.generation || 0) !== generation || s.navigationId !== navigationId) return;
     if (tab.incognito !== false || !s.options.origins.includes(new URL(tab.url).origin)) { this.stop(s); return; }
     try {
       const pending = Promise.resolve(this.runPage(s.tabId, samplePage, [s.options.page?.selectors || []]));
@@ -105,7 +108,7 @@ class CaptureEngine {
       const deadline = new Promise((_,reject) => { timer = setTimeout(() => reject(fault('CAPTURE_PAGE_TIMEOUT')),2000); timer.unref?.(); });
       let page;
       try { page = await Promise.race([pending,deadline]); } finally { clearTimeout(timer); }
-      if (!this.active(s) || !page || !s.options.origins.includes(new URL(page.url).origin)) return;
+      if (!this.active(s) || (s.generation || 0) !== generation || s.navigationId !== navigationId || !page || !s.options.origins.includes(new URL(page.url).origin)) return;
       if (s.pageUrl !== page.url) { s.pageUrl = page.url; s.navigationId = globalThis.crypto.randomUUID(); }
       const identity = JSON.stringify(page);
       if (identity !== s.lastPage) { s.lastPage = identity; this.push(s,{kind:'page',...page,navigationId:s.navigationId}); }
@@ -166,20 +169,43 @@ class CaptureEngine {
     }
     return this.status(s);
   }
-  before(d) {
-    for (const s of this.sessions.values()) {
+  async before(d) {
+    // Do not let an awaited lookup carry this request into a newly created session.
+    for (const s of [...this.sessions.values()]) {
       if (!this.active(s) || d.tabId !== s.tabId) continue;
       const diag = s.diagnostics;
       diag.requestsSeen++;
       if (d.incognito !== false) { diag.privacyRejected++; continue; }
-      if (d.frameId !== 0 || !s.options.urlPatterns.some(p => patternMatches(p,d.url))) continue;
-      diag.requestsMatched++;
+      if (d.frameId !== 0) continue;
+      const matched = s.options.urlPatterns.some(p => patternMatches(p,d.url));
+      if (!matched && d.type !== 'main_frame') continue;
+      if (matched) diag.requestsMatched++;
       // A top-level navigation belongs to its destination document. Its
       // initiator can be an extension or about:blank, which is not the page
       // whose response is being observed. Subresources retain document scope.
-      const documentUrl = d.type === 'main_frame' ? d.url : d.documentUrl || s.pageUrl;
-      try { if (!s.options.origins.includes(new URL(documentUrl).origin)) { diag.scopeRejected++; continue; } } catch { diag.scopeRejected++; continue; }
-      if (s.pageUrl !== documentUrl) { s.pageUrl = documentUrl; s.navigationId = globalThis.crypto.randomUUID(); }
+      // Firefox can report the original document URL (e.g. the site root)
+      // after history navigation. It is an origin check, not a page identity.
+      // Resolve the live tab while the blocking request callback is pending.
+      const generation = s.generation || 0, navigationId = s.navigationId, pageUrl = s.pageUrl;
+      let tab;
+      try { tab = await this.api.tabs.get(d.tabId); } catch { s.dropped++; continue; }
+      if (!this.active(s) || (s.generation || 0) !== generation || this.sessions.get(s.id) !== s) continue;
+      if (tab.incognito !== false) { diag.privacyRejected++; continue; }
+      const documentUrl = d.type === 'main_frame' ? d.url : tab.url;
+      // Concurrent lookups for the current page remain valid; stale results
+      // cannot undo a navigation already observed by another request or sample.
+      if (s.navigationId !== navigationId && (d.type === 'main_frame' || documentUrl !== s.pageUrl || documentUrl === pageUrl)) { s.dropped++; continue; }
+      try {
+        if (!s.options.origins.includes(new URL(documentUrl).origin) ||
+            (d.type !== 'main_frame' && d.documentUrl && new URL(d.documentUrl).origin !== new URL(documentUrl).origin)) {
+          diag.scopeRejected++; continue;
+        }
+      } catch { diag.scopeRejected++; continue; }
+      if (s.pageUrl !== documentUrl || (d.type === 'main_frame' && s.navigationRequest !== d.requestId)) {
+        s.pageUrl = documentUrl; s.navigationId = globalThis.crypto.randomUUID(); s.lastPage = null;
+      }
+      if (d.type === 'main_frame') s.navigationRequest = d.requestId;
+      if (!matched) continue;
       const r = {session:s,url:d.url,pageUrl:documentUrl,navigationId:s.navigationId,requestId:d.requestId,headers:{},statusCode:0,chunks:[],bytes:0,truncated:false};
       if (this.requests.size >= 16) { s.dropped++; continue; }
       this.requests.set(d.requestId,r);
@@ -200,6 +226,7 @@ class CaptureEngine {
         } catch { r.truncated = true; s.diagnostics.filterErrors++; }
       }
     }
+    return {};
   }
   headers(d) {
     const r = this.requests.get(d.requestId); if (!r) return;
