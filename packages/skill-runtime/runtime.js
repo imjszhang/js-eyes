@@ -15,6 +15,11 @@ const {
 
 const BROWSER_METHOD_CAPABILITIES = Object.freeze({
   getTabs: 'browser.tabs.read',
+  startCapture: 'browser.network.capture',
+  getCaptureStatus: 'browser.network.capture',
+  readCaptureEvents: 'browser.network.capture',
+  ackCaptureEvents: 'browser.network.capture',
+  stopCapture: 'browser.network.capture',
   listClients: 'browser.tabs.read',
   openUrl: 'browser.navigation',
   closeTab: 'browser.navigation',

@@ -10,7 +10,7 @@ sendNotification(message) {
 async handleMessage(data) {
     try {
       const message = JSON.parse(data);
-      console.log('收到服务器消息:', message.type, message);
+      console.log('收到服务器消息:', message.type);
 
       if (message && (message.status === 'pending-egress'
           || message.code === 'POLICY_SOFT_BLOCK'
@@ -20,6 +20,10 @@ async handleMessage(data) {
       }
 
       switch (message.type) {
+        case 'capture_revoke':
+          this.captureEngine?.reset();
+          return;
+
         case 'auth_result':
           this.handleAuthResult(message);
           return;
@@ -129,6 +133,13 @@ async handleMessage(data) {
 
       // === 处理业务消息 ===
       switch (actionType) {
+        case 'capture_start':
+        case 'capture_status':
+        case 'capture_read':
+        case 'capture_ack':
+        case 'capture_stop':
+          await this.handleNetworkCapture(actionType, payload);
+          break;
         case 'open_url':
           await this.handleOpenUrl(payload);
           break;

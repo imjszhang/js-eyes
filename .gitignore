@@ -79,3 +79,8 @@ runs/
 # Generated replay compositions inside fixture folders (build artefact, large,
 # regenerable via `node packages/visual-replay-hyperframes/cli/jse-replay.js`)
 packages/visual-replay-hyperframes/__fixtures__/**/composition/
+
+# Generated shared capture runtime
+extensions/chrome/background/network-capture-methods.js
+extensions/firefox/background/network-capture-methods.js
+!docs/architecture/network-capture.md

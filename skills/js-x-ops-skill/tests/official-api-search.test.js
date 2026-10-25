@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { withFetchMock } = require('./helpers/official-api-env');
 
 const { OfficialApiClient } = require('../lib/official-api/client');
 const { parseApiArgs, runApi } = require('../lib/official-api/dispatcher');
@@ -16,20 +17,6 @@ function makeResponse({ ok = true, status = 200, body = {} } = {}) {
     json: async () => (typeof body === 'string' ? JSON.parse(body) : body),
     text: async () => text,
   };
-}
-
-async function withFetchMock(handler, run) {
-  const originalFetch = global.fetch;
-  const calls = [];
-  global.fetch = async (url, opts = {}) => {
-    calls.push({ url: String(url), opts });
-    return handler(url, opts, calls);
-  };
-  try {
-    return await run(calls);
-  } finally {
-    global.fetch = originalFetch;
-  }
 }
 
 async function silenceStdout(run) {
@@ -47,14 +34,14 @@ async function silenceStdout(run) {
   }
 }
 
-function withBearerEnv(run) {
+async function withBearerEnv(run) {
   const keys = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET', 'X_BEARER_TOKEN', 'X_API_BEARER_TOKEN', 'JS_X_SKIP_DOTENV'];
   const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) delete process.env[k];
   process.env.X_BEARER_TOKEN = 'read_token';
   process.env.JS_X_SKIP_DOTENV = '1';
   try {
-    return run();
+    return await run();
   } finally {
     for (const k of keys) {
       if (old[k] == null) delete process.env[k];
@@ -63,13 +50,13 @@ function withBearerEnv(run) {
   }
 }
 
-function withNoApiEnv(run) {
+async function withNoApiEnv(run) {
   const keys = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET', 'X_BEARER_TOKEN', 'X_API_BEARER_TOKEN', 'JS_X_SKIP_DOTENV'];
   const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) delete process.env[k];
   process.env.JS_X_SKIP_DOTENV = '1';
   try {
-    return run();
+    return await run();
   } finally {
     for (const k of keys) {
       if (old[k] == null) delete process.env[k];

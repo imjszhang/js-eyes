@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-25
+
 ### Added
 
+- Scoped Firefox network capture with start/status/read/ACK/stop SDK operations,
+  explicit owner and browser selection, bounded response buffers, private-tab
+  rejection, and policy-reload revocation. Chrome/CDP/BiDi do not advertise it.
+- Optional CDP and BiDi browser connectors, domain-scoped in-memory cookie sync,
+  declarative page extraction, and batched page reads.
+- Independently versioned Google Search skill and X Official API proxy support.
 - First-class generic browse ops: `page.state` refs, `page.keys`, `page.history`,
   `page.select`, `page.dialog` (CDP/BiDi; extension returns
   `CAPABILITY_UNSUPPORTED`), `downloads.list` / `downloads.wait` (full profile,
@@ -21,6 +29,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Restoring a stopped or expired capture session now rejects an active competing
+  owner on the same tab with `CAPTURE_LIMIT`, preserving buffered events and
+  permitting recovery once the competing session stops.
+- Isolate X Official API test requests from inherited proxies and restore test
+  environment variables only after asynchronous work settles.
+- Update dependency security patches, including the MCP SDK, Zod, Firefox build
+  tooling, and shared transitive dependencies; remove obsolete Hono server and
+  Firefox ZIP dependency overrides.
 - `js-browser-ops-skill` 的 `browser_read_page` cache v2 保留完整 URL 并按
   `format` 隔离；缓存命中返回一致业务 shape，同时以 `tabId: null` 明确表示
   没有可安全复用的 live tab context。
@@ -30,6 +46,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Coordinated platform packages, CLI, OpenClaw adapter, and Chrome/Firefox
+  extensions advance together to 2.11.0. Site skills keep independent versions.
 - `js-browser-ops-skill` 2.6.0：后续交互必须 `keepOpen: true` 才能拿到 live
   `tabId`。
 

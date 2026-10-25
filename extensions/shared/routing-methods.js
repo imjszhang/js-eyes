@@ -72,6 +72,7 @@ async handleGetTabsRequest(payload) {
       const tabsData = tabs.map(tab => ({
         id: tab.id,
         url: tab.url || '',
+        incognito: tab.incognito,
         title: tab.title || '',
         isActive: activeTab.length > 0 && activeTab[0].id === tab.id,
         windowId: tab.windowId,

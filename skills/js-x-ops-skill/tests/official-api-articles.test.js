@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { withFetchMock } = require('./helpers/official-api-env');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -21,20 +22,6 @@ function makeResponse({ ok = true, status = 200, body = {} } = {}) {
   };
 }
 
-async function withFetchMock(handler, run) {
-  const originalFetch = global.fetch;
-  const calls = [];
-  global.fetch = async (url, opts = {}) => {
-    calls.push({ url: String(url), opts });
-    return handler(url, opts, calls);
-  };
-  try {
-    return await run(calls);
-  } finally {
-    global.fetch = originalFetch;
-  }
-}
-
 async function silenceStdout(run) {
   const originalWrite = process.stdout.write;
   let output = '';
@@ -50,7 +37,7 @@ async function silenceStdout(run) {
   }
 }
 
-function withApiEnv(run) {
+async function withApiEnv(run) {
   const keys = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET', 'X_BEARER_TOKEN', 'X_API_BEARER_TOKEN', 'JS_X_SKIP_DOTENV'];
   const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   process.env.X_API_KEY = 'key';
@@ -61,7 +48,7 @@ function withApiEnv(run) {
   delete process.env.X_API_BEARER_TOKEN;
   process.env.JS_X_SKIP_DOTENV = '1';
   try {
-    return run();
+    return await run();
   } finally {
     for (const k of keys) {
       if (old[k] == null) delete process.env[k];
@@ -70,13 +57,13 @@ function withApiEnv(run) {
   }
 }
 
-function withNoApiEnv(run) {
+async function withNoApiEnv(run) {
   const keys = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET', 'X_BEARER_TOKEN', 'X_API_BEARER_TOKEN', 'JS_X_SKIP_DOTENV'];
   const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) delete process.env[k];
   process.env.JS_X_SKIP_DOTENV = '1';
   try {
-    return run();
+    return await run();
   } finally {
     for (const k of keys) {
       if (old[k] == null) delete process.env[k];

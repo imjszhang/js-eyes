@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extName__",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "permissions": [
@@ -30,6 +30,7 @@
       "background/page-extract-methods.js",
       "background/routing-methods.js",
       "background/tabs-methods.js",
+      "background/network-capture-methods.js",
       "background/browser-control-methods.js",
       "background/platform-connection-methods.js",
       "background/platform-server-methods.js",

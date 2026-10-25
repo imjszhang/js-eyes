@@ -21,6 +21,7 @@ const { publicDownload, publicDownloadList } = require('./connectors/download-re
 const { syncCookiesBetweenClients } = require('./cookie-sync');
 const { resumeUserWait, waitForUser } = require('./user-wait');
 const { readSecret } = require('@js-eyes/runtime-paths/secrets');
+const { handleCaptureRequest } = require('./network-capture');
 
 let PolicyContextCtor = null;
 function loadPolicyContext() {
@@ -259,6 +260,10 @@ function handleExtensionMessage(raw, clientId, state) {
     data = { type: action, ...payload };
   }
 
+  const capturePending = state.pendingResponses.get(data.requestId);
+  if (capturePending?.captureBrowser && (capturePending.captureBrowser !== state.extensionClients.get(clientId)
+      || data.type !== 'error' && data.type !== `${capturePending.operationType}_complete`)) return;
+
   switch (data.type) {
     case 'ping': {
       const conn = state.extensionClients.get(clientId);
@@ -270,6 +275,10 @@ function handleExtensionMessage(raw, clientId, state) {
       if (conn) {
         conn.userAgent = data.userAgent || null;
         conn.browserName = parseBrowserName(data.userAgent);
+        conn.capabilities = (conn.capabilities || []).filter(id => !id.startsWith('capture.') && id !== 'browser.network.capture');
+        if (conn.browserName === 'firefox' && data.capabilities?.includes('browser.network.capture')) {
+          conn.capabilities.push('browser.network.capture');
+        }
         console.log(`[Extension] Init received: ${conn.browserName} (${clientId})`);
         send(conn.socket, {
           type: 'init_ack',
@@ -296,6 +305,7 @@ function handleExtensionMessage(raw, clientId, state) {
       return;
     }
     case 'error':
+      if (state.pendingResponses.get(data.requestId)?.captureBrowser && state.pendingResponses.get(data.requestId).captureBrowser !== state.extensionClients.get(clientId)) return;
       handleExtensionError(data, state);
       return;
     case 'resume_user':
@@ -308,6 +318,12 @@ function handleExtensionMessage(raw, clientId, state) {
   if (!data.requestId) return;
 
   const requestId = data.requestId;
+  if (/^capture_(start|status|read|ack|stop)_complete$/.test(data.type)) {
+    const pending = state.pendingResponses.get(requestId);
+    if (!pending || pending.captureBrowser !== state.extensionClients.get(clientId)) return;
+    resolveRequest(requestId, {status:'success', result:data.result, requestId}, state);
+    return;
+  }
   switch (data.type) {
     case 'open_url_complete':
       resolveRequest(requestId, {
@@ -569,6 +585,11 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
         });
       }
     }
+  }
+
+  if (/^capture_(start|status|read|ack|stop)$/.test(action)) {
+    await handleCaptureRequest(data, clientId, socket, state, (browser, type, payload) => requestFromClient(state, browser, type, payload));
+    return;
   }
 
   switch (action) {
@@ -852,6 +873,7 @@ function requestFromClient(state, client, type, payload = {}) {
       },
     };
     registerPending(requestId, fakeSocket, type, state, null);
+    if (type.startsWith('capture_')) state.pendingResponses.get(requestId).captureBrowser = client;
     try {
       const result = client.dispatch({ type, requestId, ...payload }, state);
       if (result && typeof result.then === 'function') {

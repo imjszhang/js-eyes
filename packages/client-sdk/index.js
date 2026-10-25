@@ -495,6 +495,30 @@ class BrowserAutomation {
     return html;
   }
 
+  async _capture(action, tabId, payload, options) {
+    const response = await this._sendRequest(`capture_${action}`, {
+      tabId: Number(tabId), ...payload, ownerToken: options.ownerToken,
+    }, options);
+    return response.result;
+  }
+
+  startCapture(tabId, captureOptions, options = {}) {
+    return this._capture('start', tabId, {options:captureOptions}, options);
+  }
+  getCaptureStatus(tabId, sessionId, options = {}) {
+    return this._capture('status', tabId, {sessionId}, options);
+  }
+  readCaptureEvents(tabId, sessionId, options = {}) {
+    return this._capture('read', tabId, {sessionId, afterSeq:options.afterSeq,
+      limit:options.limit, maxBytes:options.maxBytes}, options);
+  }
+  ackCaptureEvents(tabId, sessionId, throughSeq, options = {}) {
+    return this._capture('ack', tabId, {sessionId, throughSeq}, options);
+  }
+  stopCapture(tabId, sessionId, options = {}) {
+    return this._capture('stop', tabId, {sessionId}, options);
+  }
+
   async executeScript(tabId, code, options = {}) {
     if (typeof options === 'number') options = { timeout: options };
     const decision = await this._evaluatePolicy('executeScript', {

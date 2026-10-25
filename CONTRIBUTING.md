@@ -85,7 +85,20 @@ minimal external template and `AGENTS.md` for Skill policy rules.
 - Prefer upgrading a direct dependency over adding an override.
 - Keep production and development dependency risk separate when evaluating advisories.
 - Explain any override in the pull request and verify the affected tool directly.
-- The `firefox-profile > adm-zip` override is temporary: the latest `firefox-profile` still restricts `adm-zip` to the vulnerable 0.5 line. Remove the override once upstream accepts `adm-zip` 0.6 or newer.
+- `web-ext` 10.8 uses `firefox-profile` 4.7.1, which accepts patched `adm-zip` 0.6 releases; the old `adm-zip` override is no longer needed.
+- The root overrides keep `brace-expansion`, `fast-uri`, `undici`, and `shell-quote` on patched versions across the workspace and build tools. Keep `undici` on the compatible 7.x line. Recheck these overrides when upgrading their parent dependencies.
+- Known upstream limitation (2026-10-25): `web-ext@10.8.0` brings
+  `@devicefarmer/adbkit@3.3.9` and `node-forge@1.4.0` into development installs.
+  [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)
+  has no published patched version. npm reports three high-severity entries
+  for this one dependency chain. Production-only audit must remain clean;
+  full audit still reports this finding. Do not apply npm's suggested downgrade
+  to `web-ext@5.1.0` or suppress the advisory. Recheck when upstream ships a fix.
+
+Official X API tests must use `tests/helpers/official-api-env.js` for mocked
+requests and proxy environment changes. The helper isolates inherited proxy
+settings for the duration of asynchronous work and restores them on success or
+failure. Tests should pass with the developer's normal proxy environment.
 - A dependency pull request must pass `npm audit`, the full test suite, and all affected builds.
 
 ## Pull requests

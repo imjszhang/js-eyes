@@ -14,13 +14,13 @@ describe('connector capability matrix', () => {
     assert.deepEqual(CONNECTOR_KINDS.slice(), ['extension', 'cdp', 'bidi']);
   });
 
-  it('marks every operation supported on extension and cdp', () => {
+  it('limits capture to extension connectors', () => {
     for (const operation of BROWSER_OPERATIONS) {
       assert.equal(isOperationSupportedByConnector(operation.id, 'extension'), true, operation.id);
-      assert.equal(isOperationSupportedByConnector(operation.id, 'cdp'), true, operation.id);
+      assert.equal(isOperationSupportedByConnector(operation.id, 'cdp'), !operation.id.startsWith('capture.'), operation.id);
     }
     assert.equal(listOperationIdsForConnector('extension').length, BROWSER_OPERATIONS.length);
-    assert.equal(listOperationIdsForConnector('cdp').length, BROWSER_OPERATIONS.length);
+    assert.equal(listOperationIdsForConnector('cdp').length, BROWSER_OPERATIONS.filter(op => !op.id.startsWith('capture.')).length);
   });
 
   it('supports the BiDi skill-facing subset', () => {

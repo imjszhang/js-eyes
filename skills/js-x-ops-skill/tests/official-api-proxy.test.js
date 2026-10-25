@@ -7,39 +7,42 @@ const {
   resolveProxyUrl,
   getProxyInfo,
   getProxyDispatcher,
-  resetProxyCacheForTests,
   sanitizeProxyHost,
   classifyProxyProtocol,
   normalizeSocks5ProxyUrl,
+  fetchWithTimeout,
 } = require('../lib/official-api/httpFetch');
 
-function withProxyEnv(env, run) {
-  const keys = [
-    'JS_X_OPS_PROXY',
-    'HTTPS_PROXY',
-    'https_proxy',
-    'HTTP_PROXY',
-    'http_proxy',
-    'ALL_PROXY',
-    'all_proxy',
-  ];
-  const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
-  for (const k of keys) delete process.env[k];
-  Object.assign(process.env, env);
-  resetProxyCacheForTests();
-  try {
-    return run();
-  } finally {
-    for (const k of keys) {
-      if (old[k] == null) delete process.env[k];
-      else process.env[k] = old[k];
-    }
-    resetProxyCacheForTests();
-  }
-}
+const { withProxyEnv, withFetchMock } = require('./helpers/official-api-env');
 
-test('resolveProxyUrl prefers JS_X_OPS_PROXY over HTTPS_PROXY', () => {
-  withProxyEnv({
+test('fetch mocks override inherited proxies until async work settles, then restore them', async () => {
+  await withProxyEnv({ HTTPS_PROXY: 'http://127.0.0.1:1' }, async () => {
+    const originalFetch = global.fetch;
+    await assert.rejects(withFetchMock(async () => ({ ok: true }), async (calls) => {
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(getProxyInfo().enabled, false);
+      assert.equal((await fetchWithTimeout('https://api.x.com/2/users/me')).ok, true);
+      assert.equal(calls.length, 1);
+      throw new Error('mock failure');
+    }), /mock failure/);
+    assert.equal(global.fetch, originalFetch);
+    assert.equal(resolveProxyUrl().url, 'http://127.0.0.1:1');
+  });
+});
+
+test('proxy environment remains isolated across await and restores after rejection', async () => {
+  await withProxyEnv({ ALL_PROXY: 'http://127.0.0.1:1' }, async () => {
+    await assert.rejects(withProxyEnv({}, async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(resolveProxyUrl(), null);
+      throw new Error('async failure');
+    }), /async failure/);
+    assert.equal(resolveProxyUrl().url, 'http://127.0.0.1:1');
+  });
+});
+
+test('resolveProxyUrl prefers JS_X_OPS_PROXY over HTTPS_PROXY', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'http://127.0.0.1:7890',
     HTTPS_PROXY: 'http://127.0.0.1:9999',
   }, () => {
@@ -51,8 +54,8 @@ test('resolveProxyUrl prefers JS_X_OPS_PROXY over HTTPS_PROXY', () => {
   });
 });
 
-test('resolveProxyUrl falls back to HTTPS_PROXY', () => {
-  withProxyEnv({
+test('resolveProxyUrl falls back to HTTPS_PROXY', async () => {
+  await withProxyEnv({
     HTTPS_PROXY: 'http://127.0.0.1:7890',
   }, () => {
     const resolved = resolveProxyUrl();
@@ -63,8 +66,8 @@ test('resolveProxyUrl falls back to HTTPS_PROXY', () => {
   });
 });
 
-test('JS_X_OPS_PROXY=off forces direct and ignores lower-priority proxies', () => {
-  withProxyEnv({
+test('JS_X_OPS_PROXY=off forces direct and ignores lower-priority proxies', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'off',
     HTTPS_PROXY: 'http://127.0.0.1:7890',
   }, () => {
@@ -100,8 +103,8 @@ test('normalizeSocks5ProxyUrl maps socks/socks5h to socks5', () => {
   assert.equal(normalizeSocks5ProxyUrl('socks5://127.0.0.1:1080'), 'socks5://127.0.0.1:1080');
 });
 
-test('getProxyDispatcher creates Socks5ProxyAgent for SOCKS proxies', () => {
-  withProxyEnv({
+test('getProxyDispatcher creates Socks5ProxyAgent for SOCKS proxies', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'socks5://127.0.0.1:1080',
   }, () => {
     const dispatcher = getProxyDispatcher();
@@ -116,8 +119,8 @@ test('getProxyDispatcher creates Socks5ProxyAgent for SOCKS proxies', () => {
   });
 });
 
-test('getProxyDispatcher creates ProxyAgent for HTTP proxy', () => {
-  withProxyEnv({
+test('getProxyDispatcher creates ProxyAgent for HTTP proxy', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'http://127.0.0.1:7890',
   }, () => {
     const dispatcher = getProxyDispatcher();
@@ -129,8 +132,8 @@ test('getProxyDispatcher creates ProxyAgent for HTTP proxy', () => {
   });
 });
 
-test('getProxyDispatcher returns cached instance for same proxy URL', () => {
-  withProxyEnv({
+test('getProxyDispatcher returns cached instance for same proxy URL', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'socks5://127.0.0.1:1080',
   }, () => {
     const first = getProxyDispatcher();
@@ -165,8 +168,8 @@ test('OfficialApiClient.checkReadAccess adds hint when fetch fails without proxy
   });
 });
 
-test('api status payload includes proxy summary from getProxyInfo', () => {
-  withProxyEnv({
+test('api status payload includes proxy summary from getProxyInfo', async () => {
+  await withProxyEnv({
     JS_X_OPS_PROXY: 'socks5://user:secret@127.0.0.1:1080',
   }, () => {
     assert.deepEqual(getProxyInfo(), {
