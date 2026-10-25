@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.11.1] - 2026-10-25
+
+### Fixed
+
+- Firefox capture uses the current tab URL for subresource page identity after
+  SPA history navigation; stale request document URLs remain origin checks.
+- Top-level reloads advance navigation identity even when the document URL does
+  not match capture patterns. In-flight responses retain their original identity.
+- Late tab lookups and page samples cannot roll back a newer navigation or cross
+  capture stop/resume and reset boundaries.
+
+### Changed
+
+- Coordinated platform packages and Chrome/Firefox extensions advance to 2.11.1;
+  independently versioned site skills and optional libraries are unchanged.
+
 ## [2.11.0] - 2026-10-25
 
 ### Added

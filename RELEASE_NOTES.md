@@ -1,5 +1,32 @@
 # Release Notes
 
+## v2.11.1
+
+Patch release for Firefox network-capture navigation attribution and asynchronous
+session isolation. Platform packages and browser extensions advance together;
+site skills and optional visual libraries keep their independent versions.
+
+### Fixes
+
+- Use the live tab URL after SPA history navigation, rather than treating an
+  original request document URL as the current page.
+- Give top-level reloads a new navigation identity, including reloads outside
+  the response URL patterns, while retaining identities on in-flight responses.
+- Discard stale tab lookups and page samples after navigation changes, capture
+  stop/resume, or reset, preventing old work from entering a new capture session.
+- Preserve origin and private-tab restrictions throughout asynchronous lookups.
+
+### Upgrade Notes
+
+Upgrade coordinated platform components to **2.11.1**. The capture fixes take
+effect after updating/reloading the browser extension; changing repository
+manifests does not update an installed extension. Persistent Firefox installation
+requires a signed XPI produced by the protected release workflow.
+
+The existing development-only `web-ext → @devicefarmer/adbkit → node-forge`
+advisory remains visible; production dependencies must pass their clean audit.
+See [dependency guidance](CONTRIBUTING.md#dependency-changes).
+
 ## v2.11.0
 
 Browser connectors, first-class interaction, and scoped Firefox network capture.
