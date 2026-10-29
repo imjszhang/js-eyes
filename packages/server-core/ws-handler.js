@@ -511,6 +511,11 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
   const target = data.target || null;
   const conn = state.automationClients.get(clientId);
 
+  if ((action === 'queue_status' || action === 'queue_clear') && (!conn || conn.anonymous)) {
+    send(socket, { type: 'error', requestId, status: 'error', code: 'AUTH_REQUIRED', message: 'Queue recovery requires an authenticated automation client.' });
+    return;
+  }
+
   if (state.audit && action) {
     state.audit.write(SENSITIVE_AUTOMATION_ACTIONS.has(action)
       ? 'automation.sensitive'

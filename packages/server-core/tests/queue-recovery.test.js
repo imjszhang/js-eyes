@@ -31,3 +31,14 @@ test('authenticated SDK/server recovery roundtrip and legacy capability refusal'
  for(let i=0;i<30;i++){if(!(await client.listClients()).some(c=>c.capabilities?.includes('queue.status')))break;await new Promise(r=>setTimeout(r,10));}
  await assert.rejects(client.getQueueStatus(opts),{code:'CAPABILITY_UNSUPPORTED'});
 });
+
+test('queue recovery rejects anonymous callers even when anonymous connections are enabled',async()=>{
+ const {createState,_internal:{handleAutomationMessage}}=require('../ws-handler');
+ const state=createState();const messages=[];const socket={readyState:1,send:s=>messages.push(JSON.parse(s))};
+ state.automationClients.set('anon',{socket,anonymous:true});
+ for(const action of ['queue_status','queue_clear']){
+  await handleAutomationMessage(JSON.stringify({action,requestId:action,all:true}),'anon',socket,state);
+  assert.equal(messages.at(-1).code,'AUTH_REQUIRED');
+ }
+ assert.equal(state.pendingResponses.size,0);
+});
