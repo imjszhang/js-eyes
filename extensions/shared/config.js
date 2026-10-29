@@ -57,6 +57,8 @@ const DEFAULT_CONFIG = {
     // 允许的操作白名单
     // 只有在此列表中的操作才会被 Content Script 转发给 Background Script
     allowedActions: [
+      'queue_status',
+      'queue_clear',
       'get_tabs',           // 获取标签页列表
       'get_html',           // 获取页面 HTML
       'open_url',           // 打开 URL
@@ -88,6 +90,7 @@ const DEFAULT_CONFIG = {
     // 高风险操作列表（需要额外验证）
     // 这些操作在执行前会进行额外的安全检查
     sensitiveActions: [
+      'queue_status', 'queue_clear',
       'execute_script',     // 可执行任意代码
       'get_cookies',        // 可获取敏感的认证信息
       'get_cookies_by_domain', // 可获取敏感的认证信息

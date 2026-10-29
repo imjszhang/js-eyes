@@ -275,10 +275,11 @@ function handleExtensionMessage(raw, clientId, state) {
       if (conn) {
         conn.userAgent = data.userAgent || null;
         conn.browserName = parseBrowserName(data.userAgent);
-        conn.capabilities = (conn.capabilities || []).filter(id => !id.startsWith('capture.') && id !== 'browser.network.capture');
+        conn.capabilities = (conn.capabilities || []).filter(id => !id.startsWith('capture.') && !id.startsWith('queue.') && id !== 'browser.network.capture');
         if (conn.browserName === 'firefox' && data.capabilities?.includes('browser.network.capture')) {
           conn.capabilities.push('browser.network.capture');
         }
+        if (data.capabilities?.includes('browser.queue.manage')) conn.capabilities.push('queue.status', 'queue.clear');
         console.log(`[Extension] Init received: ${conn.browserName} (${clientId})`);
         send(conn.socket, {
           type: 'init_ack',
@@ -370,6 +371,7 @@ function handleExtensionMessage(raw, clientId, state) {
     case 'send_keys_complete':
     case 'navigate_history_complete':
     case 'select_option_complete':
+    case 'queue_control_complete':
     case 'handle_dialog_complete':
       resolveRequest(requestId, {
         status: 'success',
@@ -724,6 +726,10 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
     case 'handle_dialog':
       dispatchToBrowser('handle_dialog', data, socket, state, ['tabId', 'action', 'promptText'], target, clientId);
       break;
+    case 'queue_status':
+    case 'queue_clear':
+      dispatchToBrowser(action, data, socket, state, ['all'], target, clientId);
+      break;
     case 'list_downloads':
       dispatchToBrowser('list_downloads', data, socket, state, ['tabId'], target, clientId);
       break;
@@ -803,7 +809,8 @@ function dispatchToBrowser(type, data, automationSocket, state, fields, target, 
   }
 
   const operation = BROWSER_OPERATION_BY_WIRE_ACTION[type];
-  if (operation && !isOperationSupportedByConnector(operation.id, ext.kind || 'extension')) {
+  if (operation && (!isOperationSupportedByConnector(operation.id, ext.kind || 'extension')
+      || (operation.id.startsWith('queue.') && !ext.capabilities?.includes(operation.id)))) {
     send(automationSocket, {
       type: `${type}_response`,
       requestId,

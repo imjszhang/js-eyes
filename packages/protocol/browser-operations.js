@@ -669,6 +669,17 @@ const BROWSER_OPERATIONS = Object.freeze([
     }, ['tabId', 'action']),
     annotations: Object.freeze({ openWorld: true }),
   },
+  ...['status', 'clear'].map((action) => ({
+    id: `queue.${action}`, wireAction: `queue_${action}`, sdkMethod: action === 'status' ? 'getQueueStatus' : 'clearQueue',
+    capability: 'browser.queue.manage', risk: action === 'status' ? 'read' : 'administrative',
+    routing: 'extension', sensitive: true, profiles: Object.freeze(['full']),
+    title: `JS Eyes: Queue ${action}`, description: action === 'status'
+      ? 'Inspect extension request bookkeeping metadata.'
+      : 'Clear expired bookkeeping, or all slots explicitly. Does not cancel underlying operations; stop automation before clearing all.',
+    inputSchema: objectSchema({ target: TARGET_PROP, timeout: TIMEOUT_PROP,
+      ...(action === 'clear' ? { all: { type: 'boolean', default: false } } : {}),
+    }),
+  })),
   {
     id: 'downloads.list',
     wireAction: 'list_downloads',

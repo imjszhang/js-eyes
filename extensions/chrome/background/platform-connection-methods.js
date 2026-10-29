@@ -440,7 +440,8 @@ handleAuthResult(message) {
       this.sendRawMessage({
         type: 'init',
         timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent
+        userAgent: navigator.userAgent,
+        capabilities: ['browser.queue.manage']
       });
 
       // 立即发送一次标签页数据
