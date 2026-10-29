@@ -20,3 +20,17 @@ js-eyes browser queue clear --all --target firefox
 Clearing records **does not cancel underlying browser actions**. A previously dispatched navigation, upload or download can still finish; do not automatically retry side effects. This operation also affects other callers using the selected browser. Recovery requests bypass queue capacity, but retain the existing authentication and rate-limit checks. They do not enable arbitrary JavaScript, expose cookies, or change security settings.
 
 SDK equivalents are `getQueueStatus({ target })` and `clearQueue({ all: false }, { target })`. These are extension-only operations, absent from the safe MCP profile. Both the local server and browser extension must contain the fix. Older extensions return `CAPABILITY_UNSUPPORTED` instead of silently waiting for an unknown operation. A running old extension must be reloaded/updated once; restarting only the server does not replace extension code or erase its in-memory queue.
+
+## Updating a source checkout
+
+Rebuild/restart the server from the updated checkout. Prepare the extension
+with `npm run sync:extension-shared`, then load or reload
+`dist/extensions-stage/firefox/manifest.json` in Firefox's temporary add-on
+manager, or `dist/extensions-stage/chrome` as an unpacked Chrome extension.
+Firefox temporary add-ons must be loaded again after a browser restart.
+Source changes are not an npm or signed-extension release.
+
+Verify with `queue status` before and after several completed operations: the
+queue should return to zero once other active operations finish. An older
+extension reports `CAPABILITY_UNSUPPORTED`; unauthenticated recovery callers
+are rejected with `AUTH_REQUIRED`, even when anonymous connections are enabled.
