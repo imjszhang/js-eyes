@@ -234,7 +234,7 @@ describe('extension shared runtime contract', () => {
       'handleNetworkCapture', 'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
       '_cleanupSocket', 'startHeartbeat', 'stopHeartbeat', 'attemptReconnect',
       'resetReconnectCounter', 'stopAutoReconnect', 'sendRawMessage', 'sendMessage',
-      'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',
+      'handleQueueControl', 'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',
       'handleGetCookies', 'handleGetCookiesByDomain', 'handleGetPageInfo', 'getCookiesByDomain',
       'getTabCookies', 'deduplicateCookies', 'validateCookies', 'analyzeCookieDomains',
       'waitForTabLoad',

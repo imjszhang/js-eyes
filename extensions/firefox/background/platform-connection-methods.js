@@ -516,7 +516,7 @@ handleAuthResult(message) {
         type: 'init',
         timestamp: new Date().toISOString(),
         userAgent: navigator.userAgent,
-        capabilities: typeof browser.webRequest?.filterResponseData === 'function' ? ['browser.network.capture'] : []
+        capabilities: ['browser.queue.manage', ...(typeof browser.webRequest?.filterResponseData === 'function' ? ['browser.network.capture'] : [])]
       });
 
       // 立即发送一次标签页数据

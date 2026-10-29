@@ -15,7 +15,36 @@ sendRawMessage(message) {
   },
 
 sendMessage(message) {
+    // Terminal replies release bookkeeping even when the transport has closed.
+    // Progress/chunk replies must retain the slot until the operation finishes.
+    if (message.requestId && (message.type === 'error' || /_complete$/.test(message.type || ''))) {
+      this.queueManager?.remove(message.requestId);
+      this.deduplicator?.markCompleted(message.requestId);
+    }
     return this.sendRawMessage(message);
+  },
+
+handleQueueControl(action, payload) {
+    const queue = this.queueManager;
+    if (!queue) {
+      this.sendMessage({ type: 'error', requestId: payload.requestId, code: 'CAPABILITY_UNSUPPORTED', message: 'Queue diagnostics unavailable' });
+      return;
+    }
+    let cleared = 0;
+    if (action === 'queue_clear') {
+      const records = payload.all === true
+        ? Array.from(queue.requests.keys(), requestId => ({ requestId }))
+        : queue.cleanupExpired();
+      for (const { requestId } of records) {
+        this.sendMessage({ type: 'error', requestId, code: 'QUEUE_CLEARED', message: 'Request bookkeeping cleared; underlying operation may still finish. Do not automatically retry side effects.' });
+        cleared++;
+      }
+    }
+    // Return metadata only, not request payloads, URLs, or credentials.
+    this.sendMessage({ type: 'queue_control_complete', requestId: payload.requestId, result: {
+      size: queue.requests.size, maxSize: queue.maxSize, timeoutMs: queue.requestTimeoutMs,
+      cleared, requests: queue.getStatus().requests.map(({ requestId, type, age }) => ({ requestId, type, age })),
+    } });
   },
 
 generateRequestId() {

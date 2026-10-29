@@ -14,6 +14,7 @@ function printHelp() {
   print('  js-eyes status');
   print('  js-eyes doctor');
   print('  js-eyes browser list');
+  print('  js-eyes browser queue status|clear [--all] [--target firefox]');
   print('  js-eyes browser attach --cdp [--mode attach|endpoint|launch] [--endpoint url]');
   print('  js-eyes browser cookies sync --domain <host> --from <id|name> --to <id|name> [--replace]');
   print('  js-eyes browser state --tab-id <id>');
