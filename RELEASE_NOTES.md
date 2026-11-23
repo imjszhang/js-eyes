@@ -8,6 +8,9 @@ optional visual libraries retain their independent versions.
 
 ### Fixes
 
+- Update the archive traversal dependency to use patched minimatch, addressing
+  GHSA-g3hv-75wg-m249.
+
 - Persist an extension instance ID and include it in authenticated initialization.
 - Replace older connections for the same browser, extension, and instance;
   delayed initialization or shutdown cannot evict the newer connection.
