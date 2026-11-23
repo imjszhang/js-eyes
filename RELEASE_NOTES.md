@@ -1,5 +1,10 @@
 # Release Notes
 
+## v2.11.3
+
+- Add Docker Compose support for the JS Eyes server with persistent runtime data, a health check, and a port published on host loopback.
+- Document how to connect the host browser extension and transfer its authentication token.
+
 ## v2.11.2
 
 Patch release for duplicate browser registration after extension reconnects.
