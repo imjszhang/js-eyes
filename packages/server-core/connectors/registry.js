@@ -70,6 +70,7 @@ function getBrowserSummaries(state) {
     summaries.push({
       clientId: conn.clientId || clientId,
       browserName: conn.browserName,
+      ...(conn.browserInstanceId ? { browserInstanceId: conn.browserInstanceId, extensionId: conn.extensionId } : {}),
       kind: conn.kind || 'extension',
       transport: conn.transport || conn.kind || 'extension',
       capabilities: Array.isArray(conn.capabilities) ? conn.capabilities.slice() : [],

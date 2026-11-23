@@ -1,5 +1,27 @@
 # Release Notes
 
+## v2.11.2
+
+Patch release for duplicate browser registration after extension reconnects.
+Platform packages and browser extensions advance together; site skills and
+optional visual libraries retain their independent versions.
+
+### Fixes
+
+- Persist an extension instance ID and include it in authenticated initialization.
+- Replace older connections for the same browser, extension, and instance;
+  delayed initialization or shutdown cannot evict the newer connection.
+- Stop superseded connections from automatically reconnecting. Fail pending
+  operations with `BROWSER_REPLACED` without automatically replaying actions.
+- Keep distinct profiles, separate extensions, anonymous connections, and legacy
+  clients separate; matching tabs alone never triggers deduplication.
+
+### Upgrade Notes
+
+Update the server and reload the browser extension at **2.11.2** to enable
+instance deduplication. Instance IDs are routing metadata, not authentication
+credentials. Copying an entire browser profile also copies its stored identity.
+
 ## v2.11.1
 
 Patch release for Firefox network-capture navigation attribution and asynchronous

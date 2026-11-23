@@ -933,3 +933,34 @@ describe('multi-browser isolation', () => {
     assert.equal(chBrowser.tabCount, 2);
   });
 });
+
+describe('stable extension instance replacement', () => {
+  const id='12345678-1234-4123-8123-123456789abc';
+  const init=(socket,instance=id,extensionId='test-extension')=>socket._emit('message',JSON.stringify({type:'init',userAgent:'Chrome/140',browserInstanceId:instance,extensionId}));
+  it('new connection replaces old; late messages/close cannot remove new; pending work fails without replay',()=>{
+    const state=createState(),a=createMockSocket(),b=createMockSocket(),consumer=createMockSocket();
+    setupExtensionClient(a,'local',state);const oldId=[...state.extensionClients.keys()][0];init(a);
+    const old=state.extensionClients.get(oldId);
+    state.pendingResponses.set('pending',{socket:consumer,operationType:'click',browserClient:old,timeoutId:setTimeout(()=>{},10000)});
+    setupExtensionClient(b,'local',state);init(b);
+    assert.equal(state.extensionClients.size,1);assert.equal(a.readyState,3);
+    assert.equal(consumer._messages[0].code,'BROWSER_REPLACED');assert.equal(state.pendingResponses.size,0);
+    init(a);a._emit('close');a._emit('error',new Error('late error'));
+    assert.equal(state.extensionClients.size,1);assert.equal([...state.extensionClients.values()][0].socket,b);
+    assert.equal(getExtensionSummaries(state)[0].browserInstanceId,id);
+    assert.equal(b._messages.filter(m=>m.type==='click').length,0);
+  });
+  it('late init from older socket cannot evict the newer initialized socket',()=>{
+    const state=createState(),a=createMockSocket(),b=createMockSocket();
+    setupExtensionClient(a,'local',state);setupExtensionClient(b,'local',state);init(b);init(a);
+    assert.equal(state.extensionClients.size,1);assert.equal([...state.extensionClients.values()][0].socket,b);
+  });
+  it('different profiles/installations and legacy/anonymous clients remain separate',()=>{
+    const state=createState();
+    for(const [instance,ext,anonymous] of [[id,'one',false],['22345678-1234-4123-8123-123456789abc','one',false],[id,'two',false],[undefined,undefined,false],[id,'one',true]]){
+      const socket=createMockSocket();setupExtensionClient(socket,'local',state,{access:{anonymous}});
+      socket._emit('message',JSON.stringify({type:'init',userAgent:'Chrome/140',browserInstanceId:instance,extensionId:ext}));
+    }
+    assert.equal(state.extensionClients.size,5);
+  });
+});

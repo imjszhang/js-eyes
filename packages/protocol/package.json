@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/protocol",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "description": "Shared protocol constants and browser-operation metadata for JS Eyes",
   "main": "index.js",
   "scripts": {

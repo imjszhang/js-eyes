@@ -160,6 +160,40 @@ function handleConnection(socket, request, state, options = {}) {
   }
 }
 
+// Instance claims are routing metadata, not an authentication credential.
+function retireExtension(clientId, state) {
+  const conn = state.extensionClients.get(clientId);
+  if (!conn) return;
+  state.extensionClients.delete(clientId);
+  for (const [requestId, info] of state.pendingResponses) {
+    if (info.browserClient === conn || info.captureBrowser === conn) {
+      resolveRequest(requestId, { status: 'error', code: 'BROWSER_REPLACED',
+        message: 'Browser connection replaced; action outcome may be unknown. No automatic replay.', requestId }, state);
+    }
+  }
+  conn.socket.close(4011, 'Extension connection superseded');
+}
+
+function acceptInstanceIdentity(data, clientId, state) {
+  const conn = state.extensionClients.get(clientId);
+  if (!conn || conn.anonymous) return true;
+  const id = data.browserInstanceId, extensionId = data.extensionId;
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      || typeof extensionId !== 'string' || !/^[a-zA-Z0-9@{}._-]{1,128}$/.test(extensionId)) return true;
+  if (conn.browserInstanceId && (conn.browserInstanceId !== id || conn.extensionId !== extensionId)) {
+    retireExtension(clientId, state); return false;
+  }
+  conn.browserInstanceId = id;
+  conn.extensionId = extensionId;
+  for (const [otherId, other] of state.extensionClients) {
+    if (otherId === clientId || other.anonymous || other.browserName !== conn.browserName
+        || other.browserInstanceId !== id || other.extensionId !== extensionId) continue;
+    if (other.generation > conn.generation) { retireExtension(clientId, state); return false; }
+    retireExtension(otherId, state);
+  }
+  return true;
+}
+
 function setupExtensionClient(socket, clientAddress, state, options = {}) {
   const clientId = generateId();
 
@@ -171,6 +205,7 @@ function setupExtensionClient(socket, clientAddress, state, options = {}) {
     createdAt: Date.now(),
     lastActivity: Date.now(),
     browserName: 'unknown',
+    generation: (state.extensionGeneration = (state.extensionGeneration || 0) + 1),
     userAgent: null,
     tabs: [],
     activeTabId: null,
@@ -242,6 +277,7 @@ function setupAutomationClient(socket, clientAddress, state, options = {}) {
 }
 
 function handleExtensionMessage(raw, clientId, state) {
+  if (!state.extensionClients.has(clientId)) return;
   let data;
   try {
     data = JSON.parse(raw);
@@ -275,6 +311,7 @@ function handleExtensionMessage(raw, clientId, state) {
       if (conn) {
         conn.userAgent = data.userAgent || null;
         conn.browserName = parseBrowserName(data.userAgent);
+        if (!acceptInstanceIdentity(data, clientId, state)) return;
         conn.capabilities = (conn.capabilities || []).filter(id => !id.startsWith('capture.') && !id.startsWith('queue.') && id !== 'browser.network.capture');
         if (conn.browserName === 'firefox' && data.capabilities?.includes('browser.network.capture')) {
           conn.capabilities.push('browser.network.capture');
@@ -832,6 +869,7 @@ function dispatchToBrowser(type, data, automationSocket, state, fields, target, 
   }
 
   registerPending(requestId, automationSocket, type, state, clientId);
+  state.pendingResponses.get(requestId).browserClient = ext;
   try {
     const result = ext.dispatch(msg, state);
     if (result && typeof result.then === 'function') {
@@ -885,6 +923,7 @@ function requestFromClient(state, client, type, payload = {}) {
       },
     };
     registerPending(requestId, fakeSocket, type, state, null);
+    state.pendingResponses.get(requestId).browserClient = client;
     if (type.startsWith('capture_')) state.pendingResponses.get(requestId).captureBrowser = client;
     try {
       const result = client.dispatch({ type, requestId, ...payload }, state);
