@@ -148,6 +148,50 @@ Download the latest release from [GitHub Releases](https://github.com/imjszhang/
 
 Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Firefox buttons on the website open the latest GitHub release so they always point at the current published assets.
 
+## Docker service
+
+From a checkout of this repository, run:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+The default base image is `node:22-bookworm-slim`. If Docker Hub is
+unreachable, an available trusted Node.js 22+ image can be selected explicitly:
+
+```bash
+docker compose build --build-arg NODE_IMAGE=your-node-image
+docker compose up -d --no-build
+```
+
+The HTTP/WebSocket server is available at `127.0.0.1:18080`. The container
+runs as an unprivileged user and keeps configuration, authentication token,
+audit logs, and downloads in the `js-eyes-data` named volume. Authentication
+and Origin checks remain enabled. The container opts into binding `0.0.0.0`
+inside its network; Compose publishes the port only on the host loopback.
+
+Keep the browser extension installed on the host and set its server address
+to `ws://127.0.0.1:18080`. Native Messaging on the host cannot automatically
+read the token in the Docker volume. To copy the token directly to the macOS
+clipboard without printing it in terminal logs:
+
+```bash
+docker compose exec -T js-eyes node -e "process.stdout.write(require('fs').readFileSync('/data/runtime/server.token','utf8').trim())" | pbcopy
+```
+
+Paste it into the extension's token field. On other platforms, transfer the
+contents of `/data/runtime/server.token` securely to the client. Host CLI/SDK
+clients must also use this token; their default host token file is separate.
+A container does not include a browser. CDP/BiDi endpoints on the host need
+explicit network and policy configuration; container loopback refers to the
+container itself.
+
+Use `docker compose logs --tail=100` for diagnostics, `docker compose restart`
+to restart, and `docker compose down` to stop. Data survives container replacement;
+`docker compose down -v` deletes the stored data and token. After updating the
+checkout, rerun `docker compose up -d --build` to rebuild the service.
+
 ## Manual Installation
 
 ### Browser Extension
