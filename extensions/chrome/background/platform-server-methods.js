@@ -82,6 +82,11 @@ async handleMessage(data) {
         }
       }
 
+      if (actionType === 'queue_status' || actionType === 'queue_clear') {
+        this.handleQueueControl(actionType, { ...payload, requestId });
+        return;
+      }
+
       if (this.deduplicator && requestId) {
         const dedupResult = this.deduplicator.checkRequest(requestId);
         if (dedupResult.isDuplicate) {

@@ -4,6 +4,31 @@
 function createMethods(extensionApi) {
   if (!extensionApi) throw new TypeError('extensionApi is required');
   return {
+async sendInstanceInit(payload) {
+    const socket = this.ws;
+    try {
+      if (!this._instanceIdentityPromise) {
+        this._instanceIdentityPromise = (async () => {
+          const stored = await extensionApi.storage.local.get('browserInstanceId');
+          let id = stored.browserInstanceId;
+          if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+            id = crypto.randomUUID();
+            await extensionApi.storage.local.set({ browserInstanceId: id });
+          }
+          return { browserInstanceId: id, extensionId: extensionApi.runtime.id };
+        })();
+      }
+      const identity = await this._instanceIdentityPromise;
+      if (socket !== this.ws || socket.readyState !== WebSocket.OPEN) return false;
+      this.sendRawMessage({ ...payload, ...identity });
+      return true;
+    } catch {
+      this._instanceIdentityPromise = null;
+      if (socket === this.ws) socket?.close(4004, 'Extension identity storage unavailable');
+      return false;
+    }
+  },
+
 startCleanupTask() {
     setInterval(() => {
       try {
@@ -150,7 +175,7 @@ attemptReconnect() {
     }
 
     // 如果认证失败，不自动重连（需要用户检查密钥）
-    if (this.authState === 'failed') {
+    if (this.authState === 'failed' || this.authState === 'superseded') {
       console.log('认证失败状态，跳过自动重连。请检查认证密钥配置。');
       // 广播状态更新，让用户知道需要检查认证
       this.broadcastStatusUpdate();

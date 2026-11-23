@@ -22,6 +22,8 @@ function loadBrowserConfig(config) {
 async function commandBrowser(positionals, flags = {}) {
   const action = positionals[1];
   switch (action) {
+    case 'queue':
+      return commandBrowserQueue(positionals[2], flags);
     case 'list':
       return commandBrowserList(flags);
     case 'attach':
@@ -38,6 +40,17 @@ async function commandBrowser(positionals, flags = {}) {
     default:
       throw new Error('支持的命令: `js-eyes browser list|attach|state|resume|downloads|cookies sync`');
     }
+}
+
+async function commandBrowserQueue(action, flags) {
+  if (!['status', 'clear'].includes(action)) throw new Error('Usage: js-eyes browser queue status|clear [--all] [--target firefox]');
+  const browser = createBrowserClient(flags);
+  try {
+    const options = { target: flags.target, timeout: 10 };
+    const result = action === 'status' ? await browser.getQueueStatus(options)
+      : await browser.clearQueue({ all: flags.all === true }, options);
+    print(JSON.stringify(result, null, 2));
+  } finally { browser.disconnect(); }
 }
 
 async function commandBrowserList(flags) {

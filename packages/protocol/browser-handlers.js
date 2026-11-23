@@ -184,6 +184,10 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
         action: args.action,
         promptText: args.promptText,
       }, options);
+    case 'queue.status':
+      return browser.getQueueStatus(options);
+    case 'queue.clear':
+      return browser.clearQueue({ all: args.all === true }, options);
     case 'downloads.list':
       return browser.listDownloads(options);
     case 'downloads.wait': {

@@ -1,6 +1,6 @@
 {
   "name": "@js-eyes/policy",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "description": "Host-neutral browser policy context for JS Eyes",
   "main": "index.js",
   "exports": {

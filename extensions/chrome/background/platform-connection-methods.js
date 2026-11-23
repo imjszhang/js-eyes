@@ -379,6 +379,11 @@ connect() {
         this.broadcastStatusUpdate();
 
         // 如果是认证失败导致的关闭（4001-4010 是自定义认证错误码），不自动重连
+        if (event.code === 4011) {
+          this.stopAutoReconnect();
+          this.authState = 'superseded';
+          return;
+        }
         const isAuthError = event.code >= 4001 && event.code <= 4010;
         if (isAuthError || this.authState === 'failed') {
           console.log('认证失败，不自动重连。错误码:', event.code, event.reason);
@@ -426,7 +431,7 @@ connect() {
     }
   },
 
-handleAuthResult(message) {
+async handleAuthResult(message) {
     if (this.authTimeout) {
       clearTimeout(this.authTimeout);
       this.authTimeout = null;
@@ -437,11 +442,12 @@ handleAuthResult(message) {
 
       this.authState = 'authenticated';
 
-      this.sendRawMessage({
+      if (!await this.sendInstanceInit({
         type: 'init',
         timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent
-      });
+        userAgent: navigator.userAgent,
+        capabilities: ['browser.queue.manage']
+      })) return;
 
       // 立即发送一次标签页数据
       this.sendTabsData();

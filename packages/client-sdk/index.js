@@ -804,6 +804,16 @@ class BrowserAutomation {
     return response.result;
   }
 
+  async getQueueStatus(options = {}) {
+    const response = await this._sendRequest(browserWireAction('queue.status'), {}, options);
+    return response.result;
+  }
+
+  async clearQueue(params = {}, options = {}) {
+    const response = await this._sendRequest(browserWireAction('queue.clear'), { all: params.all === true }, options);
+    return response.result;
+  }
+
   async listDownloads(options = {}) {
     const payload = {};
     if (options.tabId != null) payload.tabId = parseInt(options.tabId, 10);

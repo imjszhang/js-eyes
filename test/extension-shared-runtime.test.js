@@ -231,10 +231,10 @@ describe('extension shared runtime contract', () => {
 
   it('preserves the complete shared method surface', () => {
     assert.deepEqual(Object.keys(sharedBrowserControl.createMethods({})), [
-      'handleNetworkCapture', 'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
+      'handleNetworkCapture', 'sendInstanceInit', 'startCleanupTask', 'broadcastStatusUpdate', 'saveServerToken', 'trySyncFromNativeHost',
       '_cleanupSocket', 'startHeartbeat', 'stopHeartbeat', 'attemptReconnect',
       'resetReconnectCounter', 'stopAutoReconnect', 'sendRawMessage', 'sendMessage',
-      'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',
+      'handleQueueControl', 'generateRequestId', 'resolveRequest', 'sendHtmlInChunks', 'handleCloseTab',
       'handleGetCookies', 'handleGetCookiesByDomain', 'handleGetPageInfo', 'getCookiesByDomain',
       'getTabCookies', 'deduplicateCookies', 'validateCookies', 'analyzeCookieDomains',
       'waitForTabLoad',
@@ -386,5 +386,28 @@ describe('extension shared runtime contract', () => {
     assert.deepEqual(response, { ok: true });
     assert.equal(control.pendingRequests.size, 0);
     assert.deepEqual(writes, [['queue', 'req-1'], ['dedup', 'req-1']]);
+  });
+});
+
+describe('persistent extension instance identity',()=>{
+  it('coalesces concurrent initialization and survives runtime restart',async()=>{
+    const {createMethods}=require('../extensions/shared/connection-methods');
+    const stored={};let writes=0;const api={runtime:{id:'extension'},storage:{local:{get:async()=>({...stored}),set:async v=>{writes++;Object.assign(stored,v);}}}};
+    const ctx={WebSocket:{OPEN:1},crypto:require('node:crypto'),module:{exports:{}},console};
+    vm.runInNewContext(read('extensions/shared/connection-methods.js'),ctx);
+    const methods=ctx.module.exports.createMethods(api),messages=[];
+    const make=()=>({...methods,ws:{readyState:1},sendRawMessage:m=>messages.push(m)});
+    const a=make();await Promise.all([a.sendInstanceInit({type:'init'}),a.sendInstanceInit({type:'init'})]);
+    await make().sendInstanceInit({type:'init'});assert.equal(writes,1);
+    assert.equal(new Set(messages.map(m=>m.browserInstanceId)).size,1);assert.equal(messages[0].extensionId,'extension');
+    assert.equal(typeof createMethods,'function');
+  });
+  it('does not send an old initialization over a replacement socket',async()=>{
+    let resolve;const ctx={WebSocket:{OPEN:1},crypto:require('node:crypto'),module:{exports:{}},console};
+    vm.runInNewContext(read('extensions/shared/connection-methods.js'),ctx);
+    const methods=ctx.module.exports.createMethods({runtime:{id:'ext'},storage:{local:{get:()=>new Promise(r=>{resolve=r;}),set:async()=>{}}}});
+    let sends=0;const obj={...methods,ws:{readyState:1},sendRawMessage:()=>sends++};
+    const pending=obj.sendInstanceInit({type:'init'});obj.ws={readyState:1};resolve({browserInstanceId:'12345678-1234-4123-8123-123456789abc'});
+    assert.equal(await pending,false);assert.equal(sends,0);
   });
 });

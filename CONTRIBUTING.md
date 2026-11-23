@@ -101,6 +101,10 @@ Official X API tests must use `tests/helpers/official-api-env.js` for mocked
 requests and proxy environment changes. The helper isolates inherited proxy
 settings for the duration of asynchronous work and restores them on success or
 failure. Tests should pass with the developer's normal proxy environment.
+- `archiver@8` is scoped to `readdir-glob@4.0.0`, which uses patched
+  `minimatch@11`, to address GHSA-g3hv-75wg-m249. Remove this override once
+  archiver adopts the patched dependency chain. Validate archive builds and
+  package smoke checks when changing it.
 - A dependency pull request must pass `npm audit`, the full test suite, and all affected builds.
 
 ## Pull requests

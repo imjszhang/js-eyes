@@ -207,6 +207,8 @@ describe('CDP connector', () => {
       navigate_history: { tabId: 1, direction: 'back' },
       select_option: { tabId: 1, selector: 'select', value: 'a' },
       handle_dialog: { tabId: 1, action: 'accept' },
+      queue_status: {},
+      queue_clear: {},
       list_downloads: {},
       wait_download: { id: 'd1', timeout: 0.05 },
       extract_page: { tabId: 1, format: 'text' },
@@ -236,7 +238,12 @@ describe('CDP connector', () => {
         state,
       );
       const response = await waitForMessage(auto, requestId);
-      assert.equal(response.status, 'success', `${action}: ${response.message || ''}`);
+      if (action === 'queue_status' || action === 'queue_clear') {
+        assert.equal(response.status, 'error');
+        assert.equal(response.code, 'CAPABILITY_UNSUPPORTED');
+      } else {
+        assert.equal(response.status, 'success', `${action}: ${response.message || ''}`);
+      }
     }
   });
 

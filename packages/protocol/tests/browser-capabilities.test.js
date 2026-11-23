@@ -17,10 +17,10 @@ describe('connector capability matrix', () => {
   it('limits capture to extension connectors', () => {
     for (const operation of BROWSER_OPERATIONS) {
       assert.equal(isOperationSupportedByConnector(operation.id, 'extension'), true, operation.id);
-      assert.equal(isOperationSupportedByConnector(operation.id, 'cdp'), !operation.id.startsWith('capture.'), operation.id);
+      assert.equal(isOperationSupportedByConnector(operation.id, 'cdp'), !operation.id.startsWith('capture.') && !operation.id.startsWith('queue.'), operation.id);
     }
     assert.equal(listOperationIdsForConnector('extension').length, BROWSER_OPERATIONS.length);
-    assert.equal(listOperationIdsForConnector('cdp').length, BROWSER_OPERATIONS.filter(op => !op.id.startsWith('capture.')).length);
+    assert.equal(listOperationIdsForConnector('cdp').length, BROWSER_OPERATIONS.filter(op => !op.id.startsWith('capture.') && !op.id.startsWith('queue.')).length);
   });
 
   it('supports the BiDi skill-facing subset', () => {

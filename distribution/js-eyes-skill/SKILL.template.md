@@ -283,6 +283,25 @@ its threat model.
 
 ## Troubleshooting
 
+### Browser request queue full
+
+Completed operations now release their request slots automatically. To inspect
+or recover the selected extension's queue, use an authenticated connection:
+
+```bash
+js-eyes browser queue status --target firefox
+js-eyes browser queue clear --target firefox
+# After stopping automation, clear all bookkeeping if needed:
+js-eyes browser queue clear --all --target firefox
+```
+
+The default clear removes expired records only. Clearing does not cancel
+browser actions; do not automatically retry navigation, uploads, or downloads.
+Update both server and extension, then reload the extension once. Restarting
+only the server cannot clear the extension's in-memory queue. Recovery is
+extension-only and unavailable in the safe MCP profile.
+
+
 ### Server unavailable
 
 Run:

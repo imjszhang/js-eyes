@@ -99,6 +99,11 @@ async handleMessage(data) {
         }
       }
 
+      if (actionType === 'queue_status' || actionType === 'queue_clear') {
+        this.handleQueueControl(actionType, { ...payload, requestId });
+        return;
+      }
+
       // 2. 请求去重检查
       if (this.deduplicator && requestId) {
         const dedupResult = this.deduplicator.checkRequest(requestId);

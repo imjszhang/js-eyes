@@ -164,7 +164,7 @@ describe('page state and secret fill', () => {
     state.pendingUserDir = path.join(tmp, 'pending');
     const pending = waitForUser(state, { reason: 'login', timeout: 5 });
     const id = [...state.pendingUsers.keys()][0];
-    handleExtensionMessage(JSON.stringify({ type: 'resume_user', pendingId: id }), 'ext', state);
+    handleExtensionMessage(JSON.stringify({ type: 'resume_user', pendingId: id }), [...state.extensionClients.keys()][0], state);
     return pending.then((result) => {
       assert.equal(result.status, 'resumed');
     });
