@@ -53,28 +53,19 @@ JS Eyes is a browser extension + WebSocket server that gives AI agents full brow
 
 ```
 Browser Extension  <── WebSocket ──>  JS-Eyes Server  <──>  CLI / MCP / optional OpenClaw
- (Chrome/Edge/FF)                     (packages/server-core)       (independent host integrations)
+ (Chrome/Edge/FF)                     (apps/cli/server-core) (independent host integrations)
 ```
 
 ### Monorepo Layout
 
-JS Eyes now uses a publish-oriented monorepo layout:
+JS Eyes publishes **2 npm packages** (`@js-eyes/client-sdk` and `js-eyes`) from a focused monorepo layout:
 
 | Path | Purpose |
 |------|---------|
-| `apps/cli` | Public `js-eyes` npm CLI |
-| `apps/native-host` | Browser Native Messaging host for auto-injecting `server.token` |
-| `packages/protocol` | Shared protocol constants, browser operations, compatibility matrix |
-| `packages/skill-install` | Skill discovery, install, trust, and registry helpers |
-| `packages/policy` | Host-neutral policy context (egress / taint / task-origin) |
-| `packages/runtime-paths` | Runtime directories and filesystem layout |
-| `packages/config` | CLI config loading and persistence (`~/.js-eyes` + `JS_EYES_*`) |
-| `packages/client-sdk` | Browser automation SDK for Node.js / skills |
-| `packages/skill-runtime` / `skill-scaffold` | Host-neutral Skill Runtime V2 and scaffolding |
-| `packages/server-core` | HTTP + WebSocket server core |
-| `packages/mcp-server` | Native stdio MCP facade for Codex, Claude, Cursor, and other MCP clients |
+| `apps/cli` (`js-eyes`) | Public npm CLI (`js-eyes`), local HTTP + WebSocket server (`server-core/`), Browser Native Messaging host (`native-host/`), and built-in stdio MCP server (`mcp-server/`, via `js-eyes mcp` and `js-eyes-mcp`) |
+| `packages/client-sdk` (`@js-eyes/client-sdk`) | Shared Node.js browser SDK plus clean subpath exports for `protocol`, `policy`, `runtime-paths`, `config`, `skill-contract`, `skill-install`, `skill-recording`, `skill-runtime`, and `skill-scaffold` |
 | `openclaw-plugin` | Optional OpenClaw adapter (`@js-eyes/openclaw-plugin` workspace) |
-| `packages/visual-*` | Skill-optional visual bridge / replay libraries (not platform runtime) |
+| `packages/page-extract` / `packages/visual-*` | Skill-optional extraction and visual bridge / replay libraries (not platform runtime) |
 | `packages/devtools` | Internal build/release tooling |
 | `extensions/*` | Browser extension assets; `extensions/shared` is the canonical cross-browser background runtime |
 | `skills/*` | Independent site skills |
@@ -89,8 +80,8 @@ Development requires Node.js 22 or newer. Install the committed dependency graph
 
 | Framework | Description |
 |-----------|-------------|
-| MCP clients + [`@js-eyes/mcp-server`](./packages/mcp-server) | Native stdio MCP facade with a safe-by-default browser tool profile |
-| [apps/cli](./apps/cli) + [packages/server-core](./packages/server-core) | Lightweight built-in server and published npm CLI |
+| MCP clients + [`js-eyes mcp`](./docs/mcp.md) | Built-in native stdio MCP server (`npx -y js-eyes mcp` or `js-eyes-mcp`) with a safe-by-default browser tool profile |
+| [`js-eyes`](./apps/cli) | Published npm CLI, built-in HTTP/WS server, Native Messaging host, and MCP server |
 | [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](./openclaw-plugin) | Registers as OpenClaw plugin — 1 AI tool (`js-eyes` router), background service, CLI commands |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | Full-featured agent framework (separate WS port, HMAC auth, SSE, rate limiting) |
 
@@ -98,35 +89,37 @@ Development requires Node.js 22 or newer. Install the committed dependency graph
 
 JS Eyes can be used by any local MCP client without loading the OpenClaw
 plugin. Start the normal JS Eyes server and browser extension, then configure
-the client to spawn the stdio facade:
+the client to spawn the built-in stdio MCP server:
 
 ```json
 {
   "mcpServers": {
     "js-eyes": {
       "command": "npx",
-      "args": ["-y", "@js-eyes/mcp-server"]
+      "args": ["-y", "js-eyes", "mcp"]
     }
   }
 }
 ```
 
-The default `safe` profile excludes JavaScript execution, cookies, CSS
-injection, file upload, and download listing. Use `browser_page_state` then
-click/fill by `ref`. See [docs/mcp.md](./docs/mcp.md) for tool profiles,
-target selection, environment variables, and troubleshooting.
+The default `safe` profile exposes 28 tools (excluding JavaScript execution,
+cookies, CSS injection, file upload, and download listing; `full` exposes 36).
+Use `browser_page_state` then interact by `ref`, drag, wheel, select text, zoom,
+or capture bounded tab recordings. See [docs/mcp.md](./docs/mcp.md) for tool
+profiles, target selection, environment variables, and troubleshooting.
 
 ## Features
 
-- **Real-time WebSocket Communication** — Persistent connection with server
+- **Real-time WebSocket Communication** — Persistent connection with server, plus optional CDP and BiDi connectors
 - **Auto Server Discovery** — Automatic capability detection and endpoint configuration
-- **Tab Management** — Auto-sync tab information to server
-- **Remote Control** — Remote open/close tabs, execute scripts
-- **Content Retrieval** — Get page HTML, text, links
-- **Cookie Management** — Auto-retrieve and sync page cookies
-- **Code Injection** — JavaScript execution and CSS injection
-- **Health Check & Circuit Breaker** — Service health monitoring with automatic circuit breaker protection
-- **Rate Limiting & Deduplication** — Request rate limiting and deduplication for stability
+- **Tab Management** — Auto-sync tab information to server, per-tab zoom (`tab.zoom`), and bounded tab frame recording (`recording.start` / `recording.stop`)
+- **First-Class Page Interaction** — Snapshot refs (`page.state`), click, fill (with `secretRef`), drag, wheel, text selection, scroll, keys, history, select, dialog, and wait-for-user without requiring raw JS eval
+- **Content Retrieval** — Get page HTML, structured declarative extraction, and full-page screenshots
+- **Cookie Management** — Retrieve and domain-scoped in-memory sync between connectors (without exposing values to callers)
+- **Code Injection (Opt-In)** — JavaScript execution and CSS injection gated by `allowRawEval`, policy engine, and consent
+- **Docker Compose Deployment** — Ready-to-run `Dockerfile` and `compose.yaml` with persistent volume and loopback binding
+- **Health Check & Queue Recovery** — Service health monitoring, request slot release, circuit breaker protection, and authenticated queue recovery
+- **Rate Limiting & Deduplication** — Request rate limiting, deduplication, and extension instance deduplication across reconnects
 - **Native Messaging Token Sync (2.4.0+)** — Browser extensions auto-fetch `server.token` and HTTP URL from the local CLI via Native Messaging; no manual copy-paste in the default flow
 - **Bearer Token Authentication** — Browser extensions authenticate WebSocket upgrades via `Sec-WebSocket-Protocol: bearer.<token>`; the server also accepts the SDK form `jse-token.<token>` and the legacy loopback-only `?token=<token>` fallback. Anonymous mode gated by `security.allowAnonymous`
 - **Extension Skills** — Discover and install higher-level skills (e.g. X.com search) on top of base automation
@@ -356,7 +349,7 @@ Skill install state is tracked by the JS Eyes runtime config. OpenClaw only need
 
 > Starting with 2.2.0, `install_skill` only writes a **plan** under `runtime/pending-skills/<id>.json`. Operators finalize with `js-eyes skills approve <id>` and enable with `js-eyes skills enable <id>`. See [SECURITY.md](./SECURITY.md#supply-chain-hardening-220).
 
-### Security Posture (2.11.1)
+### Security Posture (2.12.0)
 
 The table below summarises the attack surface `js-eyes` exposes, what the stock
 install ships with, and the single-knob tightening path for each. Every row
@@ -371,7 +364,7 @@ explains the trade-off in full.
 | `extraSkillDirs` skipped integrity verification | New switch off — 2.6.1 behaviour preserved | Set `security.verifyExtraSkillDirs=true`; `skills link` then auto-snapshots, `skills relink` after reviewed edits | `security.verifyExtraSkillDirs` in `~/.js-eyes/config/config.json` ([notes](./SECURITY_SCAN_NOTES.md#c-extraskilldirs-bypass-integrity-verification)) | `js-eyes doctor` prints `integrity: verified \| drifted \| missing-snapshot` per extra; `js-eyes doctor --json` exposes it on each skill row |
 | Native-host install path runs remote code (`npx`) | `npx js-eyes native-host install` remains supported (does **not** seed the server token) | Use the local launcher `bin/js-eyes-native-host-install.sh \| .ps1` — zero network and 2.6.3+ also runs `js-eyes server token init` so popup **Sync Token From Host** works on first try | none — doc-only change in 2.6.2 ([notes](./SECURITY_SCAN_NOTES.md#d-npx-js-eyes-native-host-install-runs-remote-code)) | `node apps/cli/bin/js-eyes.js native-host status` + `js-eyes server token show` |
 | Server token handling | Generated on demand, file `0600` / Windows `icacls`, bearer on WS + HTTP | Keep defaults; rotate periodically; never set `allowAnonymous=true` in production | `security.allowAnonymous`, `js-eyes server token rotate` ([notes](./SECURITY_SCAN_NOTES.md#scope)) | `js-eyes doctor` → *Token* section; `js-eyes audit tail` |
-| npm install path (`installSkillDependencies`) | `spawnSync` with whitelisted argv, `shell:false`, filtered env ([safe-npm.js](./packages/skill-install/safe-npm.js)) | Enforce strict lockfile usage so remote tarballs must match | `plugins.entries["js-eyes"].config.requireLockfile=true` ([notes](./SECURITY_SCAN_NOTES.md#1-packagesprotocolskillsjs536--shell-command-execution)) | `node --test packages/skill-install/tests/safe-npm.test.js` |
+| npm install path (`installSkillDependencies`) | `spawnSync` with whitelisted argv, `shell:false`, filtered env ([safe-npm.js](./packages/client-sdk/skill-install/safe-npm.js)) | Enforce strict lockfile usage so remote tarballs must match | `plugins.entries["js-eyes"].config.requireLockfile=true` ([notes](./SECURITY_SCAN_NOTES.md#1-packagesprotocolskillsjs536--shell-command-execution)) | `node --test packages/client-sdk/tests/skill-install/safe-npm.test.js` |
 
 Run `js-eyes doctor --json` to get the live machine-readable snapshot of every
 row above; pipe to `jq` or your auditor's tool of choice.
@@ -470,7 +463,7 @@ For native plugin loading, follow the OpenClaw runtime requirements for external
 
 ### Setup
 
-Use this order for the standard ClawHub/OpenClaw install path:
+Use this order for the standard OpenClaw install path:
 
 1. Install the browser extension in Chrome/Edge/Firefox (same as above)
 2. Run `npm install` in the skill root with Node.js 22+
@@ -525,12 +518,10 @@ For local source-repo development, point `plugins.load.paths` directly to the re
 | Surface | Expected version |
 |---------|------------------|
 | Protocol | `1.0` |
-| CLI | `2.11.1` |
-| Browser extension assets | `2.11.1` |
-| `@js-eyes/server-core` | `2.11.1` |
-| `@js-eyes/client-sdk` | `2.11.1` |
-| `@js-eyes/skill-runtime` | `2.11.1` |
-| `openclaw-plugin` | `2.11.1` |
+| `js-eyes` (CLI, server-core, native-host, MCP server) | `2.12.0` |
+| `@js-eyes/client-sdk` (SDK, protocol, policy, config, Skill Runtime) | `2.12.0` |
+| Browser extension assets | `2.12.0` |
+| `openclaw-plugin` | `2.12.0` |
 | Bundled sub-skills (`skills/*`) | **Independent** semver — see each skill's `package.json` or `dist/skills.json` |
 
 ## Extension Skills
@@ -633,10 +624,10 @@ See:
 - [docs/dev/js-eyes-skills/](./docs/dev/js-eyes-skills/) — authoring and deployment guides. V1 contracts remain supported during migration.
 - [examples/js-eyes-skills/js-hello-ops-skill/](./examples/js-eyes-skills/js-hello-ops-skill/) — minimal runnable sample (one tool, no side effects).
 
-The runtime packages are published to the [`js-eyes`](https://www.npmjs.com/org/js-eyes) npm organization under the `@js-eyes/*` scope, so external skills can depend on them directly:
+The shared runtime and SDK are published as a single npm package (`@js-eyes/client-sdk`) with subpath exports (`/config`, `/protocol`, `/policy`, `/runtime-paths`, `/skill-runtime`, `/skill-recording`, `/skill-scaffold`), so external skills can depend on it directly:
 
 ```bash
-npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
+npm install @js-eyes/client-sdk
 ```
 
 > **`@js-eyes/*` scope is reserved for official packages** published by this repository's maintainers. Third-party JS Eyes Skills and integrations must publish under their own npm scope (e.g. `@acme/js-my-cool-skill`) or an unscoped name, never under `@js-eyes/*`. See [docs/dev/js-eyes-skills/README.md](./docs/dev/js-eyes-skills/README.md#npm-scope-治理) for the full governance rule.
@@ -676,7 +667,7 @@ npm run build:chrome
 npm run build:firefox
 
 # Bump platform version (excludes visual-* packages and skills/* sub-skills)
-npm run bump -- 2.9.1
+npm run bump -- 2.12.0
 ```
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `dist/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
@@ -686,9 +677,7 @@ The parent `SKILL.md` is rendered from
 the build injects the coordinated platform version. Repository coding-agent
 guidance lives separately in [`AGENTS.md`](./AGENTS.md).
 
-For ClawHub publishing, use the generated bundle output (`dist/skill-bundle/js-eyes/` or the versioned zip in `dist/`) as the source of truth instead of publishing from the monorepo root.
-
-For the maintainer release checklist (`develop` -> `main`, npm CLI publish, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
+For the maintainer release checklist (`main`, npm OIDC publish for `@js-eyes/client-sdk` & `js-eyes`, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
 
 Repository releases use a read-only verification workflow followed by a manual,
 environment-gated publish workflow. npm publication uses GitHub OIDC trusted
@@ -696,7 +685,7 @@ publishing; normal builds remain unsigned and do not consume release secrets.
 
 ## Smoke Test
 
-Use this checklist after a fresh ClawHub install:
+Use this checklist after a fresh skill bundle install:
 
 1. `cd ./skills/js-eyes && npm install`
 2. Confirm the resolved `openclaw.json` contains:

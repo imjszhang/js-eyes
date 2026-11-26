@@ -43,49 +43,61 @@ JS Eyes 是一个浏览器扩展 + WebSocket 服务器，为 AI 智能体提供�
 
 ```
 浏览器扩展  <── WebSocket ──>  JS-Eyes 服务器  <──>  CLI / MCP / 可选 OpenClaw
-(Chrome/Edge/FF)               (packages/server-core)       （相互独立的宿主集成）
+(Chrome/Edge/FF)               (apps/cli/server-core)       （相互独立的宿主集成）
 ```
 
 ### 仓库布局
 
-JS Eyes 现在采用面向发布的 monorepo 布局：
+JS Eyes 对外仅发布 **2 个 npm 包**（`@js-eyes/client-sdk` 与 `js-eyes`），monorepo 目录结构精简清晰：
 
 | 路径 | 作用 |
 |------|------|
-| `apps/cli` | 公开的 `js-eyes` npm CLI |
-| `apps/native-host` | Browser Native Messaging 主机，用于自动注入 `server.token` |
-| `packages/protocol` | 协议常量与兼容矩阵 |
-| `packages/runtime-paths` | 运行时目录与文件系统布局 |
-| `packages/config` | CLI 配置加载与持久化 |
-| `packages/client-sdk` | 面向 Node.js / skills 的浏览器自动化 SDK |
-| `packages/server-core` | HTTP + WebSocket 服务器核心 |
-| `packages/mcp-server` | 面向 Codex、Claude、Cursor 等客户端的原生 stdio MCP 接口 |
-| `openclaw-plugin` | 可选的 OpenClaw 插件组件 |
+| `apps/cli`（`js-eyes`） | 公开 npm CLI（`js-eyes`）、内置 HTTP + WebSocket 服务器（`server-core/`）、Browser Native Messaging 主机（`native-host/`）与原生 stdio MCP 服务（`mcp-server/`，通过 `js-eyes mcp` 或 `js-eyes-mcp` 启动） |
+| `packages/client-sdk`（`@js-eyes/client-sdk`） | 面向 Node.js 与技能的共享浏览器自动化 SDK，并通过子路径导出 `protocol`、`policy`、`runtime-paths`、`config`、`skill-contract`、`skill-install`、`skill-recording`、`skill-runtime` 与 `skill-scaffold` |
+| `openclaw-plugin` | 可选的 OpenClaw 插件适配器（`@js-eyes/openclaw-plugin`） |
+| `packages/page-extract` / `packages/visual-*` | 技能可选的页面提取与可视化桥接 / 回放库（非平台运行时依赖） |
 | `packages/devtools` | 内部构建/发布工具链 |
-| `extensions/*` | Chrome/Edge 与 Firefox 扩展源码 |
-| `skills/*` | 基于 `@js-eyes/client-sdk` 构建的独立扩展技能 |
-
-仓库已移除历史兼容目录（如 `server/`、`clients/`、`cli/`）。`openclaw-plugin/` 现在是仓库根目录下的一等可选组件。
+| `extensions/*` | Chrome/Edge 与 Firefox 扩展源码；`extensions/shared` 为跨浏览器共享后台运行时 |
+| `skills/*` | 独立版本化的站点扩展技能 |
 
 ### 支持的 Agent 框架
 
 | 框架 | 说明 |
 |------|------|
-| [apps/cli](../apps/cli) + [packages/server-core](../packages/server-core) | 已发布的 npm CLI 与内置轻量服务器（2.2.0+ 起默认 Bearer Token 认证） |
+| MCP 客户端 + [`js-eyes mcp`](./mcp.md) | 内置原生 stdio MCP 服务（`npx -y js-eyes mcp` 或 `js-eyes-mcp`），默认安全工具集 |
+| [`js-eyes`](../apps/cli) | 已发布的 npm CLI、内置轻量服务器、Native Messaging 主机与 MCP 服务（默认 Bearer Token 认证） |
 | [OpenClaw](https://openclaw.ai/) + [openclaw-plugin](../openclaw-plugin) | 注册为 OpenClaw 插件 — 1 个 AI 工具（`js-eyes` 路由器）、后台服务、CLI 命令 |
 | [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) | 完整版 Agent 框架（独立 WS 端口、HMAC 认证、SSE、限流） |
 
+### 原生 MCP 服务
+
+任何本地 MCP 客户端（Claude Desktop/Code、Cursor、Codex、VS Code 等）无需加载 OpenClaw 插件即可直接使用 JS Eyes：
+
+```json
+{
+  "mcpServers": {
+    "js-eyes": {
+      "command": "npx",
+      "args": ["-y", "js-eyes", "mcp"]
+    }
+  }
+}
+```
+
+默认 `safe` 档位提供 28 个工具（不包含 JS 执行、Cookie 读取、CSS 注入、文件上传与下载列表；`full` 档位提供 36 个工具），支持通过 `browser_page_state` 引用交互、拖拽、滚轮、选区、缩放与标签页帧录制。详见 [docs/mcp.md](./mcp.md)。
+
 ## 功能特性
 
-- **实时 WebSocket 通信** — 与服务器建立持久连接
+- **实时 WebSocket 通信** — 与服务器建立持久连接，并支持可选的 CDP 与 BiDi 浏览器连接器
 - **自动服务器探测** — 自动发现服务器能力和端点配置
-- **标签页管理** — 自动同步标签页信息到服务器
-- **远程控制** — 支持远程打开/关闭标签页、执行脚本
-- **内容获取** — 获取页面 HTML、文本、链接
-- **Cookie 管理** — 自动获取和同步页面 cookies
-- **代码注入** — JavaScript 执行和 CSS 注入
-- **健康检查与熔断** — 服务健康监控，自动熔断保护
-- **限流与去重** — 请求速率限制和去重，提升稳定性
+- **标签页管理与帧录制** — 自动同步标签页信息、支持单标签缩放（`tab.zoom`）与有界标签页帧录制（`recording.start` / `recording.stop`）
+- **一等页面交互能力** — 支持页面快照引用（`page.state`）、点击、输入（含 `secretRef`）、拖拽、滚轮、文本选中、滚动、按键、历史导航、下拉选择、弹窗处理与等待人工接管，无需开启原始 `eval`
+- **内容获取** — 获取页面 HTML、声明式结构化内容提取与整页截图
+- **Cookie 管理** — 支持获取与跨连接器按域名内存同步（不向调用方回显 Cookie 值）
+- **代码注入（按需开启）** — JavaScript 执行和 CSS 注入受 `allowRawEval`、策略引擎与审批机制保护
+- **Docker Compose 部署** — 提供即开即用的 `Dockerfile` 与 `compose.yaml`，支持持久化卷与宿主机回环端口发布
+- **健康检查与队列恢复** — 服务健康监控、请求槽自动释放、熔断保护与鉴权队列恢复（见 [docs/queue-recovery.md](./queue-recovery.md)）
+- **限流与去重** — 请求速率限制、去重与扩展重连实例去重
 - **Native Messaging Token 同步（2.4.0+）** — 浏览器扩展通过 Native Messaging 自动从本机 CLI 获取 `server.token` 与 HTTP 地址，默认无需手动粘贴
 - **Bearer Token 认证** — 浏览器扩展通过 `Sec-WebSocket-Protocol: bearer.<token>` 完成 WebSocket 升级认证；服务端同时接受 SDK 使用的 `jse-token.<token>` 和仅限 loopback 的旧版 `?token=<token>` fallback；匿名模式由 `security.allowAnonymous` 控制
 - **扩展技能** — 发现并安装高级技能（如 X.com 搜索），基于基础自动化之上构建
@@ -106,6 +118,21 @@ JS Eyes 现在采用面向发布的 monorepo 布局：
 - **Firefox 扩展**: 发布资产 `js-eyes-firefox-v<version>.xpi`
 
 或直接从 [js-eyes.com](https://js-eyes.com) 下载。网站中的 Chrome 和 Firefox 下载按钮都会打开最新的 GitHub Release，始终指向当前已发布资产。
+
+## Docker 服务部署
+
+在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+HTTP/WebSocket 服务默认发布到宿主机回环地址 `127.0.0.1:18080`，配置、Token、审计日志与下载元数据持久化在命名卷 `js-eyes-data` 中，Token 认证与 `Origin` 校验保持开启。浏览器扩展仍安装在宿主机，将服务器地址设为 `ws://127.0.0.1:18080`，并从容器卷复制 `/data/runtime/server.token`（macOS 可无日志输出直接复制到剪贴板）：
+
+```bash
+docker compose exec -T js-eyes node -e "process.stdout.write(require('fs').readFileSync('/data/runtime/server.token','utf8').trim())" | pbcopy
+```
 
 ## 手动安装
 
@@ -357,7 +384,7 @@ JS Eyes 可选注册为 [OpenClaw](https://openclaw.ai/) 插件，通过一个�
 
 ### 配置方法
 
-标准 ClawHub/OpenClaw 安装路径建议按下面顺序执行：
+标准 OpenClaw 安装路径建议按下面顺序执行：
 
 1. 在浏览器中安装 JS Eyes 扩展（步骤同上）
 2. 在技能根目录执行 `npm install`，并确保 Node.js 版本为 22+
@@ -504,13 +531,13 @@ js-eyes skill call js-x-ops-skill x_get_profile --args '{"username":"openai"}' -
 
 开发者文档与样例：
 
-- [docs/dev/js-eyes-skills/](dev/js-eyes-skills/) — 开发指南、`skill.contract.js` 契约规范、四种部署模式（仓库内 / 外部 `skillsDir` / ClawHub 注册表 / primary + `extraSkillDirs` 混合）。
+- [docs/dev/js-eyes-skills/](dev/js-eyes-skills/) — 开发指南、V2 manifest 契约规范与多种部署模式（仓库内 / 外部 `skillsDir` / 注册表 / primary + `extraSkillDirs` 混合）。
 - [examples/js-eyes-skills/js-hello-ops-skill/](../examples/js-eyes-skills/js-hello-ops-skill/) — 最小可运行样例（一个工具、零副作用、自包含依赖）。
 
-运行时包已发布到 npm 组织 [`js-eyes`](https://www.npmjs.com/org/js-eyes)，外部 skills 可直接通过 `@js-eyes/*` scope 引入：
+共享运行时与 SDK 统一发布为单个 npm 包 `@js-eyes/client-sdk`（提供 `/config`、`/protocol`、`/policy`、`/runtime-paths`、`/skill-runtime`、`/skill-recording`、`/skill-scaffold` 子路径导出），外部技能可直接安装引入：
 
 ```bash
-npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
+npm install @js-eyes/client-sdk
 ```
 
 > **`@js-eyes/*` scope 仅供本仓库官方维护者发布**。第三方 JS Eyes Skills 与集成必须使用自己的 npm scope（如 `@acme/js-my-cool-skill`）或无 scope 名称，不得占用 `@js-eyes/*`。完整治理规则见 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md#npm-scope-治理)。
@@ -528,7 +555,7 @@ npm install @js-eyes/client-sdk @js-eyes/config @js-eyes/skill-recording
 ### 构建命令
 
 ```bash
-# 仅构建主 ClawHub/OpenClaw 技能包
+# 仅构建主 OpenClaw 技能包
 npm run build:skill
 
 # 构建站点 (src/ → dist/) + 技能包 + skills.json 注册表
@@ -537,7 +564,7 @@ npm run build:site
 # 本地预览站点
 npm run preview
 
-# 一次性构建全部正式发布产物
+# 一次性构建全部未签名发布产物
 npm run build
 
 # 仅打包 Chrome 扩展
@@ -547,7 +574,7 @@ npm run build:chrome
 npm run build:firefox
 
 # 同步平台版本号（跳过 visual-* 包与 skills/* 子技能）
-npm run bump -- 2.9.1
+npm run bump -- 2.12.0
 ```
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。push 到 `main` 后 GitHub Actions 会自动部署 `dist/` 到 Pages。
@@ -557,13 +584,11 @@ npm run bump -- 2.9.1
 构建时从根 `package.json` 注入平台版本；源码仓库中的编码 Agent 规则位于
 [`AGENTS.md`](../AGENTS.md)。
 
-发布到 ClawHub 时，建议直接使用构建产物（`dist/skill-bundle/js-eyes/` 或 `dist/` 中的版本化 zip），不要直接从 monorepo 根目录发布。
-
-维护者发布检查清单（`develop` -> `main`、npm CLI、GitHub Release、Firefox 已签名 XPI、AMO 提审）见 [RELEASE.md](../RELEASE.md)。
+维护者发布检查清单（`main`、npm OIDC 发布 `@js-eyes/client-sdk` 与 `js-eyes`、GitHub Release、Firefox 已签名 XPI、AMO 提审）见 [RELEASE.md](../RELEASE.md)。
 
 ## Smoke Test
 
-完成一次全新的 ClawHub 安装后，建议按下面的清单验证：
+完成一次全新的技能包安装后，建议按下面的清单验证：
 
 1. `cd ./skills/js-eyes && npm install`
 2. 确认解析后的 `openclaw.json` 包含：
@@ -619,12 +644,11 @@ JS Eyes 默认本机优先：服务器听 `localhost:18080`，未显式打开时
 
 ### 无头与无显示主机
 
-JS Eyes 不是 CDP / Playwright 驱动，自动化走浏览器扩展。主机必须运行能安装并保持该扩展加载的 Chrome、Edge 或 Firefox。
+默认路径仍是在日常已登录的 Chrome、Edge 或 Firefox 上使用浏览器扩展；JS Eyes 同样提供可选的 CDP 与 BiDi 浏览器连接器，可在无桌面环境下附加调试端口或拉起独立无头配置（默认关闭且仅限本机回环），策略引擎与一等操作语义保持一致：
 
-只有 `google-chrome --headless`、没有桌面 / VNC / 显示的 Linux 服务器，不是受支持的安装路径。可选：
-
-- 同一台机器上提供图形或虚拟显示（桌面、VNC、Xvfb + 普通 Chrome/Firefox 配置），扩展连接 `http://localhost:18080`
-- 浏览器装在另一台机器上，服务器按[局域网远程浏览器](#局域网远程浏览器)开放
+- 启用 `browser.transports.cdp.enabled=true` 并配置 `launch.enabled=true`（或 `mode=endpoint` 连接已有调试端口的 Chromium）
+- 或在同一台机器上提供图形/虚拟显示（桌面、VNC、Xvfb）继续使用浏览器扩展
+- 或把浏览器放在另一台机器上，服务器按[局域网远程浏览器](#局域网远程浏览器)开放
 
 ## 相关项目
 
