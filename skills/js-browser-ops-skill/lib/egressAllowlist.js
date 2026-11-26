@@ -36,8 +36,10 @@ function normalizeHost(input) {
 
 function hostMatches(host, pattern) {
   const h = normalizeHost(host);
+  if (!h) return false;
+  if (String(pattern || '').trim() === '*') return true;
   const p = normalizeHost(pattern);
-  if (!h || !p) return false;
+  if (!p) return false;
   if (p.startsWith('*.')) {
     const suffix = p.slice(1);
     return h.endsWith(suffix) && h.length > suffix.length && !h.slice(0, -suffix.length).includes('.');

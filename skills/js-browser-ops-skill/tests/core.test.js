@@ -110,6 +110,23 @@ test('egress host normalization and wildcard matching are boundary-safe', () => 
   assert.equal(hostMatches('docs.example.com', '*.example.com'), true);
   assert.equal(hostMatches('example.com', '*.example.com'), false);
   assert.equal(hostMatches('badexample.com', '*.example.com'), false);
+  assert.equal(hostMatches('any.example.org', '*'), true);
+});
+
+test('authorizeUrlForRead allows public hosts with default wildcard allowlist while blocking private networks', async () => {
+  const allowed = await authorizeUrlForRead('https://public.example/article', {
+    loadConfig: () => ({ security: { egressAllowlist: ['*'] } }),
+    lookup: async () => [{ address: '93.184.216.34' }],
+  });
+  assert.equal(allowed.mode, 'allowlist');
+  assert.equal(allowed.host, 'public.example');
+
+  await assert.rejects(
+    () => authorizeUrlForRead('http://127.0.0.1:8080/admin', {
+      loadConfig: () => ({ security: { egressAllowlist: ['*'] } }),
+    }),
+    (error) => error.code === 'policy_denied' && error.details.reason === 'private_network',
+  );
 });
 
 test('browserUtils exports only the read-page extraction generator', () => {

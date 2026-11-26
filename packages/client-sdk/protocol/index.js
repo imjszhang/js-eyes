@@ -84,7 +84,7 @@ const DEFAULT_SECURITY_CONFIG = Object.freeze({
   verifyExtraSkillDirs: false,
   enforcement: 'soft',
   taskOrigin: { ...DEFAULT_TASK_ORIGIN_CONFIG, sources: DEFAULT_TASK_ORIGIN_CONFIG.sources.slice() },
-  egressAllowlist: [],
+  egressAllowlist: ['*'],
   taint: { ...DEFAULT_TAINT_CONFIG },
   profile: { ...DEFAULT_PROFILE_CONFIG },
   toolPolicies: {

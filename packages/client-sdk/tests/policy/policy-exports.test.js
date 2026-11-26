@@ -29,4 +29,33 @@ describe('@js-eyes/policy exports', () => {
       ['executeScript', 'arbitrary_eval'],
     ]);
   });
+
+  it('defaults egressAllowlist to ["*"] and lets explicit config override to restrict hosts', async () => {
+    const { DEFAULT_SECURITY_CONFIG } = require('../../protocol');
+    const { mergeSecurityConfig } = require('../../config');
+    const { PolicyContext } = require('../../policy');
+
+    assert.deepEqual(DEFAULT_SECURITY_CONFIG.egressAllowlist, ['*']);
+
+    const defaultSecurity = mergeSecurityConfig();
+    assert.deepEqual(defaultSecurity.egressAllowlist, ['*']);
+    const openPolicy = new PolicyContext({ security: defaultSecurity });
+    const openDecision = await openPolicy.evaluate('openUrl', { url: 'https://any.example.org/path' });
+    assert.equal(openDecision.decision, 'allow');
+
+    const restrictedSecurity = mergeSecurityConfig({ egressAllowlist: ['allowed.example'] });
+    assert.deepEqual(restrictedSecurity.egressAllowlist, ['allowed.example']);
+    const restrictedPolicy = new PolicyContext({ security: restrictedSecurity });
+    assert.equal(
+      (await restrictedPolicy.evaluate('openUrl', { url: 'https://allowed.example/ok' })).decision,
+      'allow',
+    );
+    assert.equal(
+      (await restrictedPolicy.evaluate('openUrl', { url: 'https://blocked.example/no' })).decision,
+      'pending-egress',
+    );
+
+    const emptySecurity = mergeSecurityConfig({ egressAllowlist: [] });
+    assert.deepEqual(emptySecurity.egressAllowlist, []);
+  });
 });
