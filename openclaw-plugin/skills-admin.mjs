@@ -3,7 +3,7 @@ import { registerSkillDiscoveryActions } from "./actions/skills.mjs";
 import { registerManagementActions } from "./actions/management.mjs";
 
 const require = createRequire(import.meta.url);
-const { SKILLS_REGISTRY_URL } = require("@js-eyes/protocol");
+const { SKILLS_REGISTRY_URL } = require("@js-eyes/client-sdk/protocol");
 const {
   createSkillTrustStore,
   discoverSkillsFromSources,
@@ -11,8 +11,8 @@ const {
   planSkillInstall,
   resolveSkillSources,
   skillToolActionName,
-} = require("@js-eyes/skill-install/skills");
-const { SkillHostService } = require("@js-eyes/skill-runtime");
+} = require("@js-eyes/client-sdk/skill-install/skills");
+const { SkillHostService } = require("@js-eyes/client-sdk/skill-runtime");
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
 

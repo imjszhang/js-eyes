@@ -122,7 +122,7 @@ module.exports = {
   help: {
     usage: '用法: node packages/devtools/bin/js-eyes-dev.js <command> [options]',
     commands: '命令:',
-    cmdBuildSkill: '  build skill            构建主 ClawHub skill bundle',
+    cmdBuildSkill: '  build skill            构建主 skill bundle',
     cmdBuildSite: '  build site             构建站点 (src/ → dist/)',
     cmdBuildChrome: '  build chrome           打包 Chrome 扩展',
     cmdBuildFirefox: '  build firefox          打包并签名 Firefox 扩展',

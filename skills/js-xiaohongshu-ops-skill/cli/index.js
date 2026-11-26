@@ -333,7 +333,7 @@ async function runRecords({ opts, runtime }) {
   const fs = require('fs');
   const path = require('path');
   const pkg = require('../package.json');
-  const { getSkillRecordPaths } = require('@js-eyes/runtime-paths');
+  const { getSkillRecordPaths } = require('@js-eyes/client-sdk/runtime-paths');
   const skillId = pkg.name;
   const last = Number(opts.last) > 0 ? Number(opts.last) : 10;
   const toolFilter = opts.tool || null;

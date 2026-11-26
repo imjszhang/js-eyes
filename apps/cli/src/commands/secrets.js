@@ -4,7 +4,7 @@ const {
   deleteSecret,
   listSecretNames,
   writeSecret,
-} = require('@js-eyes/runtime-paths/secrets');
+} = require('@js-eyes/client-sdk/runtime-paths/secrets');
 const { print } = require('../command-context');
 
 async function readStdinValue() {

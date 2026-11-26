@@ -3,7 +3,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { CHROME_EXTENSION_ID, FIREFOX_EXTENSION_ID } = require('../apps/native-host/src/extension-ids');
+const { CHROME_EXTENSION_ID, FIREFOX_EXTENSION_ID } = require('../apps/cli/native-host/src/extension-ids');
 
 async function loadSetup() {
   return import('../openclaw-plugin/native-host-setup.mjs');

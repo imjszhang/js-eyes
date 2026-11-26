@@ -7,13 +7,13 @@ const {
   DEFAULT_REQUEST_TIMEOUT_SECONDS,
   BROWSER_OPERATION_BY_ID,
   isLoopbackHost,
-} = require('@js-eyes/protocol');
+} = require('./protocol');
 const {
   PolicyContext,
   TaskOriginTracker,
   TaintRegistry,
   EgressGate,
-} = require('@js-eyes/policy');
+} = require('./policy');
 
 const DEFAULT_SERVER_URL = `ws://${DEFAULT_SERVER_HOST}:${DEFAULT_SERVER_PORT}`;
 const browserWireAction = (id) => BROWSER_OPERATION_BY_ID[id].wireAction;
@@ -66,7 +66,7 @@ function policyErrorFromServerMessage(msg) {
 
 function tryReadServerToken() {
   try {
-    const { readToken } = require('@js-eyes/runtime-paths/token');
+    const { readToken } = require('./runtime-paths/token');
     return readToken();
   } catch {
     return null;

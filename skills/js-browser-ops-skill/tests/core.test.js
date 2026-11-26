@@ -9,7 +9,7 @@ const {
   createCacheKey,
   getCacheFilePath,
   writeCacheEntry,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const browserUtils = require('../lib/browserUtils');
 const { generateReadPageScript } = browserUtils;
 const {

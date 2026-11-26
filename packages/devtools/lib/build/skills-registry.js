@@ -17,7 +17,7 @@ const {
   path,
   writeShaSidecar,
 } = require('./context');
-const { loadSkillManifest } = require('@js-eyes/skill-contract');
+const { loadSkillManifest } = require('@js-eyes/client-sdk/skill-contract');
 const { createZipArchive } = require('./zip-archive');
 
 function parseSkillFrontmatter(filePath) {

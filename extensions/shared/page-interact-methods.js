@@ -4,8 +4,8 @@
 function resolveInteractCore() {
   try {
     if (typeof require === 'function') {
-      return require('@js-eyes/protocol').pageInteractCore
-        || require('../../packages/protocol/page-interact-core');
+      return require('@js-eyes/client-sdk/protocol').pageInteractCore
+        || require('../../packages/client-sdk/protocol/page-interact-core');
     }
   } catch {}
   if (globalThis.JSEyesPageInteractCore) return globalThis.JSEyesPageInteractCore;

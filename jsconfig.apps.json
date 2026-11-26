@@ -2,7 +2,6 @@
   "extends": "./jsconfig.core.json",
   "include": [
     "apps/cli/**/*.js",
-    "apps/native-host/**/*.js",
     "types/**/*.d.ts"
   ]
 }

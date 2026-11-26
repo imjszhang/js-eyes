@@ -86,13 +86,13 @@ describe('OpenClaw module boundaries', () => {
 
   it('owns server lifecycle and skills-admin module boundaries', async () => {
     const serverLifecycle = fs.readFileSync(path.join(pluginRoot, 'server-lifecycle.mjs'), 'utf8');
-    assert.match(serverLifecycle, /@js-eyes\/server-core/);
+    assert.match(serverLifecycle, /js-eyes\/server-core/);
     assert.match(serverLifecycle, /ensureToken/);
     assert.match(serverLifecycle, /ensureRuntimePaths/);
     assert.match(serverLifecycle, /registerServerService|registerJsEyesServerService/);
 
     const skillsAdmin = fs.readFileSync(path.join(pluginRoot, 'skills-admin.mjs'), 'utf8');
-    assert.match(skillsAdmin, /@js-eyes\/skill-install/);
+    assert.match(skillsAdmin, /@js-eyes\/client-sdk\/skill-install/);
     assert.match(skillsAdmin, /setupSkillsAdmin/);
     assert.match(skillsAdmin, /registerSkillDiscoveryActions/);
     assert.match(skillsAdmin, /SkillHostService/);
@@ -227,7 +227,7 @@ describe('OpenClaw module boundaries', () => {
       fromHost: 'latest', value: 2,
     });
 
-    const { SkillHostService } = require('../packages/skill-runtime');
+    const { SkillHostService } = require('../packages/client-sdk/skill-runtime');
     const service = new SkillHostService(resolved.effectiveSkillConfig, {
       configLoader: resolved.loadEffectiveSkillConfig,
       logger: { info() {}, warn() {}, error() {} },
@@ -245,7 +245,7 @@ describe('OpenClaw module boundaries', () => {
 
   it('normalizes removed externalSkills.policy=legacy from plugin overlay', async () => {
     const { resolveOpenClawSkillConfig } = await import('../openclaw-plugin/skill-config.mjs');
-    const { normalizeConfig } = require('../packages/config');
+    const { normalizeConfig } = require('../packages/client-sdk/config');
     const warnings = [];
     const originalWarn = console.warn;
     console.warn = (...args) => { warnings.push(args.join(' ')); };

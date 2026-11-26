@@ -12,9 +12,9 @@ const {
   readSkillByIdFromSources,
   listSkillDirectories,
   discoverLocalSkills,
-} = require('../packages/skill-install/skills');
+} = require('../packages/client-sdk/skill-install/skills');
 
-const { normalizeConfig } = require('../packages/config');
+const { normalizeConfig } = require('../packages/client-sdk/config');
 
 function writeSkill(dir, id, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });

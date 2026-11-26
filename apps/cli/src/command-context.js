@@ -3,20 +3,20 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { createServer } = require('@js-eyes/server-core');
-const { loadConfig, getConfigValue, mergeBrowserConfig, parseConfigValue, setConfigValue } = require('@js-eyes/config');
+const { createServer } = require('../server-core');
+const { loadConfig, getConfigValue, mergeBrowserConfig, parseConfigValue, setConfigValue } = require('@js-eyes/client-sdk/config');
 const {
   chmodBestEffort,
   ensureRuntimePaths,
   getPaths,
   resolveSkillRecordsDir,
-} = require('@js-eyes/runtime-paths');
+} = require('@js-eyes/client-sdk/runtime-paths');
 const {
   ensureToken,
   readToken,
   rotateToken,
   getTokenFilePath,
-} = require('@js-eyes/runtime-paths/token');
+} = require('@js-eyes/client-sdk/runtime-paths/token');
 const {
   COMPATIBILITY_MATRIX,
   POLICY_ENFORCEMENT_LEVELS,
@@ -24,14 +24,14 @@ const {
   RELEASE_BASE_URL,
   isLoopbackHost,
   resolveSecurityConfig,
-} = require('@js-eyes/protocol');
+} = require('@js-eyes/client-sdk/protocol');
 const {
   NATIVE_HOST_NAME,
   installBrowsers: installNativeHostBrowsers,
   resolveHostScriptPath: resolveNativeHostScript,
   statusBrowsers: statusNativeHostBrowsers,
   uninstallBrowsers: uninstallNativeHostBrowsers,
-} = require('@js-eyes/native-host');
+} = require('../native-host');
 const {
   applySkillInstall,
   cleanupStaging,
@@ -48,12 +48,12 @@ const {
   runSkillCli,
   skillToolActionName,
   verifySkillIntegrity,
-} = require('@js-eyes/skill-install/skills');
+} = require('@js-eyes/client-sdk/skill-install/skills');
 const {
   snapshotExtraDir,
   clearSnapshotForExtraDir,
   classifyExtraDir,
-} = require('@js-eyes/skill-install/extra-integrity');
+} = require('@js-eyes/client-sdk/skill-install/extra-integrity');
 const { flagsToArgv } = require('./lib/args');
 const { print } = require('./lib/output');
 const { resolvePluginPath: resolvePluginPathFromLib } = require('./lib/plugin');

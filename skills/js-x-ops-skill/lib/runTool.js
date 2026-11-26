@@ -7,7 +7,7 @@ const {
   appendHistory,
   createSkillRunContext,
   writeDebugBundle,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const {
   wrapCallApi,
   drainVisualEvents,

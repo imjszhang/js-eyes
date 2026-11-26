@@ -10,8 +10,8 @@ const {
   PolicyBlockError,
   ServerPolicyError,
 } = require("@js-eyes/client-sdk");
-const { loadConfig, setConfigValue } = require("@js-eyes/config");
-const { SENSITIVE_TOOL_NAMES, resolveSecurityConfig } = require("@js-eyes/protocol");
+const { loadConfig, setConfigValue } = require("@js-eyes/client-sdk/config");
+const { SENSITIVE_TOOL_NAMES, resolveSecurityConfig } = require("@js-eyes/client-sdk/protocol");
 import { createAuthHelpers } from "./auth.mjs";
 import { ensureNativeHost, logNativeHostResult } from "./native-host-setup.mjs";
 import { createHotReloadWatchers } from "./watchers.mjs";

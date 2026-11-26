@@ -1,6 +1,6 @@
 'use strict';
 
-const { loadConfig, mergeRecordingConfig, DEFAULT_RECORDING_CONFIG } = require('@js-eyes/config');
+const { loadConfig, mergeRecordingConfig, DEFAULT_RECORDING_CONFIG } = require('@js-eyes/client-sdk/config');
 
 function safeLoadGlobalConfig() {
   try {

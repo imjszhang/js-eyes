@@ -69,6 +69,9 @@ async function main(argv = process.argv.slice(2)) {
     case 'native-host':
       await commandNativeHost(positionals, flags);
       return;
+    case 'mcp':
+      await require('./commands/mcp').commandMcp(argv.slice(1));
+      return;
     case '--help':
     case '-h':
     case 'help':

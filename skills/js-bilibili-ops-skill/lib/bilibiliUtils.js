@@ -8,7 +8,7 @@ const {
   createDebugState,
   recordDomStat,
   recordStep,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 
 const fsPromises = fs.promises;
 const YTDLP_FILENAMES = process.platform === 'win32'

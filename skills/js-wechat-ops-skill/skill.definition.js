@@ -1,7 +1,7 @@
 'use strict';
 
 const pkg = require('./package.json');
-const { createDefinitionEnvelope } = require('@js-eyes/skill-scaffold');
+const { createDefinitionEnvelope } = require('@js-eyes/client-sdk/skill-scaffold');
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { getArticle } = require('./lib/api');
 const { resolveRuntimeConfig } = require('./lib/runtimeConfig');

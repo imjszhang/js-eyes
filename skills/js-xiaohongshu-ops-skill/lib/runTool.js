@@ -6,7 +6,7 @@ const {
   appendHistory,
   createSkillRunContext,
   writeDebugBundle,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const { sanitizeForRecording } = require('./xhsUtils');
 const { getSharedLimiter } = require('./rateLimit/limiter');
 const { recordCall: recordAntiCrawlCall } = require('./rateLimit/antiCrawlingStats');

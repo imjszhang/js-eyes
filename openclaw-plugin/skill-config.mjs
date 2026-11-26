@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { readLegacyOpenClawSkillState } from './legacy-config.mjs';
 
 const require = createRequire(import.meta.url);
-const { normalizeConfig: defaultNormalizeConfig } = require('@js-eyes/config');
+const { normalizeConfig: defaultNormalizeConfig } = require('@js-eyes/client-sdk/config');
 
 export function resolveOpenClawSkillConfig({
   api,

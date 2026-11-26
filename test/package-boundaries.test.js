@@ -19,36 +19,38 @@ const REMOVED_PROTOCOL_SHIMS = Object.freeze([
 ]);
 
 describe('package boundary cleanup', () => {
-  it('protocol does not depend on skill-install and has no install shims', () => {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(repoRoot, 'packages/protocol/package.json'), 'utf8'),
-    );
-    assert.equal(pkg.dependencies?.['@js-eyes/skill-install'], undefined);
-    assert.equal(pkg.files.includes('skills.js'), false);
+  it('protocol module inside client-sdk has no skill-install shims', () => {
     for (const name of REMOVED_PROTOCOL_SHIMS) {
       assert.equal(
-        fs.existsSync(path.join(repoRoot, 'packages/protocol', name)),
+        fs.existsSync(path.join(repoRoot, 'packages/client-sdk/protocol', name)),
         false,
-        `expected packages/protocol/${name} to be removed`,
+        `expected packages/client-sdk/protocol/${name} to be absent`,
       );
-      assert.equal(pkg.files.includes(name), false, `files must not list ${name}`);
     }
   });
 
-  it('client-sdk no longer ships a policy/ compatibility directory', () => {
+  it('client-sdk keeps policy isolated in its own submodule and exposes clean subpaths', () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(repoRoot, 'packages/client-sdk/package.json'), 'utf8'),
     );
-    assert.equal(pkg.files.includes('policy/'), false);
+    assert.equal(pkg.exports['.'], './index.js');
+    assert.equal(pkg.exports['./policy'], './policy/index.js');
+    assert.equal(pkg.exports['./protocol'], './protocol/index.js');
+    assert.equal(pkg.exports['./skill-runtime'], './skill-runtime/index.js');
     assert.equal(
-      fs.existsSync(path.join(repoRoot, 'packages/client-sdk/policy')),
-      false,
+      fs.existsSync(path.join(repoRoot, 'packages/client-sdk/policy/index.js')),
+      true,
     );
-    const index = fs.readFileSync(
-      path.join(repoRoot, 'packages/client-sdk/index.js'),
-      'utf8',
+  });
+
+  it('js-eyes exposes CLI, MCP binary, and server/native-host/mcp subpaths', () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'apps/cli/package.json'), 'utf8'),
     );
-    assert.match(index, /require\(['"]@js-eyes\/policy['"]\)/);
-    assert.doesNotMatch(index, /require\(['"]\.\/policy['"]\)/);
+    assert.equal(pkg.bin['js-eyes'], 'bin/js-eyes.js');
+    assert.equal(pkg.bin['js-eyes-mcp'], 'bin/js-eyes-mcp.js');
+    assert.equal(pkg.exports['./server-core'], './server-core/index.js');
+    assert.equal(pkg.exports['./native-host'], './native-host/src/index.js');
+    assert.equal(pkg.exports['./mcp-server'], './mcp-server/index.js');
   });
 });

@@ -59,11 +59,7 @@ module.exports = [
     files: [
       'apps/**/*.js',
       'openclaw-plugin/**/*.mjs',
-      'packages/protocol/**/*.js',
-      'packages/runtime-paths/**/*.js',
-      'packages/config/**/*.js',
       'packages/client-sdk/**/*.js',
-      'packages/server-core/**/*.js',
       'packages/devtools/**/*.js',
     ],
     rules: {
@@ -81,7 +77,7 @@ module.exports = [
   },
   {
     files: [
-      'packages/protocol/page-interact-core.js',
+      'packages/client-sdk/protocol/page-interact-core.js',
     ],
     languageOptions: {
       globals: {

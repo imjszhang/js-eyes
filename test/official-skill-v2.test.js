@@ -5,7 +5,7 @@ const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadSkillManifest } = require('@js-eyes/skill-contract');
+const { loadSkillManifest } = require('@js-eyes/client-sdk/skill-contract');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_ROOT = path.join(ROOT, 'skills');
@@ -35,7 +35,7 @@ test('every official skill exposes a complete static V2 manifest and entry', () 
 test('official V2 entries use skill-scaffold createSkillEntry', () => {
   for (const skillDir of officialSkillDirs()) {
     const source = fs.readFileSync(path.join(skillDir, 'skill.entry.js'), 'utf8');
-    assert.match(source, /@js-eyes\/skill-scaffold/);
+    assert.match(source, /@js-eyes\/client-sdk\/skill-scaffold/);
     assert.match(source, /createSkillEntry/);
     assert.doesNotMatch(source, /legacy-entry|createLegacyHandlers|createRuntime/);
   }

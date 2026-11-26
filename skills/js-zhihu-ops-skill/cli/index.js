@@ -8,7 +8,7 @@ const { Session } = require('../lib/session');
 const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { runTool } = require('../lib/runTool');
-const { createSkillRunContext } = require('@js-eyes/skill-recording');
+const { createSkillRunContext } = require('@js-eyes/client-sdk/skill-recording');
 const { parseVisualFlags } = require('@js-eyes/visual-bridge-kit');
 
 function emitJson(value, opts) {

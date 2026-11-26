@@ -1,7 +1,8 @@
 # Native MCP Server
 
-`@js-eyes/mcp-server` lets local MCP hosts use an existing JS Eyes server and
-browser extension. It uses stdio and does not require OpenClaw.
+`js-eyes` ships a built-in native stdio MCP server (`js-eyes mcp` / `js-eyes-mcp`)
+that lets local MCP hosts use an existing JS Eyes server and browser extension.
+It does not require OpenClaw.
 
 ## Prerequisites
 
@@ -22,7 +23,7 @@ The standard local MCP configuration is:
   "mcpServers": {
     "js-eyes": {
       "command": "npx",
-      "args": ["-y", "@js-eyes/mcp-server"]
+      "args": ["-y", "js-eyes", "mcp"]
     }
   }
 }
@@ -35,7 +36,7 @@ For a source checkout, use:
   "mcpServers": {
     "js-eyes": {
       "command": "node",
-      "args": ["/absolute/path/to/js-eyes/packages/mcp-server/bin/js-eyes-mcp.js"]
+      "args": ["/absolute/path/to/js-eyes/apps/cli/bin/js-eyes-mcp.js"]
     }
   }
 }

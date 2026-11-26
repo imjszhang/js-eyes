@@ -3,9 +3,9 @@ import { createSharedServerManager } from "./shared-server.mjs";
 import { registerServerService } from "./server-service.mjs";
 
 const require = createRequire(import.meta.url);
-const { createServer } = require("@js-eyes/server-core");
-const { ensureRuntimePaths, chmodBestEffort } = require("@js-eyes/runtime-paths");
-const { ensureToken } = require("@js-eyes/runtime-paths/token.js");
+const { createServer } = require("js-eyes/server-core");
+const { ensureRuntimePaths, chmodBestEffort } = require("@js-eyes/client-sdk/runtime-paths");
+const { ensureToken } = require("@js-eyes/client-sdk/runtime-paths/token.js");
 
 /** Shared reference-counted JS Eyes server used across OpenClaw registrations. */
 export const sharedServer = createSharedServerManager(createServer);
