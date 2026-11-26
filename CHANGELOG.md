@@ -24,9 +24,21 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Consolidate the 14 coordinated npm packages into 2 public packages:
+  `@js-eyes/client-sdk` (exposing `/protocol`, `/policy`, `/runtime-paths`,
+  `/config`, `/skill-contract`, `/skill-install`, `/skill-recording`,
+  `/skill-runtime`, and `/skill-scaffold` subpaths) and `js-eyes` (bundling
+  CLI, `server-core`, `native-host`, and native MCP server via `js-eyes mcp`
+  and `js-eyes-mcp`).
 - Coordinated platform packages, CLI, OpenClaw adapter, and Chrome/Firefox
   extensions advance to 2.12.0; independently versioned site skills and optional
   libraries are unchanged.
+
+### Removed
+
+- Remove ClawHub publishing integration (`clawhub-publish.js`,
+  `.clawhubignore`, `publish:clawhub`) and rename the static security hygiene
+  scanner to `scripts/scan-security-patterns.js`.
 
 ## [2.11.2] - 2026-11-23
 

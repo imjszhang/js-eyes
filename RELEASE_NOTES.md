@@ -35,6 +35,12 @@ versions.
     published on host loopback.
   - Document how to connect the host browser extension and transfer its
     authentication token.
+- **Consolidated 2-package npm distribution**:
+  - Consolidate 14 coordinated npm packages into **`@js-eyes/client-sdk`**
+    (shared SDK, protocol, policy, config, runtime-paths, and Skill Runtime
+    subpaths) and **`js-eyes`** (CLI, server-core, native-host, and built-in
+    MCP server exposed via `js-eyes mcp` and `js-eyes-mcp`).
+  - Remove legacy ClawHub publishing tooling and `.clawhubignore`.
 
 ### Upgrade Notes
 
