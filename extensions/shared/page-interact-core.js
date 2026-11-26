@@ -468,6 +468,479 @@ function getPageInfoInPage() {
   };
 }
 
+function resolvePointInPage(spec) {
+  var opts = spec || {};
+  function lookupRef(ref) {
+    var win = /** @type {any} */ (window);
+    var store = win.__jsEyesRefStore;
+    if (!store || typeof store !== 'object' || !store.map) return null;
+    var entry = store.map[String(ref)];
+    if (!entry || entry.generation !== store.generation || !entry.el || !entry.el.isConnected) return null;
+    return entry.el;
+  }
+  if (opts.ref) {
+    var refEl = lookupRef(opts.ref);
+    if (!refEl) return { success: false, error: 'REF_STALE', code: 'REF_STALE' };
+    if (typeof refEl.scrollIntoView === 'function') refEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    var refRect = refEl.getBoundingClientRect();
+    return { success: true, x: Math.round(refRect.left + refRect.width / 2), y: Math.round(refRect.top + refRect.height / 2) };
+  }
+  if (opts.selector) {
+    var el = document.querySelector(opts.selector);
+    if (!el) return { success: false, error: '未找到元素: ' + opts.selector };
+    if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    var rect = el.getBoundingClientRect();
+    return { success: true, x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+  }
+  var x = Number.isFinite(opts.x) ? Number(opts.x) : Math.round((window.innerWidth || 800) / 2);
+  var y = Number.isFinite(opts.y) ? Number(opts.y) : Math.round((window.innerHeight || 600) / 2);
+  return { success: true, x: x, y: y };
+}
+
+function resolveDragPointsInPage(spec) {
+  var opts = spec || {};
+  function lookupRef(ref) {
+    var win = /** @type {any} */ (window);
+    var store = win.__jsEyesRefStore;
+    if (!store || typeof store !== 'object' || !store.map) return null;
+    var entry = store.map[String(ref)];
+    if (!entry || entry.generation !== store.generation || !entry.el || !entry.el.isConnected) return null;
+    return entry.el;
+  }
+  function resolveEndpoint(ref, selector, x, y, label) {
+    if (ref) {
+      var refEl = lookupRef(ref);
+      if (!refEl) return { success: false, error: 'REF_STALE', code: 'REF_STALE' };
+      if (typeof refEl.scrollIntoView === 'function') refEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+      var rr = refEl.getBoundingClientRect();
+      return { success: true, x: Math.round(rr.left + rr.width / 2), y: Math.round(rr.top + rr.height / 2) };
+    }
+    if (selector) {
+      var el = document.querySelector(selector);
+      if (!el) return { success: false, error: '未找到' + label + '元素: ' + selector };
+      if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'instant', block: 'center' });
+      var r = el.getBoundingClientRect();
+      return { success: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    }
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { success: true, x: Number(x), y: Number(y) };
+    }
+    return null;
+  }
+  var from = resolveEndpoint(opts.fromRef, opts.fromSelector, opts.fromX, opts.fromY, '起点');
+  if (from && from.success === false) return from;
+  if (!from) return { success: false, error: '必须提供起点坐标(fromX/fromY)或元素(fromSelector/fromRef)' };
+  var to = resolveEndpoint(opts.toRef, opts.toSelector, opts.toX, opts.toY, '终点');
+  if (to && to.success === false) return to;
+  if (!to) {
+    var hasDelta = Number.isFinite(opts.deltaX) || Number.isFinite(opts.deltaY);
+    if (!hasDelta) {
+      return { success: false, error: '必须提供终点坐标(toX/toY)、元素(toSelector/toRef)或偏移量(deltaX/deltaY)' };
+    }
+    to = {
+      success: true,
+      x: from.x + (Number.isFinite(opts.deltaX) ? Number(opts.deltaX) : 0),
+      y: from.y + (Number.isFinite(opts.deltaY) ? Number(opts.deltaY) : 0),
+    };
+  }
+  return { success: true, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y };
+}
+
+function dragInPage(spec) {
+  var opts = spec || {};
+  function lookupRef(ref) {
+    var win = /** @type {any} */ (window);
+    var store = win.__jsEyesRefStore;
+    if (!store || typeof store !== 'object' || !store.map) return null;
+    var entry = store.map[String(ref)];
+    if (!entry || entry.generation !== store.generation || !entry.el || !entry.el.isConnected) return null;
+    return entry.el;
+  }
+  function resolveEndpoint(ref, selector, x, y, label) {
+    if (ref) {
+      var refEl = lookupRef(ref);
+      if (!refEl) return { success: false, error: 'REF_STALE', code: 'REF_STALE' };
+      if (typeof refEl.scrollIntoView === 'function') refEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+      var rr = refEl.getBoundingClientRect();
+      return { success: true, x: Math.round(rr.left + rr.width / 2), y: Math.round(rr.top + rr.height / 2) };
+    }
+    if (selector) {
+      var el = document.querySelector(selector);
+      if (!el) return { success: false, error: '未找到' + label + '元素: ' + selector };
+      if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'instant', block: 'center' });
+      var r = el.getBoundingClientRect();
+      return { success: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    }
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { success: true, x: Number(x), y: Number(y) };
+    }
+    return null;
+  }
+  var from = resolveEndpoint(opts.fromRef, opts.fromSelector, opts.fromX, opts.fromY, '起点');
+  if (from && from.success === false) return Promise.resolve(from);
+  if (!from) return Promise.resolve({ success: false, error: '必须提供起点坐标(fromX/fromY)或元素(fromSelector/fromRef)' });
+  var to = resolveEndpoint(opts.toRef, opts.toSelector, opts.toX, opts.toY, '终点');
+  if (to && to.success === false) return Promise.resolve(to);
+  if (!to) {
+    var hasDelta = Number.isFinite(opts.deltaX) || Number.isFinite(opts.deltaY);
+    if (!hasDelta) {
+      return Promise.resolve({ success: false, error: '必须提供终点坐标(toX/toY)、元素(toSelector/toRef)或偏移量(deltaX/deltaY)' });
+    }
+    to = {
+      success: true,
+      x: from.x + (Number.isFinite(opts.deltaX) ? Number(opts.deltaX) : 0),
+      y: from.y + (Number.isFinite(opts.deltaY) ? Number(opts.deltaY) : 0),
+    };
+  }
+  var buttonName = opts.button === 'right' ? 'right' : (opts.button === 'middle' ? 'middle' : 'left');
+  var buttonCode = buttonName === 'right' ? 2 : (buttonName === 'middle' ? 1 : 0);
+  var buttonsMask = buttonName === 'right' ? 2 : (buttonName === 'middle' ? 4 : 1);
+  var steps = Math.max(1, Math.min(120, Math.round(Number(opts.steps) || 12)));
+  var durationMs = Math.max(0, Math.min(15000, Math.round(opts.durationMs == null ? 300 : Number(opts.durationMs) || 0)));
+  var stepDelay = steps > 0 ? Math.floor(durationMs / steps) : 0;
+
+  function pointTarget(x, y) {
+    return (typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : null)
+      || document.body || document.documentElement;
+  }
+  function emitPointer(el, type, x, y, buttons) {
+    if (!el || typeof el.dispatchEvent !== 'function') return;
+    var init = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: buttonCode,
+      buttons: buttons,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+    };
+    if (typeof PointerEvent === 'function' && type.indexOf('pointer') === 0) {
+      el.dispatchEvent(new PointerEvent(type, init));
+    } else if (typeof MouseEvent === 'function') {
+      el.dispatchEvent(new MouseEvent(type, init));
+    } else if (typeof Event === 'function') {
+      el.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+    }
+  }
+
+  var startEl = pointTarget(from.x, from.y);
+  emitPointer(startEl, 'pointermove', from.x, from.y, 0);
+  emitPointer(startEl, 'mousemove', from.x, from.y, 0);
+  emitPointer(startEl, 'pointerdown', from.x, from.y, buttonsMask);
+  emitPointer(startEl, 'mousedown', from.x, from.y, buttonsMask);
+
+  return new Promise(function (resolve) {
+    var step = 0;
+    function tick() {
+      step += 1;
+      var ratio = step / steps;
+      var cx = from.x + (to.x - from.x) * ratio;
+      var cy = from.y + (to.y - from.y) * ratio;
+      var currentEl = pointTarget(cx, cy);
+      emitPointer(currentEl, 'pointermove', cx, cy, buttonsMask);
+      emitPointer(currentEl, 'mousemove', cx, cy, buttonsMask);
+      if (currentEl !== startEl) {
+        emitPointer(startEl, 'pointermove', cx, cy, buttonsMask);
+        emitPointer(startEl, 'mousemove', cx, cy, buttonsMask);
+      }
+      if (step < steps) {
+        if (stepDelay > 0) setTimeout(tick, stepDelay);
+        else tick();
+        return;
+      }
+      var endEl = pointTarget(to.x, to.y);
+      emitPointer(endEl, 'pointerup', to.x, to.y, 0);
+      emitPointer(endEl, 'mouseup', to.x, to.y, 0);
+      if (endEl !== startEl) {
+        emitPointer(startEl, 'pointerup', to.x, to.y, 0);
+        emitPointer(startEl, 'mouseup', to.x, to.y, 0);
+      }
+      resolve({
+        success: true,
+        mode: 'dom',
+        from: { x: from.x, y: from.y },
+        to: { x: to.x, y: to.y },
+        button: buttonName,
+        steps: steps,
+        durationMs: durationMs,
+      });
+    }
+    if (stepDelay > 0) setTimeout(tick, stepDelay);
+    else tick();
+  });
+}
+
+function wheelInPage(spec) {
+  var opts = spec || {};
+  function lookupRef(ref) {
+    var win = /** @type {any} */ (window);
+    var store = win.__jsEyesRefStore;
+    if (!store || typeof store !== 'object' || !store.map) return null;
+    var entry = store.map[String(ref)];
+    if (!entry || entry.generation !== store.generation || !entry.el || !entry.el.isConnected) return null;
+    return entry.el;
+  }
+  var x;
+  var y;
+  if (opts.ref) {
+    var refEl = lookupRef(opts.ref);
+    if (!refEl) return Promise.resolve({ success: false, error: 'REF_STALE', code: 'REF_STALE' });
+    if (typeof refEl.scrollIntoView === 'function') refEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    var rr = refEl.getBoundingClientRect();
+    x = Math.round(rr.left + rr.width / 2);
+    y = Math.round(rr.top + rr.height / 2);
+  } else if (opts.selector) {
+    var selEl = document.querySelector(opts.selector);
+    if (!selEl) return Promise.resolve({ success: false, error: '未找到元素: ' + opts.selector });
+    if (typeof selEl.scrollIntoView === 'function') selEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    var sr = selEl.getBoundingClientRect();
+    x = Math.round(sr.left + sr.width / 2);
+    y = Math.round(sr.top + sr.height / 2);
+  } else {
+    x = Number.isFinite(opts.x) ? Number(opts.x) : Math.round((window.innerWidth || 800) / 2);
+    y = Number.isFinite(opts.y) ? Number(opts.y) : Math.round((window.innerHeight || 600) / 2);
+  }
+  var deltaX = Number.isFinite(opts.deltaX) ? Number(opts.deltaX) : 0;
+  var deltaY = Number.isFinite(opts.deltaY) ? Number(opts.deltaY) : 0;
+  var steps = Math.max(1, Math.min(120, Math.round(Number(opts.steps) || 1)));
+  var defaultDur = steps > 1 ? 300 : 0;
+  var durationMs = Math.max(0, Math.min(15000, Math.round(opts.durationMs == null ? defaultDur : Number(opts.durationMs) || 0)));
+  var stepDelay = steps > 1 ? Math.floor(durationMs / steps) : 0;
+  var stepDx = deltaX / steps;
+  var stepDy = deltaY / steps;
+
+  function findScrollable(el) {
+    var cur = el;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      try {
+        var style = typeof getComputedStyle === 'function' ? getComputedStyle(cur) : null;
+        var canY = style && (style.overflowY === 'auto' || style.overflowY === 'scroll') && cur.scrollHeight > cur.clientHeight;
+        var canX = style && (style.overflowX === 'auto' || style.overflowX === 'scroll') && cur.scrollWidth > cur.clientWidth;
+        if ((deltaY && canY) || (deltaX && canX)) return cur;
+      } catch (e) { /* ignore */ }
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+
+  var target = (typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : null)
+    || document.body || document.documentElement;
+  var scrollable = findScrollable(target);
+
+  return new Promise(function (resolve) {
+    var step = 0;
+    function tick() {
+      step += 1;
+      var prevented = false;
+      if (target && typeof target.dispatchEvent === 'function') {
+        var ev;
+        if (typeof WheelEvent === 'function') {
+          ev = new WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clientX: x,
+            clientY: y,
+            deltaX: stepDx,
+            deltaY: stepDy,
+            deltaMode: 0,
+            ctrlKey: !!opts.ctrlKey,
+            shiftKey: !!opts.shiftKey,
+            altKey: !!opts.altKey,
+            metaKey: !!opts.metaKey,
+          });
+        } else {
+          ev = new Event('wheel', { bubbles: true, cancelable: true });
+        }
+        prevented = !target.dispatchEvent(ev);
+      }
+      if (!prevented && !opts.ctrlKey) {
+        if (scrollable && typeof scrollable.scrollBy === 'function') {
+          scrollable.scrollBy(stepDx, stepDy);
+        } else if (typeof window.scrollBy === 'function') {
+          window.scrollBy(stepDx, stepDy);
+        }
+      }
+      if (step < steps) {
+        if (stepDelay > 0) setTimeout(tick, stepDelay);
+        else tick();
+        return;
+      }
+      resolve({
+        success: true,
+        mode: 'dom',
+        x: x,
+        y: y,
+        deltaX: deltaX,
+        deltaY: deltaY,
+        steps: steps,
+        durationMs: durationMs,
+      });
+    }
+    tick();
+  });
+}
+
+function selectTextInPage(spec) {
+  var opts = spec || {};
+  var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+  if (!sel) return { success: false, error: 'Selection API unavailable' };
+  if (opts.clear === true) {
+    sel.removeAllRanges();
+    return { success: true, cleared: true, text: '' };
+  }
+  function lookupRef(ref) {
+    var win = /** @type {any} */ (window);
+    var store = win.__jsEyesRefStore;
+    if (!store || typeof store !== 'object' || !store.map) return null;
+    var entry = store.map[String(ref)];
+    if (!entry || entry.generation !== store.generation || !entry.el || !entry.el.isConnected) return null;
+    return entry.el;
+  }
+  var root = document.body || document.documentElement;
+  if (opts.ref) {
+    var refEl = lookupRef(opts.ref);
+    if (!refEl) return { success: false, error: 'REF_STALE', code: 'REF_STALE' };
+    root = refEl;
+  } else if (opts.selector) {
+    var selEl = document.querySelector(opts.selector);
+    if (!selEl) return { success: false, error: '未找到元素: ' + opts.selector };
+    root = selEl;
+  }
+  if (!root) return { success: false, error: '页面内容不可用' };
+  var shouldScroll = opts.scrollIntoView !== false;
+  var needle = opts.text != null ? String(opts.text) : '';
+  if (!needle) {
+    if (!opts.selector && !opts.ref) {
+      return { success: false, error: '必须提供 text、selector、ref 或 clear: true' };
+    }
+    if (shouldScroll && typeof root.scrollIntoView === 'function') {
+      root.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    var fullRange = document.createRange();
+    fullRange.selectNodeContents(root);
+    sel.removeAllRanges();
+    sel.addRange(fullRange);
+    var fullRect = fullRange.getBoundingClientRect ? fullRange.getBoundingClientRect() : null;
+    return {
+      success: true,
+      text: String(sel.toString() || '').substring(0, 1000),
+      matchCount: 1,
+      occurrence: 0,
+      rect: fullRect ? {
+        x: Math.round(fullRect.x),
+        y: Math.round(fullRect.y),
+        width: Math.round(fullRect.width),
+        height: Math.round(fullRect.height),
+      } : null,
+    };
+  }
+
+  var segments = [];
+  var combined = '';
+  function collectTextNodes(node) {
+    if (!node) return;
+    if (node.nodeType === 3) {
+      var val = String(node.nodeValue || '');
+      if (val.length > 0) {
+        segments.push({ node: node, start: combined.length, end: combined.length + val.length });
+        combined += val;
+      }
+      return;
+    }
+    if (node.nodeType === 1) {
+      var tag = String(node.tagName || '').toUpperCase();
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return;
+      var children = node.childNodes || [];
+      for (var i = 0; i < children.length; i++) collectTextNodes(children[i]);
+    }
+  }
+  collectTextNodes(root);
+
+  var matches = [];
+  var searchPos = 0;
+  while (searchPos <= combined.length - needle.length) {
+    var hit = combined.indexOf(needle, searchPos);
+    if (hit === -1) break;
+    matches.push(hit);
+    searchPos = hit + Math.max(1, needle.length);
+  }
+  if (matches.length === 0) {
+    var lowerCombined = combined.toLowerCase();
+    var lowerNeedle = needle.toLowerCase();
+    searchPos = 0;
+    while (searchPos <= lowerCombined.length - lowerNeedle.length) {
+      var ciHit = lowerCombined.indexOf(lowerNeedle, searchPos);
+      if (ciHit === -1) break;
+      matches.push(ciHit);
+      searchPos = ciHit + Math.max(1, lowerNeedle.length);
+    }
+  }
+  if (matches.length === 0) {
+    return { success: false, error: '未找到匹配文本: ' + needle.substring(0, 80), matchCount: 0 };
+  }
+  var occ = Math.max(0, Math.round(Number(opts.occurrence) || 0));
+  if (occ >= matches.length) {
+    return { success: false, error: '匹配序号超出范围', matchCount: matches.length, occurrence: occ };
+  }
+  var matchStart = matches[occ];
+  var matchEnd = matchStart + needle.length;
+  var startSeg = null;
+  var endSeg = null;
+  for (var s = 0; s < segments.length; s++) {
+    var seg = segments[s];
+    if (!startSeg && matchStart >= seg.start && matchStart < seg.end) startSeg = seg;
+    if (matchEnd > seg.start && matchEnd <= seg.end) {
+      endSeg = seg;
+      break;
+    }
+  }
+  if (!startSeg || !endSeg) {
+    return { success: false, error: '无法定位文本节点范围' };
+  }
+  if (shouldScroll && startSeg.node.parentElement && typeof startSeg.node.parentElement.scrollIntoView === 'function') {
+    startSeg.node.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  var range = document.createRange();
+  range.setStart(startSeg.node, matchStart - startSeg.start);
+  range.setEnd(endSeg.node, matchEnd - endSeg.start);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  var rect = range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+  return {
+    success: true,
+    text: String(sel.toString() || combined.slice(matchStart, matchEnd)).substring(0, 1000),
+    matchCount: matches.length,
+    occurrence: occ,
+    rect: rect ? {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    } : null,
+  };
+}
+
+function zoomInPage(zoomFactor) {
+  var docEl = document.documentElement;
+  if (!docEl || !docEl.style) return { success: false, error: 'documentElement unavailable' };
+  if (zoomFactor == null) {
+    var current = parseFloat(String(docEl.style.zoom || '1'));
+    return { success: true, zoomFactor: Number.isFinite(current) && current > 0 ? current : 1, mode: 'css' };
+  }
+  var factor = Number(zoomFactor) === 0 ? 1 : Number(zoomFactor);
+  if (!Number.isFinite(factor) || factor < 0.25 || factor > 5) {
+    return { success: false, error: 'zoomFactor must be between 0.25 and 5 (or 0 to reset)' };
+  }
+  docEl.style.zoom = factor === 1 ? '' : String(factor);
+  return { success: true, zoomFactor: factor, mode: 'css' };
+}
+
 const pageInteractCore = {
   clickInPage,
   fillInPage,
@@ -482,6 +955,12 @@ const pageInteractCore = {
   injectCssInPage,
   getOuterHtmlInPage,
   getPageInfoInPage,
+  resolvePointInPage,
+  resolveDragPointsInPage,
+  dragInPage,
+  wheelInPage,
+  selectTextInPage,
+  zoomInPage,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

@@ -169,6 +169,54 @@ function defaultHandler(ws, data) {
       }));
       break;
 
+    case 'drag':
+      ws.send(JSON.stringify({
+        type: 'drag_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, from: { x: data.fromX, y: data.fromY }, to: { x: data.toX ?? (data.fromX + (data.deltaX || 0)), y: data.toY ?? (data.fromY + (data.deltaY || 0)) } },
+      }));
+      break;
+
+    case 'wheel':
+      ws.send(JSON.stringify({
+        type: 'wheel_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, deltaX: data.deltaX || 0, deltaY: data.deltaY || 0, steps: data.steps || 1 },
+      }));
+      break;
+
+    case 'select_text':
+      ws.send(JSON.stringify({
+        type: 'select_text_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, text: data.clear ? '' : (data.text || ''), matchCount: data.clear ? 0 : 1 },
+      }));
+      break;
+
+    case 'set_zoom':
+      ws.send(JSON.stringify({
+        type: 'set_zoom_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, zoomFactor: data.zoomFactor === 0 ? 1 : (data.zoomFactor ?? 1) },
+      }));
+      break;
+
+    case 'record_start':
+      ws.send(JSON.stringify({
+        type: 'record_start_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, recordingId: 'rec_mock_1', tabId: data.tabId, mode: 'screencast', format: data.format || 'jpeg' },
+      }));
+      break;
+
+    case 'record_stop':
+      ws.send(JSON.stringify({
+        type: 'record_stop_response', requestId, status: 'success',
+        tabId: data.tabId,
+        result: { success: true, recordingId: data.recordingId || 'rec_mock_1', tabId: data.tabId, frameCount: 2, frames: [{ index: 0, timestampMs: 0, dataUrl: 'data:image/jpeg;base64,AA==' }] },
+      }));
+      break;
+
     default:
       ws.send(JSON.stringify({
         type: 'error', requestId, message: `Unknown action: ${action}`,
@@ -509,6 +557,30 @@ describe('business methods', () => {
     assert.equal(shot.pageHeight, 1200);
     assert.equal(shot.viewportHeight, 100);
     assert.equal(shot.segments.length, 1);
+  });
+
+  it('drag(), wheel(), selectText(), setZoom(), and recording methods work end-to-end', async () => {
+    const dragged = await bot.drag(1, { fromX: 10, fromY: 20, deltaX: 50, deltaY: 0, steps: 5, durationMs: 100 });
+    assert.equal(dragged.success, true);
+    assert.deepEqual(dragged.to, { x: 60, y: 20 });
+
+    const wheeled = await bot.wheel(1, { deltaY: 240, steps: 4, durationMs: 100 });
+    assert.equal(wheeled.success, true);
+    assert.equal(wheeled.deltaY, 240);
+
+    const selected = await bot.selectText(1, { text: 'important quote' });
+    assert.equal(selected.success, true);
+    assert.equal(selected.text, 'important quote');
+
+    const zoomed = await bot.setZoom(1, 1.5);
+    assert.equal(zoomed.zoomFactor, 1.5);
+
+    const started = await bot.startRecording(1, { fps: 10, format: 'jpeg' });
+    assert.equal(started.recordingId, 'rec_mock_1');
+
+    const stopped = await bot.stopRecording(1, started.recordingId);
+    assert.equal(stopped.recordingId, 'rec_mock_1');
+    assert.equal(stopped.frameCount, 2);
   });
 });
 

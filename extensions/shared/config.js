@@ -83,6 +83,12 @@ const DEFAULT_CONFIG = {
       'extract_page',
       'upload_file_to_tab',
       'capture_screenshot',
+      'drag',
+      'wheel',
+      'select_text',
+      'set_zoom',
+      'record_start',
+      'record_stop',
       'subscribe_events',
       'unsubscribe_events'
     ],

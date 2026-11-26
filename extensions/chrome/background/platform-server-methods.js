@@ -207,6 +207,30 @@ async handleMessage(data) {
           await this.handleCaptureScreenshot(payload);
           break;
 
+        case 'drag':
+          await this.handleDrag(payload);
+          break;
+
+        case 'wheel':
+          await this.handleWheel(payload);
+          break;
+
+        case 'select_text':
+          await this.handleSelectText(payload);
+          break;
+
+        case 'set_zoom':
+          await this.handleSetZoom(payload);
+          break;
+
+        case 'record_start':
+          await this.handleRecordStart(payload);
+          break;
+
+        case 'record_stop':
+          await this.handleRecordStop(payload);
+          break;
+
         case 'subscribe_events':
           await this.handleSubscribeEvents(payload);
           break;

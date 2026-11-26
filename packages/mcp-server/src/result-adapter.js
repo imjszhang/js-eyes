@@ -70,4 +70,39 @@ function screenshotResult(screenshot) {
   };
 }
 
-module.exports = { dataResult, parseDataUrl, screenshotResult, truncate };
+function recordingResult(recording) {
+  const rec = recording || {};
+  const frames = Array.isArray(rec.frames) ? rec.frames : [];
+  const metadata = {
+    recordingId: rec.recordingId ?? null,
+    tabId: rec.tabId ?? null,
+    mode: rec.mode ?? null,
+    format: rec.format ?? null,
+    startedAt: rec.startedAt ?? null,
+    stoppedAt: rec.stoppedAt ?? null,
+    durationMs: rec.durationMs ?? 0,
+    frameCount: rec.frameCount ?? frames.length,
+    droppedFrames: rec.droppedFrames ?? 0,
+    truncated: Boolean(rec.truncated),
+    width: rec.width ?? null,
+    height: rec.height ?? null,
+    totalBytes: rec.totalBytes ?? 0,
+  };
+  const images = [];
+  const sampleIndexes = frames.length <= 2
+    ? frames.map((_, idx) => idx)
+    : [0, frames.length - 1];
+  for (const idx of sampleIndexes) {
+    const parsed = parseDataUrl(frames[idx] && frames[idx].dataUrl);
+    if (parsed) images.push({ type: 'image', mimeType: parsed.mimeType, data: parsed.data });
+  }
+  return {
+    content: [
+      { type: 'text', text: JSON.stringify(metadata, null, 2) },
+      ...images,
+    ],
+    structuredContent: { ...metadata, previewImageCount: images.length },
+  };
+}
+
+module.exports = { dataResult, parseDataUrl, recordingResult, screenshotResult, truncate };

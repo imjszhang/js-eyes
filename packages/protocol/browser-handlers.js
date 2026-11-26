@@ -228,6 +228,67 @@ async function invokeBrowserOperation(browser, operationOrId, args = {}, callOpt
         maxLinks: args.maxLinks,
         maxImages: args.maxImages,
       }, options);
+    case 'page.drag':
+      return browser.drag(args.tabId, {
+        fromX: args.fromX,
+        fromY: args.fromY,
+        fromSelector: args.fromSelector,
+        fromRef: args.fromRef,
+        toX: args.toX,
+        toY: args.toY,
+        toSelector: args.toSelector,
+        toRef: args.toRef,
+        deltaX: args.deltaX,
+        deltaY: args.deltaY,
+        button: args.button,
+        steps: args.steps,
+        durationMs: args.durationMs,
+      }, options);
+    case 'page.wheel':
+      return browser.wheel(args.tabId, {
+        deltaX: args.deltaX,
+        deltaY: args.deltaY,
+        x: args.x,
+        y: args.y,
+        selector: args.selector,
+        ref: args.ref,
+        steps: args.steps,
+        durationMs: args.durationMs,
+        ctrlKey: args.ctrlKey,
+        shiftKey: args.shiftKey,
+        altKey: args.altKey,
+        metaKey: args.metaKey,
+      }, options);
+    case 'page.selectText':
+      return browser.selectText(args.tabId, {
+        text: args.text,
+        selector: args.selector,
+        ref: args.ref,
+        occurrence: args.occurrence,
+        scrollIntoView: args.scrollIntoView,
+        clear: args.clear,
+      }, options);
+    case 'tab.zoom':
+      return browser.setZoom(args.tabId, {
+        zoomFactor: args.zoomFactor,
+      }, options);
+    case 'recording.start':
+      return browser.startRecording(args.tabId, {
+        format: args.format,
+        quality: args.quality,
+        fps: args.fps,
+        everyNthFrame: args.everyNthFrame,
+        maxWidth: args.maxWidth,
+        maxHeight: args.maxHeight,
+        maxDurationSec: args.maxDurationSec,
+        maxFrames: args.maxFrames,
+        maxBytes: args.maxBytes,
+        activate: args.activate,
+      }, options);
+    case 'recording.stop':
+      return browser.stopRecording(args.tabId, {
+        recordingId: args.recordingId,
+      }, options);
     default:
       throw new Error(`No invoke mapping for browser operation: ${operation.id}`);
   }

@@ -410,6 +410,12 @@ function handleExtensionMessage(raw, clientId, state) {
     case 'select_option_complete':
     case 'queue_control_complete':
     case 'handle_dialog_complete':
+    case 'drag_complete':
+    case 'wheel_complete':
+    case 'select_text_complete':
+    case 'set_zoom_complete':
+    case 'record_start_complete':
+    case 'record_stop_complete':
       resolveRequest(requestId, {
         status: 'success',
         type: data.type,
@@ -801,6 +807,36 @@ async function handleAutomationMessage(raw, clientId, socket, state) {
       break;
     case 'capture_screenshot':
       dispatchToBrowser('capture_screenshot', data, socket, state, ['tabId', 'format', 'quality', 'fullPage'], target, clientId);
+      break;
+    case 'drag':
+      dispatchToBrowser('drag', data, socket, state, [
+        'tabId', 'fromX', 'fromY', 'fromSelector', 'fromRef',
+        'toX', 'toY', 'toSelector', 'toRef',
+        'deltaX', 'deltaY', 'button', 'steps', 'durationMs',
+      ], target, clientId);
+      break;
+    case 'wheel':
+      dispatchToBrowser('wheel', data, socket, state, [
+        'tabId', 'deltaX', 'deltaY', 'x', 'y', 'selector', 'ref',
+        'steps', 'durationMs', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey',
+      ], target, clientId);
+      break;
+    case 'select_text':
+      dispatchToBrowser('select_text', data, socket, state, [
+        'tabId', 'text', 'selector', 'ref', 'occurrence', 'scrollIntoView', 'clear',
+      ], target, clientId);
+      break;
+    case 'set_zoom':
+      dispatchToBrowser('set_zoom', data, socket, state, ['tabId', 'zoomFactor'], target, clientId);
+      break;
+    case 'record_start':
+      dispatchToBrowser('record_start', data, socket, state, [
+        'tabId', 'format', 'quality', 'fps', 'everyNthFrame',
+        'maxWidth', 'maxHeight', 'maxDurationSec', 'maxFrames', 'maxBytes', 'activate',
+      ], target, clientId);
+      break;
+    case 'record_stop':
+      dispatchToBrowser('record_stop', data, socket, state, ['tabId', 'recordingId'], target, clientId);
       break;
     default:
       send(socket, { type: 'error', requestId, message: `Unknown action: ${action}` });

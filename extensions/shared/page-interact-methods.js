@@ -247,6 +247,224 @@ async handleWaitDownload(message) {
       this._fail(requestId, error, 'DOWNLOADS_ERROR');
     }
   },
+
+async handleDrag(message) {
+    const { tabId, requestId } = message || {};
+    try {
+      if (!tabId) throw new Error('缺少 tabId 参数');
+      const result = await this._runPageInteract(tabId, core.dragInPage, [message]);
+      this._complete('drag_complete', tabId, requestId, result);
+    } catch (error) {
+      this._fail(requestId, error, 'DRAG_ERROR');
+    }
+  },
+
+async handleWheel(message) {
+    const { tabId, requestId } = message || {};
+    try {
+      if (!tabId) throw new Error('缺少 tabId 参数');
+      const result = await this._runPageInteract(tabId, core.wheelInPage, [message]);
+      this._complete('wheel_complete', tabId, requestId, result);
+    } catch (error) {
+      this._fail(requestId, error, 'WHEEL_ERROR');
+    }
+  },
+
+async handleSelectText(message) {
+    const { tabId, requestId } = message || {};
+    try {
+      if (!tabId) throw new Error('缺少 tabId 参数');
+      const result = await this._runPageInteract(tabId, core.selectTextInPage, [message]);
+      this._complete('select_text_complete', tabId, requestId, result);
+    } catch (error) {
+      this._fail(requestId, error, 'SELECT_TEXT_ERROR');
+    }
+  },
+
+async handleSetZoom(message) {
+    const { tabId, zoomFactor, requestId } = message || {};
+    try {
+      if (!tabId) throw new Error('缺少 tabId 参数');
+      const parsedTabId = parseInt(tabId, 10);
+      if (zoomFactor == null) {
+        if (extensionApi.tabs && typeof extensionApi.tabs.getZoom === 'function') {
+          const current = await extensionApi.tabs.getZoom(parsedTabId);
+          this._complete('set_zoom_complete', tabId, requestId, { success: true, zoomFactor: current, mode: 'tabs' });
+          return;
+        }
+        this._complete('set_zoom_complete', tabId, requestId, await this._runPageInteract(tabId, core.zoomInPage, [null]));
+        return;
+      }
+      const factor = Number(zoomFactor) === 0 ? 1 : Number(zoomFactor);
+      if (!Number.isFinite(factor) || factor < 0.25 || factor > 5) {
+        const err = new Error('zoomFactor must be between 0.25 and 5 (or 0 to reset)');
+        err.code = 'INVALID_ARGUMENT';
+        throw err;
+      }
+      if (extensionApi.tabs && typeof extensionApi.tabs.setZoom === 'function') {
+        await extensionApi.tabs.setZoom(parsedTabId, Number(zoomFactor) === 0 ? 0 : factor);
+        const applied = typeof extensionApi.tabs.getZoom === 'function'
+          ? await extensionApi.tabs.getZoom(parsedTabId)
+          : factor;
+        this._complete('set_zoom_complete', tabId, requestId, { success: true, zoomFactor: applied, mode: 'tabs' });
+        return;
+      }
+      this._complete('set_zoom_complete', tabId, requestId, await this._runPageInteract(tabId, core.zoomInPage, [factor]));
+    } catch (error) {
+      this._fail(requestId, error, 'ZOOM_ERROR');
+    }
+  },
+
+async _captureRecordingFrame(rec) {
+    if (rec.stopped) return;
+    if (rec.frames.length >= rec.maxFrames) {
+      rec.droppedFrames += 1;
+      rec.truncated = true;
+      rec.stopped = true;
+      return;
+    }
+    try {
+      const tab = await extensionApi.tabs.get(rec.tabId);
+      if (!tab || !tab.active) { rec.droppedFrames += 1; return; }
+      const opts = rec.format === 'jpeg' ? { format: 'jpeg', quality: rec.quality } : { format: 'png' };
+      const dataUrl = await extensionApi.tabs.captureVisibleTab(tab.windowId, opts);
+      if (typeof dataUrl !== 'string' || !dataUrl) { rec.droppedFrames += 1; return; }
+      if (rec.totalBytes + dataUrl.length > rec.maxBytes) {
+        rec.droppedFrames += 1;
+        rec.truncated = true;
+        rec.stopped = true;
+        return;
+      }
+      rec.width = tab.width || rec.width;
+      rec.height = tab.height || rec.height;
+      rec.totalBytes += dataUrl.length;
+      rec.frames.push({
+        index: rec.frames.length,
+        timestampMs: Math.max(0, Date.now() - rec.startMono),
+        dataUrl,
+        width: tab.width || null,
+        height: tab.height || null,
+      });
+    } catch {
+      rec.droppedFrames += 1;
+    }
+  },
+
+async handleRecordStart(message) {
+    const { tabId, format, quality, fps, maxDurationSec, maxFrames, maxBytes, activate, requestId } = message || {};
+    try {
+      if (tabId == null) throw new Error('缺少 tabId 参数');
+      if (!extensionApi.tabs || typeof extensionApi.tabs.captureVisibleTab !== 'function') {
+        throw Object.assign(new Error('captureVisibleTab API is unavailable'), { code: 'CAPABILITY_UNSUPPORTED' });
+      }
+      if (!this._activeRecordings) this._activeRecordings = new Map();
+      const parsedTabId = parseInt(tabId, 10);
+      for (const existing of this._activeRecordings.values()) {
+        if (existing.tabId === parsedTabId && !existing.stopped) {
+          throw Object.assign(new Error('A recording is already active on this tab'), { code: 'RECORDING_ALREADY_ACTIVE' });
+        }
+      }
+      let tab = await extensionApi.tabs.get(parsedTabId);
+      if (!tab) throw new Error(`未找到 tabId=${tabId}`);
+      if (activate === true && !tab.active && typeof extensionApi.tabs.update === 'function') {
+        await extensionApi.tabs.update(parsedTabId, { active: true });
+        tab = await extensionApi.tabs.get(parsedTabId);
+      }
+      if (!tab || !tab.active) {
+        throw Object.assign(
+          new Error('Target tab must be active to record (pass activate: true or focus the tab)'),
+          { code: 'TAB_NOT_ACTIVE' },
+        );
+      }
+      const maxCallsPerSec = Number(extensionApi.tabs.MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND);
+      const safeMaxFps = Number.isFinite(maxCallsPerSec) && maxCallsPerSec > 0 ? Math.max(0.5, maxCallsPerSec * 0.9) : 10;
+      const effectiveFps = Math.max(0.5, Math.min(safeMaxFps, Number.isFinite(fps) && Number(fps) > 0 ? Number(fps) : safeMaxFps));
+      const minIntervalMs = Number.isFinite(maxCallsPerSec) && maxCallsPerSec > 0 ? Math.ceil(1000 / maxCallsPerSec) + 50 : 100;
+      const intervalMs = Math.max(minIntervalMs, Math.round(1000 / effectiveFps));
+      const clampedDuration = Number.isFinite(maxDurationSec) ? Math.max(0.5, Math.min(120, Number(maxDurationSec))) : 30;
+      const clampedFrames = Number.isFinite(maxFrames) ? Math.max(1, Math.min(1200, Math.round(Number(maxFrames)))) : 300;
+      const clampedBytes = Number.isFinite(maxBytes) ? Math.max(65536, Math.min(67108864, Math.round(Number(maxBytes)))) : 33554432;
+      const fmt = format === 'png' ? 'png' : 'jpeg';
+      const qual = Number.isFinite(quality) ? Math.max(1, Math.min(100, Math.round(Number(quality)))) : 80;
+      const recordingId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const startedAt = new Date().toISOString();
+      const rec = {
+        recordingId, tabId: parsedTabId, format: fmt, quality: qual,
+        effectiveFps: Math.round(effectiveFps * 100) / 100, intervalMs,
+        maxDurationSec: clampedDuration, maxFrames: clampedFrames, maxBytes: clampedBytes,
+        startedAt, stoppedAt: null, startMono: Date.now(), durationMs: 0,
+        frames: [], totalBytes: 0, droppedFrames: 0, truncated: false,
+        width: tab.width || null, height: tab.height || null,
+        stopped: false, timer: null, deadlineTimer: null, inflight: null,
+      };
+      this._activeRecordings.set(recordingId, rec);
+      rec.inflight = this._captureRecordingFrame(rec);
+      await rec.inflight;
+      rec.inflight = null;
+      const scheduleNext = () => {
+        if (rec.stopped) return;
+        rec.timer = setTimeout(async () => {
+          rec.timer = null;
+          if (rec.stopped) return;
+          rec.inflight = this._captureRecordingFrame(rec);
+          await rec.inflight;
+          rec.inflight = null;
+          scheduleNext();
+        }, rec.intervalMs);
+      };
+      scheduleNext();
+      rec.deadlineTimer = setTimeout(() => {
+        rec.truncated = true;
+        rec.stopped = true;
+        rec.stoppedAt = new Date().toISOString();
+        rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+        if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+      }, Math.round(clampedDuration * 1000));
+      this._complete('record_start_complete', tabId, requestId, {
+        success: true, recordingId, tabId: parsedTabId, mode: 'visible_tab', format: fmt,
+        effectiveFps: rec.effectiveFps, maxDurationSec: clampedDuration, maxFrames: clampedFrames, startedAt,
+      });
+    } catch (error) {
+      this._fail(requestId, error, 'RECORD_START_ERROR');
+    }
+  },
+
+async handleRecordStop(message) {
+    const { tabId, recordingId, requestId } = message || {};
+    try {
+      const store = this._activeRecordings;
+      let rec = (store && recordingId) ? store.get(String(recordingId)) : null;
+      if (!rec && store && !recordingId && tabId != null) {
+        const parsedTabId = parseInt(tabId, 10);
+        for (const candidate of store.values()) {
+          if (candidate.tabId === parsedTabId) { rec = candidate; break; }
+        }
+      }
+      if (!rec) throw Object.assign(new Error('No active recording found'), { code: 'RECORDING_NOT_FOUND' });
+      if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+      if (rec.deadlineTimer) { clearTimeout(rec.deadlineTimer); rec.deadlineTimer = null; }
+      if (rec.inflight) { await rec.inflight.catch(() => {}); rec.inflight = null; }
+      if (!rec.stopped) {
+        const lastTs = rec.frames.length > 0 ? rec.frames[rec.frames.length - 1].timestampMs : -rec.intervalMs;
+        if ((Date.now() - rec.startMono) - lastTs >= rec.intervalMs) {
+          await this._captureRecordingFrame(rec);
+        }
+        rec.stopped = true;
+        rec.stoppedAt = new Date().toISOString();
+        rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+      }
+      store.delete(rec.recordingId);
+      this._complete('record_stop_complete', rec.tabId, requestId, {
+        success: true, recordingId: rec.recordingId, tabId: rec.tabId, mode: 'visible_tab',
+        format: rec.format, startedAt: rec.startedAt, stoppedAt: rec.stoppedAt || new Date().toISOString(),
+        durationMs: rec.durationMs, frameCount: rec.frames.length, droppedFrames: rec.droppedFrames,
+        truncated: rec.truncated, width: rec.width, height: rec.height, totalBytes: rec.totalBytes,
+        frames: rec.frames,
+      });
+    } catch (error) {
+      this._fail(requestId, error, 'RECORD_STOP_ERROR');
+    }
+  },
   };
 }
 

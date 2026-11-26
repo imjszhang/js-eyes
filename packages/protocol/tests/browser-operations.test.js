@@ -97,6 +97,18 @@ describe('browser operations metadata', () => {
     assert.equal(extract.sensitive, undefined);
     assert.ok(extract.inputSchema.required.includes('tabId'));
   });
+
+  it('registers drag, wheel, selectText, zoom, and recording operations', () => {
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_drag.id, 'page.drag');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_wheel.id, 'page.wheel');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_select_text.id, 'page.selectText');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_zoom.id, 'tab.zoom');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_record_start.id, 'recording.start');
+    assert.equal(BROWSER_OPERATION_BY_MCP_TOOL.browser_record_stop.id, 'recording.stop');
+    assert.equal(BROWSER_OPERATION_BY_OPENCLAW_ACTION['browser/drag'].id, 'page.drag');
+    assert.equal(BROWSER_OPERATION_BY_OPENCLAW_ACTION['browser/record-start'].id, 'recording.start');
+    assert.equal(BROWSER_OPERATION_BY_OPENCLAW_ACTION['browser/record-stop'].id, 'recording.stop');
+  });
 });
 
 describe('invokeBrowserOperation', () => {
@@ -213,5 +225,37 @@ describe('invokeBrowserOperation', () => {
     assert.equal(waited.status, 'resumed');
     assert.equal(calls[1][1].reason, 'login');
     assert.equal(calls[1][2].timeout, 35);
+  });
+
+  it('routes drag, wheel, selectText, zoom, and recording operations', async () => {
+    const calls = [];
+    const browser = {
+      async drag(tabId, params, options) { calls.push(['drag', tabId, params, options]); return { success: true }; },
+      async wheel(tabId, params, options) { calls.push(['wheel', tabId, params, options]); return { success: true }; },
+      async selectText(tabId, params, options) { calls.push(['selectText', tabId, params, options]); return { success: true, text: 'hi' }; },
+      async setZoom(tabId, params, options) { calls.push(['setZoom', tabId, params, options]); return { success: true, zoomFactor: 1.5 }; },
+      async startRecording(tabId, params, options) { calls.push(['startRecording', tabId, params, options]); return { recordingId: 'rec_1' }; },
+      async stopRecording(tabId, params, options) { calls.push(['stopRecording', tabId, params, options]); return { recordingId: 'rec_1', frameCount: 2 }; },
+    };
+    await invokeBrowserOperation(browser, 'page.drag', { tabId: 4, fromX: 10, fromY: 20, deltaX: 50, deltaY: 0 }, { target: 'ext-1' });
+    await invokeBrowserOperation(browser, 'page.wheel', { tabId: 4, deltaY: 200, steps: 4 }, { target: 'ext-1' });
+    await invokeBrowserOperation(browser, 'page.selectText', { tabId: 4, text: 'hello' }, { target: 'ext-1' });
+    await invokeBrowserOperation(browser, 'tab.zoom', { tabId: 4, zoomFactor: 1.5 }, { target: 'ext-1' });
+    await invokeBrowserOperation(browser, 'recording.start', { tabId: 4, fps: 2, activate: true }, { target: 'ext-1' });
+    await invokeBrowserOperation(browser, 'recording.stop', { tabId: 4, recordingId: 'rec_1' }, { target: 'ext-1' });
+
+    assert.equal(calls.length, 6);
+    assert.equal(calls[0][0], 'drag');
+    assert.equal(calls[0][2].deltaX, 50);
+    assert.equal(calls[1][0], 'wheel');
+    assert.equal(calls[1][2].deltaY, 200);
+    assert.equal(calls[2][0], 'selectText');
+    assert.equal(calls[2][2].text, 'hello');
+    assert.equal(calls[3][0], 'setZoom');
+    assert.equal(calls[3][2].zoomFactor, 1.5);
+    assert.equal(calls[4][0], 'startRecording');
+    assert.equal(calls[4][2].activate, true);
+    assert.equal(calls[5][0], 'stopRecording');
+    assert.equal(calls[5][2].recordingId, 'rec_1');
   });
 });

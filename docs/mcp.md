@@ -46,9 +46,10 @@ other clients that support local stdio MCP servers.
 
 ## Safe and full profiles
 
-The default `safe` profile registers 22 tools: browser status and navigation,
-first-class page interaction (including `browser_page_state` refs), extract,
-wait-for-user, plus the three generic Skill Runtime tools.
+The default `safe` profile registers 28 tools: browser status and navigation,
+first-class page interaction (including `browser_page_state` refs, drag, wheel,
+text selection, tab zoom, and tab frame recording), extract, wait-for-user,
+plus the three generic Skill Runtime tools.
 
 - `browser_status`
 - `browser_list_clients`
@@ -69,6 +70,12 @@ wait-for-user, plus the three generic Skill Runtime tools.
 - `browser_select`
 - `browser_handle_dialog`
 - `browser_wait_for_user`
+- `browser_drag`
+- `browser_wheel`
+- `browser_select_text`
+- `browser_zoom`
+- `browser_record_start`
+- `browser_record_stop`
 - `skill_list`
 - `skill_describe`
 - `skill_call`
@@ -81,7 +88,7 @@ or 2FA, call `browser_wait_for_user` and resume from the extension popup or
 
 The `full` profile adds JavaScript execution, CSS injection, cookie read,
 domain-scoped cookie sync, file upload, and download metadata
-(`browser_list_downloads` / `browser_wait_download`) — 30 tools total.
+(`browser_list_downloads` / `browser_wait_download`) — 36 tools total.
 `browser_sync_cookies` requires `source` and `destination` and returns
 `copied N` without cookie values. Download tools return basename/state/bytes
 only (no file body or full path). `cookies.write` / `browser_set_cookies` is
