@@ -168,10 +168,7 @@ function mergeSecurityConfig(...configs) {
       ]));
     }
     if (Array.isArray(config.egressAllowlist)) {
-      next.egressAllowlist = Array.from(new Set([
-        ...(merged.egressAllowlist || []),
-        ...config.egressAllowlist,
-      ]));
+      next.egressAllowlist = Array.from(new Set(config.egressAllowlist));
     }
     if (typeof config.enforcement === 'string') {
       next.enforcement = POLICY_ENFORCEMENT_LEVELS.includes(config.enforcement)
