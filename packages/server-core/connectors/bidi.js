@@ -47,6 +47,10 @@ const {
   injectCssInPage,
   getOuterHtmlInPage,
   getPageInfoInPage,
+  dragInPage,
+  wheelInPage,
+  selectTextInPage,
+  zoomInPage,
 } = pageInteractCore;
 
 function fromBidiRemoteValue(remote) {
@@ -88,6 +92,7 @@ class BidiConnector {
     this.contexts = new Map();
     this.downloads = new Map();
     this.pendingDialogs = new Map();
+    this.recordings = new Map();
     this.stopped = false;
     this.reconnectDelay = 1000;
   }
@@ -155,6 +160,12 @@ class BidiConnector {
 
   async stop() {
     this.stopped = true;
+    for (const rec of this.recordings.values()) {
+      rec.stopped = true;
+      if (rec.timer) clearTimeout(rec.timer);
+      if (rec.deadlineTimer) clearTimeout(rec.deadlineTimer);
+    }
+    this.recordings.clear();
     if (this.clientId) unregisterBrowserClient(this.state, this.clientId);
     try { await this.rpc?.send('session.end', {}); } catch { /* ignore */ }
     if (this.rpc) this.rpc.close();
@@ -547,6 +558,38 @@ class BidiConnector {
           });
           break;
         }
+        case 'drag': {
+          const result = await this._evaluate(this._requireContext(message.tabId), dragInPage, [message]);
+          complete({ type: 'drag_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'wheel': {
+          const result = await this._evaluate(this._requireContext(message.tabId), wheelInPage, [message]);
+          complete({ type: 'wheel_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'select_text': {
+          const result = await this._evaluate(this._requireContext(message.tabId), selectTextInPage, [message]);
+          complete({ type: 'select_text_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'set_zoom': {
+          const result = await this._evaluate(this._requireContext(message.tabId), zoomInPage, [message.zoomFactor ?? null]);
+          complete({ type: 'set_zoom_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'record_start': {
+          const context = this._requireContext(message.tabId);
+          const result = await this._startRecording(context, message);
+          complete({ type: 'record_start_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'record_stop': {
+          const context = this._requireContext(message.tabId);
+          const result = await this._stopRecording(context, message);
+          complete({ type: 'record_stop_complete', tabId: message.tabId, result });
+          break;
+        }
         default:
           throw new Error(`Unknown action: ${type}`);
       }
@@ -591,6 +634,171 @@ class BidiConnector {
       }
     }
     return publicCookieWriteResult({ set, skipped, reasons });
+  }
+
+  async _captureBidiFrame(rec) {
+    if (rec.stopped) return;
+    if (rec.frames.length >= rec.maxFrames) {
+      rec.droppedFrames += 1;
+      rec.truncated = true;
+      rec.stopped = true;
+      return;
+    }
+    try {
+      const shot = await this.rpc.send('browsingContext.captureScreenshot', { context: rec.context });
+      if (!shot || !shot.data) {
+        rec.droppedFrames += 1;
+        return;
+      }
+      const dataUrl = `data:image/png;base64,${shot.data}`;
+      const byteSize = Buffer.byteLength(dataUrl, 'utf8');
+      if (rec.totalBytes + byteSize > rec.maxBytes) {
+        rec.droppedFrames += 1;
+        rec.truncated = true;
+        rec.stopped = true;
+        return;
+      }
+      rec.totalBytes += byteSize;
+      rec.frames.push({
+        index: rec.frames.length,
+        timestampMs: Math.max(0, Date.now() - rec.startMono),
+        dataUrl,
+        width: null,
+        height: null,
+      });
+    } catch {
+      rec.droppedFrames += 1;
+    }
+  }
+
+  async _startRecording(context, message) {
+    for (const existing of this.recordings.values()) {
+      if (existing.context === context && !existing.stopped) {
+        const err = /** @type {Error & { code?: string }} */ (new Error('A recording is already active on this tab'));
+        err.code = 'RECORDING_ALREADY_ACTIVE';
+        throw err;
+      }
+    }
+    const requestedFps = Number.isFinite(message.fps) && Number(message.fps) > 0 ? Number(message.fps) : 5;
+    const effectiveFps = Math.max(0.5, Math.min(10, requestedFps));
+    const intervalMs = Math.max(100, Math.round(1000 / effectiveFps));
+    const maxDurationSec = Number.isFinite(message.maxDurationSec)
+      ? Math.max(0.5, Math.min(120, Number(message.maxDurationSec)))
+      : 30;
+    const maxFrames = Number.isFinite(message.maxFrames)
+      ? Math.max(1, Math.min(1200, Math.round(Number(message.maxFrames))))
+      : 300;
+    const maxBytes = Number.isFinite(message.maxBytes)
+      ? Math.max(65536, Math.min(67108864, Math.round(Number(message.maxBytes))))
+      : 33554432;
+    const recordingId = `rec_${crypto.randomUUID().slice(0, 12)}`;
+    const startedAt = new Date().toISOString();
+    const rec = {
+      recordingId,
+      tabId: Number(message.tabId),
+      context,
+      format: 'png',
+      effectiveFps,
+      intervalMs,
+      maxDurationSec,
+      maxFrames,
+      maxBytes,
+      startedAt,
+      stoppedAt: null,
+      startMono: Date.now(),
+      durationMs: 0,
+      frames: [],
+      totalBytes: 0,
+      droppedFrames: 0,
+      truncated: false,
+      stopped: false,
+      timer: null,
+      deadlineTimer: null,
+      inflight: null,
+    };
+    this.recordings.set(recordingId, rec);
+    rec.inflight = this._captureBidiFrame(rec);
+    await rec.inflight;
+    rec.inflight = null;
+
+    const scheduleNext = () => {
+      if (rec.stopped) return;
+      rec.timer = setTimeout(async () => {
+        rec.timer = null;
+        if (rec.stopped) return;
+        rec.inflight = this._captureBidiFrame(rec);
+        await rec.inflight;
+        rec.inflight = null;
+        scheduleNext();
+      }, rec.intervalMs);
+    };
+    scheduleNext();
+
+    rec.deadlineTimer = setTimeout(() => {
+      rec.truncated = true;
+      rec.stopped = true;
+      rec.stoppedAt = new Date().toISOString();
+      rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+      if (rec.timer) {
+        clearTimeout(rec.timer);
+        rec.timer = null;
+      }
+    }, Math.round(maxDurationSec * 1000));
+
+    return {
+      success: true,
+      recordingId,
+      tabId: rec.tabId,
+      mode: 'bidi_screenshot',
+      format: 'png',
+      effectiveFps,
+      maxDurationSec,
+      maxFrames,
+      startedAt,
+    };
+  }
+
+  async _stopRecording(context, message) {
+    let rec = message.recordingId ? this.recordings.get(String(message.recordingId)) : null;
+    if (!rec && !message.recordingId) {
+      for (const candidate of this.recordings.values()) {
+        if (candidate.context === context) {
+          rec = candidate;
+          break;
+        }
+      }
+    }
+    if (!rec) {
+      const err = /** @type {Error & { code?: string }} */ (new Error('No active recording found'));
+      err.code = 'RECORDING_NOT_FOUND';
+      throw err;
+    }
+    if (!rec.stopped) {
+      rec.stopped = true;
+      rec.stoppedAt = new Date().toISOString();
+      rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+    }
+    if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+    if (rec.deadlineTimer) { clearTimeout(rec.deadlineTimer); rec.deadlineTimer = null; }
+    if (rec.inflight) await rec.inflight.catch(() => {});
+    this.recordings.delete(rec.recordingId);
+    return {
+      success: true,
+      recordingId: rec.recordingId,
+      tabId: rec.tabId,
+      mode: 'bidi_screenshot',
+      format: rec.format,
+      startedAt: rec.startedAt,
+      stoppedAt: rec.stoppedAt || new Date().toISOString(),
+      durationMs: rec.durationMs,
+      frameCount: rec.frames.length,
+      droppedFrames: rec.droppedFrames,
+      truncated: rec.truncated,
+      width: null,
+      height: null,
+      totalBytes: rec.totalBytes,
+      frames: rec.frames,
+    };
   }
 }
 

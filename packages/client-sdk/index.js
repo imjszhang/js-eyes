@@ -879,6 +879,122 @@ class BrowserAutomation {
     const response = await this._sendRequest(browserWireAction('page.extract'), payload, options);
     return response.result;
   }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async drag(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    const fields = [
+      'fromX', 'fromY', 'fromSelector', 'fromRef',
+      'toX', 'toY', 'toSelector', 'toRef',
+      'deltaX', 'deltaY', 'button', 'steps', 'durationMs',
+    ];
+    for (const field of fields) {
+      if (params[field] !== undefined) payload[field] = params[field];
+    }
+    const callOptions = { ...options };
+    if (params.durationMs != null && Number.isFinite(Number(params.durationMs))) {
+      const minTransport = Math.ceil(Number(params.durationMs) / 1000) + 10;
+      if (callOptions.timeout == null || Number(callOptions.timeout) < minTransport) {
+        callOptions.timeout = minTransport;
+      }
+    }
+    const response = await this._sendRequest(browserWireAction('page.drag'), payload, callOptions);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async wheel(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    const fields = [
+      'deltaX', 'deltaY', 'x', 'y', 'selector', 'ref',
+      'steps', 'durationMs', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey',
+    ];
+    for (const field of fields) {
+      if (params[field] !== undefined) payload[field] = params[field];
+    }
+    const callOptions = { ...options };
+    if (params.durationMs != null && Number.isFinite(Number(params.durationMs))) {
+      const minTransport = Math.ceil(Number(params.durationMs) / 1000) + 10;
+      if (callOptions.timeout == null || Number(callOptions.timeout) < minTransport) {
+        callOptions.timeout = minTransport;
+      }
+    }
+    const response = await this._sendRequest(browserWireAction('page.wheel'), payload, callOptions);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async selectText(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    const fields = ['text', 'selector', 'ref', 'occurrence', 'scrollIntoView', 'clear'];
+    for (const field of fields) {
+      if (params[field] !== undefined) payload[field] = params[field];
+    }
+    const response = await this._sendRequest(browserWireAction('page.selectText'), payload, options);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [zoomFactorOrParams]
+   * @param {any} [options]
+   */
+  async setZoom(tabId, zoomFactorOrParams = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    if (typeof zoomFactorOrParams === 'number') {
+      payload.zoomFactor = zoomFactorOrParams;
+    } else if (zoomFactorOrParams && typeof zoomFactorOrParams === 'object' && zoomFactorOrParams.zoomFactor !== undefined) {
+      payload.zoomFactor = zoomFactorOrParams.zoomFactor;
+    }
+    const response = await this._sendRequest(browserWireAction('tab.zoom'), payload, options);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [params]
+   * @param {any} [options]
+   */
+  async startRecording(tabId, params = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    const fields = [
+      'format', 'quality', 'fps', 'everyNthFrame',
+      'maxWidth', 'maxHeight', 'maxDurationSec', 'maxFrames', 'maxBytes', 'activate',
+    ];
+    for (const field of fields) {
+      if (params[field] !== undefined) payload[field] = params[field];
+    }
+    const response = await this._sendRequest(browserWireAction('recording.start'), payload, options);
+    return response.result;
+  }
+
+  /**
+   * @param {number|string} tabId
+   * @param {any} [paramsOrId]
+   * @param {any} [options]
+   */
+  async stopRecording(tabId, paramsOrId = {}, options = {}) {
+    const payload = { tabId: parseInt(String(tabId), 10) };
+    if (typeof paramsOrId === 'string') {
+      payload.recordingId = paramsOrId;
+    } else if (paramsOrId && typeof paramsOrId === 'object' && paramsOrId.recordingId !== undefined) {
+      payload.recordingId = paramsOrId.recordingId;
+    }
+    const response = await this._sendRequest(browserWireAction('recording.stop'), payload, options);
+    return response.result;
+  }
 }
 
 module.exports = {

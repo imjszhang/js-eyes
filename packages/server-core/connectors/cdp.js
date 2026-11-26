@@ -48,6 +48,10 @@ const {
   injectCssInPage,
   getOuterHtmlInPage,
   getPageInfoInPage,
+  resolvePointInPage,
+  resolveDragPointsInPage,
+  selectTextInPage,
+  zoomInPage,
 } = pageInteractCore;
 
 function channelUserDataDirs(channel) {
@@ -161,6 +165,8 @@ class CdpConnector {
     this.downloads = new Map();
     this.pendingDialogs = new Map();
     this.networkInflight = new Map();
+    this.tabZooms = new Map();
+    this.recordings = new Map();
     this.child = null;
     this.userDataDir = null;
     this.stopped = false;
@@ -180,6 +186,11 @@ class CdpConnector {
 
   async stop() {
     this.stopped = true;
+    for (const rec of this.recordings.values()) {
+      if (rec.timer) clearTimeout(rec.timer);
+      rec.stopped = true;
+    }
+    this.recordings.clear();
     if (this.clientId) unregisterBrowserClient(this.state, this.clientId);
     if (this.rpc) this.rpc.close();
     this.rpc = null;
@@ -330,6 +341,14 @@ class CdpConnector {
       this.sessions.delete(params.targetId);
       if (session) this.sessionTargets.delete(session);
       this.pendingDialogs.delete(params.targetId);
+      this.tabZooms.delete(params.targetId);
+      for (const [recId, rec] of this.recordings.entries()) {
+        if (rec.targetId === params.targetId) {
+          if (rec.timer) clearTimeout(rec.timer);
+          rec.stopped = true;
+          this.recordings.delete(recId);
+        }
+      }
       this._refreshTabs().catch(() => {});
     }
     if (method === 'Target.targetInfoChanged' && params.targetInfo) {
@@ -363,6 +382,9 @@ class CdpConnector {
     }
     if (method === 'Network.loadingFinished' || method === 'Network.loadingFailed') {
       this._networkBump(sessionId, -1);
+    }
+    if (method === 'Page.screencastFrame') {
+      this._onScreencastFrame(sessionId, params);
     }
   }
 
@@ -700,6 +722,42 @@ class CdpConnector {
           });
           break;
         }
+        case 'drag': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._drag(targetId, message);
+          complete({ type: 'drag_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'wheel': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._wheel(targetId, message);
+          complete({ type: 'wheel_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'select_text': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._evaluate(targetId, selectTextInPage, [message]);
+          complete({ type: 'select_text_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'set_zoom': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._setZoom(targetId, message.zoomFactor);
+          complete({ type: 'set_zoom_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'record_start': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._startRecording(targetId, message);
+          complete({ type: 'record_start_complete', tabId: message.tabId, result });
+          break;
+        }
+        case 'record_stop': {
+          const targetId = this._requireTarget(message.tabId);
+          const result = await this._stopRecording(targetId, message);
+          complete({ type: 'record_stop_complete', tabId: message.tabId, result });
+          break;
+        }
         default:
           throw new Error(`Unknown action: ${type}`);
       }
@@ -728,6 +786,327 @@ class CdpConnector {
     } catch {
       return this._evaluate(targetId, navigateHistoryInPage, [direction]);
     }
+  }
+
+  async _drag(targetId, message) {
+    const resolved = await this._evaluate(targetId, resolveDragPointsInPage, [message]);
+    if (!resolved || resolved.success === false) {
+      return resolved || { success: false, error: '无法解析拖拽起止坐标' };
+    }
+    const fromX = Number.isFinite(resolved.fromX) ? Number(resolved.fromX) : Number(message.fromX || 0);
+    const fromY = Number.isFinite(resolved.fromY) ? Number(resolved.fromY) : Number(message.fromY || 0);
+    const toX = Number.isFinite(resolved.toX)
+      ? Number(resolved.toX)
+      : (Number.isFinite(message.toX) ? Number(message.toX) : fromX + Number(message.deltaX || 0));
+    const toY = Number.isFinite(resolved.toY)
+      ? Number(resolved.toY)
+      : (Number.isFinite(message.toY) ? Number(message.toY) : fromY + Number(message.deltaY || 0));
+    const button = message.button === 'right' ? 'right' : (message.button === 'middle' ? 'middle' : 'left');
+    const buttons = button === 'right' ? 2 : (button === 'middle' ? 4 : 1);
+    const steps = Math.max(1, Math.min(120, Math.round(Number(message.steps) || 12)));
+    const durationMs = Math.max(0, Math.min(15000, Math.round(message.durationMs == null ? 300 : Number(message.durationMs) || 0)));
+    const stepDelay = steps > 0 ? Math.floor(durationMs / steps) : 0;
+
+    await this._sendPage(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: fromX,
+      y: fromY,
+      button: 'none',
+      buttons: 0,
+    });
+    await this._sendPage(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: fromX,
+      y: fromY,
+      button,
+      buttons,
+      clickCount: 1,
+    });
+    for (let i = 1; i <= steps; i++) {
+      if (stepDelay > 0) await sleep(stepDelay);
+      const ratio = i / steps;
+      await this._sendPage(targetId, 'Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: fromX + (toX - fromX) * ratio,
+        y: fromY + (toY - fromY) * ratio,
+        button,
+        buttons,
+      });
+    }
+    await this._sendPage(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: toX,
+      y: toY,
+      button,
+      buttons: 0,
+      clickCount: 1,
+    });
+    return {
+      success: true,
+      mode: 'cdp',
+      from: { x: fromX, y: fromY },
+      to: { x: toX, y: toY },
+      button,
+      steps,
+      durationMs,
+    };
+  }
+
+  async _wheel(targetId, message) {
+    const resolved = await this._evaluate(targetId, resolvePointInPage, [message]);
+    if (!resolved || resolved.success === false) {
+      return resolved || { success: false, error: '无法解析滚轮位置' };
+    }
+    const x = Number.isFinite(resolved.x) ? Number(resolved.x) : Number(message.x || 0);
+    const y = Number.isFinite(resolved.y) ? Number(resolved.y) : Number(message.y || 0);
+    const deltaX = Number.isFinite(message.deltaX) ? Number(message.deltaX) : 0;
+    const deltaY = Number.isFinite(message.deltaY) ? Number(message.deltaY) : 0;
+    const steps = Math.max(1, Math.min(120, Math.round(Number(message.steps) || 1)));
+    const defaultDur = steps > 1 ? 300 : 0;
+    const durationMs = Math.max(0, Math.min(15000, Math.round(message.durationMs == null ? defaultDur : Number(message.durationMs) || 0)));
+    const stepDelay = steps > 1 ? Math.floor(durationMs / steps) : 0;
+    const modifiers = (message.altKey ? 1 : 0)
+      | (message.ctrlKey ? 2 : 0)
+      | (message.metaKey ? 4 : 0)
+      | (message.shiftKey ? 8 : 0);
+
+    for (let i = 0; i < steps; i++) {
+      await this._sendPage(targetId, 'Input.dispatchMouseEvent', {
+        type: 'mouseWheel',
+        x,
+        y,
+        deltaX: deltaX / steps,
+        deltaY: deltaY / steps,
+        modifiers,
+      });
+      if (i + 1 < steps && stepDelay > 0) await sleep(stepDelay);
+    }
+    return {
+      success: true,
+      mode: 'cdp',
+      x,
+      y,
+      deltaX,
+      deltaY,
+      steps,
+      durationMs,
+    };
+  }
+
+  async _setZoom(targetId, zoomFactor) {
+    if (zoomFactor == null) {
+      return {
+        success: true,
+        zoomFactor: this.tabZooms.get(targetId) ?? 1,
+        mode: 'cdp',
+      };
+    }
+    const factor = Number(zoomFactor) === 0 ? 1 : Number(zoomFactor);
+    if (!Number.isFinite(factor) || factor < 0.25 || factor > 5) {
+      const err = /** @type {Error & { code?: string }} */ (new Error('zoomFactor must be between 0.25 and 5 (or 0 to reset)'));
+      err.code = 'INVALID_ARGUMENT';
+      throw err;
+    }
+    try {
+      await this._sendPage(targetId, 'Emulation.setPageScaleFactor', { pageScaleFactor: factor });
+      this.tabZooms.set(targetId, factor);
+      return { success: true, zoomFactor: factor, mode: 'cdp' };
+    } catch {
+      const fallback = await this._evaluate(targetId, zoomInPage, [factor]);
+      if (fallback && fallback.success) this.tabZooms.set(targetId, factor);
+      return fallback;
+    }
+  }
+
+  _onScreencastFrame(sessionId, params) {
+    const ackSessionId = params && params.sessionId;
+    if (ackSessionId != null && this.rpc && this.rpc.connected) {
+      this.rpc.send(
+        'Page.screencastFrameAck',
+        { sessionId: ackSessionId },
+        sessionId ? { sessionId } : {},
+      ).catch(() => {});
+    }
+    const targetId = this.sessionTargets.get(sessionId);
+    let active = null;
+    for (const rec of this.recordings.values()) {
+      if (rec.stopped) continue;
+      if ((sessionId && rec.sessionId === sessionId) || (targetId && rec.targetId === targetId)) {
+        active = rec;
+        break;
+      }
+    }
+    if (!active) return;
+    const rawData = typeof params?.data === 'string' ? params.data : '';
+    if (!rawData) return;
+    const dataUrl = `data:image/${active.format};base64,${rawData}`;
+    const byteSize = Buffer.byteLength(dataUrl, 'utf8');
+    if (active.frames.length >= active.maxFrames || active.totalBytes + byteSize > active.maxBytes) {
+      active.droppedFrames += 1;
+      active.truncated = true;
+      this._haltCdpScreencast(active);
+      return;
+    }
+    const meta = params.metadata || {};
+    const width = Number.isFinite(meta.deviceWidth) ? Math.round(meta.deviceWidth) : active.width;
+    const height = Number.isFinite(meta.deviceHeight) ? Math.round(meta.deviceHeight) : active.height;
+    active.width = width;
+    active.height = height;
+    active.totalBytes += byteSize;
+    active.frames.push({
+      index: active.frames.length,
+      timestampMs: Math.max(0, Date.now() - active.startMono),
+      dataUrl,
+      width: width ?? null,
+      height: height ?? null,
+    });
+  }
+
+  _haltCdpScreencast(rec) {
+    if (rec.stopped) return;
+    rec.stopped = true;
+    rec.stoppedAt = new Date().toISOString();
+    rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+    if (rec.timer) {
+      clearTimeout(rec.timer);
+      rec.timer = null;
+    }
+    this._sendPage(rec.targetId, 'Page.stopScreencast', {}).catch(() => {});
+  }
+
+  async _startRecording(targetId, message) {
+    for (const existing of this.recordings.values()) {
+      if (existing.targetId === targetId && !existing.stopped) {
+        const err = /** @type {Error & { code?: string }} */ (new Error('A recording is already active on this tab'));
+        err.code = 'RECORDING_ALREADY_ACTIVE';
+        throw err;
+      }
+    }
+    const format = message.format === 'png' ? 'png' : 'jpeg';
+    const quality = Number.isFinite(message.quality)
+      ? Math.max(1, Math.min(100, Math.round(Number(message.quality))))
+      : 80;
+    const maxDurationSec = Number.isFinite(message.maxDurationSec)
+      ? Math.max(0.5, Math.min(120, Number(message.maxDurationSec)))
+      : 30;
+    const maxFrames = Number.isFinite(message.maxFrames)
+      ? Math.max(1, Math.min(1200, Math.round(Number(message.maxFrames))))
+      : 300;
+    const maxBytes = Number.isFinite(message.maxBytes)
+      ? Math.max(65536, Math.min(67108864, Math.round(Number(message.maxBytes))))
+      : 33554432;
+    const everyNthFrame = Number.isFinite(message.everyNthFrame)
+      ? Math.max(1, Math.min(60, Math.round(Number(message.everyNthFrame))))
+      : (Number.isFinite(message.fps) && Number(message.fps) > 0 && Number(message.fps) < 60
+        ? Math.max(1, Math.round(60 / Number(message.fps)))
+        : 1);
+
+    if (message.activate === true) {
+      await this._sendPage(targetId, 'Page.bringToFront', {}).catch(() => {});
+    }
+
+    const sessionId = await this._sessionFor(targetId);
+    const crypto = require('crypto');
+    const recordingId = `rec_${crypto.randomUUID().slice(0, 12)}`;
+    const startedAt = new Date().toISOString();
+    const rec = {
+      recordingId,
+      tabId: Number(message.tabId),
+      targetId,
+      sessionId,
+      format,
+      quality,
+      maxDurationSec,
+      maxFrames,
+      maxBytes,
+      startedAt,
+      stoppedAt: null,
+      startMono: Date.now(),
+      durationMs: 0,
+      frames: [],
+      totalBytes: 0,
+      droppedFrames: 0,
+      truncated: false,
+      width: null,
+      height: null,
+      stopped: false,
+      timer: null,
+    };
+
+    const startParams = { format, everyNthFrame };
+    if (format === 'jpeg') startParams.quality = quality;
+    if (Number.isFinite(message.maxWidth)) startParams.maxWidth = Math.round(Number(message.maxWidth));
+    if (Number.isFinite(message.maxHeight)) startParams.maxHeight = Math.round(Number(message.maxHeight));
+
+    this.recordings.set(recordingId, rec);
+    try {
+      await this._sendPage(targetId, 'Page.startScreencast', startParams);
+    } catch (error) {
+      this.recordings.delete(recordingId);
+      throw error;
+    }
+
+    rec.timer = setTimeout(() => {
+      rec.truncated = true;
+      this._haltCdpScreencast(rec);
+    }, Math.round(maxDurationSec * 1000));
+
+    return {
+      success: true,
+      recordingId,
+      tabId: rec.tabId,
+      mode: 'screencast',
+      format,
+      everyNthFrame,
+      maxDurationSec,
+      maxFrames,
+      startedAt,
+    };
+  }
+
+  async _stopRecording(targetId, message) {
+    let rec = message.recordingId ? this.recordings.get(String(message.recordingId)) : null;
+    if (!rec && !message.recordingId) {
+      for (const candidate of this.recordings.values()) {
+        if (candidate.targetId === targetId) {
+          rec = candidate;
+          break;
+        }
+      }
+    }
+    if (!rec) {
+      const err = /** @type {Error & { code?: string }} */ (new Error('No active recording found'));
+      err.code = 'RECORDING_NOT_FOUND';
+      throw err;
+    }
+    if (!rec.stopped) {
+      rec.stopped = true;
+      rec.stoppedAt = new Date().toISOString();
+      rec.durationMs = Math.max(0, Date.now() - rec.startMono);
+      if (rec.timer) {
+        clearTimeout(rec.timer);
+        rec.timer = null;
+      }
+      await this._sendPage(rec.targetId, 'Page.stopScreencast', {}).catch(() => {});
+    }
+    this.recordings.delete(rec.recordingId);
+    return {
+      success: true,
+      recordingId: rec.recordingId,
+      tabId: rec.tabId,
+      mode: 'screencast',
+      format: rec.format,
+      startedAt: rec.startedAt,
+      stoppedAt: rec.stoppedAt || new Date().toISOString(),
+      durationMs: rec.durationMs,
+      frameCount: rec.frames.length,
+      droppedFrames: rec.droppedFrames,
+      truncated: rec.truncated,
+      width: rec.width,
+      height: rec.height,
+      totalBytes: rec.totalBytes,
+      frames: rec.frames,
+    };
   }
 
   async _handleDialog(targetId, message) {

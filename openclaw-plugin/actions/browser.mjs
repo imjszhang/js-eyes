@@ -73,6 +73,14 @@ function formatOpenclawResult(operation, raw, params) {
       return JSON.stringify(raw, null, 2);
     case "file.upload":
       return JSON.stringify({ success: true, uploadedFiles: raw }, null, 2);
+    case "recording.stop": {
+      const rec = raw && typeof raw === "object" ? raw : {};
+      const { frames, ...summary } = rec;
+      return JSON.stringify({
+        ...summary,
+        frameCount: rec.frameCount ?? (Array.isArray(frames) ? frames.length : 0),
+      }, null, 2);
+    }
     default:
       return typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
   }

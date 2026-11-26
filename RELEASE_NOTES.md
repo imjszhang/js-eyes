@@ -1,9 +1,47 @@
 # Release Notes
 
-## v2.11.3
+## v2.12.0
 
-- Add Docker Compose support for the JS Eyes server with persistent runtime data, a health check, and a port published on host loopback.
-- Document how to connect the host browser extension and transfer its authentication token.
+Minor release adding first-class drag, wheel, text selection, tab zoom, and tab
+frame recording operations across the protocol, Client SDK, browser connectors
+(extension, CDP, BiDi), MCP server, and OpenClaw adapter, plus Docker Compose
+server deployment support. Platform packages and browser extensions advance
+together; site skills and optional visual libraries retain their independent
+versions.
+
+### Highlights
+
+- **First-class page interaction & tab recording**:
+  - `page.drag` (`browser_drag`): drag by coordinates, CSS selectors, page refs,
+    or deltas with configurable button, step count, and duration.
+  - `page.wheel` (`browser_wheel`): dispatch wheel events at coordinates,
+    selectors, or refs with step interpolation and modifier keys.
+  - `page.selectText` (`browser_select_text`): select matching page text or
+    element contents (with occurrence selection, scroll-into-view, and clear).
+  - `tab.zoom` (`browser_zoom`): read or set per-tab zoom factor.
+  - `recording.start` / `recording.stop` (`browser_record_start` /
+    `browser_record_stop`): bounded tab frame recording with configurable
+    format, quality, FPS, resolution, duration, frame, and byte limits.
+- **Cross-surface support**:
+  - Client SDK methods: `drag`, `wheel`, `selectText`, `setZoom`,
+    `startRecording`, and `stopRecording`.
+  - Implemented across Chrome/Firefox extensions, CDP, and BiDi connectors.
+  - MCP safe profile now registers 28 tools (full profile: 36 tools);
+    `recording.stop` returns structured metadata alongside bounded frame results
+    in MCP and a frame-count summary in the OpenClaw adapter.
+- **Docker Compose support**:
+  - Add `Dockerfile`, `compose.yaml`, and `.dockerignore` for running the JS
+    Eyes server with persistent runtime data, a health check, and a port
+    published on host loopback.
+  - Document how to connect the host browser extension and transfer its
+    authentication token.
+
+### Upgrade Notes
+
+Update coordinated platform components and reload the Chrome/Firefox browser
+extension at **2.12.0** so the new drag, wheel, text selection, zoom, and tab
+recording actions are available. Persistent Firefox installation requires a
+signed XPI produced by the protected release workflow.
 
 ## v2.11.2
 

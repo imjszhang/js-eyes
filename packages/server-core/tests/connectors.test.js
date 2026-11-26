@@ -111,6 +111,12 @@ describe('CDP connector', () => {
         case 'Target.setAutoAttach':
         case 'Runtime.runIfWaitingForDebugger':
         case 'DOM.setFileInputFiles':
+        case 'Input.dispatchMouseEvent':
+        case 'Emulation.setPageScaleFactor':
+        case 'Page.bringToFront':
+        case 'Page.startScreencast':
+        case 'Page.stopScreencast':
+        case 'Page.screencastFrameAck':
           return {};
         case 'Page.getNavigationHistory':
           return {
@@ -217,6 +223,12 @@ describe('CDP connector', () => {
         files: [{ name: 'a.txt', base64: Buffer.from('hi').toString('base64') }],
       },
       capture_screenshot: { tabId: 1 },
+      drag: { tabId: 1, fromX: 10, fromY: 10, deltaX: 20, deltaY: 0, steps: 2, durationMs: 0 },
+      wheel: { tabId: 1, deltaY: 100, steps: 1, durationMs: 0 },
+      select_text: { tabId: 1, text: 'hi' },
+      set_zoom: { tabId: 1, zoomFactor: 1.5 },
+      record_start: { tabId: 1, format: 'jpeg', maxDurationSec: 5 },
+      record_stop: { tabId: 1 },
     };
     connector.pendingDialogs.set('t1', { type: 'alert' });
     connector.downloads.set('d1', {
@@ -286,6 +298,41 @@ describe('CDP connector', () => {
     assert.equal(response.status, 'success');
     assert.equal(JSON.stringify(response).includes('secret-value'), false);
     assert.ok(response.set >= 1);
+  });
+
+  it('captures and acks CDP screencast frames during recording', async () => {
+    const auto = createMockSocket();
+    state.automationClients.set('auto-rec', { socket: auto, anonymous: false });
+    await handleAutomationMessage(
+      JSON.stringify({ action: 'record_start', tabId: 1, format: 'jpeg', quality: 80, requestId: 'rec-start-1' }),
+      'auto-rec',
+      auto,
+      state,
+    );
+    const started = await waitForMessage(auto, 'rec-start-1');
+    assert.equal(started.status, 'success');
+    assert.equal(started.result.mode, 'screencast');
+
+    connector._onEvent({
+      method: 'Page.screencastFrame',
+      sessionId: 's1',
+      params: { data: 'QUFB', sessionId: 42, metadata: { deviceWidth: 1280, deviceHeight: 720 } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(cdpCalls.some((msg) => msg.method === 'Page.screencastFrameAck' && msg.params?.sessionId === 42));
+
+    await handleAutomationMessage(
+      JSON.stringify({ action: 'record_stop', tabId: 1, recordingId: started.result.recordingId, requestId: 'rec-stop-1' }),
+      'auto-rec',
+      auto,
+      state,
+    );
+    const stopped = await waitForMessage(auto, 'rec-stop-1');
+    assert.equal(stopped.status, 'success');
+    assert.equal(stopped.result.frameCount, 1);
+    assert.equal(stopped.result.width, 1280);
+    assert.equal(stopped.result.height, 720);
+    assert.equal(stopped.result.frames[0].dataUrl, 'data:image/jpeg;base64,QUFB');
   });
 });
 

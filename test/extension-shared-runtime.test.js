@@ -242,6 +242,8 @@ describe('extension shared runtime contract', () => {
       '_runPageInteract', '_complete', '_fail', 'handleClick', 'handleFill', 'handleScroll', 'handleWaitFor',
       'handleGetPageState', 'handleSendKeys', 'handleNavigateHistory', 'handleSelectOption',
       'handleHandleDialog', 'handleListDownloads', 'handleWaitDownload',
+      'handleDrag', 'handleWheel', 'handleSelectText', 'handleSetZoom',
+      '_captureRecordingFrame', 'handleRecordStart', 'handleRecordStop',
       'handleExtract',
       'handleContentScriptRequest', 'handleGetTabsRequest',
       'handleOpenUrlRequest', 'handleCloseTabRequest', 'handleGetCookiesRequest',
@@ -409,5 +411,60 @@ describe('persistent extension instance identity',()=>{
     let sends=0;const obj={...methods,ws:{readyState:1},sendRawMessage:()=>sends++};
     const pending=obj.sendInstanceInit({type:'init'});obj.ws={readyState:1};resolve({browserInstanceId:'12345678-1234-4123-8123-123456789abc'});
     assert.equal(await pending,false);assert.equal(sends,0);
+  });
+});
+
+describe('extension zoom and tab recording handlers', () => {
+  it('reads and sets zoom through tabs API and records active tab frames', async () => {
+    let zoom = 1;
+    let active = false;
+    let captureCount = 0;
+    const sent = [];
+    const extensionApi = {
+      tabs: {
+        MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND: 2,
+        async get(tabId) {
+          return { id: tabId, windowId: 9, active, width: 1280, height: 720 };
+        },
+        async update(_tabId, props) {
+          if (props.active) active = true;
+        },
+        async getZoom() {
+          return zoom;
+        },
+        async setZoom(_tabId, value) {
+          zoom = value === 0 ? 1 : value;
+        },
+        async captureVisibleTab() {
+          captureCount += 1;
+          return `data:image/jpeg;base64,FRAME${captureCount}`;
+        },
+      },
+    };
+    const methods = sharedBrowserControl.createMethods(extensionApi);
+    const control = {
+      ...methods,
+      sendMessage(msg) { sent.push(msg); },
+    };
+
+    await control.handleSetZoom({ tabId: 5, zoomFactor: 1.5, requestId: 'z1' });
+    assert.equal(sent.at(-1).type, 'set_zoom_complete');
+    assert.equal(sent.at(-1).result.zoomFactor, 1.5);
+
+    await control.handleRecordStart({ tabId: 5, requestId: 'r0' });
+    assert.equal(sent.at(-1).type, 'error');
+    assert.equal(sent.at(-1).code, 'TAB_NOT_ACTIVE');
+
+    await control.handleRecordStart({ tabId: 5, activate: true, fps: 30, format: 'jpeg', requestId: 'r1' });
+    const started = sent.at(-1);
+    assert.equal(started.type, 'record_start_complete');
+    assert.equal(started.result.mode, 'visible_tab');
+    assert.ok(started.result.effectiveFps <= 2);
+
+    await control.handleRecordStop({ tabId: 5, recordingId: started.result.recordingId, requestId: 'r2' });
+    const stopped = sent.at(-1);
+    assert.equal(stopped.type, 'record_stop_complete');
+    assert.equal(stopped.result.frameCount, 1);
+    assert.equal(stopped.result.frames[0].dataUrl, 'data:image/jpeg;base64,FRAME1');
   });
 });

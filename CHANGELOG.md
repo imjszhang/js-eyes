@@ -4,6 +4,45 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-11-26
+
+### Added
+
+- First-class browser operations: `page.drag` (`browser_drag`), `page.wheel`
+  (`browser_wheel`), `page.selectText` (`browser_select_text`), `tab.zoom`
+  (`browser_zoom`), and bounded tab frame recording `recording.start` /
+  `recording.stop` (`browser_record_start` / `browser_record_stop`).
+- Client SDK methods (`drag`, `wheel`, `selectText`, `setZoom`,
+  `startRecording`, `stopRecording`), WebSocket handler routing, Chrome/Firefox
+  extension handlers, and CDP/BiDi connector implementations.
+- MCP tool registrations (safe profile: 28 tools; full profile: 36 tools) with
+  dedicated `recordingResult` adapter, plus OpenClaw `recording.stop` summary
+  formatting.
+- Docker Compose deployment setup (`Dockerfile`, `compose.yaml`,
+  `.dockerignore`) with persistent runtime data, health check, loopback-bound
+  port, and host extension connection documentation.
+
+### Changed
+
+- Coordinated platform packages, CLI, OpenClaw adapter, and Chrome/Firefox
+  extensions advance to 2.12.0; independently versioned site skills and optional
+  libraries are unchanged.
+
+## [2.11.2] - 2026-11-23
+
+### Fixed
+
+- Persist extension instance identity and deduplicate reconnecting browser
+  instances with `BROWSER_REPLACED` for superseded pending operations.
+- Require authentication for queue recovery and release stuck browser request
+  slots.
+- Update archive traversal dependency to use patched minimatch
+  (`GHSA-g3hv-75wg-m249`).
+
+### Changed
+
+- Coordinated platform packages and Chrome/Firefox extensions advance to 2.11.2.
+
 ## [2.11.1] - 2026-10-25
 
 ### Fixed

@@ -71,6 +71,32 @@ function fakeSession() {
       return { domain: params.domain, copied: 2, skipped: 1, reasons: [{ name: 'x', reason: 'expired' }] };
     },
     async uploadFileToTab() { return ['a.txt']; },
+    async drag() { return { success: true }; },
+    async wheel() { return { success: true }; },
+    async selectText() { return { success: true, text: 'hello' }; },
+    async setZoom() { return { success: true, zoomFactor: 1.5 }; },
+    async startRecording() { return { success: true, recordingId: 'rec_1', mode: 'visible_tab', format: 'jpeg' }; },
+    async stopRecording() {
+      return {
+        success: true,
+        recordingId: 'rec_1',
+        tabId: 7,
+        mode: 'visible_tab',
+        format: 'jpeg',
+        durationMs: 1200,
+        frameCount: 3,
+        droppedFrames: 0,
+        truncated: false,
+        width: 1280,
+        height: 720,
+        totalBytes: 90,
+        frames: [
+          { index: 0, timestampMs: 0, dataUrl: 'data:image/jpeg;base64,YWJj' },
+          { index: 1, timestampMs: 600, dataUrl: 'data:image/jpeg;base64,ZGVm' },
+          { index: 2, timestampMs: 1200, dataUrl: 'data:image/jpeg;base64,Z2hp' },
+        ],
+      };
+    },
   };
   return {
     calls,
@@ -126,9 +152,11 @@ describe('native MCP protocol', () => {
   it('exposes only safe tools by default with annotations', async () => {
     const { client } = await connect('safe');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 22);
+    assert.equal(listed.tools.length, 28);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_execute_script'), false);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_click'), true);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_drag'), true);
+    assert.equal(listed.tools.some((tool) => tool.name === 'browser_record_start'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_extract_page'), true);
     const tabs = listed.tools.find((tool) => tool.name === 'browser_list_tabs');
     assert.equal(tabs.annotations.readOnlyHint, true);
@@ -137,12 +165,26 @@ describe('native MCP protocol', () => {
   it('exposes sensitive tools only in the full profile', async () => {
     const { client } = await connect('full');
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 30);
+    assert.equal(listed.tools.length, 36);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_get_cookies'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_sync_cookies'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_set_cookies'), false);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_list_downloads'), true);
     assert.equal(listed.tools.some((tool) => tool.name === 'browser_page_state'), true);
+  });
+
+  it('formats browser_record_stop with metadata and preview images without dumping frame base64 in text', async () => {
+    const { client } = await connect('safe');
+    const result = await client.callTool({
+      name: 'browser_record_stop',
+      arguments: { tabId: 7, recordingId: 'rec_1' },
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent.frameCount, 3);
+    assert.equal(result.structuredContent.previewImageCount, 2);
+    assert.equal(result.content[0].type, 'text');
+    assert.equal(result.content[0].text.includes('data:image/'), false);
+    assert.equal(result.content.filter((c) => c.type === 'image').length, 2);
   });
 
   it('formats cookie sync as counts without cookie values', async () => {

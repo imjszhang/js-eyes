@@ -6,7 +6,7 @@ const {
   listBrowserOperationsForProfile,
 } = require('@js-eyes/protocol');
 const { errorResult, FacadeError } = require('./error-adapter');
-const { dataResult, screenshotResult } = require('./result-adapter');
+const { dataResult, recordingResult, screenshotResult } = require('./result-adapter');
 
 function annotations(options = {}) {
   return {
@@ -156,6 +156,8 @@ async function runBrowserOperation(session, config, operation, args) {
       }, { maxChars });
     case 'screenshot.capture':
       return screenshotResult(raw);
+    case 'recording.stop':
+      return recordingResult(raw);
     case 'script.execute':
       return dataResult(`JavaScript executed in tab ${args.tabId}.`, raw, {
         maxChars,

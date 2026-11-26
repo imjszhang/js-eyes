@@ -72,6 +72,89 @@ describe('in-page state and refs', () => {
     assert.equal(selected.success, true);
     assert.equal(selected.value, 'b');
   });
+
+  it('drags, wheels, selects text across nodes, and zooms in page', async () => {
+    const events = [];
+    const scrolled = [];
+    const textNodeA = { nodeType: 3, nodeValue: 'Hello ', parentElement: { scrollIntoView() {} } };
+    const textNodeB = { nodeType: 3, nodeValue: 'Code Video!', parentElement: { scrollIntoView() {} } };
+    const body = {
+      nodeType: 1,
+      tagName: 'BODY',
+      scrollHeight: 1000,
+      childNodes: [
+        { nodeType: 1, tagName: 'P', childNodes: [textNodeA, { nodeType: 1, tagName: 'STRONG', childNodes: [textNodeB] }] },
+      ],
+      dispatchEvent(ev) { events.push(ev); return true; },
+      scrollIntoView() {},
+    };
+    let activeRange = null;
+    const selection = {
+      removeAllRanges() { activeRange = null; },
+      addRange(r) { activeRange = r; },
+      toString() { return activeRange ? 'Hello Code Video' : ''; },
+    };
+
+    global.window = {
+      innerWidth: 1280,
+      innerHeight: 720,
+      __jsEyesRefStore: null,
+      scrollBy(dx, dy) { scrolled.push([dx, dy]); },
+      getSelection() { return selection; },
+    };
+    global.document = {
+      body,
+      documentElement: { style: { zoom: '' } },
+      elementFromPoint() { return body; },
+      querySelector() { return body; },
+      createRange() {
+        return {
+          setStart(n, o) { this.startNode = n; this.startOffset = o; },
+          setEnd(n, o) { this.endNode = n; this.endOffset = o; },
+          selectNodeContents(n) { this.node = n; },
+          getBoundingClientRect() { return { x: 10, y: 20, width: 120, height: 24 }; },
+        };
+      },
+    };
+    global.Event = class Event { constructor(type, opts) { this.type = type; Object.assign(this, opts); } };
+    global.MouseEvent = class MouseEvent extends global.Event {};
+    global.PointerEvent = class PointerEvent extends global.Event {};
+    global.WheelEvent = class WheelEvent extends global.Event {};
+
+    delete require.cache[require.resolve('../page-interact-core')];
+    const { dragInPage, wheelInPage, selectTextInPage, zoomInPage } = require('../page-interact-core');
+
+    const dragRes = await dragInPage({ fromX: 10, fromY: 20, deltaX: 40, deltaY: 10, steps: 2, durationMs: 0 });
+    assert.equal(dragRes.success, true);
+    assert.deepEqual(dragRes.to, { x: 50, y: 30 });
+    assert.ok(events.some((e) => e.type === 'mousedown'));
+    assert.ok(events.some((e) => e.type === 'mouseup'));
+
+    const wheelRes = await wheelInPage({ deltaY: 120, steps: 3, durationMs: 0 });
+    assert.equal(wheelRes.success, true);
+    assert.equal(scrolled.length, 3);
+    assert.deepEqual(scrolled[0], [0, 40]);
+
+    const selRes = selectTextInPage({ text: 'Hello Code Video' });
+    assert.equal(selRes.success, true);
+    assert.equal(selRes.text, 'Hello Code Video');
+    assert.equal(selRes.matchCount, 1);
+    assert.deepEqual(selRes.rect, { x: 10, y: 20, width: 120, height: 24 });
+    assert.equal(activeRange.startNode, textNodeA);
+    assert.equal(activeRange.endNode, textNodeB);
+
+    const cleared = selectTextInPage({ clear: true });
+    assert.equal(cleared.success, true);
+    assert.equal(activeRange, null);
+
+    const z1 = zoomInPage(1.5);
+    assert.equal(z1.success, true);
+    assert.equal(z1.zoomFactor, 1.5);
+    assert.equal(global.document.documentElement.style.zoom, '1.5');
+    assert.equal(zoomInPage(null).zoomFactor, 1.5);
+    assert.equal(zoomInPage(0).zoomFactor, 1);
+    assert.equal(global.document.documentElement.style.zoom, '');
+  });
 });
 
 function loadWithDom(spec) {
