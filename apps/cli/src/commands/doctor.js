@@ -48,12 +48,13 @@ function readPluginVersion() {
 }
 
 function getLocalVersions() {
+  const sdkVersion = readPackageVersion('@js-eyes/client-sdk');
   return {
     cli: pkg.version,
-    protocol: readPackageVersion('@js-eyes/protocol'),
-    config: readPackageVersion('@js-eyes/config'),
-    runtimePaths: readPackageVersion('@js-eyes/runtime-paths'),
-    serverCore: readPackageVersion('@js-eyes/server-core'),
+    protocol: sdkVersion,
+    config: sdkVersion,
+    runtimePaths: sdkVersion,
+    serverCore: pkg.version,
     openclawPlugin: readPluginVersion(),
   };
 }
@@ -312,7 +313,7 @@ async function commandDoctor(flags) {
     print(`  cdp endpoint host: unavailable (${error.message})`);
   }
   try {
-    const { channelUserDataDirs, readDevToolsActivePort } = require('@js-eyes/server-core/connectors/cdp');
+    const { channelUserDataDirs, readDevToolsActivePort } = require('../../server-core/connectors/cdp');
     const dirs = channelUserDataDirs(browser.transports.cdp.channel);
     const active = dirs.map((dir) => readDevToolsActivePort(dir)).find(Boolean);
     print(`  DevToolsActivePort: ${active ? `127.0.0.1:${active.port}` : 'not found'}`);

@@ -14,15 +14,10 @@ function read(relativePath) {
 }
 
 describe('controlled release contract', () => {
-  it('publishes the runtime workspaces followed by the public CLI', () => {
-    assert.equal(RELEASE_PACKAGES.length, 14);
-    assert.equal(
-      RELEASE_PACKAGES.some((entry) => entry.name === '@js-eyes/skill-worker'),
-      false,
-    );
-    assert.deepEqual(RELEASE_PACKAGES.slice(-3).map((entry) => entry.name), [
-      '@js-eyes/mcp-server',
-      '@js-eyes/native-host',
+  it('publishes the consolidated client-sdk followed by the public js-eyes CLI', () => {
+    assert.equal(RELEASE_PACKAGES.length, 2);
+    assert.deepEqual(RELEASE_PACKAGES.map((entry) => entry.name), [
+      '@js-eyes/client-sdk',
       'js-eyes',
     ]);
     for (const entry of RELEASE_PACKAGES) {

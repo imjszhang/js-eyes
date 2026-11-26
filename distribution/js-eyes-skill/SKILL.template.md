@@ -127,7 +127,7 @@ When several browser clients are connected, pass the exact `clientId` returned b
 
 ## OpenClaw setup
 
-The ClawHub/bundle deployment uses the runtime packages and optional adapter
+The skill bundle deployment uses the runtime packages and optional adapter
 shipped under `{baseDir}`:
 
 1. Run `npm install` in `{baseDir}` with Node.js 22 or newer.

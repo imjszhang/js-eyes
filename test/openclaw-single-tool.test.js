@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { setConfigValue } = require('../packages/config');
+const { setConfigValue } = require('../packages/client-sdk/config');
 
 let tempDir = null;
 let previousHome = null;

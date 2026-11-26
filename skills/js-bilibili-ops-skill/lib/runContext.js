@@ -4,7 +4,7 @@ const {
   createRunId,
   createUrlSkillRunContext,
   resolveRecordingState,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const { extractVideoId } = require('./bilibiliUtils');
 
 function normalizeBilibiliUrl(inputUrl) {

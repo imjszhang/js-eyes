@@ -225,7 +225,7 @@ describe('extension shared runtime contract', () => {
   it('keeps extension page-interact-core identical to the protocol implementation', () => {
     assert.equal(
       read('extensions/shared/page-interact-core.js'),
-      read('packages/protocol/page-interact-core.js'),
+      read('packages/client-sdk/protocol/page-interact-core.js'),
     );
   });
 

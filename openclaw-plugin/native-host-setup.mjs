@@ -3,7 +3,7 @@ import nodePath from "node:path";
 
 const require = createRequire(import.meta.url);
 
-const nativeHost = require("@js-eyes/native-host");
+const nativeHost = require("js-eyes/native-host");
 const nativeHostInstaller = nativeHost;
 const {
   CHROMIUM_BROWSERS,

@@ -6,7 +6,7 @@ const {
   readCacheEntry,
   writeCacheEntry,
   appendHistory,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const {
   wrapInjectCall,
   loadVisualKitSource,

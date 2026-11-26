@@ -4,7 +4,7 @@ const {
   createRunId,
   createUrlSkillRunContext,
   resolveRecordingState,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 
 function normalizeJikeUrl(inputUrl) {
   if (typeof inputUrl !== 'string') {

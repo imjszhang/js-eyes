@@ -45,6 +45,7 @@ function printHelp() {
   print('  js-eyes openclaw plugin-path');
   print('  js-eyes extension download <chrome|firefox> [--output /tmp/file]');
   print('  js-eyes native-host install|uninstall|status [--browser all|chrome|firefox|chromium|edge|brave]');
+  print('  js-eyes mcp [--tool-profile safe|full]');
 }
 
 module.exports = { printHelp };

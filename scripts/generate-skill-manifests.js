@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { buildSkillManifest } = require('@js-eyes/skill-scaffold');
+const { buildSkillManifest } = require('@js-eyes/client-sdk/skill-scaffold');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_ROOT = path.join(ROOT, 'skills');

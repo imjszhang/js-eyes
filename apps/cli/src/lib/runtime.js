@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('fs');
-const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, isLoopbackHost } = require('@js-eyes/protocol');
+const { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, isLoopbackHost } = require('@js-eyes/client-sdk/protocol');
 
 function getServerOptions(flags, config) {
   return {

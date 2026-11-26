@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 
 const { compareSemver, parseSemver, commandSkills } = require('../apps/cli/src/cli');
 const { createZipArchive } = require('../packages/devtools/lib/build/zip-archive');
-const { setConfigValue } = require('@js-eyes/config');
+const { setConfigValue } = require('@js-eyes/client-sdk/config');
 
 describe('compareSemver / parseSemver', () => {
   it('parses standard x.y.z strings', () => {

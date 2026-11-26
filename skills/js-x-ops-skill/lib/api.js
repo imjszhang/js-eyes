@@ -27,7 +27,7 @@ const {
     recordStep,
     writeCacheEntry,
     writeDebugBundle,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const {
     retryWithBackoff,
     createSafeExecuteScript,

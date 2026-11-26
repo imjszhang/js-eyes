@@ -54,14 +54,7 @@ const MAIN_SKILL_STAGE_DIR = path.join(SKILL_BUNDLE_STAGE_ROOT, 'js-eyes');
 const MAIN_SKILL_DIST_ASSET = (version) => path.join(DIST_DIR, `js-eyes-skill-v${version}.zip`);
 const INSTALL_SCRIPTS = ['install.sh', 'install.ps1'];
 const BUNDLE_RUNTIME_PACKAGES = [
-  'skill-contract',
-  'protocol',
-  'runtime-paths',
-  'config',
   'client-sdk',
-  'skill-recording',
-  'skill-runtime',
-  'server-core',
 ];
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
 const SITE_URL = 'https://js-eyes.com';

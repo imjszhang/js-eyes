@@ -21,7 +21,7 @@ on:
           - latest
           - next
       publish_npm:
-        description: Publish all nine npm packages
+        description: Publish both npm packages (@js-eyes/client-sdk and js-eyes)
         required: true
         default: true
         type: boolean

@@ -5,7 +5,7 @@ const {
   createDebugState,
   recordDomStat,
   recordStep,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 
 const WECHAT_CONTENT_SELECTOR = '#js_content, .rich_media_content';
 const WECHAT_TITLE_SELECTOR = '.rich_media_title';

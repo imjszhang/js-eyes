@@ -12,9 +12,9 @@ const {
   resolveSources,
   runSkillCli,
 } = require('../command-context');
-const { SkillHostService } = require('@js-eyes/skill-runtime');
-const { checkCompatibility } = require('@js-eyes/skill-contract');
-const { PROTOCOL_VERSION } = require('@js-eyes/protocol');
+const { SkillHostService } = require('@js-eyes/client-sdk/skill-runtime');
+const { checkCompatibility } = require('@js-eyes/client-sdk/skill-contract');
+const { PROTOCOL_VERSION } = require('@js-eyes/client-sdk/protocol');
 const path = require('path');
 
 function assertExecutionAllowed(skill, config, paths) {

@@ -1,7 +1,7 @@
 'use strict';
 
 const pkg = require('../package.json');
-const { appendHistory, readCacheEntry, writeCacheEntry, writeDebugBundle } = require('@js-eyes/skill-recording');
+const { appendHistory, readCacheEntry, writeCacheEntry, writeDebugBundle } = require('@js-eyes/client-sdk/skill-recording');
 const { createRunContext } = require('./runContext');
 const {
   getBilibiliSubtitlesResult,

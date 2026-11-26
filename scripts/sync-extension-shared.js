@@ -6,7 +6,7 @@ const path = require('path');
 const {
   FORWARDABLE_ACTIONS,
   SENSITIVE_BROWSER_ACTIONS,
-} = require('../packages/protocol');
+} = require('../packages/client-sdk/protocol');
 const {
   EXTENSION_SHARED_COPIES,
   EXTENSIONS_DIR,

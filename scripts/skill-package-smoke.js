@@ -9,7 +9,7 @@ const {
   buildSubSkillZip,
   discoverSubSkills,
 } = require('../packages/devtools/lib/build/skills-registry');
-const { extractZipFile } = require('../packages/skill-install/zip-extract');
+const { extractZipFile } = require('../packages/client-sdk/skill-install/zip-extract');
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'js-eyes-skill-package-smoke-'));

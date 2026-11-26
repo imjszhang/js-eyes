@@ -1,14 +1,51 @@
 {
   "name": "@js-eyes/client-sdk",
   "version": "2.12.0",
-  "description": "JS Eyes BrowserAutomation client SDK",
+  "description": "JS Eyes client SDK, browser protocol, policy engine, config, and host-neutral Skill Runtime",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./protocol": "./protocol/index.js",
+    "./protocol/*": "./protocol/*.js",
+    "./protocol/*.js": "./protocol/*.js",
+    "./policy": "./policy/index.js",
+    "./policy/*": "./policy/*.js",
+    "./policy/*.js": "./policy/*.js",
+    "./runtime-paths": "./runtime-paths/index.js",
+    "./runtime-paths/*": "./runtime-paths/*.js",
+    "./runtime-paths/*.js": "./runtime-paths/*.js",
+    "./config": "./config/index.js",
+    "./skill-contract": "./skill-contract/index.js",
+    "./skill-contract/*": "./skill-contract/*.js",
+    "./skill-contract/*.js": "./skill-contract/*.js",
+    "./skill-install": "./skill-install/index.js",
+    "./skill-install/*": "./skill-install/*.js",
+    "./skill-install/*.js": "./skill-install/*.js",
+    "./skill-recording": "./skill-recording/index.js",
+    "./skill-runtime": "./skill-runtime/index.js",
+    "./skill-runtime/*": "./skill-runtime/*.js",
+    "./skill-runtime/*.js": "./skill-runtime/*.js",
+    "./skill-scaffold": "./skill-scaffold/index.js",
+    "./package.json": "./package.json"
+  },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js tests/*/*.test.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "protocol/",
+    "policy/",
+    "runtime-paths/",
+    "config/",
+    "skill-contract/",
+    "skill-install/",
+    "skill-recording/",
+    "skill-runtime/",
+    "skill-scaffold/"
   ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "license": "MIT",
   "author": "imjszhang <ortle3x3@gmail.com>",
   "homepage": "https://js-eyes.com",
@@ -25,15 +62,14 @@
     "sdk",
     "browser-automation",
     "websocket",
+    "skills",
     "openclaw"
   ],
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@js-eyes/policy": "2.12.0",
-    "@js-eyes/protocol": "2.12.0",
-    "@js-eyes/runtime-paths": "2.12.0",
+    "ajv": "^8.17.1",
     "ws": "^8.19.0"
   }
 }

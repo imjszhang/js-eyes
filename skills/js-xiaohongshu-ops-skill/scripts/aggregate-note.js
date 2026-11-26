@@ -25,7 +25,7 @@ const { BrowserAutomation } = require('@js-eyes/client-sdk');
 const { resolveRuntimeConfig } = require('../lib/runtimeConfig');
 const { runTool } = require('../lib/runTool');
 const { getSharedLimiter } = require('../lib/rateLimit/limiter');
-const { getSkillRecordPaths } = require('@js-eyes/runtime-paths');
+const { getSkillRecordPaths } = require('@js-eyes/client-sdk/runtime-paths');
 const pkg = require('../package.json');
 const { COMMANDS } = require('../lib/commands');
 

@@ -5,7 +5,7 @@ const {
   createDebugState,
   recordDomStat,
   recordStep,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

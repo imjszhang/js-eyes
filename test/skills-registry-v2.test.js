@@ -38,7 +38,11 @@ test('sub-skill staging vendors every local dependency inside the portable bundl
   const { stageDir, vendored } = prepareSubSkillStage(reddit, { generateLockfile: false });
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(stageDir, 'package.json'), 'utf8'));
-    assert.deepEqual(vendored, ['visual-bridge-kit', 'visual-replay-hyperframes']);
+    assert.deepEqual(vendored, ['client-sdk', 'visual-bridge-kit', 'visual-replay-hyperframes']);
+    assert.equal(
+      pkg.dependencies['@js-eyes/client-sdk'],
+      'file:vendor/client-sdk',
+    );
     assert.equal(
       pkg.dependencies['@js-eyes/visual-bridge-kit'],
       'file:vendor/visual-bridge-kit',

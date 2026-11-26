@@ -4,7 +4,7 @@ const require = createRequire(import.meta.url);
 const {
   BROWSER_OPERATIONS,
   invokeBrowserOperation,
-} = require("@js-eyes/protocol");
+} = require("@js-eyes/client-sdk/protocol");
 
 function openclawParameters(operation) {
   const schema = operation.inputSchema || { type: "object", properties: {} };

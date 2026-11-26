@@ -46,16 +46,10 @@ function createBundlePackageJson(version) {
     version,
     private: true,
     description: 'Installable JS Eyes runtime and skill bundle with optional host integrations',
-    workspaces: ['packages/*'],
+    workspaces: ['packages/*', 'apps/*'],
     dependencies: {
-      '@js-eyes/skill-contract': version,
       '@js-eyes/client-sdk': version,
-      '@js-eyes/config': version,
-      '@js-eyes/protocol': version,
-      '@js-eyes/runtime-paths': version,
-      '@js-eyes/server-core': version,
-      '@js-eyes/skill-recording': version,
-      '@js-eyes/skill-runtime': version,
+      'js-eyes': version,
     },
     engines: {
       node: '>=22.0.0',
@@ -86,6 +80,13 @@ function stageRuntimePackages(stageDir) {
     }
     copyDirSync(src, dest);
   }
+
+  const cliSrc = path.join(PROJECT_ROOT, 'apps', 'cli');
+  const cliDest = path.join(stageDir, 'apps', 'cli');
+  if (!fs.existsSync(cliSrc)) {
+    throw new Error('Bundle runtime app missing: apps/cli');
+  }
+  copyDirSync(cliSrc, cliDest);
 }
 
 function stageOpenClawPlugin(stageDir) {
@@ -100,8 +101,8 @@ function stageOpenClawPlugin(stageDir) {
 function stageCompatWrappers(stageDir, version) {
   const compatServerDir = path.join(stageDir, 'server');
   ensureDir(compatServerDir);
-  writeFile(path.join(compatServerDir, 'index.js'), "'use strict';\n\nmodule.exports = require('../packages/server-core');\n");
-  writeFile(path.join(compatServerDir, 'ws-handler.js'), "'use strict';\n\nmodule.exports = require('../packages/server-core/ws-handler.js');\n");
+  writeFile(path.join(compatServerDir, 'index.js'), "'use strict';\n\nmodule.exports = require('../apps/cli/server-core');\n");
+  writeFile(path.join(compatServerDir, 'ws-handler.js'), "'use strict';\n\nmodule.exports = require('../apps/cli/server-core/ws-handler.js');\n");
   writeFile(
     path.join(compatServerDir, 'package.json'),
     JSON.stringify(createCompatServerPackageJson(version), null, 2) + '\n',

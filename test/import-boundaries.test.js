@@ -29,13 +29,13 @@ const FORBIDDEN_SPECIFIERS = Object.freeze([
   'tls',
   'node-fetch',
   '../packages/client-sdk',
-  '../packages/server-core',
+  '../apps/cli/server-core',
   '../../packages/client-sdk',
-  '../../packages/server-core',
+  '../apps/cli/server-core',
   '../../../packages/client-sdk',
-  '../../../packages/server-core',
+  '../apps/cli/server-core',
   '@js-eyes/client-sdk',
-  '@js-eyes/server-core',
+  'js-eyes/server-core',
 ]);
 
 const FORBIDDEN_GLOBALS = Object.freeze([
@@ -45,9 +45,9 @@ const FORBIDDEN_GLOBALS = Object.freeze([
 ]);
 
 const GUARDED_FILES = Object.freeze([
-  'packages/skill-install/fs-io.js',
-  'packages/skill-install/safe-npm.js',
-  'packages/skill-install/skill-runner.js',
+  'packages/client-sdk/skill-install/fs-io.js',
+  'packages/client-sdk/skill-install/safe-npm.js',
+  'packages/client-sdk/skill-install/skill-runner.js',
   'openclaw-plugin/legacy-config.mjs',
   'openclaw-plugin/auth.mjs',
   'openclaw-plugin/fs-utils/hash.mjs',

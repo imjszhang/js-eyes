@@ -10,7 +10,7 @@ const {
   readCacheEntry,
   writeCacheEntry,
   writeDebugBundle,
-} = require('@js-eyes/skill-recording');
+} = require('@js-eyes/client-sdk/skill-recording');
 const { getSharedLimiter } = require('./rateLimit/limiter');
 const { wrapCallApi, drainVisualEvents } = require('@js-eyes/visual-bridge-kit');
 const { getVisualHint, buildSummary, extractPayload } = require('./visualHint');

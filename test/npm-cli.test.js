@@ -6,14 +6,14 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadConfig, mergeRecordingConfig, parseConfigValue, saveConfig, setConfigValue } = require('@js-eyes/config');
-const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/protocol');
-const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/skill-install/skills');
-const protocolPkg = require('@js-eyes/protocol/package.json');
+const { loadConfig, mergeRecordingConfig, parseConfigValue, saveConfig, setConfigValue } = require('@js-eyes/client-sdk/config');
+const { COMPATIBILITY_MATRIX, PROTOCOL_VERSION } = require('@js-eyes/client-sdk/protocol');
+const { discoverLocalSkills, normalizeSkillMetadata, runSkillCli } = require('@js-eyes/client-sdk/skill-install/skills');
+const protocolPkg = require('@js-eyes/client-sdk/package.json');
 const { getYtDlpCommand: getBilibiliYtDlpCommand } = require('../skills/js-bilibili-ops-skill/lib/bilibiliUtils');
 const { getYtDlpCommand: getYoutubeYtDlpCommand } = require('../skills/js-youtube-ops-skill/lib/youtubeUtils');
-const { ensureRuntimePaths, ensureSkillRecordPaths, getPaths, getSkillRecordPaths, resolveLegacyBaseDir } = require('@js-eyes/runtime-paths');
-const { createSkillRunContext } = require('@js-eyes/skill-recording');
+const { ensureRuntimePaths, ensureSkillRecordPaths, getPaths, getSkillRecordPaths, resolveLegacyBaseDir } = require('@js-eyes/client-sdk/runtime-paths');
+const { createSkillRunContext } = require('@js-eyes/client-sdk/skill-recording');
 const { createRunContext } = require('../skills/js-reddit-ops-skill/lib/runContext');
 const { appendHistory } = require('../skills/js-reddit-ops-skill/lib/history');
 const { readCacheEntry, writeCacheEntry } = require('../skills/js-reddit-ops-skill/lib/cache');
@@ -179,7 +179,7 @@ describe('repository layout', () => {
 
   it('keeps the OpenClaw plugin as a root-level optional component', () => {
     assert.equal(fs.existsSync(path.join(repoRoot, 'openclaw-plugin', 'index.mjs')), true);
-    assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'server-core', 'index.js')), true);
+    assert.equal(fs.existsSync(path.join(repoRoot, 'apps', 'cli', 'server-core', 'index.js')), true);
     assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'client-sdk', 'index.js')), true);
 
     assert.equal(fs.existsSync(path.join(repoRoot, 'packages', 'openclaw-plugin', 'index.mjs')), false);

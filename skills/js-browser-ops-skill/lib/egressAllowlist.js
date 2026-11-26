@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const net = require('node:net');
 
-const { loadConfig, saveConfig } = require('@js-eyes/config');
+const { loadConfig, saveConfig } = require('@js-eyes/client-sdk/config');
 
 class PolicyDeniedError extends Error {
   constructor(message, details = {}) {

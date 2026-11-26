@@ -11,21 +11,14 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
 
 ## Repository map
 
-- `apps/cli` contains the public `js-eyes` command.
-- `apps/native-host` contains the browser Native Messaging host.
-- `packages/protocol` owns shared protocol constants, browser-operation
-  metadata/handlers, and browser-operation catalogs. Install helpers live in
-  `@js-eyes/skill-install` (not under `protocol`).
-- `packages/skill-install` owns skill discovery, install, trust, ZIP/npm, and
-  registry helpers (formerly under `protocol`).
-- `packages/policy` owns `PolicyContext` and related egress/taint/task-origin
-  policy primitives used by server-core and the client SDK.
-- `packages/client-sdk` owns the Node.js browser client (may re-export selected
-  policy symbols from its main entry; prefer `@js-eyes/policy` directly).
-- `packages/server-core` owns the local HTTP and WebSocket server.
-- `packages/mcp-server` is the native stdio MCP facade.
-- `packages/skill-contract` validates Skill metadata; `packages/skill-runtime`
-  owns host-neutral Skill Runtime V2, including isolated worker execution.
+- `apps/cli` (`js-eyes`) is the public CLI package, also housing `server-core/`
+  (local HTTP/WS server), `native-host/` (browser Native Messaging host), and
+  `mcp-server/` (native stdio MCP facade, exposed via `js-eyes mcp` and
+  `js-eyes-mcp`).
+- `packages/client-sdk` (`@js-eyes/client-sdk`) is the shared runtime & SDK
+  package, exposing subpath modules for `protocol/`, `policy/`,
+  `runtime-paths/`, `config/`, `skill-contract/`, `skill-install/`,
+  `skill-recording/`, `skill-runtime/`, and `skill-scaffold/`.
 - `openclaw-plugin` (`@js-eyes/openclaw-plugin`) is an optional OpenClaw
   adapter workspace. Core packages must not import it.
 - `extensions/shared` is the canonical source for cross-browser extension
@@ -192,7 +185,7 @@ The complete contribution gate is documented in `CONTRIBUTING.md`.
 - Normal builds are unsigned.
 - Signing credentials and publishing tokens must only be consumed by protected
   release workflows and must never appear in logs.
-- Real npm, GitHub, ClawHub, AMO, Cloudflare, or other external publication
+- Real npm, GitHub, AMO, Cloudflare, or other external publication
   requires explicit release intent.
 - Dependency-only changes must still pass the affected build and audit gates.
 

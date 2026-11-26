@@ -15,8 +15,8 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { isLoopbackHost } = require("@js-eyes/protocol");
-const { readToken } = require("@js-eyes/runtime-paths/token.js");
+const { isLoopbackHost } = require("@js-eyes/client-sdk/protocol");
+const { readToken } = require("@js-eyes/client-sdk/runtime-paths/token.js");
 
 export function getServerToken(options = {}) {
   const env = options.env || process.env;

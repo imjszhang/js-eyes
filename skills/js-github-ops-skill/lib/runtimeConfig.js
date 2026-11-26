@@ -1,6 +1,6 @@
 'use strict';
 
-const { loadConfig, mergeRecordingConfig, DEFAULT_RECORDING_CONFIG } = require('@js-eyes/config');
+const { loadConfig, mergeRecordingConfig, DEFAULT_RECORDING_CONFIG } = require('@js-eyes/client-sdk/config');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

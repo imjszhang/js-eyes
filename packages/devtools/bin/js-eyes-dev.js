@@ -14,7 +14,6 @@ const {
   buildFirefox,
   bump,
   getVersion,
-  MAIN_SKILL_STAGE_DIR,
 } = require('../lib/builder');
 const {
   gitStatus,
@@ -32,7 +31,6 @@ const { setupGitHubPages } = require('../lib/github-pages');
 const { setupCloudflare } = require('../lib/cloudflare');
 const { bundle: bundlePublish, DIST_ROOT } = require('../lib/publish-bundle');
 const npmPublish = require('../lib/npm-publish');
-const clawhubPublish = require('../lib/clawhub-publish');
 const dotenv = require('../lib/dotenv');
 const fs = require('fs');
 const path = require('path');
@@ -212,21 +210,6 @@ function extractReleaseNotes(version) {
   return section.join('\n').trimEnd() + '\n';
 }
 
-function extractHighlights(version) {
-  const section = getVersionSection(version);
-  if (!section) return null;
-  const start = section.findIndex((line) => /^### Highlights\b/.test(line));
-  if (start < 0) return null;
-  let end = section.length;
-  for (let i = start + 1; i < section.length; i++) {
-    if (/^### /.test(section[i])) {
-      end = i;
-      break;
-    }
-  }
-  return section.slice(start + 1, end).join('\n').trim();
-}
-
 function writeTempFile(prefix, content) {
   const os = require('os');
   const filePath = path.join(os.tmpdir(), `${prefix}-${process.pid}-${Date.now()}.md`);
@@ -307,7 +290,6 @@ async function cmdRelease(flags) {
   const skipNpm = !!flags['skip-npm'];
   const skipGithub = !!flags['skip-github'];
   const skipTag = !!flags['skip-tag'];
-  const skipClawhub = !!flags['skip-clawhub'];
   const dryRun = !!flags['dry-run'];
 
   const version = getVersion();
@@ -480,52 +462,7 @@ async function cmdRelease(flags) {
         }
       }
     } else {
-      log('[5/6] github release — skipped');
-    }
-
-    // [6/6] ClawHub publish
-    if (!skipClawhub) {
-      log('');
-      log('[6/6] clawhub publish');
-
-      if (!clawhubPublish.available()) {
-        log('  ⚠ clawhub CLI not installed (npm install -g clawhub) — skipping');
-      } else if (!fs.existsSync(path.join(MAIN_SKILL_STAGE_DIR, 'SKILL.md'))) {
-        // Should only happen when [2/6] was skipped; ensure stage exists for clawhub publish.
-        log('  ⚠ skill stage missing (extensions step was skipped?), running buildSkillZip ...');
-        await buildSkillZip();
-      }
-
-      if (
-        clawhubPublish.available() &&
-        fs.existsSync(path.join(MAIN_SKILL_STAGE_DIR, 'SKILL.md'))
-      ) {
-        const slug = flags['clawhub-slug'] || 'js-eyes';
-        const highlights = extractHighlights(version);
-        const changelog = highlights || `Release ${tag}`;
-
-        if (dryRun) {
-          log(`  (would publish ${slug}@${version} to ClawHub)`);
-          log(`  changelog preview (${changelog.length} chars):`);
-          for (const line of changelog.split('\n').slice(0, 4)) log(`    ${line}`);
-          if (changelog.split('\n').length > 4) log('    ...');
-        } else {
-          try {
-            const result = clawhubPublish.publish({
-              skillDir: MAIN_SKILL_STAGE_DIR,
-              slug,
-              version,
-              changelog,
-            });
-            log(`  ✓ published ${slug}@${version} (${result.id || 'ok'}) as @${result.who}`);
-            log('  (ClawHub hides the skill until the security scan finishes.)');
-          } catch (err) {
-            log(`  ⚠ clawhub publish skipped: ${err.message}`);
-          }
-        }
-      }
-    } else {
-      log('[6/6] clawhub publish — skipped');
+      log('[5/5] github release — skipped');
     }
 
     log('');

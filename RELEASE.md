@@ -8,8 +8,8 @@ Formal releases now use two separate GitHub Actions workflows:
 
 - **Release Verification** (`release-verify.yml`) is read-only. It runs every
   quality, coverage, security, package, and extension check; builds unsigned
-  browser candidates; creates all nine npm tarballs; and uploads checksummed
-  artifacts for inspection.
+  browser candidates; creates both npm tarballs (`@js-eyes/client-sdk` and
+  `js-eyes`); and uploads checksummed artifacts for inspection.
 - **Controlled Release Publish** (`release-publish.yml`) is manual, accepts only
   `main` or the matching `vX.Y.Z` tag, requires the exact version to be typed,
   reruns the complete release gate, and pauses at the protected
@@ -25,8 +25,8 @@ unsigned and never reads AMO credentials.
    release tags, with a required maintainer review.
 2. Store `AMO_API_KEY` and `AMO_API_SECRET` as environment secrets only if the
    Firefox signing option will be used.
-3. On npmjs.com, configure a GitHub Actions trusted publisher for each of the
-   eight `@js-eyes/*` packages and `js-eyes` with these exact values:
+3. On npmjs.com, configure a GitHub Actions trusted publisher for both
+   `@js-eyes/client-sdk` and `js-eyes` with these exact values:
    - owner: `imjszhang`
    - repository: `js-eyes`
    - workflow filename: `release-publish.yml`
@@ -43,9 +43,8 @@ credentials; no long-lived npm token is stored in GitHub.
 2. Run **Release Verification** for `main`; download and inspect its artifact.
 3. Run **Controlled Release Publish**, enter the exact `X.Y.Z`, select channels,
    and approve the `release-production` deployment after the verification job.
-4. Verify npm versions, GitHub assets, the signed XPI (when selected), Pages,
-   and ClawHub. ClawHub/AMO public-listing submission remains a separate manual
-   step.
+4. Verify npm versions, GitHub assets, the signed XPI (when selected), and
+   Pages. AMO public-listing submission remains a separate manual step.
 
 The remainder of this document is the detailed/manual fallback SOP.
 

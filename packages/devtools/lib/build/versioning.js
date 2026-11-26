@@ -85,7 +85,11 @@ function syncInternalDependencyVersions(content, newVersion) {
   for (const field of dependencyFields) {
     if (!content[field] || typeof content[field] !== 'object') continue;
     for (const name of Object.keys(content[field])) {
-      if (name.startsWith('@js-eyes/') && !PLATFORM_DEPENDENCY_EXCLUDE.has(name)) {
+      if (
+        (name === 'js-eyes' || name.startsWith('@js-eyes/')) &&
+        !PLATFORM_DEPENDENCY_EXCLUDE.has(name) &&
+        !String(content[field][name]).startsWith('file:')
+      ) {
         content[field][name] = newVersion;
       }
     }

@@ -14,8 +14,8 @@ const path = require('path');
 const { afterEach, beforeEach, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSkillRegistry } = require('../packages/skill-runtime');
-const { loadConfig, setConfigValue } = require('../packages/config');
+const { createSkillRegistry } = require('../packages/client-sdk/skill-runtime');
+const { loadConfig, setConfigValue } = require('../packages/client-sdk/config');
 
 function writeV2Skill(dir, id, tool) {
   fs.mkdirSync(dir, { recursive: true });
