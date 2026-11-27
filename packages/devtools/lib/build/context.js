@@ -8,39 +8,8 @@ const path = require('path');
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const SRC_DIR = path.join(PROJECT_ROOT, 'src');
 const SITE_OUT_DIR = path.join(PROJECT_ROOT, 'dist');
-const EXTENSIONS_DIR = path.join(PROJECT_ROOT, 'extensions');
-const CHROME_DIR = path.join(EXTENSIONS_DIR, 'chrome');
-const FIREFOX_DIR = path.join(EXTENSIONS_DIR, 'firefox');
 const DIST_DIR = path.join(PROJECT_ROOT, 'dist');
-const SIGNED_DIR = path.join(DIST_DIR, 'firefox-signed');
 const PKG_PATH = path.join(PROJECT_ROOT, 'package.json');
-const CHROME_MANIFEST = path.join(CHROME_DIR, 'manifest.json');
-const FIREFOX_MANIFEST = path.join(FIREFOX_DIR, 'manifest.json');
-
-/** Shared runtime files injected into extension staging at build time. */
-const EXTENSION_SHARED_COPIES = [
-  ['config.js', 'config.js'],
-  ['network-capture-methods.js', path.join('background', 'network-capture-methods.js')],
-  ['utils.js', path.join('background', 'utils.js')],
-  ['connection-methods.js', path.join('background', 'connection-methods.js')],
-  ['messaging-methods.js', path.join('background', 'messaging-methods.js')],
-  ['operations-methods.js', path.join('background', 'operations-methods.js')],
-  ['cookie-write-methods.js', path.join('background', 'cookie-write-methods.js')],
-  ['page-interact-core.js', path.join('background', 'page-interact-core.js')],
-  ['page-interact-methods.js', path.join('background', 'page-interact-methods.js')],
-  ['page-extract-core.js', path.join('background', 'page-extract-core.js')],
-  ['page-extract-methods.js', path.join('background', 'page-extract-methods.js')],
-  ['routing-methods.js', path.join('background', 'routing-methods.js')],
-  ['tabs-methods.js', path.join('background', 'tabs-methods.js')],
-  ['browser-control-methods.js', path.join('background', 'browser-control-methods.js')],
-];
-const EXTENSION_STAGE_ROOT = path.join(DIST_DIR, 'extensions-stage');
-const CHROME_STAGE_DIR = path.join(EXTENSION_STAGE_ROOT, 'chrome');
-const FIREFOX_STAGE_DIR = path.join(EXTENSION_STAGE_ROOT, 'firefox');
-const EXCLUDE_PATTERNS = [
-  '.git/**', '**/.git/**', '**/.DS_Store', '**/Thumbs.db',
-  '**/*.swp', '**/*.swo', '.amo-upload-uuid', 'node_modules/**',
-];
 const MAIN_SKILL_TEMPLATE = path.join(
   PROJECT_ROOT,
   'distribution',
@@ -119,17 +88,7 @@ function writeShaSidecar(zipPath, sha256) {
 
 module.exports = {
   BUNDLE_RUNTIME_PACKAGES,
-  CHROME_DIR,
-  CHROME_MANIFEST,
-  CHROME_STAGE_DIR,
   DIST_DIR,
-  EXCLUDE_PATTERNS,
-  EXTENSIONS_DIR,
-  EXTENSION_SHARED_COPIES,
-  EXTENSION_STAGE_ROOT,
-  FIREFOX_DIR,
-  FIREFOX_MANIFEST,
-  FIREFOX_STAGE_DIR,
   INSTALL_SCRIPTS,
   MAIN_SKILL_DIST_ASSET,
   MAIN_SKILL_STAGE_DIR,
@@ -138,7 +97,6 @@ module.exports = {
   PLATFORM_DEPENDENCY_EXCLUDE,
   PLATFORM_VERSION_EXCLUDE,
   PROJECT_ROOT,
-  SIGNED_DIR,
   SITE_OUT_DIR,
   SITE_URL,
   SKILLS_DIR,

@@ -25,11 +25,6 @@ on:
         required: true
         default: true
         type: boolean
-      sign_firefox:
-        description: Sign the Firefox XPI with AMO environment secrets
-        required: true
-        default: false
-        type: boolean
       create_github_release:
         description: Create or update the GitHub Release and tag
         required: true
@@ -87,7 +82,6 @@ jobs:
         run: |
           npm run lint
           npm run typecheck
-          npm run check:extension-shared
           npm run test:coverage
           npm run scan:security
           npm audit --omit=dev
@@ -95,14 +89,10 @@ jobs:
           npm audit --audit-level=critical
           npm run package:smoke
 
-      - name: Build unsigned release assets
+      - name: Build release assets
         run: |
           npm run build:site
           npm run build:skill
-          npm run build:chrome
-          npm run build:firefox:dev
-          npx web-ext lint --source-dir dist/extensions-stage/firefox
-          npx web-ext build --source-dir dist/extensions-stage/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
           npm run release:prepare-packages
 
       - name: Write artifact checksums
@@ -118,10 +108,8 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            dist/js-eyes-chrome-v*.zip
             dist/js-eyes-skill-v*.zip
             dist/js-eyes-skill.zip
-            dist/firefox-unsigned/*.zip
             dist/release-packages/*.tgz
             dist/release-packages/manifest.json
             dist/release-notes.md
@@ -165,24 +153,6 @@ jobs:
           RELEASE_PUBLISH_CONFIRMED: ${{ needs.verify.outputs.version }}
         run: node scripts/publish-release-packages.js dist/release-packages "${{ inputs.npm_tag }}"
 
-      - name: Setup Node.js for Firefox signing
-        if: inputs.sign_firefox
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install Firefox signing dependencies
-        if: inputs.sign_firefox
-        run: npm ci
-
-      - name: Sign Firefox extension
-        if: inputs.sign_firefox
-        env:
-          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
-          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
-        run: npm run build:firefox
-
       - name: Create or update GitHub Release
         if: inputs.create_github_release
         env:
@@ -190,10 +160,7 @@ jobs:
           RELEASE_TAG: v${{ needs.verify.outputs.version }}
           RELEASE_SHA: ${{ needs.verify.outputs.sha }}
         run: |
-          assets=(dist/js-eyes-chrome-v*.zip dist/js-eyes-skill-v*.zip)
-          if [ "${{ inputs.sign_firefox }}" = "true" ]; then
-            assets+=(dist/js-eyes-firefox-v*.xpi)
-          fi
+          assets=(dist/js-eyes-skill-v*.zip)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
             gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md --title "JS Eyes $RELEASE_TAG"

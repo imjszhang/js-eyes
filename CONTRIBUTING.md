@@ -1,6 +1,6 @@
 # Contributing to JS Eyes
 
-Thanks for helping improve JS Eyes. This repository is a Node.js monorepo containing the CLI, runtime packages, browser extensions, developer tooling, and platform skills.
+Thanks for helping improve JS Eyes. This repository is a Node.js monorepo containing the CLI, runtime packages, developer tooling, and platform skills. Browser extensions (Chrome MV3 and Firefox MV2) are maintained separately in `imjszhang/js-eyes-extension`.
 
 ## Prerequisites
 
@@ -24,7 +24,6 @@ Run the complete local quality gate before opening a pull request:
 npm test
 npm run lint
 npm run typecheck
-npm run check:extension-shared
 npm run scan:security
 npm audit
 npm run package:smoke
@@ -35,8 +34,6 @@ The build commands used by CI are:
 ```bash
 npm run build:site
 npm run build:skill
-npm run build:chrome
-npm run build:firefox:dev
 ```
 
 Release candidates can be checked locally with `npm run release:verify` and
@@ -50,20 +47,12 @@ Useful focused commands include:
 npm run test:root
 npm run test:workspaces
 npm run test:server
-npm run test:extension
 npm run test:client
 npm run test:cli
 ```
 
-Edit cross-browser extension behavior only in `extensions/shared` — never
-hand-edit injected runtime files under Chrome/Firefox. Shared modules are
-injected into `dist/extensions-stage/{chrome,firefox}` at build/sync time;
-platform entry modules (`background.js`, `platform-*`, manifests) stay in
-`extensions/chrome` and `extensions/firefox`. After shared changes, run
-`npm run sync:extension-shared` (or `npm run build:chrome` /
-`npm run build:firefox:dev`) and load the unpacked extension from the staged
-directory. CI runs `npm run check:extension-shared` on every PR to validate
-the protocol catalog against `extensions/shared/config.js`.
+Browser extensions live in `imjszhang/js-eyes-extension` and evolve independently
+over the shared WebSocket protocol and capability negotiation.
 
 ## Adding a site Skill
 

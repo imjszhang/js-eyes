@@ -34,9 +34,6 @@ const versionFiles = [
   'packages/devtools/package.json',
   'openclaw-plugin/package.json',
   'openclaw-plugin/openclaw.plugin.json',
-  'extensions/chrome/manifest.json',
-  'extensions/firefox/manifest.json',
-  'extensions/firefox/popup/package.json',
 ];
 
 for (const relativePath of versionFiles) {

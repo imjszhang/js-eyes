@@ -1,7 +1,6 @@
 'use strict';
 
 const {
-  DIST_DIR,
   INSTALL_SCRIPTS,
   PROJECT_ROOT,
   SITE_OUT_DIR,
@@ -10,36 +9,10 @@ const {
   copyDirSync,
   ensureDir,
   fs,
-  getVersion,
   path,
 } = require('./context');
 const { buildSkillZip } = require('./skill-bundle');
 const { buildSkillsRegistry, buildSubSkillZips } = require('./skills-registry');
-
-function pruneUnavailableExtensionDownloads(assetStates) {
-  const siteIndex = path.join(SITE_OUT_DIR, 'index.html');
-  if (!fs.existsSync(siteIndex)) return;
-
-  let html = fs.readFileSync(siteIndex, 'utf8');
-
-  for (const asset of assetStates) {
-    if (asset.exists) continue;
-    if (asset.preserveWhenMissing) {
-      console.log(`  ⚠ ${asset.dest} missing from dist/, keeping ${asset.label} download button`);
-      continue;
-    }
-    const linkPattern = new RegExp(`\\s*<a id="${asset.linkId}"[\\s\\S]*?<\\/a>\\s*`, 'm');
-    html = html.replace(linkPattern, '\n');
-    console.log(`  ⚠ ${asset.dest} missing from dist/, hiding ${asset.label} download button`);
-  }
-
-  if (assetStates.every((asset) => !asset.exists && !asset.preserveWhenMissing)) {
-    html = html.replace(/\s*<div id="extension-download-links"[\s\S]*?<\/div>\s*/m, '\n');
-    console.log('  ⚠ No extension artifacts found in dist/, hiding site download buttons');
-  }
-
-  fs.writeFileSync(siteIndex, html, 'utf8');
-}
 
 function cleanSiteOutput() {
   if (!fs.existsSync(SITE_OUT_DIR)) return;
@@ -50,8 +23,6 @@ function cleanSiteOutput() {
     'skills.json',
     SKILL_ZIP_NAME,
     `${SKILL_ZIP_NAME}.sha256`,
-    'js-eyes-chrome-latest.zip',
-    'js-eyes-firefox-latest.xpi',
     ...INSTALL_SCRIPTS,
   ]);
 
@@ -103,35 +74,6 @@ async function buildSite(t, options = {}) {
     }
   }
   console.log('  ✓ Install scripts copied to dist/');
-
-  const version = getVersion();
-  const extensionAssets = [
-    {
-      src: path.join(DIST_DIR, `js-eyes-chrome-v${version}.zip`),
-      dest: 'js-eyes-chrome-latest.zip',
-      linkId: 'download-chrome-link',
-      label: 'Chrome',
-      preserveWhenMissing: true,
-    },
-    {
-      src: path.join(DIST_DIR, `js-eyes-firefox-v${version}.xpi`),
-      dest: 'js-eyes-firefox-latest.xpi',
-      linkId: 'download-firefox-link',
-      label: 'Firefox',
-      preserveWhenMissing: true,
-    },
-  ];
-  for (const asset of extensionAssets) {
-    const siteAssetPath = path.join(SITE_OUT_DIR, asset.dest);
-    asset.exists = fs.existsSync(asset.src);
-    if (asset.exists) {
-      fs.copyFileSync(asset.src, siteAssetPath);
-      console.log(`  ✓ ${asset.dest} (from dist/)`);
-    } else if (fs.existsSync(siteAssetPath)) {
-      fs.unlinkSync(siteAssetPath);
-    }
-  }
-  pruneUnavailableExtensionDownloads(extensionAssets);
 
   await buildSkillZip();
   const subSkillResults = await buildSubSkillZips();

@@ -57,7 +57,7 @@ JS Eyes 对外仅发布 **2 个 npm 包**（`@js-eyes/client-sdk` 与 `js-eyes`�
 | `openclaw-plugin` | 可选的 OpenClaw 插件适配器（`@js-eyes/openclaw-plugin`） |
 | `packages/page-extract` / `packages/visual-*` | 技能可选的页面提取与可视化桥接 / 回放库（非平台运行时依赖） |
 | `packages/devtools` | 内部构建/发布工具链 |
-| `extensions/*` | Chrome/Edge 与 Firefox 扩展源码；`extensions/shared` 为跨浏览器共享后台运行时 |
+| 浏览器扩展 | 独立维护于 [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)（Chrome MV3 / Firefox MV2） |
 | `skills/*` | 独立版本化的站点扩展技能 |
 
 ### 支持的 Agent 框架
@@ -112,12 +112,12 @@ JS Eyes 对外仅发布 **2 个 npm 包**（`@js-eyes/client-sdk` 与 `js-eyes`�
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest) 下载最新版本：
+从独立扩展仓库 [`imjszhang/js-eyes-extension` Releases](https://github.com/imjszhang/js-eyes-extension/releases/latest) 下载最新浏览器扩展：
 
 - **Chrome/Edge 扩展**: 发布资产 `js-eyes-chrome-v<version>.zip`
 - **Firefox 扩展**: 发布资产 `js-eyes-firefox-v<version>.xpi`
 
-或直接从 [js-eyes.com](https://js-eyes.com) 下载。网站中的 Chrome 和 Firefox 下载按钮都会打开最新的 GitHub Release，始终指向当前已发布资产。
+或直接从 [js-eyes.com](https://js-eyes.com) 下载。网站中的 Chrome 和 Firefox 下载按钮会跳转到扩展仓库的最新 Release。
 
 ## Docker 服务部署
 
@@ -142,32 +142,15 @@ docker compose exec -T js-eyes node -e "process.stdout.write(require('fs').readF
 
 **发布包**（推荐）：下载 `js-eyes-chrome-v<version>.zip`，解压后加载该目录。
 
-**从本仓库开发加载**：
-
-```bash
-npm run sync:extension-shared   # 或：npm run build:chrome
-```
-
-1. 打开 `chrome://extensions/`（Edge 访问 `edge://extensions/`）
-2. 开启"开发者模式"
-3. 点击"加载已解压的扩展程序"
-4. 选择 `dist/extensions-stage/chrome`（不要直接选 `extensions/chrome`；
-   shared 运行时在 build/sync 时注入到 stage 目录）
+**源码开发加载**：克隆 [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)，执行 `npm install && npm run sync:shared`，在 `chrome://extensions/`（或 `edge://extensions/`）开启开发者模式后加载 `dist/extensions-stage/chrome`。
 
 Chrome/Edge 的原始 `execute_script` 额外需要 135+ 版本。138+ 请进入扩展详情页开启“允许用户脚本”；135-137 保持开发者模式即可。其他扩展功能仍支持上表中的基础版本。
 
 #### Firefox
 
-**已签名 XPI**（推荐）：将 `.xpi` 文件拖拽到 Firefox 窗口中。
+**已签名 XPI**（推荐）：从 [`imjszhang/js-eyes-extension` Releases](https://github.com/imjszhang/js-eyes-extension/releases/latest) 下载 `.xpi` 文件并拖拽到 Firefox 窗口中。
 
-**临时安装**（开发模式）：
-
-```bash
-npm run sync:extension-shared   # 或：npm run build:firefox:dev
-```
-
-然后打开 `about:debugging` > 此 Firefox > 临时载入附加组件 > 选择
-`dist/extensions-stage/firefox/manifest.json`。
+**临时安装**（开发模式）：克隆 [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)，执行 `npm install && npm run sync:shared`，然后打开 `about:debugging` > 此 Firefox > 临时载入附加组件 > 选择 `dist/extensions-stage/firefox/manifest.json`。
 
 ### OpenClaw 技能包
 
@@ -550,7 +533,6 @@ npm install @js-eyes/client-sdk
 
 - Node.js >= 22
 - 在项目根目录执行 `npm install`
-- `npm run build:firefox` 需要 `AMO_API_KEY` 和 `AMO_API_SECRET`。仓库已通过 `npm install` 本地安装 `web-ext`，不再要求额外全局安装。
 
 ### 构建命令
 
@@ -564,18 +546,14 @@ npm run build:site
 # 本地预览站点
 npm run preview
 
-# 一次性构建全部未签名发布产物
+# 一次性构建发布产物
 npm run build
-
-# 仅打包 Chrome 扩展
-npm run build:chrome
-
-# 打包并签名 Firefox 扩展
-npm run build:firefox
 
 # 同步平台版本号（跳过 visual-* 包与 skills/* 子技能）
 npm run bump -- 2.12.0
 ```
+
+浏览器扩展的构建与签名已拆分至独立仓库 [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)。
 
 输出文件保存在 `dist/` 目录。主技能包会 stage 到 `dist/skill-bundle/js-eyes/`，并生成版本化 zip：`dist/js-eyes-skill-v<version>.zip`。push 到 `main` 后 GitHub Actions 会自动部署 `dist/` 到 Pages。
 

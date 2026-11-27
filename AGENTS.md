@@ -21,8 +21,9 @@ adapter the owner of behavior that belongs in the host-neutral runtime.
   `skill-recording/`, `skill-runtime/`, and `skill-scaffold/`.
 - `openclaw-plugin` (`@js-eyes/openclaw-plugin`) is an optional OpenClaw
   adapter workspace. Core packages must not import it.
-- `extensions/shared` is the canonical source for cross-browser extension
-  behavior. Chrome and Firefox copies are generated from it.
+- Browser extensions (Chrome MV3 and Firefox MV2) are maintained in the
+  standalone repository `imjszhang/js-eyes-extension` and communicate with this
+  repository over the shared WebSocket protocol and capability negotiation.
 - `skills/*` are independently versioned site skills.
 - `packages/devtools` owns builds, release staging, and generated artifacts.
 - `distribution` contains source templates for distributable artifacts.
@@ -62,16 +63,10 @@ CLI / MCP / optional OpenClaw adapter
 
 ## Browser extension changes
 
-- Edit shared cross-browser behavior in `extensions/shared` first.
-- Do not independently patch injected Chrome and Firefox runtime copies.
-- After shared changes, prepare staging with `npm run sync:extension-shared`
-  (writes `dist/extensions-stage/{chrome,firefox}`); builders inject shared
-  the same way. Load unpacked extensions from the staged directories.
-- Keep Chrome MV3 and Firefox MV2 loading differences in their platform entry
-  modules.
-- Treat authentication, request validation, deduplication, rate limiting,
-  reconnection, uploads, screenshots, and sender validation as security- or
-  reliability-sensitive behavior.
+Browser extensions (Chrome MV3 and Firefox MV2) are maintained in the
+standalone repository `imjszhang/js-eyes-extension`. Protocol or capability
+changes in this repository must remain backward-compatible with connected
+extensions via `protocolVersion` and capability negotiation.
 
 ## Skill changes
 
@@ -163,12 +158,6 @@ appropriate to the change.
 - Run `npm run test:root`.
 - Run `npm run typecheck`.
 - Run `npm run lint`.
-
-### Browser extension
-
-- Run `npm run check:extension-shared`.
-- Run `npm run test:extension`.
-- Build Chrome and the unsigned Firefox development extension.
 
 ### Build, packaging, or release
 

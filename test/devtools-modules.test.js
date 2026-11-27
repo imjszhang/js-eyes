@@ -14,23 +14,18 @@ describe('devtools builder module boundaries', () => {
     assert.ok(source.split('\n').length <= 50);
     assert.deepEqual(Object.keys(require('../packages/devtools/lib/builder')).sort(), [
       'MAIN_SKILL_STAGE_DIR',
-      'buildChrome',
-      'buildFirefox',
       'buildSite',
       'buildSkillZip',
       'bump',
       'getVersion',
       'parseSkillFrontmatter',
       'prepareMainSkillBundleStage',
-      'stageAllExtensions',
-      'stageExtension',
     ].sort());
   });
 
   it('keeps build responsibilities isolated without reverse facade imports', () => {
     const modules = [
       'context.js',
-      'extensions.js',
       'site.js',
       'skill-bundle.js',
       'skills-registry.js',
