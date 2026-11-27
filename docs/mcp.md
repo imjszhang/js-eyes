@@ -98,7 +98,7 @@ not exposed over MCP. Enable full only for an MCP host you trust:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "@js-eyes/mcp-server", "--tool-profile", "full"]
+  "args": ["-y", "js-eyes", "mcp", "--tool-profile", "full"]
 }
 ```
 
