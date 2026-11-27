@@ -1,8 +1,6 @@
 'use strict';
 
 const {
-  CHROME_MANIFEST,
-  FIREFOX_MANIFEST,
   PKG_PATH,
   PLATFORM_DEPENDENCY_EXCLUDE,
   PLATFORM_VERSION_EXCLUDE,
@@ -15,8 +13,6 @@ const {
 function collectVersionFiles() {
   const files = [
     { path: PKG_PATH, name: 'package.json' },
-    { path: CHROME_MANIFEST, name: 'extensions/chrome/manifest.json', jsonType: 'manifest' },
-    { path: FIREFOX_MANIFEST, name: 'extensions/firefox/manifest.json', jsonType: 'manifest' },
     {
       path: path.join(PROJECT_ROOT, 'openclaw-plugin', 'openclaw.plugin.json'),
       name: 'openclaw-plugin/openclaw.plugin.json',
@@ -24,10 +20,6 @@ function collectVersionFiles() {
     {
       path: path.join(PROJECT_ROOT, 'openclaw-plugin', 'package.json'),
       name: 'openclaw-plugin/package.json',
-    },
-    {
-      path: path.join(PROJECT_ROOT, 'extensions', 'firefox', 'popup', 'package.json'),
-      name: 'extensions/firefox/popup/package.json',
     },
   ];
 

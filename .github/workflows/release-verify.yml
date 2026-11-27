@@ -45,7 +45,6 @@ jobs:
         run: |
           npm run lint
           npm run typecheck
-          npm run check:extension-shared
           npm run test:coverage
           npm run scan:security
           npm audit --omit=dev
@@ -53,14 +52,10 @@ jobs:
           npm audit --audit-level=critical
           npm run package:smoke
 
-      - name: Build release candidates without signing or publishing
+      - name: Build release candidates without publishing
         run: |
           npm run build:site
           npm run build:skill
-          npm run build:chrome
-          npm run build:firefox:dev
-          npx web-ext lint --source-dir dist/extensions-stage/firefox
-          npx web-ext build --source-dir dist/extensions-stage/firefox --artifacts-dir dist/firefox-unsigned --overwrite-dest
           npm run release:prepare-packages
 
       - name: Write artifact checksums
@@ -76,10 +71,8 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            dist/js-eyes-chrome-v*.zip
             dist/js-eyes-skill-v*.zip
             dist/js-eyes-skill.zip
-            dist/firefox-unsigned/*.zip
             dist/release-packages/*.tgz
             dist/release-packages/manifest.json
             dist/release-notes.md

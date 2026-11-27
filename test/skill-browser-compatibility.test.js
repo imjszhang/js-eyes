@@ -4,34 +4,23 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const {
+  BROWSER_OPERATIONS,
+  CONNECTOR_CAPABILITY_MATRIX,
+} = require('../packages/client-sdk/protocol');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_ROOT = path.join(ROOT, 'skills');
-const EXTENSIONS_ROOT = path.join(ROOT, 'extensions');
 
-const CAPABILITY_MARKERS = {
-  'tabs.read': 'handleGetTabsRequest',
-  'page.read': 'handleGetHtmlRequest',
-  navigation: 'handleOpenUrl',
-  'page.interact': 'handleClick',
-  'script.execute': 'handleExecuteScript',
-  screenshot: 'handleCaptureScreenshot',
-  'cookies.read': 'handleGetCookies',
+const CAPABILITY_OPERATIONS = {
+  'tabs.read': 'tabs.list',
+  'page.read': 'page.html',
+  navigation: 'url.open',
+  'page.interact': 'page.click',
+  'script.execute': 'script.execute',
+  screenshot: 'screenshot.capture',
+  'cookies.read': 'cookies.read',
 };
-
-function readSources(platform) {
-  const roots = [
-    path.join(EXTENSIONS_ROOT, 'shared'),
-    path.join(EXTENSIONS_ROOT, platform, 'background'),
-  ];
-  const files = [];
-  for (const root of roots) {
-    for (const name of fs.readdirSync(root)) {
-      if (name.endsWith('.js')) files.push(fs.readFileSync(path.join(root, name), 'utf8'));
-    }
-  }
-  return files.join('\n');
-}
 
 function browserSkills() {
   return fs.readdirSync(SKILLS_ROOT)
@@ -44,28 +33,21 @@ function browserSkills() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-test('official browser skills have a complete Chrome/Firefox capability matrix', () => {
+test('official browser skills declare capabilities backed by the protocol operation catalog', () => {
   const skills = browserSkills();
   assert.equal(skills.length, 10);
 
-  for (const platform of ['chrome', 'firefox']) {
-    const manifest = require(path.join(EXTENSIONS_ROOT, platform, 'manifest.json'));
-    const source = readSources(platform);
-    for (const { name, manifest: skill } of skills) {
-      for (const capability of skill.capabilities.browser) {
-        const marker = CAPABILITY_MARKERS[capability];
-        assert.ok(marker, `${name}/${platform}: unmapped capability ${capability}`);
-        assert.match(source, new RegExp(`\\b${marker}\\b`), `${name}/${platform}/${capability}`);
-      }
-    }
-
-    if (platform === 'chrome') {
-      assert.ok(Number(manifest.minimum_chrome_version) >= 135);
-      assert.ok(manifest.permissions.includes('userScripts'));
-      assert.match(source, /userScripts\.execute/);
-    } else {
-      assert.ok(Number.parseFloat(manifest.browser_specific_settings.gecko.strict_min_version) >= 58);
-      assert.match(source, /tabs\.executeScript/);
+  const knownOperationIds = new Set(BROWSER_OPERATIONS.map((op) => op.id));
+  for (const { name, manifest: skill } of skills) {
+    for (const capability of skill.capabilities.browser) {
+      const opId = CAPABILITY_OPERATIONS[capability];
+      assert.ok(opId, `${name}: unmapped capability ${capability}`);
+      assert.equal(knownOperationIds.has(opId), true, `${name}: missing protocol op ${opId}`);
+      assert.equal(
+        CONNECTOR_CAPABILITY_MATRIX.extension[opId],
+        true,
+        `${name}: extension connector matrix must support ${opId}`,
+      );
     }
   }
 });

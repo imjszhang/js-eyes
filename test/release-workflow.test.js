@@ -44,7 +44,6 @@ describe('controlled release contract', () => {
 
   it('keeps verification free of signing and publishing credentials', () => {
     const workflow = read('.github/workflows/release-verify.yml');
-    assert.match(workflow, /build:firefox:dev/);
     assert.match(workflow, /release:prepare-packages/);
     assert.doesNotMatch(workflow, /AMO_API_SECRET|NPM_TOKEN|npm publish/);
   });
@@ -63,11 +62,9 @@ describe('controlled release contract', () => {
     assert.match(result.stderr, /confirmed version 0\.0\.0/);
   });
 
-  it('uses argument-based Firefox signing and keeps normal builds unsigned', () => {
-    const builder = read('packages/devtools/lib/build/extensions.js');
+  it('keeps browser extensions decoupled into the standalone repository', () => {
     const pkg = JSON.parse(read('package.json'));
-    assert.match(builder, /execFileSync\('web-ext', args/);
-    assert.doesNotMatch(builder, /execSync\(cmd, \{ cwd: FIREFOX_DIR/);
-    assert.match(pkg.scripts.build, /--no-sign/);
+    assert.equal(fs.existsSync(path.join(root, 'extensions')), false);
+    assert.equal(pkg.devDependencies?.['web-ext'], undefined);
   });
 });

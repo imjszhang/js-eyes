@@ -50,12 +50,6 @@ module.exports = [
     },
   },
   {
-    files: ['extensions/chrome/background/background.js'],
-    languageOptions: {
-      sourceType: 'module',
-    },
-  },
-  {
     files: [
       'apps/**/*.js',
       'openclaw-plugin/**/*.mjs',
@@ -87,7 +81,6 @@ module.exports = [
   },
   {
     files: [
-      'extensions/**/*.js',
       'src/**/*.js',
       'skills/*/bridges/**/*.js',
       'packages/visual-bridge-kit/bridge/**/*.js',
@@ -95,7 +88,6 @@ module.exports = [
     languageOptions: {
       globals: {
         ...globals.browser,
-        ...globals.webextensions,
       },
     },
   },
@@ -105,15 +97,6 @@ module.exports = [
       // Bridge fragments are concatenated with their sibling common.js file
       // before execution, so shared bridge symbols are intentionally external.
       'no-undef': 'off',
-    },
-  },
-  {
-    files: ['extensions/firefox/background/background.js'],
-    languageOptions: {
-      globals: {
-        EXTENSION_CONFIG: 'readonly',
-        ExtensionUtils: 'readonly',
-      },
     },
   },
 ];

@@ -67,7 +67,7 @@ JS Eyes publishes **2 npm packages** (`@js-eyes/client-sdk` and `js-eyes`) from 
 | `openclaw-plugin` | Optional OpenClaw adapter (`@js-eyes/openclaw-plugin` workspace) |
 | `packages/page-extract` / `packages/visual-*` | Skill-optional extraction and visual bridge / replay libraries (not platform runtime) |
 | `packages/devtools` | Internal build/release tooling |
-| `extensions/*` | Browser extension assets; `extensions/shared` is the canonical cross-browser background runtime |
+| `extensions` | Maintained separately in [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension) (Chrome MV3 & Firefox MV2) |
 | `skills/*` | Independent site skills |
 
 Configuration entry point for operators is `~/.js-eyes` plus `JS_EYES_*` environment variables. MCP-specific `JS_EYES_MCP_*` flags override the same config layer. OpenClaw legacy `openclaw.json` skill enablement is migrated read-only and is not a second source of truth.
@@ -134,12 +134,12 @@ profiles, target selection, environment variables, and troubleshooting.
 
 ## Download
 
-Download the latest release from [GitHub Releases](https://github.com/imjszhang/js-eyes/releases/latest):
+Download the latest browser extension release from [`imjszhang/js-eyes-extension` Releases](https://github.com/imjszhang/js-eyes-extension/releases/latest):
 
 - **Chrome/Edge Extension**: release asset `js-eyes-chrome-v<version>.zip`
 - **Firefox Extension**: release asset `js-eyes-firefox-v<version>.xpi`
 
-Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Firefox buttons on the website open the latest GitHub release so they always point at the current published assets.
+Or download directly from [js-eyes.com](https://js-eyes.com). The Chrome and Firefox buttons on the website open the latest release in `imjszhang/js-eyes-extension`.
 
 ## Docker service
 
@@ -194,32 +194,15 @@ checkout, rerun `docker compose up -d --build` to rebuild the service.
 **From a release zip** (recommended): download `js-eyes-chrome-v<version>.zip`,
 extract it, then Load unpacked on the extracted folder.
 
-**From this repo** (development):
-
-```bash
-npm run sync:extension-shared   # or: npm run build:chrome
-```
-
-1. Open `chrome://extensions/` (or `edge://extensions/`)
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select `dist/extensions-stage/chrome` (not `extensions/chrome` — shared
-   runtime is injected into the staged tree at build/sync time)
+**From source** (development): clone [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension), run `npm install && npm run sync:shared`, then Load unpacked on `dist/extensions-stage/chrome`.
 
 Raw `execute_script` support on Chrome/Edge additionally requires version 135+. On version 138+, open the extension details and enable **Allow User Scripts**; on versions 135-137, keeping Developer mode enabled is sufficient. Other extension features remain available on the baseline versions above.
 
 #### Firefox
 
-**Signed XPI** (recommended): drag and drop the `.xpi` file into Firefox.
+**Signed XPI** (recommended): drag and drop the `.xpi` file from [`imjszhang/js-eyes-extension` Releases](https://github.com/imjszhang/js-eyes-extension/releases/latest) into Firefox.
 
-**Temporary** (development):
-
-```bash
-npm run sync:extension-shared   # or: npm run build:firefox:dev
-```
-
-Then open `about:debugging` > This Firefox > Load Temporary Add-on > select
-`dist/extensions-stage/firefox/manifest.json`.
+**Temporary** (development): clone [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension), run `npm install && npm run sync:shared`, then open `about:debugging` > This Firefox > Load Temporary Add-on > select `dist/extensions-stage/firefox/manifest.json`.
 
 ### OpenClaw Skill Bundle
 
@@ -646,7 +629,6 @@ npm install @js-eyes/client-sdk
 
 - Node.js >= 22
 - Run `npm install` in the project root
-- `npm run build:firefox` requires `AMO_API_KEY` and `AMO_API_SECRET` (for Mozilla signing). The repository now installs `web-ext` locally via `npm install`, so no separate global install is required.
 
 ### Build Commands
 
@@ -657,18 +639,14 @@ npm run build:skill
 # Build site (dist/) + skill bundles + skills.json registry
 npm run build:site
 
-# Build all unsigned, locally verifiable release artifacts
+# Build all release artifacts
 npm run build
-
-# Build Chrome extension only
-npm run build:chrome
-
-# Build and sign Firefox extension
-npm run build:firefox
 
 # Bump platform version (excludes visual-* packages and skills/* sub-skills)
 npm run bump -- 2.12.0
 ```
+
+Browser extensions are built and released separately in [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension).
 
 Output files are saved to the `dist/` directory. The main skill bundle is staged under `dist/skill-bundle/js-eyes/`, published to `dist/js-eyes-skill.zip`, and versioned for releases as `dist/js-eyes-skill-v<version>.zip`.
 

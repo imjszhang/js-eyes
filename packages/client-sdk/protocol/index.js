@@ -35,7 +35,7 @@ const REQUEST_TIMEOUT_MS = DEFAULT_REQUEST_TIMEOUT_SECONDS * 1000;
 const PROTOCOL_VERSION = '1.0';
 const PACKAGE_VERSION = pkg.version;
 const SKILLS_REGISTRY_URL = 'https://js-eyes.com/skills.json';
-const RELEASE_BASE_URL = 'https://github.com/imjszhang/js-eyes/releases/download';
+const RELEASE_BASE_URL = 'https://github.com/imjszhang/js-eyes-extension/releases/download';
 
 const SENSITIVE_TOOL_NAMES = Object.freeze([
   ...SENSITIVE_BROWSER_TOOL_NAMES,

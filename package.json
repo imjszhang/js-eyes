@@ -11,12 +11,9 @@
   ],
   "scripts": {
     "dev": "npx serve src",
-    "build": "node packages/devtools/bin/js-eyes-dev.js build all --clean --no-sign",
+    "build": "node packages/devtools/bin/js-eyes-dev.js build site --clean",
     "build:skill": "node packages/devtools/bin/js-eyes-dev.js build skill",
     "build:site": "node packages/devtools/bin/js-eyes-dev.js build site --clean",
-    "build:chrome": "node packages/devtools/bin/js-eyes-dev.js build chrome",
-    "build:firefox": "node packages/devtools/bin/js-eyes-dev.js build firefox",
-    "build:firefox:dev": "node packages/devtools/bin/js-eyes-dev.js build firefox --no-sign",
     "preview": "npx serve dist -l 3000",
     "cli": "node apps/cli/bin/js-eyes.js",
     "devtools": "node packages/devtools/bin/js-eyes-dev.js",
@@ -39,7 +36,7 @@
     "test:root": "node --test test/*.test.js",
     "test:workspaces": "npm run test --workspaces --if-present",
     "test:coverage": "node scripts/test-coverage.js",
-    "lint": "eslint apps packages skills extensions openclaw-plugin test scripts src",
+    "lint": "eslint apps packages skills openclaw-plugin test scripts src",
     "lint:fix": "npm run lint -- --fix",
     "typecheck": "npm run typecheck:core && npm run typecheck:apps && npm run typecheck:plugin && npm run typecheck:devtools",
     "typecheck:core": "tsc -p jsconfig.core.json",
@@ -50,11 +47,7 @@
     "scan:security": "node scripts/scan-security-patterns.js",
     "skills:manifests": "node scripts/generate-skill-manifests.js",
     "skills:manifests:check": "node scripts/generate-skill-manifests.js --check",
-    "sync:extension-shared": "node scripts/sync-extension-shared.js --write",
-    "prepare:extensions": "node scripts/sync-extension-shared.js --write",
-    "check:extension-shared": "node scripts/sync-extension-shared.js",
     "test:server": "node --test apps/cli/tests/server-core/ws-handler.test.js apps/cli/tests/server-core/security-hot-reload.test.js",
-    "test:extension": "node --test test/utils.test.js test/extension-shared-runtime.test.js",
     "test:client": "node --test packages/client-sdk/tests/client.test.js",
     "test:cli": "node --test test/npm-cli.test.js",
     "test:native-host": "node --test apps/cli/tests/native-host/*.test.js test/openclaw-native-host-setup.test.js",
@@ -84,7 +77,6 @@
     "@types/ws": "^8.18.1",
     "eslint": "^10.10.0",
     "globals": "^17.7.0",
-    "typescript": "^7.0.2",
-    "web-ext": "^10.8.0"
+    "typescript": "^7.0.2"
   }
 }

@@ -10,8 +10,6 @@ const i18n = require('../i18n');
 const {
   buildSite,
   buildSkillZip,
-  buildChrome,
-  buildFirefox,
   bump,
   getVersion,
 } = require('../lib/builder');
@@ -69,7 +67,6 @@ function log(message) {
 }
 
 async function cmdBuild(sub, flags) {
-  const noSign = !!flags['no-sign'];
   const clean = !!flags.clean;
   const target = sub || 'all';
 
@@ -78,35 +75,9 @@ async function cmdBuild(sub, flags) {
       await buildSkillZip();
       break;
     case 'site':
+    case 'all':
       await buildSite(t, { clean });
       break;
-    case 'chrome':
-      await buildChrome(t);
-      break;
-    case 'firefox':
-      await buildFirefox(t, !noSign);
-      break;
-    case 'all': {
-      const version = getVersion();
-      console.log('========================================');
-      console.log(`   ${t('tool.name')}`);
-      console.log(`   ${t('tool.version').replace('{version}', version)}`);
-      console.log('========================================');
-      console.log('');
-      console.log('[1/3] Site');
-      await buildSite(t, { clean });
-      console.log('');
-      console.log('[2/3] Chrome');
-      await buildChrome(t);
-      console.log('');
-      console.log('[3/3] Firefox');
-      await buildFirefox(t, !noSign);
-      console.log('');
-      console.log('========================================');
-      console.log(`   ${t('tool.allDone')}`);
-      console.log('========================================');
-      break;
-    }
     default:
       console.error(t('help.unknownTarget').replace('{target}', target));
       process.exit(1);
@@ -286,7 +257,6 @@ async function cmdPublish(sub, flags) {
 async function cmdRelease(flags) {
   const skipBundle = !!flags['skip-bundle'];
   const skipExtensions = !!flags['skip-extensions'];
-  const skipFirefox = !!flags['skip-firefox'];
   const skipNpm = !!flags['skip-npm'];
   const skipGithub = !!flags['skip-github'];
   const skipTag = !!flags['skip-tag'];
@@ -324,21 +294,11 @@ async function cmdRelease(flags) {
       log('[1/6] bundle — skipped');
     }
 
-    // [2/6] browser extensions (chrome zip + firefox signed xpi + skill zip)
+    // [2/5] skill bundle (browser extensions live in imjszhang/js-eyes-extension)
     if (!skipExtensions) {
       log('');
-      log('[2/6] extensions');
-      const chromeZip = path.join(REPO_ROOT, 'dist', `js-eyes-chrome-v${version}.zip`);
-      const firefoxXpi = path.join(REPO_ROOT, 'dist', `js-eyes-firefox-v${version}.xpi`);
+      log('[2/5] skill bundle');
       const skillZip = path.join(REPO_ROOT, 'dist', `js-eyes-skill-v${version}.zip`);
-
-      if (fs.existsSync(chromeZip)) {
-        log(`  ✓ chrome already built (${path.relative(REPO_ROOT, chromeZip)})`);
-      } else if (dryRun) {
-        log('  (would build chrome extension)');
-      } else {
-        await buildChrome(t);
-      }
 
       if (fs.existsSync(skillZip)) {
         log(`  ✓ skill already built (${path.relative(REPO_ROOT, skillZip)})`);
@@ -347,29 +307,8 @@ async function cmdRelease(flags) {
       } else {
         await buildSkillZip();
       }
-
-      if (skipFirefox) {
-        log('  firefox — skipped (--skip-firefox)');
-      } else if (fs.existsSync(firefoxXpi)) {
-        log(`  ✓ firefox already built (${path.relative(REPO_ROOT, firefoxXpi)})`);
-      } else if (dryRun) {
-        log('  (would build + sign firefox extension)');
-      } else if (!process.env.AMO_API_KEY || !process.env.AMO_API_SECRET) {
-        log('  ⚠ AMO_API_KEY/AMO_API_SECRET not set — skipping firefox (set them in .env to auto-sign)');
-      } else {
-        try {
-          await buildFirefox(t, true);
-        } catch (err) {
-          const msg = err.message || String(err);
-          if (/already exists/i.test(msg)) {
-            log(`  ⚠ firefox ${version} already signed on AMO; fetch the signed xpi manually if needed`);
-          } else {
-            log(`  ⚠ firefox build failed: ${msg}`);
-          }
-        }
-      }
     } else {
-      log('[2/6] extensions — skipped');
+      log('[2/5] skill bundle — skipped');
     }
 
     // [3/6] npm publish
