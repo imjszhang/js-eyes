@@ -6,7 +6,7 @@
 > [ClawHub Security Scan](https://clawhub.ai/imjszhang/js-eyes) of v2.6.1,
 > see [`SECURITY_SCAN_NOTES.md`](./SECURITY_SCAN_NOTES.md); for the one-screen
 > operator summary (risk item / current default / how to tighten / config
-> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-2100).
+> switch / verify) see the [Security Posture table in `README.md`](./README.md#security-posture-2120).
 > A local reproduction of the ClawHub static heuristic is available via
 > `npm run scan:security` (zero unexpected findings on 2.6.3 — the 2.6.3
 > changes are install-time UX only and do not touch the runtime callsites
@@ -25,7 +25,7 @@ JS Eyes is a **local-first** browser automation stack. Its normal runtime loop t
 There are two deployment shapes to keep in mind:
 
 - **ClawHub / bundle deployment:** install the JS Eyes bundle, run `npm install` in the bundle root, register `openclaw-plugin`, and allow the plugin tools in OpenClaw.
-- **Source-repo / development deployment:** clone this repository, run `npm install` in the repo root, point OpenClaw at the repo-root `openclaw-plugin`, and optionally load the unpacked browser extension directly from `extensions/chrome/` or `extensions/firefox/`.
+- **Source-repo / development deployment:** clone this repository, run `npm install` in the repo root, point OpenClaw at the repo-root `openclaw-plugin`, and optionally load the unpacked browser extension from [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension) (or enable the built-in CDP / BiDi connector).
 
 Those two modes share the same local runtime behavior, but the source repository also contains release tooling, docs, site assets, and extension source files that reference public URLs for packaging and documentation workflows.
 
@@ -165,7 +165,7 @@ Starting with 2.3.0 JS Eyes ships a declarative, non-interactive policy engine t
 - **L4c — Sensitive cookie domains.** `security.sensitiveCookieDomains` (hot-reloadable; default includes `google.com`, `apple.com`, `bank`, and similar hosts) is now enforced on cookie read/write/sync. A matching host is soft-blocked by default and denied in `strict`.
 - **L4b — Lightweight Taint (`TaintRegistry`).** Every cookie value returned by `getCookies*` is tagged with an 8-byte canary (`__canary: "jse-c-<hex>"`) and registered. Subsequent sink parameters (`openUrl`, `uploadFileToTab`, `executeScript`, `injectCss`, `setCookies`, and resolved `fill` values) are scanned for the canary or common-encoded cookie-value variants. Hits are soft-blocked and audited as `reason: 'taint-hit'`. `syncCookies` is a controlled server-side channel: values stay in server-core memory and are not written to audit, MCP, or CLI output. `secretRef` names may appear in logs; secret values must not.
 - **L5 — Egress Allowlist (`EgressGate`).** `openUrl` targets must be in: the task origin scope, `security.egressAllowlist` (static config, defaulting to `['*']` so public web navigation is open out of the box), or the session allowlist (populated by prior approvals / explicit user-message URLs). Operators can tighten to an explicit domain allowlist or task-origin-only (`[]`) via `js-eyes config set security.egressAllowlist '["example.com"]'` or `'[]'`; unmatched targets then write a `runtime/pending-egress/<uuid>.json` record and return `{ status: 'pending-egress' }`, and the browser extension never sees the navigation.
-- **L6 — Rule Engine Location.** The engine lives in `@js-eyes/policy` so that skills, the client SDK, and the OpenClaw plugin share one implementation. `@js-eyes/client-sdk` re-exports selected policy symbols from its main entry for convenience; new code should depend on `@js-eyes/policy` directly. `@js-eyes/server-core/ws-handler` instantiates the same engine to cover raw WebSocket callers (external agents that bypass `client-sdk`).
+- **L6 — Rule Engine Location.** The engine lives in `@js-eyes/client-sdk/policy` (`packages/client-sdk/policy/`) so that skills, the client SDK, and the OpenClaw plugin share one implementation. `@js-eyes/client-sdk` also re-exports selected policy symbols from its main entry for convenience. `apps/cli/server-core/ws-handler.js` instantiates the same engine to cover raw WebSocket callers (external agents that bypass `client-sdk`).
 
 ### Enforcement Levels
 

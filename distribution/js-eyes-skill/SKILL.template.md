@@ -30,7 +30,7 @@ Use the smallest surface that fits the request:
 
 1. **CLI** — use `js-eyes` directly for server management, diagnostics, Skill
    lifecycle, and one-off Skill calls.
-2. **MCP** — use `@js-eyes/mcp-server` for Codex, Claude, Cursor, VS Code, and
+2. **MCP** — use `js-eyes mcp` (`npx -y js-eyes mcp` or `js-eyes-mcp`) for Codex, Claude, Cursor, VS Code, and
    other local MCP clients.
 3. **OpenClaw** — load `{baseDir}/openclaw-plugin` only when OpenClaw-specific
    lifecycle and routing are required.
@@ -40,7 +40,7 @@ Do not install the OpenClaw adapter merely to use CLI or MCP.
 ## Requirements
 
 - Node.js 22 or newer.
-- A supported Chrome, Edge, or Firefox extension.
+- Either a supported Chrome, Edge, or Firefox extension from [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension), **or** an enabled extension-free connector (`js-eyes browser attach --cdp` / `--bidi`).
 - A local JS Eyes server, normally at `http://localhost:18080`.
 - A shared server token unless anonymous compatibility mode was explicitly
   selected.
@@ -86,7 +86,7 @@ The MCP facade connects lazily to an existing JS Eyes server:
   "mcpServers": {
     "js-eyes": {
       "command": "npx",
-      "args": ["-y", "@js-eyes/mcp-server"]
+      "args": ["-y", "js-eyes", "mcp"]
     }
   }
 }
@@ -108,7 +108,7 @@ both profiles.
 ```text
 Install JS Eyes locally: Node 22+, `npm i -g js-eyes`, `js-eyes server token init`,
 `js-eyes native-host install --browser all`, `js-eyes server start`, load the
-browser extension, then add MCP `@js-eyes/mcp-server` (safe profile).
+browser extension (or enable CDP/BiDi via `js-eyes browser attach --cdp`), then add MCP `npx -y js-eyes mcp` (safe profile).
 Before clicking, call browser_page_state and reuse refs. For login/2FA call
 browser_wait_for_user; the operator continues in the extension popup or
 `js-eyes browser resume <id>`. Do not ask for cookies, raw eval, or file upload
@@ -199,7 +199,7 @@ The recommended host posture is:
 - `security.allowRemoteBind=false`
 - `security.allowRawEval=false`
 - `security.enforcement=soft` or `strict`
-- a narrow `security.egressAllowlist`
+- `security.egressAllowlist` defaults to `['*']` (public web navigation open, private/loopback SSRF blocked); narrow it to explicit domains or `[]` for stricter environments
 - token authentication enabled
 
 Ordinary status, tab, navigation, page-read, screenshot, and first-class

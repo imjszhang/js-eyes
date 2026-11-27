@@ -49,11 +49,11 @@ See [docs/native-messaging.md](./docs/native-messaging.md) for details and the [
 
 ## Introduction
 
-JS Eyes is a browser extension + WebSocket server that gives AI agents full browser automation capabilities. It connects to AI agent frameworks (OpenClaw, DeepSeek Cowork, or custom) and provides tools for tab management, content extraction, script execution, cookie access, and more.
+JS Eyes is a local-first browser automation server and Skill Runtime for AI agents. It connects to your browser either via the standalone browser extension ([`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)) **or** without any extension using built-in **CDP** (Chrome/Edge/Chromium) and **WebDriver BiDi** (Firefox) connectors, and exposes a unified protocol to CLI, MCP, OpenClaw, DeepSeek Cowork, or custom agents.
 
 ```
-Browser Extension  <── WebSocket ──>  JS-Eyes Server  <──>  CLI / MCP / optional OpenClaw
- (Chrome/Edge/FF)                     (apps/cli/server-core) (independent host integrations)
+Browser (Extension | CDP | BiDi)  <──>  JS-Eyes Server        <──>  CLI / MCP / optional OpenClaw
+ (Chrome / Edge / Firefox)              (apps/cli/server-core)       (independent host integrations)
 ```
 
 ### Monorepo Layout
@@ -293,6 +293,25 @@ Open the popup and click **Sync Token From Host** (or simply wait for the auto-s
 >
 > 2.3.0 adds a non-interactive policy engine (`task origin` + `taint` + `egress allowlist`) in front of every sink. Default `enforcement=soft` keeps existing workflows working; see the [2.3.0 migration guide](./RELEASE.md#230-migration-guide-policy-engine).
 
+### 2b. Optional: Use Without Browser Extension (CDP / BiDi)
+
+If you prefer not to install the browser extension, JS Eyes includes built-in **CDP** (Chrome/Edge/Chromium) and **WebDriver BiDi** (Firefox) connectors (disabled by default, loopback-only):
+
+```bash
+# Chrome / Edge via CDP: attach to DevToolsActivePort, connect to an endpoint, or launch a browser
+js-eyes browser attach --cdp --mode attach
+js-eyes browser attach --cdp --mode endpoint --endpoint http://127.0.0.1:9222
+js-eyes browser attach --cdp --mode launch
+
+# Firefox via WebDriver BiDi
+js-eyes browser attach --bidi --endpoint ws://127.0.0.1:9222/session
+
+# Restart the server for transport changes to take effect
+js-eyes server restart
+```
+
+You can also enable them via environment variables (`JS_EYES_CDP_ENABLED=1`, `JS_EYES_CDP_MODE`, `JS_EYES_CDP_ENDPOINT`, `JS_EYES_BIDI_ENABLED=1`, `JS_EYES_BIDI_ENDPOINT`). CDP and BiDi support all core browser operations and site skills; only extension-specific `capture.*` (Firefox network capture) and `queue.*` (extension queue diagnostics) remain extension-only.
+
 ### 3. Verify Connection
 
 ```bash
@@ -393,7 +412,7 @@ Secure defaults in 2.2.0:
 
 New in 2.3.0:
 
-- A non-interactive policy engine (`task origin`, `taint`, `egress allowlist`) is wired through `BrowserAutomation` and server-side dispatch. Default `enforcement=soft` means no hard rejects — violating `openUrl` calls become `pending-egress` records, other sinks return `POLICY_SOFT_BLOCK` for the agent to re-plan.
+- A non-interactive policy engine (`task origin`, `taint`, `egress allowlist`) is wired through `BrowserAutomation` and server-side dispatch. `security.egressAllowlist` defaults to `['*']` (public web navigation is open by default while private/loopback/link-local SSRF targets remain blocked); operators can narrow it to specific domains or `[]` at any time. Default `enforcement=soft` turns policy violations into `pending-egress` records or `POLICY_SOFT_BLOCK` responses so agents can re-plan.
 - Every returned cookie is tagged with a canary (`__canary: "jse-c-..."`); sinks that serialize a canary or a raw cookie value are soft-blocked.
 - HTTP responses from `server-core` now carry `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
 
@@ -655,7 +674,7 @@ The parent `SKILL.md` is rendered from
 the build injects the coordinated platform version. Repository coding-agent
 guidance lives separately in [`AGENTS.md`](./AGENTS.md).
 
-For the maintainer release checklist (`main`, npm OIDC publish for `@js-eyes/client-sdk` & `js-eyes`, GitHub Release, Firefox signed XPI, and AMO public submission), see [RELEASE.md](RELEASE.md).
+For the maintainer release checklist (`main`, npm OIDC publish for `@js-eyes/client-sdk` & `js-eyes`, and GitHub Release), see [RELEASE.md](RELEASE.md). Browser extension builds and Firefox AMO signing live in [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension).
 
 Repository releases use a read-only verification workflow followed by a manual,
 environment-gated publish workflow. npm publication uses GitHub OIDC trusted
@@ -759,6 +778,7 @@ For a machine with no desktop:
 
 ## Related Projects
 
+- [JS Eyes Browser Extensions](https://github.com/imjszhang/js-eyes-extension) — Standalone Chrome (MV3) and Firefox (MV2) browser extensions for JS Eyes
 - [OpenClaw](https://openclaw.ai/) — AI agent framework with extensible plugin system
 - [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) — AI agent framework with full-featured browser automation support
 

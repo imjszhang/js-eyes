@@ -39,11 +39,11 @@ irm https://js-eyes.com/install.ps1 | iex
 
 ## 简介
 
-JS Eyes 是一个浏览器扩展 + WebSocket 服务器，为 AI 智能体提供完整的浏览器自动化能力。它连接 AI Agent 框架（OpenClaw、DeepSeek Cowork 或自定义），提供标签页管理、内容提取、脚本执行、Cookie 访问等工具。
+JS Eyes 是一个本地优先的浏览器自动化服务器与技能运行时。它既可以通过独立维护的浏览器扩展（[`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension)）连接浏览器，也支持**无插件模式**——通过内置的 **CDP**（Chrome/Edge/Chromium）与 **WebDriver BiDi**（Firefox）连接器直接控制浏览器，并为 CLI、MCP、OpenClaw、DeepSeek Cowork 或自定义 Agent 提供统一协议。
 
 ```
-浏览器扩展  <── WebSocket ──>  JS-Eyes 服务器  <──>  CLI / MCP / 可选 OpenClaw
-(Chrome/Edge/FF)               (apps/cli/server-core)       （相互独立的宿主集成）
+浏览器（扩展 | CDP | BiDi）  <──>  JS-Eyes 服务器        <──>  CLI / MCP / 可选 OpenClaw
+  (Chrome / Edge / Firefox)        (apps/cli/server-core)      （相互独立的宿主集成）
 ```
 
 ### 仓库布局
@@ -234,6 +234,25 @@ npx js-eyes native-host install --browser all
 >
 > 2.3.0 在所有敏感 sink 前引入非交互式策略引擎（`task origin` + `taint` + `egress allowlist`）。默认 `enforcement=soft`，现有工作流全部不变；详见 [2.3.0 迁移指南](../RELEASE.md#230-migration-guide-policy-engine)。
 
+### 2b. 可选：无插件模式（CDP / BiDi）
+
+如果不想安装浏览器扩展，JS Eyes 已内置 **CDP**（Chrome / Edge / Chromium）和 **WebDriver BiDi**（Firefox）连接器（默认关闭、仅限本机回环）：
+
+```bash
+# Chrome / Edge（CDP）：附着本机 DevToolsActivePort、连接指定端口，或自动启动浏览器
+js-eyes browser attach --cdp --mode attach
+js-eyes browser attach --cdp --mode endpoint --endpoint http://127.0.0.1:9222
+js-eyes browser attach --cdp --mode launch
+
+# Firefox（WebDriver BiDi）
+js-eyes browser attach --bidi --endpoint ws://127.0.0.1:9222/session
+
+# 重启服务器使传输配置生效
+js-eyes server restart
+```
+
+也可直接通过环境变量临时开启（`JS_EYES_CDP_ENABLED=1`、`JS_EYES_CDP_MODE`、`JS_EYES_CDP_ENDPOINT`、`JS_EYES_BIDI_ENABLED=1`、`JS_EYES_BIDI_ENDPOINT`）。CDP 与 BiDi 支持所有核心浏览器操作和站点技能，仅扩展专属的 `capture.*`（Firefox 网络抓包）和 `queue.*`（扩展队列诊断）需要浏览器扩展。
+
 ### 3. 验证连接
 
 ```bash
@@ -314,7 +333,7 @@ js-eyes doctor
 
 2.3.0 新增：
 
-- 声明式策略引擎（task origin / taint / egress）默认 `enforcement=soft`，现有流程不变；违规 `openUrl` 会转成 `pending-egress` 记录，其它 sink 返回 `POLICY_SOFT_BLOCK`，Agent 可以感知并重新规划。
+- 声明式策略引擎（task origin / taint / egress）默认 `enforcement=soft`，且 `security.egressAllowlist` 默认为 `['*']`（公网网页访问默认放开，内网/回环/链路本地 SSRF 目标仍被拦截）；可随时通过 `js-eyes config set security.egressAllowlist '["example.com"]'` 或 `'[]'` 收紧。命中拦截时 `openUrl` 会转成 `pending-egress` 记录，其它 sink 返回 `POLICY_SOFT_BLOCK`，Agent 可以感知并重新规划。
 - `getCookies*` 返回值会自动附加 `__canary` 金丝雀标记；任何 sink 参数里出现该金丝雀或原始 cookie 值都会被 soft block。
 - `server-core` HTTP 响应全部加了 `Content-Security-Policy: default-src 'none'`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`。
 
@@ -525,7 +544,7 @@ npm install @js-eyes/client-sdk
 
 > **`@js-eyes/*` scope 仅供本仓库官方维护者发布**。第三方 JS Eyes Skills 与集成必须使用自己的 npm scope（如 `@acme/js-my-cool-skill`）或无 scope 名称，不得占用 `@js-eyes/*`。完整治理规则见 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md#npm-scope-治理)。
 
-> 命名约定：**JS Eyes Skills** 专指本仓库 `skill.contract.js` 契约下的扩展技能；[docs/dev/](dev/) 与 [examples/](../examples/) 下的 `skills/` 命名空间留给未来兼容外部通用 Skills 规范（Anthropic Agent Skills / Cursor Skills 等）。完整术语对照见 [docs/README.md](README.md) 与 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md)。
+> 命名约定：**JS Eyes Skills** 专指本仓库 V2 `skill.manifest.json` / `skill.entry.js` 契约下的扩展技能；[docs/dev/](dev/) 与 [examples/](../examples/) 下的 `skills/` 命名空间留给未来兼容外部通用 Skills 规范（Anthropic Agent Skills / Cursor Skills 等）。完整术语对照见 [docs/README.md](README.md) 与 [docs/dev/js-eyes-skills/README.md](dev/js-eyes-skills/README.md)。
 
 ## 构建与发布
 
@@ -562,7 +581,7 @@ npm run bump -- 2.12.0
 构建时从根 `package.json` 注入平台版本；源码仓库中的编码 Agent 规则位于
 [`AGENTS.md`](../AGENTS.md)。
 
-维护者发布检查清单（`main`、npm OIDC 发布 `@js-eyes/client-sdk` 与 `js-eyes`、GitHub Release、Firefox 已签名 XPI、AMO 提审）见 [RELEASE.md](../RELEASE.md)。
+维护者发布检查清单（`main`、npm OIDC 发布 `@js-eyes/client-sdk` 与 `js-eyes`、GitHub Release）见 [RELEASE.md](../RELEASE.md)。浏览器扩展的打包与 Firefox AMO 签名发布在 [`imjszhang/js-eyes-extension`](https://github.com/imjszhang/js-eyes-extension) 中独立维护。
 
 ## Smoke Test
 
@@ -590,7 +609,7 @@ npm run bump -- 2.12.0
 | Windows 路径找不到 | JSON 中使用正斜杠，如 `C:/Users/you/skills/js-eyes/openclaw-plugin` |
 | Agent 返回 pending-egress / 出站策略 / 策略拦截 | 服务端策略未放行该 URL 或操作（扩展可能未执行导航）。执行 `js-eyes security show` 查看 `egressAllowlist` 与 `taskOrigin`；`js-eyes egress list` / `egress approve` / `egress allow <域名>`。详见仓库根目录 [SECURITY.md](../SECURITY.md) 中 Policy Engine。与扩展断连、consent 审批是不同问题。 |
 | Windows 浏览器连不上另一台局域网机器上的 OpenClaw / js-eyes | 默认只监听本机回环。见[局域网远程浏览器](#局域网远程浏览器)。 |
-| 无图形 / 无头 Linux | 必须能加载浏览器扩展。见[无头与无显示主机](#无头与无显示主机)。 |
+| 无图形 / 无头 Linux | 使用可选的 CDP `launch` 连接器，或图形/虚拟显示 + 浏览器扩展。见[无头与无显示主机](#无头与无显示主机)。 |
 
 ### 局域网远程浏览器
 
@@ -630,6 +649,7 @@ JS Eyes 默认本机优先：服务器听 `localhost:18080`，未显式打开时
 
 ## 相关项目
 
+- [JS Eyes Browser Extensions](https://github.com/imjszhang/js-eyes-extension) — JS Eyes 独立维护的 Chrome (MV3) 与 Firefox (MV2) 浏览器扩展
 - [OpenClaw](https://openclaw.ai/) — 可扩展插件系统的 AI Agent 框架
 - [DeepSeek Cowork](https://github.com/imjszhang/deepseek-cowork) — 支持浏览器自动化的 AI Agent 框架
 
